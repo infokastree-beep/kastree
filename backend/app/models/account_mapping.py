@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
@@ -49,7 +50,7 @@ class AccountMapping(Base):
     source_code: Mapped[str | None] = mapped_column(String, nullable=True)
     source_name: Mapped[str] = mapped_column(String, nullable=False)
     canonical_line: Mapped[str] = mapped_column(String, nullable=False)
-    confidence: Mapped[float | None] = mapped_column(Numeric(3, 2), nullable=True)
+    confidence: Mapped[Decimal | None] = mapped_column(Numeric(3, 2), nullable=True)
     method: Mapped[str] = mapped_column(String, nullable=False)
     is_confirmed: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")

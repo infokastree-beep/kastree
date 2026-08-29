@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, func, text
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
@@ -31,7 +32,7 @@ class StatementLineItem(Base):
     )
     line_item_code: Mapped[str] = mapped_column(String, nullable=False)
     line_item_name: Mapped[str] = mapped_column(String, nullable=False)
-    amount: Mapped[float] = mapped_column(Numeric(19, 2), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(19, 2), nullable=False)
     is_subtotal: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
@@ -43,7 +44,7 @@ class StatementLineItem(Base):
         ForeignKey("users.id"),
         nullable=True,
     )
-    original_amount: Mapped[float | None] = mapped_column(Numeric(19, 2), nullable=True)
+    original_amount: Mapped[Decimal | None] = mapped_column(Numeric(19, 2), nullable=True)
     source_account_ids: Mapped[list[uuid.UUID] | None] = mapped_column(
         ARRAY(UUID(as_uuid=True)), nullable=True
     )
