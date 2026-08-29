@@ -165,8 +165,15 @@ Follow this structure. Deviation requires explicit justification in PR.
   │ │ ├── models/ # organisation, user, client, trial_balance,
   │ │ │ # account_mapping, financial_statement,
   │ │ │ # statement_line_item, variance_analysis,
-  │ │ │ # risk_flag, export, audit_log, processing_job,
-  │ │ │ # subscription_event, notification
+  │ │ │ # risk_flag, export, commentary_feedback,
+  │ │ │ # audit_log, processing_job,
+  │ │ │ # subscription_event, notification,
+  │ │ │ # archived_record (v3.2, Product Spec 9.1) --
+  │ │ │ # 16 models total, matching Product Spec 9.1 / this
+  │ │ │ # doc's Section 17 schema summary exactly. This list
+  │ │ │ # was previously missing commentary_feedback and
+  │ │ │ # archived_record -- verify your models/ directory
+  │ │ │ # has all 16 before writing services against them.
   │ │ ├── schemas/ # client, trial_balance, mapping, statements,
   │ │ │ # variance, risk, export, notification
   │ │ └── services/
