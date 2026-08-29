@@ -1,0 +1,1116 @@
+FinDraft
+
+Cursor AI Rules & Development Guide v3.2
+
+Paste into .cursorrules and use as system prompts for Cursor AI / Claude Sonnet
+
+Date: 29 August 2026 | Version: 3.2
+
+Status: Supersedes v3.1
+
+Revision Note
+
+v3.1 fixed one internal disagreement found during independent review: Section 7.1's model-selection list only named GPT-4o-mini for the mapping tie-breaker, while Section 7.3 separately said to use it for "all non-critical tasks (mapping, risk explanations)" — leaving risk-explanation routing ambiguous. Section 7.1 now explicitly includes risk explanations. v3.2 syncs this document with Product Specification v3.2, which added an Irish legal/compliance section (archived_records table, a corrected TB-balance trigger, DPA/sub-processor requirements, EU data residency). Section 17's schema summary now includes archived_records, and Section 2's Privacy by Design principle and Section 14.1's environment table both note the EU-residency requirement that Product Spec Section 12.1 states explicitly.
+
+1. Project Identity
+
+FinDraft is a financial intelligence platform for accounting practices. Users upload trial balances (Excel/CSV) and receive auto-generated SOPL, SOFP, SOCIE, variance analysis with AI commentary, and risk flags. All financial calculations must be deterministic, auditable, and accurate to the penny.
+
+Golden Rule: Python does the math. LLM does the narrative. Never the reverse.
+
+2. Architectural Principles (Non-Negotiable)
+
+-   Deterministic Math: All financial calculations use Python's Decimal module. NEVER use float for money. Tolerance: €0.01 (or functional currency equivalent).
+
+-   AI-Narrative Separation: LLM generates text commentary only. LLM NEVER calculates, sums, or compares numbers. All numbers come from Python.
+
+-   Evidence Graph: Every statement figure must be traceable to source TB rows. Store provenance metadata (source_account_ids).
+
+-   Async by Default: All I/O operations (file upload, DB queries, LLM calls, export generation) use async/await.
+
+-   Type Safety: All Python functions have type hints. All API inputs/outputs use Pydantic v2 models. Run mypy --strict in CI.
+
+-   Fail Secure: If LLM fails, statements still generate without commentary. If validation fails, block export. Never show incorrect data.
+
+-   No Raw Numbers in LLM Prompts: LLM prompts contain account names, variance directions, and percentage changes ONLY. Never include £/€/$ amounts, absolute values, or account balances.
+
+-   Client Isolation: All data scoped to client_id and org_id. Row-level security enforced at BOTH application layer AND database layer (PostgreSQL RLS).
+
+-   Defence in Depth: Security controls at multiple layers: auth, application, database, infrastructure.
+
+-   Privacy by Design: GDPR compliance built-in. Minimise data collection. Encrypt at rest and in transit. Audit all access. Primary data (database AND file storage) hosted in an EU region — see Product Spec Section 12.1.
+
+3. Tech Stack (Locked Versions)
+
+  ------------------------------------------------------------------------------------------------------------------------------------------------
+  Layer             Technology                Version           Notes
+  ----------------- ------------------------- ----------------- ----------------------------------------------------------------------------------
+  Frontend          Next.js 14 (App Router)                     Server Components by default
+
+                    TypeScript                5.3+              Strict mode enabled
+
+                    Tailwind CSS              3.4               
+
+                    shadcn/ui                 latest            Accessible components
+
+                    TanStack Query            v5                Server state
+
+                    Zustand                   latest            Client UI state
+
+  Backend           FastAPI                   0.110+            Async
+
+                    Python                    3.11+             
+
+                    Pydantic                  v2                Settings + validation
+
+                    SQLAlchemy                2.0               Async ORM
+
+                    Alembic                   latest            Migrations
+
+  Database          PostgreSQL                15                JSONB, RLS
+
+                    psycopg2-binary           latest            Sync fallback
+
+                    asyncpg                   latest            Async driver
+
+  AI/LLM            OpenAI SDK                1.0+              
+
+                    GPT-4o                    latest            Primary for commentary
+
+                    GPT-4o-mini               latest            Fallback for mapping tie-breaker AND risk explanations (v3.1: aligned with §7.3)
+
+  Excel             OpenPyXL                  3.1+              NO xlrd, NO xlsxwriter
+
+  PDF               WeasyPrint                60+               HTML+CSS→PDF
+
+  Auth              Clerk SDK                 @clerk/nextjs     
+
+  File Storage      AWS S3 or Cloudflare R2   latest            Signed URLs
+
+  Queue             FastAPI BackgroundTasks   MVP               Celery + Redis if needed later
+
+  Email             Resend                    latest            Notifications
+
+  Testing           pytest                    8+                
+
+                    pytest-asyncio            latest            
+
+                    Factory Boy               latest            Test data
+
+                    pytest-cov                latest            80% service coverage min
+
+                    Playwright                latest            E2E (Month 2+)
+
+  Linting           ruff                      latest            Replaces black + isort + flake8
+
+                    mypy                      latest            --strict in CI
+
+  Monitoring        Sentry                    latest            Error tracking
+
+                    Logtail                   latest            Log aggregation
+  ------------------------------------------------------------------------------------------------------------------------------------------------
+
+4. File Organization
+
+Follow this structure. Deviation requires explicit justification in PR.
+
+  findraft/
+  ├── frontend/
+  │ ├── app/
+  │ │ ├── (dashboard)/ # Route group: auth-required pages
+  │ │ │ ├── clients/
+  │ │ │ ├── clients/[id]/
+  │ │ │ ├── upload/
+  │ │ │ ├── mapping/[tbId]/
+  │ │ │ ├── dashboard/[tbId]/
+  │ │ │ ├── notifications/ # NEW in v3.1 (matches Product Spec Section 11.1)
+  │ │ │ └── settings/
+  │ │ ├── api/ # Next.js API routes (webhooks only)
+  │ │ ├── layout.tsx # Root layout with ClerkProvider
+  │ │ └── page.tsx # Landing/marketing page
+  │ ├── components/
+  │ │ ├── ui/ # shadcn components ONLY
+  │ │ ├── upload/
+  │ │ ├── mapping/
+  │ │ ├── statements/
+  │ │ ├── variance/
+  │ │ ├── risk/
+  │ │ └── layout/
+  │ ├── lib/
+  │ │ ├── api.ts # TanStack Query hooks
+  │ │ ├── utils.ts # cn() helper, formatters
+  │ │ └── constants.ts
+  │ ├── types/
+  │ │ └── index.ts # Shared TypeScript interfaces
+  │ └── hooks/
+  │ └── useAuth.ts
+  │
+  ├── backend/
+  │ ├── app/
+  │ │ ├── main.py # FastAPI app factory
+  │ │ ├── config.py # Pydantic Settings, env vars
+  │ │ ├── dependencies.py # DB session, auth deps
+  │ │ ├── routers/
+  │ │ │ ├── auth.py # Clerk webhook + org sync
+  │ │ │ ├── clients.py
+  │ │ │ ├── trial_balances.py
+  │ │ │ ├── mapping.py
+  │ │ │ ├── statements.py
+  │ │ │ ├── variance.py
+  │ │ │ ├── risk.py
+  │ │ │ ├── export.py
+  │ │ │ ├── organisations.py # org settings, members
+  │ │ │ ├── webhooks.py # Stripe webhooks
+  │ │ │ └── notifications.py # in-app notifications
+  │ │ ├── models/ # organisation, user, client, trial_balance,
+  │ │ │ # account_mapping, financial_statement,
+  │ │ │ # statement_line_item, variance_analysis,
+  │ │ │ # risk_flag, export, audit_log, processing_job,
+  │ │ │ # subscription_event, notification
+  │ │ ├── schemas/ # client, trial_balance, mapping, statements,
+  │ │ │ # variance, risk, export, notification
+  │ │ └── services/
+  │ │ ├── parser.py # TB parsing (pandas, Decimal)
+  │ │ ├── mapper.py # Hybrid account mapping
+  │ │ ├── validator.py # 5 deterministic checks + 1 status flag
+  │ │ ├── statements.py # SOPL/SOFP/SOCIE builder
+  │ │ ├── variance.py # Variance analysis
+  │ │ ├── risk.py # Risk flagging rules
+  │ │ ├── llm.py # LLM commentary (structured JSON)
+  │ │ ├── exporter.py # Excel/PDF/CSV generation
+  │ │ ├── audit.py # audit logging
+  │ │ ├── notification.py # email/in-app notifications
+  │ │ └── stripe_service.py # subscription management
+  │ ├── tests/ # conftest, test_parser, test_mapper,
+  │ │ # test_validator, test_statements, test_variance,
+  │ │ # test_auth (RLS), test_api, e2e/
+  │ ├── alembic/versions/
+  │ └── scripts/seed_canonical_accounts.py
+  │
+  ├── shared/canonical_accounts.py # Canonical line definitions, keywords
+  │
+  ├── infra/
+  │ ├── docker/ (Dockerfile.backend, Dockerfile.frontend, docker-compose.yml)
+  │ ├── terraform/ # infra as code (Month 2+)
+  │ └── github-actions/ci.yml # CI/CD pipeline
+  │
+  └── docs/
+  ├── privacy-policy.md
+  ├── dpa-template.md
+  └── runbooks/incident-response.md, deployment.md
+
+5. Naming Conventions
+
+-   Python files: snake_case.py. Routers plural: clients.py, trial_balances.py.
+
+-   Python classes: PascalCase. Models: Organisation, TrialBalance. Services: TrialBalanceParser.
+
+-   Python functions: snake_case. Descriptive verbs: parse_trial_balance(), validate_balance_sheet().
+
+-   Python constants: UPPER_SNAKE_CASE. TOLERANCE = Decimal('0.01').
+
+-   TypeScript files: kebab-case.tsx for pages, PascalCase.tsx for components.
+
+-   TypeScript interfaces: PascalCase with I prefix optional: IClient, ITrialBalance.
+
+-   Database tables: snake_case, plural: organisations, trial_balances, account_mappings.
+
+-   Database columns: snake_case: created_at, trial_balance_id, net_balance.
+
+-   API routes: kebab-case, plural nouns: /trial-balances, /account-mappings.
+
+-   Environment variables: UPPER_SNAKE_CASE: DATABASE_URL, OPENAI_API_KEY.
+
+6. Financial Calculation Rules (CRITICAL)
+
+VIOLATING THESE RULES WILL DESTROY TRUST.
+
+6.1 Decimal-Only Arithmetic
+
+  from decimal import Decimal, ROUND_HALF_UP
+  # WRONG — float contamination
+  def calculate_gross_profit(revenue: float, cos: float) -> float:
+  return revenue - cos # Float precision errors
+  # CORRECT — Decimal throughout
+  def calculate_gross_profit(revenue: Decimal, cos: Decimal) -> Decimal:
+  return revenue - cos # Exact arithmetic
+  # WRONG — float parsing
+  amount = float(row['debit'].replace(',', ''))
+  # CORRECT — Decimal parsing
+  amount = Decimal(row['debit'].replace(',', '').replace('£', ''))
+  # WRONG — equality check
+  if total_debits == total_credits:
+  pass
+  # CORRECT — tolerance check
+  TOLERANCE = Decimal('0.01')
+  if abs(total_debits - total_credits) <= TOLERANCE:
+  pass
+  # CORRECT — rounding for display only (never for calculations)
+  def format_for_display(amount: Decimal) -> Decimal:
+  return amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+6.2 Parsing Rules
+
+-   Clean currency symbols (£€$) and commas BEFORE Decimal conversion.
+
+-   Use Decimal('0') as default, not 0 or 0.0.
+
+-   Handle empty cells: Decimal('0') if blank, error if non-numeric after cleaning.
+
+-   Handle parentheses for negatives: (1,000.00) → Decimal('-1000.00').
+
+6.3 Arithmetic Rules
+
+-   All sums, differences, percentages computed with Decimal operators.
+
+-   Percentages: pct = (variance / abs(base)) * Decimal('100'). Handle division by zero: return None if base == 0.
+
+-   Sign conventions: Revenue/Credit balances are positive. Expenses/Debit balances are positive. Net balance = debit - credit.
+
+-   Rounding: Only round for display. Internal calculations preserve full precision.
+
+6.4 Tolerance
+
+  from decimal import Decimal
+  TOLERANCE = Decimal('0.01')
+  def decimal_eq(a: Decimal, b: Decimal) -> bool:
+  """Equality check for monetary values."""
+  return abs(a - b) <= TOLERANCE
+  def decimal_is_zero(a: Decimal) -> bool:
+  return abs(a) <= TOLERANCE
+
+6.5 Negative Checks
+
+-   Cash accounts with net_balance < 0 are flagged as risk.
+
+-   Revenue accounts with debit balance are flagged as anomalous but NOT blocked.
+
+-   Expense accounts with credit balance are flagged as anomalous but NOT blocked.
+
+7. LLM Safety & Prompt Engineering (CRITICAL)
+
+VIOLATING THESE RULES WILL CAUSE HALLUCINATED NUMBERS AND DESTROY TRUST.
+
+7.1 Core Rules
+
+-   NO Numbers in Prompts: LLM prompts contain account names, variance directions, and percentage changes ONLY. Never include £/€/$ amounts, absolute values, or account balances.
+
+-   Structured Output Only: Always use response_format={"type": "json_object"}. Define exact schema in system prompt.
+
+-   Temperature: Use temperature=0.1 for mapping tie-breaker. temperature=0.2 for commentary. Higher = more creative = more wrong.
+
+Model Selection (v3.1: risk explanations added explicitly — previously only implied via §7.3, now stated here too so the two sections agree):
+
+-   GPT-4o for commentary and business health summary.
+
+-   GPT-4o-mini for mapping tie-breaker AND risk explanations (both non-critical, cost-sensitive; risk explanations only ever restate a deterministic rule that already fired in plain English — they don't need the larger model).
+
+-   Fallback chain: GPT-4o → GPT-4o-mini → empty response (never fail the request).
+
+-   Retry Logic: 3 retries with exponential backoff (1s, 2s, 4s). On final failure, return empty commentary array. Never fail the whole request.
+
+-   Reasoning Display: LLM must provide reasoning field in JSON. UI shows this in tooltip. User can thumbs-up/thumbs-down.
+
+-   No Calculations: LLM must NEVER calculate, sum, subtract, or compare numbers. All math done in Python. LLM receives pre-computed directions only.
+
+-   Prompt Versioning: All prompts stored in backend/app/services/llm.py with version comment. A/B test prompts by version hash.
+
+7.2 Prompt Templates
+
+Variance Commentary
+
+  VARIANCE_COMMENTARY_SYSTEM = """You are a senior accountant writing variance commentary for a client's management accounts.
+  Draft concise, professional explanations for each material variance. Be specific but cautious.
+  If you don't know the reason, say "Further investigation required."
+  Respond in JSON format:
+  {
+  "commentaries": [
+  {"line_item": "operating_expenses", "commentary": "...", "reasoning": "...", "confidence": "high|medium|low"}
+  ]
+  }
+  Rules:
+  - Do NOT calculate or mention any monetary amounts (£, €, $).
+  - Use percentage changes and directional language only.
+  - If genuinely unclear, use "Further investigation required."
+  - Tone: professional, advisory, not alarmist."""
+  VARIANCE_COMMENTARY_USER = """Draft commentary for the following movements compared to prior period:
+  1. Revenue has increased by approximately 18%
+  2. Operating expenses have increased by approximately 34%
+  3. Depreciation has decreased by approximately 5%"""
+
+Mapping Tie-Breaker
+
+  MAPPING_TIE_BREAKER_SYSTEM = """You are an accounting assistant. Map each account to exactly one canonical category.
+  Available: revenue, cost_of_sales, operating_expenses, depreciation, interest_income, interest_expense,
+  tax, property_plant_equipment, intangible_assets, inventory, trade_receivables, cash,
+  trade_payables, accruals, loans, share_capital, retained_earnings, dividends, unmapped.
+  Respond JSON: {"mappings": [{"index": 1, "canonical_line": "...", "reasoning": "..."}]}
+  Rules: No monetary amounts. Conservative. Use "unmapped" if unclear."""
+
+Business Health Summary
+
+  BUSINESS_HEALTH_SYSTEM = """You are a senior financial advisor. Draft a 3-bullet executive summary based on the following business metrics. No raw numbers. Use trends and ratios only.
+  Respond JSON: {"summary": "...", "key_points": ["...", "...", "..."], "confidence": "high|medium|low"}
+  Rules: No £/€/$ amounts. Mention trends (improving, stable, declining). Flag concerns cautiously."""
+
+Risk Explanation
+
+  RISK_EXPLANATION_SYSTEM = """You are a risk analyst. Explain why the following risk flag was triggered in plain English for an accountant.
+  Respond JSON: {"explanation": "...", "recommended_action": "..."}
+  Rules: Specific, actionable, not alarmist."""
+
+7.3 LLM Cost Controls
+
+-   Cache identical commentary requests for 1 hour. Key: hash(variance_items + prompt_version).
+
+-   Log token usage per request to processing_jobs table.
+
+-   Alert if daily token spend exceeds £10 (adjust per tier).
+
+-   Use GPT-4o-mini for all non-commentary LLM tasks (mapping, risk explanations) — consistent with §7.1's Model Selection list (v3.1).
+
+8. Security Rules
+
+8.1 Authentication
+
+-   All API endpoints except /auth/webhook and /webhooks/stripe require valid Clerk JWT.
+
+-   Verify org_id claim matches user's organisation on every request.
+
+-   JWT expiry: 15 minutes. Refresh token rotation on every use.
+
+-   Clerk session validation via @clerk/nextjs middleware (frontend) and clerk_sdk_python (backend).
+
+8.2 Authorisation
+
+-   owner: Full control, billing, delete org
+
+-   admin: Manage users/clients, cannot delete org
+
+-   member: Upload/review/export
+
+-   viewer: View only, no export
+
+Row-Level Security (RLS): PostgreSQL RLS policies on all tables with a path to org_id — see Product Specification v3.2 Section 9.2 for the full set of policies, including the join-based ones needed for tables that aren't org_id-direct. Application layer STILL filters by org_id/client_id. RLS is defence-in-depth.
+
+  -- Example RLS policy (direct org_id case; see Product Spec 9.2 for join-based cases)
+  ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY clients_org_isolation ON clients
+  FOR ALL
+  USING (org_id = current_setting('app.current_org_id')::UUID);
+  # Application layer (always do this too)
+  async def get_client(db: AsyncSession, client_id: UUID, org_id: UUID) -> Client:
+  result = await db.execute(
+  select(Client).where(Client.id == client_id, Client.org_id == org_id)
+  )
+  client = result.scalar_one_or_none()
+  if not client:
+  raise HTTPException(status_code=404, detail="Client not found")
+  return client
+
+8.3 File Upload Security
+
+-   Validate file type: .xlsx, .csv ONLY (magic number check, not just extension).
+
+-   Max size: 50MB.
+
+-   Virus scan: ClamAV via python-clamd. Reject if infected.
+
+-   Store with random UUID filename: {uuid4()}.{ext}.
+
+-   Never expose internal file paths. Use signed URLs (1-hour expiry).
+
+-   Scan for embedded macros in .xlsx: reject if macros detected.
+
+8.4 API Security
+
+-   Rate limiting: 100 requests/minute per user. 10 uploads/hour per org (Free). 50 uploads/hour (Paid).
+
+-   Implement via slowapi or nginx limit_req.
+
+-   CORS: Frontend origin only. No wildcards in production.
+
+-   CSP headers: default-src 'self'; script-src 'self' 'unsafe-inline' (for Next.js); style-src 'self' 'unsafe-inline'.
+
+-   HSTS enabled. TLS 1.3 minimum.
+
+8.5 Secrets Management
+
+-   NEVER commit .env files. Use .env.example with dummy values.
+
+-   Use Pydantic Settings with env_file.
+
+-   Rotate API keys quarterly (OpenAI, Clerk, Stripe, DB).
+
+-   Use AWS Secrets Manager or Railway secrets for production.
+
+-   Log all secret rotation events to audit_logs.
+
+8.6 SQL Injection Prevention
+
+-   Use SQLAlchemy ORM exclusively.
+
+-   No raw SQL with string interpolation. EVER.
+
+-   If raw SQL is absolutely necessary for performance, use parameterized queries with SQLAlchemy text() and explicit parameter binding.
+
+-   Document the justification in code comments and PR description.
+
+9. Database Rules
+
+9.1 Migrations
+
+-   Use Alembic for ALL schema changes. Never modify production DB manually.
+
+-   Migration naming: YYYYMMDD_HHMMSS_description.py.
+
+-   Every migration must have upgrade() and downgrade().
+
+-   Test migrations against a copy of production data before deploy.
+
+-   Zero-downtime migrations: add column → deploy code → backfill → add constraint (never drop + recreate in one step).
+
+9.2 Data Types
+
+-   JSONB: Use PostgreSQL JSONB for flexible data (raw_data, statement data, variance items). Define Pydantic models for validation before storage.
+
+-   Timestamps: All tables have created_at TIMESTAMPTZ DEFAULT NOW(). Use updated_at where mutations occur (trigger or SQLAlchemy onupdate) — see Product Spec v3.2 §9.1 for the three tables (risk_flags, commentary_feedback, notifications) this was missing from in v3.0. archived_records (added v3.2) is append-only and intentionally has no updated_at, same as audit_logs.
+
+-   Soft Deletes: Use is_deleted BOOLEAN DEFAULT FALSE + deleted_at TIMESTAMPTZ. Never hard-delete financial data.
+
+-   Indexes: Index foreign keys, org_id, client_id, status fields. Add composite indexes for common query patterns.
+
+-   Decimal Storage: Store monetary values as DECIMAL(19,2) in PostgreSQL. Map to Python Decimal via SQLAlchemy Numeric(19,2).
+
+-   Currency Handling: Use VARCHAR(3) for currency codes (ISO 4217). Default 'GBP'.
+
+9.3 Connection Management
+
+-   Use asyncpg connection pool. Min 5, max 20 connections per worker.
+
+-   Set statement timeout: SET statement_timeout = '30s' for web requests.
+
+-   Long-running exports use separate connection with 5-minute timeout.
+
+-   Close connections properly in finally blocks.
+
+10. Frontend Rules
+
+10.1 Component Architecture
+
+-   Use Next.js Server Components by default.
+
+-   Client Components ONLY for interactivity: forms, drag-drop, charts, modals.
+
+-   Mark Client Components explicitly: 'use client' at top of file.
+
+-   Keep Client Components as small as possible. Push data fetching up to Server Components.
+
+10.2 Data Fetching
+
+-   Server Components: use direct API calls (no TanStack Query).
+
+-   Client Components: use TanStack Query for all data fetching.
+
+-   Cache invalidation: invalidate related queries on mutations.
+
+-   Prefetch on hover for critical paths (mapping → dashboard).
+
+10.3 State Management
+
+-   Zustand for global UI state: sidebar, modals, toast notifications.
+
+-   React useState for local form state.
+
+-   URL state for filter/sort/pagination (shareable links).
+
+10.4 Form Validation
+
+-   Zod schemas shared between frontend and backend.
+
+-   Validate on client for UX. Re-validate on server for security.
+
+-   Display field-level errors inline. Show summary at top of form.
+
+10.5 Error Handling
+
+-   API errors: toast notification with human-readable message.
+
+-   Network errors: retry button with exponential backoff.
+
+-   500 errors: "Something went wrong" with error ID (Sentry event ID).
+
+-   403 errors: "You don't have permission to access this resource."
+
+-   404 errors: Custom 404 page with navigation back to dashboard.
+
+10.6 Loading States
+
+-   Skeleton loaders for dashboard cards and tables.
+
+-   Progress bars for async operations: upload, processing, export.
+
+-   Spinner for button actions (< 1s expected).
+
+-   "Sticky" loading state: don't flash between loading and content.
+
+10.7 Currency Display
+
+-   Format with Intl.NumberFormat.
+
+-   Show currency symbol from client's functional currency.
+
+-   Negative numbers: red text, minus sign (not parentheses, unless user preference).
+
+-   Thousands separator: comma for GBP/USD, space for EUR.
+
+10.8 Responsive Design
+
+-   Desktop-first (1366x768 minimum).
+
+-   Accountants work on laptops/desktops. Mobile support is nice-to-have, not MVP.
+
+-   Tables must be horizontally scrollable on smaller screens.
+
+-   Touch targets minimum 44x44px on mobile.
+
+11. Testing Patterns
+
+11.1 Unit Tests
+
+-   Every service function has a unit test. Use pytest.
+
+-   Mock external calls: LLM, S3, Stripe, Clerk.
+
+-   Use pytest-asyncio for async functions.
+
+11.2 Decimal Tests (Critical)
+
+Test edge cases: €0.01 tolerance boundary, zero division in percentages, negative balances, large numbers (>1M), currency symbol stripping, parentheses negatives.
+
+  def test_decimal_tolerance_boundary():
+  a = Decimal('100.005')
+  b = Decimal('100.015')
+  assert decimal_eq(a, b) is True # diff = 0.01
+  def test_decimal_just_over_tolerance():
+  a = Decimal('100.00')
+  b = Decimal('100.02')
+  assert decimal_eq(a, b) is False # diff = 0.02
+
+11.3 Parser Tests
+
+Test 3 real TB formats: (1) Standard 4-column, (2) Single balance column (+/-), (3) Multi-tab workbook. Plus edge cases: merged cells, header rows, totals rows, blank rows, foreign currency symbols, parentheses negatives.
+
+11.4 Validation Tests
+
+Test all 5 checks with passing and failing data.
+
+  import pytest
+  from decimal import Decimal
+  from app.services.validator import Validator
+  def test_tb_integrity_passes():
+  rows = [
+  TBRow(account_code="1000", account_name="Cash", debit=Decimal("10000"), credit=Decimal("0"), net_balance=Decimal("10000")),
+  TBRow(account_code="2000", account_name="Sales", debit=Decimal("0"), credit=Decimal("10000"), net_balance=Decimal("-10000")),
+  ]
+  validator = Validator()
+  results = validator.validate(rows, mapped=[...])
+  integrity = [r for r in results if r.check_name == "tb_integrity"][0]
+  assert integrity.passed is True
+  def test_tb_integrity_fails():
+  rows = [
+  TBRow(account_code="1000", account_name="Cash", debit=Decimal("10000"), credit=Decimal("0"), net_balance=Decimal("10000")),
+  TBRow(account_code="2000", account_name="Sales", debit=Decimal("0"), credit=Decimal("9999"), net_balance=Decimal("-9999")),
+  ]
+  validator = Validator()
+  results = validator.validate(rows, mapped=[...])
+  integrity = [r for r in results if r.check_name == "tb_integrity"][0]
+  assert integrity.passed is False
+  assert integrity.severity == "error"
+  def test_duplicate_period_rejected():
+  """NEW in v3.1 — covers the trial_balances UNIQUE(client_id, period_end) constraint."""
+  # upload a TB for client X, period 2026-07-31 — succeeds
+  # upload a second, different TB for client X, same period_end — must return 409
+
+11.5 Mapper Tests
+
+Test all 4 tiers: exact match, fuzzy match (above/below threshold), code range heuristic, LLM fallback, unmapped handling.
+
+11.6 Integration Tests
+
+Test full flow: upload → parse → map → validate → statements → variance. Use test database (separate PostgreSQL instance or transaction rollback).
+
+  @pytest.mark.asyncio
+  async def test_full_flow(client: AsyncClient, test_db: AsyncSession):
+  response = await client.post("/trial-balances/upload", ...)
+  tb_id = response.json()["tb_id"]
+  await client.post(f"/trial-balances/{tb_id}/mapping/confirm", ...)
+  await client.post(f"/trial-balances/{tb_id}/statements")
+  response = await client.get(f"/trial-balances/{tb_id}/statements")
+  assert response.status_code == 200
+  assert len(response.json()["statements"]) == 3
+
+11.7 Auth/RLS Tests
+
+v3.1: this test must be written once per table with an RLS policy (Product Spec §9.2), not just for clients — the join-based policies (trial_balances, account_mappings, financial_statements, statement_line_items, variance_analyses, risk_flags, exports) are exactly the ones most likely to have a subtle bug in the subquery, so they need the isolation test even more than the simple direct-org_id tables do.
+
+  @pytest.mark.asyncio
+  async def test_cannot_access_other_org_data(client: AsyncClient, auth_headers_org_a):
+  # Try to access org B's client using org A's token
+  response = await client.get(
+  f"/clients/{org_b_client_id}",
+  headers=auth_headers_org_a
+  )
+  assert response.status_code == 404 # Not 403 — don't leak existence
+  # Repeat this shape for: trial_balances, account_mappings, financial_statements,
+  # statement_line_items, variance_analyses, risk_flags, exports (v3.1).
+
+11.8 Coverage Requirements
+
+-   Minimum 80% coverage for services.
+
+-   Minimum 60% coverage for routers.
+
+-   100% coverage for validator.py and parser.py (financial correctness).
+
+-   Run in CI: pytest --cov=app --cov-report=xml --cov-fail-under=80
+
+11.9 E2E Tests (Month 2+)
+
+-   Playwright for critical paths: signup → upload → map → statements → export.
+
+-   Run against staging environment.
+
+-   Test file: real anonymised TB (10–50 rows).
+
+12. Error Handling Patterns
+
+12.1 HTTP Status Codes
+
+  ------------------------------------------------------------------------------------------------------------------------
+  Code                                Usage
+  ----------------------------------- ------------------------------------------------------------------------------------
+  200                                 Success
+
+  201                                 Created
+
+  202                                 Accepted (async job queued)
+
+  400                                 Bad Request (generic validation)
+
+  401                                 Unauthorized (missing/invalid JWT)
+
+  403                                 Forbidden (valid auth, insufficient permissions)
+
+  404                                 Not Found (or cross-org access denied — don't leak existence)
+
+  409                                 Conflict — e.g. duplicate TB period_end for a client (v3.1, see Product Spec §9.1)
+
+  422                                 Unprocessable Entity (Pydantic validation error)
+
+  429                                 Too Many Requests (rate limit)
+
+  500                                 Internal Server Error (with error ID)
+  ------------------------------------------------------------------------------------------------------------------------
+
+12.2 Error Response Format
+
+  {
+  "detail": "Human-readable message",
+  "code": "ERROR_CODE",
+  "request_id": "uuid"
+  }
+
+12.3 Specific Error Patterns
+
+-   Validation Errors: Return specific field errors, e.g. {"detail": [{"loc": ["body", "debit"], "msg": "Must be non-negative", "type": "value_error"}]}
+
+-   LLM Failures: Log error. Return empty commentary. Do not fail the whole request. Show user: "AI commentary temporarily unavailable. Statements are complete."
+
+-   File Parse Failures: Return 422 with specific message: "Could not detect debit/credit columns. Please map manually."
+
+-   Unhandled Exceptions: Catch-all handler returns 500 with error ID. Log full traceback. Never expose stack traces to client.
+
+-   Rate Limit: Return 429 with Retry-After header.
+
+13. Performance & Observability
+
+13.1 Performance Rules
+
+-   Async Everything: File upload, DB queries, LLM calls, export generation — all async.
+
+-   Pagination: All list endpoints paginated (limit/offset). Default 20 items. Max 100.
+
+-   File Processing: Parse Excel in chunks for files >5MB. Use pandas.read_excel with chunksize.
+
+-   LLM Caching: Cache identical commentary requests for 1 hour. Key: hash of variance items + prompt version.
+
+-   Export Generation: Run in background task. Store file in S3. Return download URL via polling or webhook.
+
+-   Database: Use selectinload for relationships. Avoid N+1 queries.
+
+-   Connection Pooling: asyncpg pool (min 5, max 20 per worker).
+
+-   Query Timeouts: 30s for web requests. 5min for exports.
+
+13.2 Observability
+
+  @app.get("/health")
+  async def health_check():
+  return {"status": "ok", "version": settings.APP_VERSION}
+  @app.get("/ready")
+  async def readiness_check(db: AsyncSession = Depends(get_db)):
+  await db.execute(text("SELECT 1"))
+  return {"status": "ready"}
+  @app.get("/metrics")
+  async def metrics():
+  # Return prometheus-format metrics
+  pass
+
+  --------------------------------------------------------------------------
+  SLI                        Target                  Alert Threshold
+  -------------------------- ----------------------- -----------------------
+  p95 upload processing      <30s                    >60s
+
+  p95 statement generation   <5s                     >10s
+
+  p95 API response           <200ms                  >500ms
+
+  LLM error rate             <1%                     >5%
+
+  DB connection pool usage   <80%                    >90%
+
+  Export failure rate        <2%                     >5%
+  --------------------------------------------------------------------------
+
+Logging Standards:
+
+-   Use structured logging (JSON format in production).
+
+-   Include in every log: request_id, user_id, org_id, timestamp, level.
+
+-   Log levels: DEBUG (dev only), INFO (normal operations), WARNING (anomalies), ERROR (failures), CRITICAL (data integrity).
+
+-   Never log PII (emails, names) at INFO or above. Log IDs only.
+
+-   Never log secrets, tokens, or passwords.
+
+  import structlog
+  logger = structlog.get_logger()
+  logger.info(
+  "trial_balance_uploaded",
+  tb_id=str(tb_id), client_id=str(client_id), org_id=str(org_id),
+  file_size=file_size, row_count=row_count,
+  )
+
+14. Deployment & Operations
+
+14.1 Environments
+
+  ----------------------------------------------------------------------------------
+  Environment             Purpose                  Data
+  ----------------------- ------------------------ ---------------------------------
+  Local                   Development              Seed data only
+
+  Staging                 Pre-production testing   Anonymised production-like data
+
+  Production              Live users               Real user data
+  ----------------------------------------------------------------------------------
+
+Region (v3.2): Staging and Production databases and file storage both provision in an EU region (e.g. AWS eu-west-1 Dublin, or the EU region of whichever Postgres/object-storage provider is used) — Product Spec Section 12.1 requires this for primary data, not just as a default. Local development can point at a local Postgres instance in any region since it holds seed data only.
+
+14.2 CI/CD Pipeline (GitHub Actions)
+
+  # .github/workflows/ci.yml
+  name: CI/CD
+  on: [push, pull_request]
+  jobs:
+  test:
+  runs-on: ubuntu-latest
+  services:
+  postgres:
+  image: postgres:15
+  env:
+  POSTGRES_PASSWORD: test
+  steps:
+  - uses: actions/checkout@v4
+  - uses: actions/setup-python@v5
+  with:
+  python-version: '3.11'
+  - run: pip install -r backend/requirements.txt
+  - run: cd backend && pytest --cov=app --cov-fail-under=80
+  - run: cd backend && mypy --strict app/
+  - run: cd backend && ruff check app/
+  deploy-staging:
+  needs: test
+  if: github.ref == 'refs/heads/main'
+  runs-on: ubuntu-latest
+  steps:
+  - uses: actions/checkout@v4
+  - name: Deploy to Railway/Render
+  run: # deployment script
+  deploy-production:
+  needs: deploy-staging
+  if: github.ref == 'refs/heads/main'
+  environment: production
+  runs-on: ubuntu-latest
+  steps:
+  - uses: actions/checkout@v4
+  - name: Deploy to Railway/Render
+  run: # deployment script
+
+14.3 Deployment Rules
+
+-   Database Migrations: Run BEFORE code deployment. Blue-green deployment: new code handles old schema, then migration runs, then old code is drained.
+
+-   Rollback: Keep previous Docker image. One-click rollback via Railway/Render dashboard.
+
+-   Feature Flags: Use environment variables for feature toggles. No code changes needed to enable/disable.
+
+-   Secrets: Inject via platform secrets (Railway/Render). Never in repo.
+
+14.4 Backup & Recovery
+
+-   Database: Daily automated backups (PostgreSQL on Railway/Render). Retain 30 days.
+
+-   Files: S3 versioning enabled. Cross-region replication for critical exports.
+
+-   Recovery Time Objective (RTO): 4 hours.
+
+-   Recovery Point Objective (RPO): 24 hours (daily backups).
+
+-   Test restores: Quarterly drill. Document procedure in docs/runbooks/disaster-recovery.md.
+
+14.5 Incident Response
+
+  ----------------------------------------------------------------------------------------------------------------------------
+  Severity                Response Time           Action
+  ----------------------- ----------------------- ----------------------------------------------------------------------------
+  P1 (Critical)           15 min                  All hands. Data breach, complete outage, incorrect financial calculations.
+
+  P2 (High)               1 hour                  Major feature broken. LLM down. Export failures.
+
+  P3 (Medium)             4 hours                 Minor bug. UI glitch. Non-critical performance issue.
+
+  P4 (Low)                24 hours                Cosmetic issue. Documentation fix.
+  ----------------------------------------------------------------------------------------------------------------------------
+
+Incident Process: (1) Detect (Sentry alert, user report, monitoring). (2) Acknowledge (update status page). (3) Mitigate (rollback, disable feature, workaround). (4) Investigate (root cause analysis). (5) Resolve (deploy fix). (6) Post-mortem (within 48 hours for P1/P2).
+
+15. Code Review Checklist (Before Every Commit)
+
+-   No float types for money — Decimal only
+
+-   All functions have type hints
+
+-   All API inputs/outputs use Pydantic models
+
+-   No raw SQL with string interpolation
+
+-   All DB queries filter by org_id (directly or via join — v3.1)
+
+-   LLM prompts contain no monetary amounts
+
+-   LLM calls have retry logic (3 attempts)
+
+-   Error handling covers all external calls
+
+-   Tests added for new service functions
+
+-   Alembic migration included for schema changes
+
+-   No secrets in code (use env vars)
+
+-   Frontend uses TanStack Query for data fetching
+
+-   Loading and error states handled in UI
+
+-   Currency formatting uses Intl.NumberFormat
+
+-   Responsive design works on 1366x768 and up
+
+-   RLS policy added for new tables — join-based if the table isn't org_id-direct (v3.1)
+
+-   Audit logging added for data mutations
+
+-   updated_at present on every table with a mutable column (v3.1)
+
+-   mypy --strict passes
+
+-   ruff check passes
+
+-   pytest passes with >80% coverage
+
+16. Prompt Templates
+
+Copy these into your LLM service files. Do not modify the safety rules.
+
+Mapping Tie-Breaker
+
+  SYSTEM: You are an accounting assistant. Map each account to exactly one canonical category.
+  Available: revenue, cost_of_sales, operating_expenses, depreciation, interest_income, interest_expense,
+  tax, property_plant_equipment, intangible_assets, inventory, trade_receivables, cash,
+  trade_payables, accruals, loans, share_capital, retained_earnings, dividends, unmapped.
+  Respond JSON: {"mappings": [{"index": 1, "canonical_line": "...", "reasoning": "..."}]}
+  Rules: No monetary amounts. Conservative. Use "unmapped" if unclear.
+  USER: Map these accounts:
+  1. Code: 4100, Name: Sales - Online
+  2. Code: 6100, Name: Marketing - Digital
+
+Business Health Summary
+
+  SYSTEM: You are a senior financial advisor. Draft a 3-bullet executive summary based on the following business metrics. No raw numbers. Use trends and ratios only.
+  Respond JSON: {"summary": "...", "key_points": ["...", "...", "..."], "confidence": "high|medium|low"}
+  Rules: No £/€/$ amounts. Mention trends (improving, stable, declining). Flag concerns cautiously.
+  USER: Gross margin trend: improving. Operating expense growth: faster than revenue. Cash position: declining. Debt levels: stable.
+
+Risk Explanation
+
+  SYSTEM: You are a risk analyst. Explain why the following risk flag was triggered in plain English for an accountant.
+  Respond JSON: {"explanation": "...", "recommended_action": "..."}
+  Rules: Specific, actionable, not alarmist.
+  USER: Risk: Negative cash balance detected in Bank Current Account. Variance: 340% increase in marketing spend compared to prior period.
+
+17. Database Schema (Summary)
+
+See Product Specification v3.2, Section 9 for the authoritative, complete schema (Section 9 there is the source of truth). This is a summary for quick reference. v3.1 changes: updated_at added to risk_flags and commentary_feedback; UNIQUE(client_id, period_end) noted on trial_balances. v3.2 changes: archived_records added below; the corrected TB-balance trigger referenced (full SQL is in Product Spec Section 9.1, not repeated here since it's implementation detail rather than schema).
+
+organisations
+
+id UUID PK, clerk_org_id VARCHAR UNIQUE NOT NULL, name VARCHAR NOT NULL, subscription_tier VARCHAR NOT NULL DEFAULT 'free', subscription_status VARCHAR NOT NULL DEFAULT 'active', stripe_customer_id VARCHAR, stripe_subscription_id VARCHAR, functional_currency VARCHAR(3) NOT NULL DEFAULT 'GBP', created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+
+users
+
+id UUID PK, clerk_user_id VARCHAR UNIQUE NOT NULL, org_id UUID FK -> organisations.id, email VARCHAR NOT NULL, role VARCHAR NOT NULL CHECK (role IN ('owner','admin','member','viewer')), last_login_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+
+clients
+
+id UUID PK, org_id UUID FK -> organisations.id, name VARCHAR NOT NULL, company_number VARCHAR, industry VARCHAR, functional_currency VARCHAR(3) NOT NULL DEFAULT 'GBP', materiality_threshold_pct NUMERIC(5,2) NOT NULL DEFAULT 10.00 (one default, all tiers — v3.1), materiality_threshold_abs NUMERIC(19,2) NOT NULL DEFAULT 1000.00, is_deleted BOOLEAN DEFAULT FALSE, deleted_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+
+trial_balances
+
+id UUID PK, client_id UUID FK -> clients.id, period_end DATE NOT NULL, period_start DATE, file_url VARCHAR NOT NULL, file_type VARCHAR NOT NULL, file_size_bytes INTEGER, file_hash VARCHAR(64), raw_data JSONB, parsed_data JSONB, status VARCHAR NOT NULL DEFAULT 'pending', currency VARCHAR(3), validation_results JSONB, error_message TEXT, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(client_id, period_end) [v3.1]
+
+account_mappings
+
+id UUID PK, client_id UUID FK -> clients.id, source_code VARCHAR, source_name VARCHAR NOT NULL, canonical_line VARCHAR NOT NULL, confidence NUMERIC(3,2), method VARCHAR NOT NULL CHECK (method IN ('exact','fuzzy','code_range','llm','manual')), is_confirmed BOOLEAN DEFAULT FALSE, is_ignored BOOLEAN DEFAULT FALSE, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(client_id, source_code, source_name)
+
+financial_statements
+
+id UUID PK, tb_id UUID FK -> trial_balances.id, statement_type VARCHAR NOT NULL CHECK (statement_type IN ('SOPL','SOFP','SOCIE')), data JSONB NOT NULL, generated_at TIMESTAMPTZ DEFAULT NOW(), created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+
+statement_line_items
+
+id UUID PK, statement_id UUID FK -> financial_statements.id, line_item_code VARCHAR NOT NULL, line_item_name VARCHAR NOT NULL, amount NUMERIC(19,2) NOT NULL, is_subtotal BOOLEAN DEFAULT FALSE, is_manual_override BOOLEAN DEFAULT FALSE, overridden_by_user_id UUID FK -> users.id, original_amount NUMERIC(19,2), source_account_ids UUID[], display_order INTEGER NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+
+variance_analyses
+
+id UUID PK, tb_id UUID FK -> trial_balances.id, prior_tb_id UUID FK -> trial_balances.id NULL, items JSONB NOT NULL, commentary JSONB, status VARCHAR NOT NULL DEFAULT 'pending', created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+
+risk_flags
+
+id UUID PK, tb_id UUID FK -> trial_balances.id, rule_name VARCHAR NOT NULL, severity VARCHAR NOT NULL CHECK (severity IN ('warning','critical')), description VARCHAR NOT NULL, affected_accounts JSONB, recommended_action TEXT, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW() [added v3.1]
+
+exports
+
+id UUID PK, tb_id UUID FK -> trial_balances.id, format VARCHAR NOT NULL CHECK (format IN ('xlsx','csv','pdf')), file_url VARCHAR, status VARCHAR NOT NULL DEFAULT 'pending', options JSONB, error_message TEXT, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+
+commentary_feedback
+
+id UUID PK, variance_id UUID FK -> variance_analyses.id, user_id UUID FK -> users.id, line_item_code VARCHAR NOT NULL, thumbs_up BOOLEAN, corrected_text TEXT, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW() [added v3.1]
+
+audit_logs (append-only, no updated_at)
+
+id UUID PK, user_id UUID FK -> users.id NULL, org_id UUID FK -> organisations.id, action VARCHAR NOT NULL, entity_type VARCHAR NOT NULL, entity_id UUID NOT NULL, old_value JSONB, new_value JSONB, ip_address INET, user_agent TEXT, created_at TIMESTAMPTZ DEFAULT NOW()
+
+processing_jobs
+
+id UUID PK, tb_id UUID FK -> trial_balances.id, job_type VARCHAR NOT NULL, status VARCHAR NOT NULL DEFAULT 'pending', step VARCHAR, progress_pct INTEGER, attempt_count INTEGER DEFAULT 0, max_attempts INTEGER DEFAULT 3, error_message TEXT, started_at TIMESTAMPTZ, completed_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+
+subscription_events (append-only, no updated_at)
+
+id UUID PK, org_id UUID FK -> organisations.id, stripe_event_id VARCHAR UNIQUE NOT NULL, event_type VARCHAR NOT NULL, payload JSONB NOT NULL, processed_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW()
+
+notifications
+
+id UUID PK, user_id UUID FK -> users.id, org_id UUID FK -> organisations.id, type VARCHAR NOT NULL, title VARCHAR NOT NULL, message TEXT NOT NULL, is_read BOOLEAN DEFAULT FALSE, action_url VARCHAR, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+
+archived_records (append-only, no updated_at) [added v3.2]
+
+id UUID PK, org_id UUID FK -> organisations.id, client_id UUID FK -> clients.id NULL, entity_type VARCHAR NOT NULL, entity_id UUID NOT NULL, archive_reason VARCHAR NOT NULL, archived_by_user_id UUID FK -> users.id, archived_data JSONB NOT NULL, archive_hash VARCHAR(64) NOT NULL, retention_until DATE NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW()
+
+All foreign keys indexed. org_id and client_id indexed on every table that has them. GIN index on statement_line_items.source_account_ids.
+
+18. Environment Setup
+
+18.1 Local Development
+
+  # 1. Clone repo
+  git clone git@github.com:findraft/findraft.git
+  cd findraft
+  # 2. Backend setup
+  cd backend
+  python -m venv venv
+  source venv/bin/activate
+  pip install -r requirements.txt
+  # 3. Environment variables
+  cp .env.example .env
+  # Edit .env with your values (Clerk, OpenAI, DB, Stripe test keys)
+  # 4. Database
+  docker run -d --name findraft-db -e POSTGRES_PASSWORD=local -p 5432:5432 postgres:15
+  alembic upgrade head
+  # 5. Run backend
+  uvicorn app.main:app --reload --port 8000
+  # 6. Frontend (new terminal)
+  cd ../frontend
+  npm install
+  cp .env.example .env.local
+  npm run dev
+
+18.2 Required Environment Variables
+
+  # Database
+  DATABASE_URL=postgresql+asyncpg://user:pass@localhost/findraft
+  DATABASE_URL_SYNC=postgresql://user:pass@localhost/findraft
+  # Auth
+  CLERK_SECRET_KEY=sk_test_...
+  CLERK_PUBLISHABLE_KEY=pk_test_...
+  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+  # AI
+  OPENAI_API_KEY=sk-...
+  OPENAI_MODEL=gpt-4o
+  OPENAI_FALLBACK_MODEL=gpt-4o-mini
+  # File Storage
+  S3_BUCKET=findraft-uploads-dev
+  AWS_ACCESS_KEY_ID=...
+  AWS_SECRET_ACCESS_KEY=...
+  # Stripe (test keys for dev)
+  STRIPE_SECRET_KEY=sk_test_...
+  STRIPE_WEBHOOK_SECRET=whsec_...
+  STRIPE_PRICE_STARTER=price_...
+  STRIPE_PRICE_PRO=price_...
+  STRIPE_PRICE_SCALE=price_...
+  # Email
+  RESEND_API_KEY=re_...
+  # App
+  APP_ENV=development|staging|production
+  APP_VERSION=0.1.0
+  SENTRY_DSN=...
+  LOGTAIL_TOKEN=...
+
+18.3 Pre-commit Hooks
+
+  pip install pre-commit
+  pre-commit install
+  # .pre-commit-config.yaml
+  repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.5.0
+  hooks: [{id: ruff}, {id: ruff-format}]
+  - repo: https://github.com/pre-commit/mirrors-mypy
+  rev: v1.10.0
+  hooks: [{id: mypy, args: [--strict]}]
+
+END OF CURSOR AI RULES
+
+Paste the contents of this document into your .cursorrules file in the project root. Update the APP_VERSION env var when rules change.
