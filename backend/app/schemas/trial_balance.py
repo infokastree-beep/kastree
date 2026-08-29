@@ -16,6 +16,7 @@ class ValidationCheck(BaseModel):
     passed: bool
     severity: CheckSeverity
     message: str
+    details: dict[str, str] | None = None
 
 
 class ValidationResults(BaseModel):
@@ -27,4 +28,4 @@ class ValidationResults(BaseModel):
 
     def to_jsonb(self) -> dict[str, object]:
         """Serialize for PostgreSQL JSONB storage via SQLAlchemy."""
-        return self.model_dump(mode="json")
+        return self.model_dump(mode="json", exclude_none=True)
