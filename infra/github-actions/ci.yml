@@ -1,0 +1,28 @@
+# FinDraft CI/CD pipeline — placeholder. See .cursorrules Section 14.2.
+name: CI/CD
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: findraft
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: findraft_test
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r backend/requirements.txt
+      - run: cd backend && pytest --cov=app --cov-fail-under=80
+      - run: cd backend && mypy --strict app/
+      - run: cd backend && ruff check app/
