@@ -349,7 +349,7 @@ def upgrade() -> None:
     # --- Row-Level Security policies (Product Spec §9.2) ---
 
     # Direct org_id column (simple policy)
-    for table in ("clients", "audit_logs", "notifications", "archived_records"):
+    for table in ("clients", "audit_logs", "notifications", "archived_records", "users", "subscription_events"):
         op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
         op.execute(
             f"""
@@ -358,6 +358,16 @@ def upgrade() -> None:
               USING (org_id = current_setting('app.current_org_id')::UUID)
             """
         )
+
+    # organisations: self-isolation (table IS the org, no outward org_id FK)
+    op.execute("ALTER TABLE organisations ENABLE ROW LEVEL SECURITY")
+    op.execute(
+        """
+        CREATE POLICY organisations_self_isolation ON organisations
+          FOR ALL
+          USING (id = current_setting('app.current_org_id')::UUID)
+        """
+    )
 
     # One join from org_id (trial_balances, account_mappings)
     op.execute("ALTER TABLE trial_balances ENABLE ROW LEVEL SECURITY")
@@ -444,6 +454,20 @@ def upgrade() -> None:
           )
         """
     )
+    op.execute("ALTER TABLE processing_jobs ENABLE ROW LEVEL SECURITY")
+    op.execute(
+        """
+        CREATE POLICY processing_jobs_org_isolation ON processing_jobs
+          FOR ALL
+          USING (
+            tb_id IN (
+              SELECT tb.id FROM trial_balances tb
+              JOIN clients c ON tb.client_id = c.id
+              WHERE c.org_id = current_setting('app.current_org_id')::UUID
+            )
+          )
+        """
+    )
 
     # statement_line_items: three joins via statement_id -> financial_statements
     op.execute("ALTER TABLE statement_line_items ENABLE ROW LEVEL SECURITY")
@@ -462,11 +486,30 @@ def upgrade() -> None:
         """
     )
 
+    # commentary_feedback: three joins via variance_id -> variance_analyses -> trial_balances
+    op.execute("ALTER TABLE commentary_feedback ENABLE ROW LEVEL SECURITY")
+    op.execute(
+        """
+        CREATE POLICY commentary_feedback_org_isolation ON commentary_feedback
+          FOR ALL
+          USING (
+            variance_id IN (
+              SELECT va.id FROM variance_analyses va
+              JOIN trial_balances tb ON va.tb_id = tb.id
+              JOIN clients c ON tb.client_id = c.id
+              WHERE c.org_id = current_setting('app.current_org_id')::UUID
+            )
+          )
+        """
+    )
+
 
 def downgrade() -> None:
     # --- Drop RLS policies (Product Spec §9.2) ---
     rls_tables = (
+        "commentary_feedback",
         "statement_line_items",
+        "processing_jobs",
         "exports",
         "risk_flags",
         "variance_analyses",
@@ -476,11 +519,16 @@ def downgrade() -> None:
         "archived_records",
         "notifications",
         "audit_logs",
+        "subscription_events",
+        "users",
         "clients",
     )
     for table in rls_tables:
         op.execute(f"DROP POLICY IF EXISTS {table}_org_isolation ON {table}")
         op.execute(f"ALTER TABLE {table} DISABLE ROW LEVEL SECURITY")
+
+    op.execute("DROP POLICY IF EXISTS organisations_self_isolation ON organisations")
+    op.execute("ALTER TABLE organisations DISABLE ROW LEVEL SECURITY")
 
     # --- Drop enforce_tb_balance trigger and function ---
     op.execute("DROP TRIGGER IF EXISTS trg_enforce_tb_balance ON trial_balances")
