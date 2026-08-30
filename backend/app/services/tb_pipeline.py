@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -19,8 +20,7 @@ from app.models.processing_job import ProcessingJob
 from app.models.trial_balance import TrialBalance
 from app.services.mapper import (
     MappingResult,
-    fetch_confirmed_mappings,
-    map_accounts,
+    SleepFn,
     map_accounts_for_client,
 )
 from app.services.parser import TBRow, parse_tb_file
@@ -51,6 +51,7 @@ def run_parse_and_map_job(
     parse_job_id: uuid.UUID,
     map_job_id: uuid.UUID,
     openai_client: Any | None = None,
+    sleep: SleepFn = time.sleep,
 ) -> None:
     """Parse the uploaded file then run mapper tiers 1–4; update jobs + TB status."""
     with SyncSessionLocal() as session:
@@ -96,18 +97,16 @@ def run_parse_and_map_job(
             session.commit()
 
             set_rls_org_id(session, org_id)
-            # Without an explicit OpenAI client (and no API key in MVP/test),
-            # run Tiers 1–3 only so BackgroundTasks don't block on LLM retries.
-            if openai_client is None:
-                prior = fetch_confirmed_mappings(session, tb.client_id)
-                results = map_accounts(rows, prior)
-            else:
-                results = map_accounts_for_client(
-                    session,
-                    tb.client_id,
-                    rows,
-                    openai_client=openai_client,
-                )
+            # Always run Tiers 1–4. When openai_client is None, mapper constructs
+            # OpenAI() from env; missing OPENAI_API_KEY correctly exhausts the
+            # mini→4o retry chain and leaves method=None for persistence as llm.
+            results = map_accounts_for_client(
+                session,
+                tb.client_id,
+                rows,
+                openai_client=openai_client,
+                sleep=sleep,
+            )
             _persist_mapping_results(session, client_id=tb.client_id, results=results)
             map_job.status = "complete"
             map_job.progress_pct = 100
@@ -140,12 +139,14 @@ def _persist_mapping_results(
     results: list[MappingResult],
 ) -> None:
     for result in results:
-        canonical = result.canonical_line or "unmapped"
-        method = result.method or "manual"
-        # method check constraint requires known values — use manual for unmapped fallthrough
         if result.method is None:
-            method = "manual"
+            # Tier 4 was attempted (or returned unmapped) and did not resolve.
+            # Persist as llm + unmapped — never "manual" (reserved for human confirm).
             canonical = "unmapped"
+            method = "llm"
+        else:
+            canonical = result.canonical_line or "unmapped"
+            method = result.method
         existing = session.scalar(
             select(AccountMapping).where(
                 AccountMapping.client_id == client_id,

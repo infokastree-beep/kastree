@@ -300,7 +300,17 @@ def _llm_map_batch(
     openai_client: OpenAI | None,
     sleep: SleepFn,
 ) -> list[MappingResult]:
-    client = openai_client if openai_client is not None else OpenAI()
+    try:
+        client = openai_client if openai_client is not None else OpenAI()
+    except Exception as init_error:
+        # Missing OPENAI_API_KEY (or other client config) — Tier 4 was attempted
+        # but cannot run; leave method=None for the caller to persist as llm/unmapped.
+        logger.error(
+            "OpenAI client init failed for mapping tie-breaker: %s; leaving accounts unmapped",
+            init_error,
+        )
+        return list(unmapped)
+
     user_prompt = _build_tie_breaker_user_prompt(unmapped)
 
     try:

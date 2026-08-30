@@ -447,6 +447,9 @@ async def confirm_trial_balance_mapping(
                 mapping.canonical_line = item.canonical_line
             mapping.is_confirmed = item.is_confirmed
             mapping.is_ignored = item.is_ignored
+            # Human is setting the value — method is manual from this point.
+            if item.is_confirmed and not item.is_ignored:
+                mapping.method = "manual"
             confirmed_count += 1
     else:
         rows = parsed_rows_from_tb(tb)
@@ -457,6 +460,7 @@ async def confirm_trial_balance_mapping(
             if mapping.canonical_line == "unmapped":
                 continue
             mapping.is_confirmed = True
+            mapping.method = "manual"
             confirmed_count += 1
 
     validate_job = ProcessingJob(
