@@ -9,6 +9,17 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://findraft:local@localhost/findraft_dev"
     database_url_sync: str = "postgresql://findraft:local@localhost/findraft_dev"
 
+    # Clerk — JWT verification (HS256 local/test secret; production uses Clerk JWKS).
+    clerk_secret_key: str | None = None
+    clerk_publishable_key: str | None = None
+    clerk_webhook_secret: str | None = None
+    # Shared HS256 secret for issuing/verifying Bearer tokens in tests and local MVP.
+    auth_jwt_secret: str = "findraft-dev-jwt-secret-change-me"
+    auth_jwt_algorithm: str = "HS256"
+
+    # Local upload storage until S3 wiring for TB files lands with export storage.
+    upload_dir: str = "/tmp/findraft-uploads"
+
     # Object storage (S3 or R2). 30-day export deletion requires bucket lifecycle
     # via scripts/configure_s3_lifecycle.py — not put_object(Expires=...).
     s3_bucket: str = "findraft-uploads-dev"
