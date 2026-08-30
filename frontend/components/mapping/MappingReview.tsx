@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
 import { CANONICAL_LINES } from "@/lib/constants";
@@ -23,10 +23,25 @@ function isAutoMappingComplete(jobs: StatusResponse["jobs"]): boolean {
   return parse?.status === "complete" && map?.status === "complete";
 }
 
+function buildInitialSelections(
+  rows: MappingItem[],
+  previous: Record<string, string>,
+): Record<string, string> {
+  const next = { ...previous };
+  for (const row of rows) {
+    if (!(row.id in next)) {
+      next[row.id] = row.suggested_canonical_line;
+    }
+  }
+  return next;
+}
+
 export function MappingReview({ tbId }: { tbId: string }) {
   const router = useRouter();
   const { getToken } = useAuth();
-  const [overrides, setOverrides] = useState<Record<string, string>>({});
+  const [selections, setSelections] = useState<Record<string, string>>({});
+  const selectionsRef = useRef(selections);
+  selectionsRef.current = selections;
 
   const statusQuery = useQuery({
     queryKey: ["tb-status", tbId],
@@ -65,25 +80,33 @@ export function MappingReview({ tbId }: { tbId: string }) {
 
   useEffect(() => {
     if (!mappingQuery.data) return;
-    setOverrides((prev) => {
-      const next = { ...prev };
-      for (const row of mappingQuery.data.mappings) {
-        if (!(row.id in next)) {
-          next[row.id] = row.suggested_canonical_line;
-        }
-      }
-      return next;
-    });
+    setSelections((prev) =>
+      buildInitialSelections(mappingQuery.data.mappings, prev),
+    );
   }, [mappingQuery.data]);
 
+  const selectionsReady = useMemo(
+    () =>
+      sortedMappings.length > 0 &&
+      sortedMappings.every((row) => row.id in selections),
+    [sortedMappings, selections],
+  );
+
   const confirmMutation = useMutation({
-    mutationFn: async () => {
-      const mappings: MappingConfirmItem[] = sortedMappings.map((row) => ({
-        id: row.id,
-        canonical_line: overrides[row.id] ?? row.suggested_canonical_line,
-        is_confirmed: true,
-        is_ignored: false,
-      }));
+    mutationFn: async (rows: MappingItem[]) => {
+      const currentSelections = selectionsRef.current;
+      const mappings: MappingConfirmItem[] = rows.map((row) => {
+        const canonical = currentSelections[row.id];
+        if (canonical === undefined) {
+          throw new Error(`Missing canonical line for ${row.source_name}`);
+        }
+        return {
+          id: row.id,
+          canonical_line: canonical,
+          is_confirmed: true,
+          is_ignored: false,
+        };
+      });
       return apiFetch<MappingConfirmResponse>(
         `/trial-balances/${tbId}/mapping/confirm`,
         {
@@ -158,7 +181,7 @@ export function MappingReview({ tbId }: { tbId: string }) {
 
   const total = sortedMappings.length;
   const mapped = sortedMappings.filter(
-    (m) => (overrides[m.id] ?? m.suggested_canonical_line) !== "unmapped",
+    (m) => (selections[m.id] ?? m.suggested_canonical_line) !== "unmapped",
   ).length;
 
   return (
@@ -195,9 +218,9 @@ export function MappingReview({ tbId }: { tbId: string }) {
                 <td className="px-3 py-2">
                   <select
                     className="w-full min-w-[12rem] rounded border border-stone-300 bg-white px-2 py-1"
-                    value={overrides[row.id] ?? row.suggested_canonical_line}
+                    value={selections[row.id] ?? row.suggested_canonical_line}
                     onChange={(e) =>
-                      setOverrides((prev) => ({
+                      setSelections((prev) => ({
                         ...prev,
                         [row.id]: e.target.value,
                       }))
@@ -238,8 +261,10 @@ export function MappingReview({ tbId }: { tbId: string }) {
 
       <button
         type="button"
-        disabled={confirmMutation.isPending || total === 0}
-        onClick={() => confirmMutation.mutate()}
+        disabled={
+          confirmMutation.isPending || total === 0 || !selectionsReady
+        }
+        onClick={() => confirmMutation.mutate(sortedMappings)}
         className="rounded bg-stone-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
       >
         {confirmMutation.isPending ? "Confirming…" : "Confirm Mappings"}

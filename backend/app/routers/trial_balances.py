@@ -438,13 +438,22 @@ async def confirm_trial_balance_mapping(
     by_id = {mapping.id: mapping for mapping in mappings_result.scalars().all()}
 
     confirmed_count = 0
-    if body.mappings:
+    if body.mappings is not None:
+        if not body.mappings:
+            raise HTTPException(
+                status_code=400,
+                detail="mappings must not be empty; send one item per account row",
+            )
         for item in body.mappings:
             mapping = by_id.get(item.id)
             if mapping is None:
                 raise HTTPException(status_code=404, detail="Mapping not found")
-            if item.canonical_line is not None:
-                mapping.canonical_line = item.canonical_line
+            if item.canonical_line is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="canonical_line is required for each mapping item",
+                )
+            mapping.canonical_line = item.canonical_line
             mapping.is_confirmed = item.is_confirmed
             mapping.is_ignored = item.is_ignored
             # Human is setting the value — method is manual from this point.
