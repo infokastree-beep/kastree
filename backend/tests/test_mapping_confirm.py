@@ -14,6 +14,8 @@ from app.db import SyncSessionLocal, set_rls_org_id
 from app.models.account_mapping import AccountMapping
 from app.models.processing_job import ProcessingJob
 from app.models.trial_balance import TrialBalance
+from app.services.mapper import EXACT_CONFIDENCE, MappingResult
+from app.services.tb_pipeline import _persist_mapping_results
 from tests.conftest import auth_headers
 
 
@@ -141,11 +143,14 @@ async def test_confirm_overrides_code_range_suggestion(
         assert row_7000.canonical_line == "interest_expense"
         assert row_7000.is_confirmed is True
         assert row_7000.method == "manual"
+        assert row_7000.confidence == Decimal("1.00")
 
         row_4000 = session.get(AccountMapping, mapping_4000.id)
         assert row_4000 is not None
         assert row_4000.canonical_line == "revenue"
         assert row_4000.is_confirmed is True
+        assert row_4000.method == "manual"
+        assert row_4000.confidence == Decimal("1.00")
 
 
 @pytest.mark.asyncio
@@ -186,3 +191,66 @@ async def test_confirm_empty_mappings_list_rejected(
             )
             is None
         )
+
+
+@pytest.mark.asyncio
+async def test_confirmed_confidence_survives_reupload(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """Human-confirmed confidence must stay 1.00 after a later map job skips the row."""
+    org_id = provisioned_org["org_id"]
+    client_id = provisioned_org["client_id"]
+    headers = auth_headers(provisioned_org["token"])
+    tb_id, mapping_7000_id = _seed_tb_with_code_range_mapping(
+        org_id=org_id,
+        client_id=client_id,
+    )
+
+    confirm = await api_client.post(
+        f"/trial-balances/{tb_id}/mapping/confirm",
+        json={
+            "mappings": [
+                {
+                    "id": str(mapping_7000_id),
+                    "canonical_line": "interest_expense",
+                    "is_confirmed": True,
+                    "is_ignored": False,
+                },
+            ]
+        },
+        headers=headers,
+    )
+    assert confirm.status_code == 200, confirm.text
+
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        row = session.get(AccountMapping, mapping_7000_id)
+        assert row is not None
+        assert row.method == "manual"
+        assert row.confidence == Decimal("1.00")
+
+        # Simulate a subsequent upload where Tier 1 would produce exact/1.00.
+        _persist_mapping_results(
+            session,
+            client_id=client_id,
+            results=[
+                MappingResult(
+                    source_code="7000",
+                    source_name="Interest Expense",
+                    canonical_line="interest_expense",
+                    confidence=EXACT_CONFIDENCE,
+                    method="exact",
+                )
+            ],
+        )
+        session.commit()
+
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        row_after_reupload = session.scalar(
+            select(AccountMapping).where(AccountMapping.id == mapping_7000_id)
+        )
+        assert row_after_reupload is not None
+        assert row_after_reupload.method == "manual"
+        assert row_after_reupload.confidence == Decimal("1.00")
