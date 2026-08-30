@@ -125,7 +125,7 @@ If step 2 finds more than one distinct symbol across the scanned cells, log the 
 | 1 | TB Integrity | Total debits = total credits within €0.01 (or functional currency equivalent) | Error | Yes |
 | 2 | Balance Sheet Balance | Total assets = total liabilities + total equity within €0.01 | Error | Yes |
 | 3 | Retained Earnings Roll-forward | If prior period provided: closing RE prior + current period profit = closing RE current within €0.01 | Warning | No |
-| 4 | Net Assets Check | Net assets per SOFP = total equity per SOFP within €0.01 | Error | Yes |
+| 4 | Net Assets Check | Net assets per SOFP = total equity per SOFP within €0.01. SOFP total equity = Share Capital + Retained Earnings, deliberately excluding any un-closed Dividends balance (see SOCIE definition, Section 1) -- this is what makes this check independent of Balance Sheet Balance rather than a duplicate of it. | Error | Yes |
 | 5 | Negative Cash/Bank | Any cash/bank account with net_balance < 0 | Warning | No |
 | 6 | Comparatives Available (Status Flag, not validation) | Prior period TB exists for this client | Info | No |
 

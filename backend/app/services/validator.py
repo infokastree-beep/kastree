@@ -284,6 +284,15 @@ def _check_retained_earnings_rollforward(
 
 
 def _check_net_assets(accounts: Sequence[MappedAccount]) -> ValidationCheck:
+    # Check 4 deliberately excludes any open Dividends balance from "total equity
+    # per SOFP" because the Product Spec's SOCIE definition (opening equity +
+    # profit - dividends = closing equity) treats dividends as a movement that
+    # closes into retained earnings, not a permanent SOFP line — so a nonzero
+    # open Dividends balance means that closing entry hasn't happened, and
+    # net_assets vs. SOFP-equity SHOULD disagree by exactly that amount. This is
+    # intentional and different from Check 2 (Balance Sheet Balance), which nets
+    # Dividends as a contra against the raw TB balances. Do not simplify these to
+    # match each other later without re-reading this comment.
     assets = _total_assets(accounts)
     liabilities = _total_liabilities(accounts)
     net_assets = assets - liabilities
