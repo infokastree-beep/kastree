@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
 import { formatDate, formatDateTime } from "@/lib/utils";
@@ -10,7 +12,10 @@ import type { IClient, TrialBalanceListResponse } from "@/types";
 const TB_PAGE_SIZE = 20;
 
 export function ClientDetail({ clientId }: { clientId: string }) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const { getToken } = useAuth();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const clientQuery = useQuery({
     queryKey: ["client", clientId],
@@ -29,6 +34,18 @@ export function ClientDetail({ clientId }: { clientId: string }) {
     enabled: clientQuery.isSuccess,
     retry: (failureCount, error) =>
       !(error instanceof ApiError && error.status === 404) && failureCount < 2,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<IClient>(`/clients/${clientId}`, {
+        method: "DELETE",
+        getToken,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["clients"] });
+      router.push("/clients");
+    },
   });
 
   if (clientQuery.isLoading) {
@@ -72,8 +89,57 @@ export function ClientDetail({ clientId }: { clientId: string }) {
         <Link href="/clients" className="text-sm text-stone-600 hover:text-stone-900">
           ← Back to clients
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">{client.name}</h1>
+        <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+          <h1 className="text-2xl font-semibold tracking-tight">{client.name}</h1>
+          {!showDeleteConfirm ? (
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="rounded border border-red-200 px-3 py-1.5 text-sm font-medium text-red-800 hover:bg-red-50"
+            >
+              Delete client
+            </button>
+          ) : null}
+        </div>
       </div>
+
+      {showDeleteConfirm ? (
+        <div className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-950">
+          <p className="font-medium">Delete {client.name}?</p>
+          <p className="mt-1">
+            This removes the client from your list. Their data is archived and no
+            longer appears in FinDraft.
+          </p>
+          {deleteMutation.error ? (
+            <p className="mt-2 text-red-800">
+              {deleteMutation.error instanceof Error
+                ? deleteMutation.error.message
+                : "Delete failed"}
+            </p>
+          ) : null}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={deleteMutation.isPending}
+              onClick={() => deleteMutation.mutate()}
+              className="rounded bg-red-800 px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {deleteMutation.isPending ? "Deleting…" : "Yes, delete client"}
+            </button>
+            <button
+              type="button"
+              disabled={deleteMutation.isPending}
+              onClick={() => {
+                setShowDeleteConfirm(false);
+                deleteMutation.reset();
+              }}
+              className="rounded border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-900 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="rounded border border-stone-200 bg-white p-4 text-sm">
         <dl className="grid gap-4 sm:grid-cols-2">
