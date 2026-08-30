@@ -44,3 +44,17 @@ test:** make the LLM path properly async (e.g. `asyncio.to_thread` / executor
 at minimum) or move parse/map to a real task queue per the Celery/Redis Month
 3+ plan. See also `backend/app/services/mapper.py` (`apply_llm_tie_breaker`).
 
+## Appendix A canonical set — real-world coverage (scope question)
+
+The 19-line mappable canonical set in Appendix A (dropdown, mapper Tier 4,
+`MAPPING_TIE_BREAKER_CANONICAL_LINES`) may be missing common real-world account
+categories. Manual testing flagged likely gaps — **prepayments**, **accrued
+income**, **deferred/unearned revenue**, and **provisions** — none of which
+cleanly fit any existing canonical line today.
+
+**Not a bug — a scope question for a future session.** Review against real
+client trial balances (not synthetic test data) before deciding whether to expand
+the canonical set. If expanded, scope the downstream changes: Statement Builder
+line placement, validator rules, frontend dropdown/constants, and LLM tie-breaker
+prompts must stay aligned.
+
