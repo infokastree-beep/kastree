@@ -108,15 +108,36 @@ async def get_auth_context(
             detail="Unknown user",
         )
 
-    role = str(claims.get("role") or user.role)
+    # Authoritative role is always the DB row — never trust a JWT role claim for authz.
     return AuthContext(
         clerk_user_id=clerk_user_id,
         user_id=user.id,
         org_id=org.id,
         clerk_org_id=org.clerk_org_id,
-        role=role,
+        role=user.role,
         email=user.email,
     )
+
+
+def require_roles(*allowed_roles: str):
+    """FastAPI dependency factory: 403 unless auth.role is in allowed_roles (§8.2).
+
+    Reusable pattern for owner/admin-only endpoints (invites, member removal, …).
+    """
+
+    allowed = frozenset(allowed_roles)
+
+    async def _dependency(
+        auth: Annotated[AuthContext, Depends(get_auth_context)],
+    ) -> AuthContext:
+        if auth.role not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to access this resource.",
+            )
+        return auth
+
+    return _dependency
 
 
 async def get_db(

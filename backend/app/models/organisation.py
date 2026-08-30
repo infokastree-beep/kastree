@@ -30,6 +30,7 @@ class Organisation(Base):
     )
     clerk_org_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String, nullable=False)
+    # Billing fields: write only from the Stripe webhook handler (§4.5) — never via general org PUT/PATCH or admin bulk-update.
     subscription_tier: Mapped[str] = mapped_column(
         String, nullable=False, server_default=text("'free'")
     )
