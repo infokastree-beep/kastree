@@ -1,8 +1,12 @@
-"""Statement builder — SOPL and SOFP from mapped trial-balance accounts.
+"""Statement builder — SOPL, SOFP, and SOCIE from mapped trial-balance accounts.
 
-SOCIE is intentionally out of scope here. Subtotals are computed in Python with
-Decimal only. SOFP total_equity uses Share Capital + Retained Earnings and
-excludes open Dividends, matching validator.py Check 4 / Product Spec §4.2.1.
+Subtotals are computed in Python with Decimal only. Period-end SOFP
+retained_earnings and total_equity use SOCIE closing RE (opening RE from the
+current TB + profit for period − dividends). Opening RE is never defaulted to
+zero when no prior-period TB was uploaded — prior TBs are validator Check 3 only.
+
+:func:`compute_net_profit` is the shared P&L profit function used by SOPL
+net_profit, SOCIE profit_for_period, and validator Check 3 / Check 4.
 """
 
 from __future__ import annotations
@@ -47,6 +51,19 @@ class StatementLineItemRecord:
     source_account_ids: list[uuid.UUID]
 
 
+class SocieSofpEquityMismatchError(Exception):
+    """SOCIE total_equity_closing does not equal SOFP total_equity."""
+
+    def __init__(self, socie_total: Decimal, sofp_total: Decimal) -> None:
+        self.socie_total = socie_total
+        self.sofp_total = sofp_total
+        super().__init__(
+            f"SOCIE total_equity_closing ({socie_total}) does not equal "
+            f"SOFP total_equity ({sofp_total}). Difference: "
+            f"{abs(socie_total - sofp_total)}"
+        )
+
+
 LINE_ITEM_NAMES: dict[str, str] = {
     "revenue": "Revenue",
     "cost_of_sales": "Cost of sales",
@@ -73,6 +90,10 @@ LINE_ITEM_NAMES: dict[str, str] = {
     "retained_earnings": "Retained earnings",
     "dividends": "Dividends",
     "total_equity": "Total equity",
+    "retained_earnings_opening": "Retained earnings (opening)",
+    "profit_for_period": "Profit for the period",
+    "retained_earnings_closing": "Retained earnings (closing)",
+    "total_equity_closing": "Total equity (closing)",
 }
 
 # Debit-normal on the face of the statement (amount = net_balance).
@@ -91,6 +112,59 @@ _DEBIT_NORMAL_LINES: frozenset[str] = frozenset(
         "dividends",
     }
 )
+
+# P&L canonical lines that form SOPL net_profit / SOCIE profit_for_period.
+# Shared with validator.py Check 3 and Check 4 — do not diverge.
+PROFIT_AND_LOSS_LINES: frozenset[str] = frozenset(
+    {
+        "revenue",
+        "cost_of_sales",
+        "operating_expenses",
+        "depreciation",
+        "interest_income",
+        "interest_expense",
+        "tax",
+    }
+)
+
+
+class NetProfitAccount(Protocol):
+    """Minimal account shape for :func:`compute_net_profit`."""
+
+    net_balance: Decimal
+    canonical_line: str
+
+
+def compute_net_profit(accounts: Sequence[NetProfitAccount]) -> Decimal:
+    """SOPL net profit from mapped P&L accounts (Decimal only).
+
+    Equivalent to:
+    revenue − cost_of_sales − operating_expenses − depreciation
+    + interest_income − interest_expense − tax.
+
+    Sign convention: credit-normal lines contribute ``-net_balance``;
+    debit-normal expense/tax lines also contribute ``-net_balance`` (a debit
+    expense has positive net_balance and therefore reduces profit).
+    """
+    total = sum(
+        (
+            -account.net_balance
+            for account in accounts
+            if account.canonical_line in PROFIT_AND_LOSS_LINES
+        ),
+        Decimal("0"),
+    )
+    return total.quantize(Decimal("0.01"))
+
+
+def pnl_source_account_ids(accounts: Sequence[StatementAccount]) -> list[uuid.UUID]:
+    """Evidence-graph ids for accounts that feed :func:`compute_net_profit`."""
+    return [
+        account.id
+        for account in accounts
+        if account.canonical_line in PROFIT_AND_LOSS_LINES
+    ]
+
 
 SOFP_ASSET_ORDER: tuple[str, ...] = (
     "property_plant_equipment",
@@ -186,15 +260,25 @@ def build_sopl(accounts: Sequence[StatementAccount]) -> list[StatementLineItemRe
     order += 1
     lines.append(tax)
 
-    net_profit_amount = profit_before_tax_amount - tax.amount
-    net_profit_ids = _merge_ids(profit_before_tax_ids, tax.source_account_ids)
+    net_profit_amount = compute_net_profit(accounts)
+    net_profit_ids = pnl_source_account_ids(accounts)
     lines.append(_subtotal_line("net_profit", net_profit_amount, order, net_profit_ids))
 
     return lines
 
 
-def build_sofp(accounts: Sequence[StatementAccount]) -> list[StatementLineItemRecord]:
-    """Build Statement of Financial Position line items in display order."""
+def build_sofp(
+    accounts: Sequence[StatementAccount],
+    *,
+    retained_earnings_closing: Decimal | None = None,
+    retained_earnings_source_ids: Sequence[uuid.UUID] | None = None,
+) -> list[StatementLineItemRecord]:
+    """Build Statement of Financial Position line items in display order.
+
+    When *retained_earnings_closing* is supplied, the retained_earnings face line
+    and total_equity use that period-end closing balance (from SOCIE). Otherwise
+    the retained_earnings line reflects raw TB balances (pre-roll-forward).
+    """
     grouped = _group_accounts(accounts)
     lines: list[StatementLineItemRecord] = []
     order = 1
@@ -235,7 +319,18 @@ def build_sofp(accounts: Sequence[StatementAccount]) -> list[StatementLineItemRe
     order += 1
     lines.append(share_capital)
 
-    retained_earnings = _leaf_line("retained_earnings", grouped, order)
+    if retained_earnings_closing is not None:
+        re_ids = list(retained_earnings_source_ids or [])
+        retained_earnings = StatementLineItemRecord(
+            line_item_code="retained_earnings",
+            line_item_name=LINE_ITEM_NAMES["retained_earnings"],
+            amount=_quantize(retained_earnings_closing),
+            is_subtotal=False,
+            display_order=order,
+            source_account_ids=re_ids,
+        )
+    else:
+        retained_earnings = _leaf_line("retained_earnings", grouped, order)
     order += 1
     lines.append(retained_earnings)
 
@@ -254,6 +349,224 @@ def build_sofp(accounts: Sequence[StatementAccount]) -> list[StatementLineItemRe
     )
 
     return lines
+
+
+def build_statements(
+    accounts: Sequence[StatementAccount],
+) -> tuple[
+    list[StatementLineItemRecord],
+    list[StatementLineItemRecord],
+    list[StatementLineItemRecord],
+]:
+    """Build SOPL, SOFP, and SOCIE with period-end closing retained earnings on SOFP."""
+    sopl_lines = build_sopl(accounts)
+    rollforward = _compute_socie_rollforward(accounts)
+    sofp_lines = build_sofp(
+        accounts,
+        retained_earnings_closing=rollforward.retained_earnings_closing_amount,
+        retained_earnings_source_ids=rollforward.retained_earnings_closing_ids,
+    )
+    socie_lines = build_socie(
+        accounts,
+        sopl_lines=sopl_lines,
+        sofp_lines=sofp_lines,
+        rollforward=rollforward,
+    )
+    return sopl_lines, sofp_lines, socie_lines
+
+
+@dataclass(frozen=True)
+class _SocieRollforward:
+    opening_amount: Decimal
+    opening_ids: list[uuid.UUID]
+    profit_amount: Decimal
+    profit_ids: list[uuid.UUID]
+    dividends_amount: Decimal
+    dividends_ids: list[uuid.UUID]
+    share_capital_amount: Decimal
+    share_capital_ids: list[uuid.UUID]
+    retained_earnings_closing_amount: Decimal
+    retained_earnings_closing_ids: list[uuid.UUID]
+    total_equity_closing_amount: Decimal
+    total_equity_closing_ids: list[uuid.UUID]
+
+
+def build_socie(
+    accounts: Sequence[StatementAccount],
+    *,
+    sopl_lines: Sequence[StatementLineItemRecord],
+    sofp_lines: Sequence[StatementLineItemRecord],
+    rollforward: _SocieRollforward | None = None,
+) -> list[StatementLineItemRecord]:
+    """Build Statement of Changes in Equity line items in display order.
+
+    Opening retained earnings come from the current TB's retained_earnings account.
+    Raises SocieSofpEquityMismatchError if SOCIE total_equity_closing does not
+    exactly equal SOFP total_equity from the same run.
+    """
+    sofp_by_code = {line.line_item_code: line for line in sofp_lines}
+    try:
+        sofp_total_equity = sofp_by_code["total_equity"]
+    except KeyError as exc:
+        raise ValueError(
+            f"SOCIE requires SOFP total_equity line; missing {exc.args[0]!r}"
+        ) from exc
+
+    if rollforward is None:
+        rollforward = _compute_socie_rollforward(accounts)
+
+    # sopl_lines may be passed for callers that already built SOPL; profit always
+    # comes from compute_net_profit so it cannot drift from validator Check 4.
+    if sopl_lines:
+        sopl_by_code = {line.line_item_code: line for line in sopl_lines}
+        sopl_profit_line = sopl_by_code.get("net_profit")
+        if (
+            sopl_profit_line is not None
+            and sopl_profit_line.amount != rollforward.profit_amount
+        ):
+            raise ValueError(
+                f"SOPL net_profit ({sopl_profit_line.amount}) disagrees with "
+                f"compute_net_profit ({rollforward.profit_amount})"
+            )
+
+    opening_amount = rollforward.opening_amount
+    opening_ids = rollforward.opening_ids
+    profit_amount = rollforward.profit_amount
+    profit_ids = rollforward.profit_ids
+    dividends_amount = rollforward.dividends_amount
+    dividends_ids = rollforward.dividends_ids
+    share_capital_amount = rollforward.share_capital_amount
+    share_capital_ids = rollforward.share_capital_ids
+    retained_earnings_closing_amount = rollforward.retained_earnings_closing_amount
+    retained_earnings_closing_ids = rollforward.retained_earnings_closing_ids
+    total_equity_closing_amount = rollforward.total_equity_closing_amount
+    total_equity_closing_ids = rollforward.total_equity_closing_ids
+
+    if total_equity_closing_amount != sofp_total_equity.amount:
+        raise SocieSofpEquityMismatchError(
+            total_equity_closing_amount,
+            sofp_total_equity.amount,
+        )
+
+    lines: list[StatementLineItemRecord] = []
+    order = 1
+
+    lines.append(
+        StatementLineItemRecord(
+            line_item_code="retained_earnings_opening",
+            line_item_name=LINE_ITEM_NAMES["retained_earnings_opening"],
+            amount=_quantize(opening_amount),
+            is_subtotal=False,
+            display_order=order,
+            source_account_ids=opening_ids,
+        )
+    )
+    order += 1
+
+    lines.append(
+        StatementLineItemRecord(
+            line_item_code="profit_for_period",
+            line_item_name=LINE_ITEM_NAMES["profit_for_period"],
+            amount=_quantize(profit_amount),
+            is_subtotal=False,
+            display_order=order,
+            source_account_ids=profit_ids,
+        )
+    )
+    order += 1
+
+    lines.append(
+        StatementLineItemRecord(
+            line_item_code="dividends",
+            line_item_name=LINE_ITEM_NAMES["dividends"],
+            amount=_quantize(dividends_amount),
+            is_subtotal=False,
+            display_order=order,
+            source_account_ids=dividends_ids,
+        )
+    )
+    order += 1
+
+    lines.append(
+        _subtotal_line(
+            "retained_earnings_closing",
+            retained_earnings_closing_amount,
+            order,
+            retained_earnings_closing_ids,
+        )
+    )
+    order += 1
+
+    lines.append(
+        StatementLineItemRecord(
+            line_item_code="share_capital",
+            line_item_name=LINE_ITEM_NAMES["share_capital"],
+            amount=_quantize(share_capital_amount),
+            is_subtotal=False,
+            display_order=order,
+            source_account_ids=share_capital_ids,
+        )
+    )
+    order += 1
+
+    lines.append(
+        _subtotal_line(
+            "total_equity_closing",
+            total_equity_closing_amount,
+            order,
+            total_equity_closing_ids,
+        )
+    )
+
+    return lines
+
+
+def _compute_socie_rollforward(
+    accounts: Sequence[StatementAccount],
+    sopl_lines: Sequence[StatementLineItemRecord] | None = None,
+) -> _SocieRollforward:
+    """Roll-forward opening RE using shared :func:`compute_net_profit`.
+
+    *sopl_lines* is accepted for API compatibility with callers that already
+    built SOPL; profit is always taken from the shared function, not from the
+    SOPL line list, so validator and SOCIE cannot drift.
+    """
+    del sopl_lines  # profit comes from compute_net_profit, not SOPL lines
+    grouped = _group_accounts(accounts)
+
+    opening_amount, opening_ids = _sum_line("retained_earnings", grouped)
+    profit_amount = compute_net_profit(accounts)
+    profit_ids = pnl_source_account_ids(accounts)
+    dividends_amount, dividends_ids = _sum_line("dividends", grouped)
+    share_capital_amount, share_capital_ids = _sum_line("share_capital", grouped)
+
+    retained_earnings_closing_amount = (
+        opening_amount + profit_amount - dividends_amount
+    )
+    retained_earnings_closing_ids = _merge_ids(opening_ids, profit_ids, dividends_ids)
+
+    total_equity_closing_amount = (
+        share_capital_amount + retained_earnings_closing_amount
+    )
+    total_equity_closing_ids = _merge_ids(
+        share_capital_ids,
+        retained_earnings_closing_ids,
+    )
+
+    return _SocieRollforward(
+        opening_amount=opening_amount,
+        opening_ids=opening_ids,
+        profit_amount=profit_amount,
+        profit_ids=profit_ids,
+        dividends_amount=dividends_amount,
+        dividends_ids=dividends_ids,
+        share_capital_amount=share_capital_amount,
+        share_capital_ids=share_capital_ids,
+        retained_earnings_closing_amount=retained_earnings_closing_amount,
+        retained_earnings_closing_ids=retained_earnings_closing_ids,
+        total_equity_closing_amount=total_equity_closing_amount,
+        total_equity_closing_ids=total_equity_closing_ids,
+    )
 
 
 def _group_accounts(

@@ -5,10 +5,16 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
+import pytest
+
 from app.services.statements import (
     MappedStatementAccount,
+    SocieSofpEquityMismatchError,
+    build_socie,
     build_sofp,
     build_sopl,
+    build_statements,
+    compute_net_profit,
 )
 
 
@@ -263,9 +269,11 @@ def test_sofp_groups_accounts_computes_subtotals_and_provenance() -> None:
 
 
 def test_sofp_total_equity_excludes_dividends_matching_validator_fixture() -> None:
-    """Same dividends fixture as test_validator trigger-critical case.
+    """Raw TB SOFP (no closing-RE override) shows opening RE; excludes dividends.
 
-    SC 5_000 + RE 3_000 = total_equity 8_000 (not 7_000 after dividends).
+    Validator Check 4 builds equity as SC + opening RE + profit (still excluding
+    dividends). With zero P&L this fixture's Check 4 equity equals raw SOFP
+    total_equity = SC 5_000 + RE 3_000 = 8_000.
     """
     accounts = [
         _acct("1000", net_balance="10000.00", canonical_line="cash"),
@@ -288,3 +296,132 @@ def test_sofp_total_equity_excludes_dividends_matching_validator_fixture() -> No
     assert total_equity.is_subtotal is True
     for dividend_id in _by_code(lines, "dividends").source_account_ids:
         assert dividend_id not in total_equity.source_account_ids
+
+
+def test_socie_reconciles_with_sofp_on_dividends_fixture() -> None:
+    """Trigger-critical dividends fixture with correct opening RE from current TB.
+
+    Cash 10_000 | Payables 3_000 | SC 5_000 | RE 3_000 | Dividends 1_000.
+    No P&L accounts → profit_for_period = 0.
+    retained_earnings_opening = 3_000 (TB RE account, not zero).
+    retained_earnings_closing = 3_000 + 0 − 1_000 = 2_000.
+    total_equity_closing = 5_000 + 2_000 = 7_000 on both SOCIE and SOFP.
+
+    Note: validator Check 4 still fails this fixture (equity 8_000 vs net assets
+    7_000) because it excludes open dividends; SOCIE/SOFP closing path deducts
+    them and therefore reconciles at 7_000.
+    """
+    accounts = [
+        _acct("1000", net_balance="10000.00", canonical_line="cash"),
+        _acct("2000", net_balance="-3000.00", canonical_line="trade_payables"),
+        _acct("3000", net_balance="-5000.00", canonical_line="share_capital"),
+        _acct("3100", net_balance="-3000.00", canonical_line="retained_earnings"),
+        _acct("3200", net_balance="1000.00", canonical_line="dividends"),
+    ]
+
+    sopl_lines, sofp_lines, socie_lines = build_statements(accounts)
+
+    assert [line.line_item_code for line in socie_lines] == [
+        "retained_earnings_opening",
+        "profit_for_period",
+        "dividends",
+        "retained_earnings_closing",
+        "share_capital",
+        "total_equity_closing",
+    ]
+
+    assert _by_code(socie_lines, "retained_earnings_opening").amount == Decimal("3000.00")
+    assert _by_code(socie_lines, "profit_for_period").amount == Decimal("0.00")
+    assert _by_code(socie_lines, "profit_for_period").amount == _by_code(
+        sopl_lines, "net_profit"
+    ).amount
+    assert _by_code(socie_lines, "dividends").amount == Decimal("1000.00")
+    assert _by_code(socie_lines, "dividends").amount == _by_code(
+        sofp_lines, "dividends"
+    ).amount
+    assert set(_by_code(socie_lines, "dividends").source_account_ids) == set(
+        _by_code(sofp_lines, "dividends").source_account_ids
+    )
+
+    re_closing = _by_code(socie_lines, "retained_earnings_closing")
+    assert re_closing.amount == Decimal("2000.00")
+    assert re_closing.is_subtotal is True
+    assert re_closing.amount == _by_code(sofp_lines, "retained_earnings").amount
+
+    assert _by_code(socie_lines, "share_capital").amount == Decimal("5000.00")
+
+    total_equity_closing = _by_code(socie_lines, "total_equity_closing")
+    assert total_equity_closing.amount == Decimal("7000.00")
+    assert total_equity_closing.is_subtotal is True
+    assert total_equity_closing.amount == _by_code(sofp_lines, "total_equity").amount
+
+
+def test_compute_net_profit_matches_sopl_and_socie_profit_for_period() -> None:
+    """Shared profit function is the single source for SOPL, SOCIE, and validator."""
+    accounts = [
+        _acct("1000", net_balance="12000.00", canonical_line="cash"),
+        _acct("2000", net_balance="-3000.00", canonical_line="trade_payables"),
+        _acct("3000", net_balance="-5000.00", canonical_line="share_capital"),
+        _acct("3100", net_balance="-2000.00", canonical_line="retained_earnings"),
+        _acct("4000", net_balance="-5000.00", canonical_line="revenue"),
+        _acct("5000", net_balance="2000.00", canonical_line="cost_of_sales"),
+        _acct("6000", net_balance="1000.00", canonical_line="operating_expenses"),
+    ]
+    profit = compute_net_profit(accounts)
+    assert profit == Decimal("2000.00")
+
+    sopl_lines, sofp_lines, socie_lines = build_statements(accounts)
+    assert _by_code(sopl_lines, "net_profit").amount == profit
+    assert _by_code(socie_lines, "profit_for_period").amount == profit
+    # Closing RE = 2_000 opening + 2_000 profit − 0 dividends = 4_000
+    assert _by_code(socie_lines, "retained_earnings_closing").amount == Decimal("4000.00")
+    assert _by_code(sofp_lines, "retained_earnings").amount == Decimal("4000.00")
+    assert _by_code(socie_lines, "total_equity_closing").amount == Decimal("9000.00")
+    assert _by_code(sofp_lines, "total_equity").amount == Decimal("9000.00")
+
+
+def test_socie_raises_when_total_equity_disagrees_with_sofp() -> None:
+    """SOCIE closing equity (7_000) must not silently match raw-TB SOFP (8_000)."""
+    accounts = [
+        _acct("1000", net_balance="10000.00", canonical_line="cash"),
+        _acct("2000", net_balance="-3000.00", canonical_line="trade_payables"),
+        _acct("3000", net_balance="-5000.00", canonical_line="share_capital"),
+        _acct("3100", net_balance="-3000.00", canonical_line="retained_earnings"),
+        _acct("3200", net_balance="1000.00", canonical_line="dividends"),
+    ]
+    sopl_lines = build_sopl(accounts)
+    sofp_lines = build_sofp(accounts)  # raw RE 3_000 → total_equity 8_000
+
+    with pytest.raises(SocieSofpEquityMismatchError) as exc_info:
+        build_socie(
+            accounts,
+            sopl_lines=sopl_lines,
+            sofp_lines=sofp_lines,
+        )
+
+    assert exc_info.value.socie_total == Decimal("7000.00")
+    assert exc_info.value.sofp_total == Decimal("8000.00")
+
+
+def test_socie_opening_re_from_current_tb_not_prior_period() -> None:
+    """Opening RE is the current TB retained_earnings balance, not prior-period TB."""
+    current = [
+        _acct("1000", net_balance="6500.00", canonical_line="cash"),
+        _acct("3000", net_balance="-4000.00", canonical_line="share_capital"),
+        _acct("3100", net_balance="-2500.00", canonical_line="retained_earnings"),
+        _acct("3200", net_balance="500.00", canonical_line="dividends"),
+        _acct("4000", net_balance="-1000.00", canonical_line="revenue"),
+    ]
+    # opening 2_500 (current TB) + profit 1_000 − dividends 500 = closing RE 3_000
+    # total equity closing = 4_000 + 3_000 = 7_000
+
+    sopl_lines, sofp_lines, socie_lines = build_statements(current)
+
+    assert _by_code(socie_lines, "retained_earnings_opening").amount == Decimal("2500.00")
+    assert _by_code(socie_lines, "profit_for_period").amount == Decimal("1000.00")
+    assert _by_code(socie_lines, "dividends").amount == Decimal("500.00")
+    assert _by_code(socie_lines, "retained_earnings_closing").amount == Decimal("3000.00")
+    assert _by_code(socie_lines, "total_equity_closing").amount == Decimal("7000.00")
+    assert _by_code(socie_lines, "total_equity_closing").amount == _by_code(
+        sofp_lines, "total_equity"
+    ).amount
