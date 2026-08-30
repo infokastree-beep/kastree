@@ -1,5 +1,10 @@
-/** Page placeholder. Implementation pending. */
+import { StatementsDashboard } from "@/components/statements/StatementsDashboard";
 
-export default function Page() {
-  return <main>app/(dashboard)/dashboard/[tbId]</main>;
+/** Dashboard — tabs + generate action are Client Components. */
+export default function DashboardPage({
+  params,
+}: {
+  params: { tbId: string };
+}) {
+  return <StatementsDashboard tbId={params.tbId} />;
 }

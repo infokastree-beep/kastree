@@ -6,8 +6,10 @@ venv/
 .env
 .env.local
 node_modules/
+.next/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 dist/
 build/
+*.tsbuildinfo

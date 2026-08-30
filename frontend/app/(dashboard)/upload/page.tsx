@@ -1,5 +1,6 @@
-/** Page placeholder. Implementation pending. */
+import { UploadForm } from "@/components/upload/UploadForm";
 
-export default function Page() {
-  return <main>app/(dashboard)/upload</main>;
+/** Upload page — interactive dropzone lives in a Client Component. */
+export default function UploadPage() {
+  return <UploadForm />;
 }

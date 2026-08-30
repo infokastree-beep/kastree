@@ -1,5 +1,10 @@
-/** Page placeholder. Implementation pending. */
+import { MappingReview } from "@/components/mapping/MappingReview";
 
-export default function Page() {
-  return <main>app/(dashboard)/mapping/[tbId]</main>;
+/** Mapping page — polling + inline overrides are Client Components. */
+export default function MappingPage({
+  params,
+}: {
+  params: { tbId: string };
+}) {
+  return <MappingReview tbId={params.tbId} />;
 }
