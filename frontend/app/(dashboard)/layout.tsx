@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
+import { ProductSwitcher } from "@/components/layout/ProductSwitcher";
 import { clerkReady } from "@/components/providers/AppProviders";
-import { APP_NAME } from "@/lib/constants";
 
 export default function DashboardGroupLayout({
   children,
@@ -15,9 +15,7 @@ export default function DashboardGroupLayout({
       <header className="border-b border-stone-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
           <div className="flex items-center gap-6">
-            <Link href="/upload" className="text-sm font-semibold tracking-tight">
-              {APP_NAME}
-            </Link>
+            <ProductSwitcher />
             <nav className="flex gap-4 text-sm text-stone-600">
               <Link href="/upload" className="hover:text-stone-900">
                 Upload
