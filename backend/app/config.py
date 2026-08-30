@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     auth_jwt_secret: str = "findraft-dev-jwt-secret-change-me"
     auth_jwt_algorithm: str = "HS256"
 
+    # Browser CORS — frontend origin(s) only (Product Spec §12 / Cursor Rules).
+    # Comma-separated list, e.g. "http://127.0.0.1:43123,http://localhost:43123"
+    cors_origins: str = "http://127.0.0.1:43123,http://localhost:43123"
+
     # Local upload storage until S3 wiring for TB files lands with export storage.
     upload_dir: str = "/tmp/findraft-uploads"
 

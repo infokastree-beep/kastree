@@ -95,3 +95,9 @@ an oversight. (Same note sits above the `GRANT EXECUTE` lines in
 
 Do **not** reintroduce a permissive `organisations` SELECT policy gated on a
 session GUC (an earlier draft did; it was caught in review and rejected).
+
+## Frontend CORS (browser → API)
+
+Browser calls hit FastAPI directly at `NEXT_PUBLIC_API_BASE_URL`. Set backend `CORS_ORIGINS` to the frontend origin(s), comma-separated (default includes `http://127.0.0.1:43123` and `http://localhost:43123`). No wildcards in production (Product Spec §12).
+
+For Clerk session JWTs, set `CLERK_PUBLISHABLE_KEY` (or `CLERK_JWKS_URL`) on the API so RS256 verification works; local tests continue to use HS256 `AUTH_JWT_SECRET`.
