@@ -1,4 +1,8 @@
-"""Background parse → map pipeline for trial balance uploads (MVP BackgroundTasks)."""
+"""Background parse → map pipeline for trial balance uploads (MVP BackgroundTasks).
+
+Tracked gap: Tier 4 OpenAI runs synchronously inside this sync background task
+and can block the event loop on slow/hung LLM calls. See docs/tracked-gaps.md.
+"""
 
 from __future__ import annotations
 

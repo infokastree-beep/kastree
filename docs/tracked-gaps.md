@@ -30,3 +30,17 @@ delivery `type` fields cannot be reconstructed from the database alone.
 deliveries via `IntegrityError` recovery, but the HTTP idempotency test only
 covers the serialised “org already exists” path — not true parallel delivery.
 See `backend/tests/test_api.py` (`test_duplicate_provision_first_signup_*`).
+
+## Tier 4 OpenAI in sync BackgroundTasks (event-loop blocking)
+
+`run_parse_and_map_job` (`backend/app/services/tb_pipeline.py`) invokes Tier 4
+mapping via synchronous `OpenAI()` calls inside a sync `BackgroundTasks`
+function. Fine when the call fails fast (e.g. missing `OPENAI_API_KEY`, as in
+the walkthrough), but a genuine risk of blocking the entire async event loop if
+a real key is set and a call is slow to respond or hangs.
+
+**Before Tier 4 is used with a real key in anything beyond a one-off local
+test:** make the LLM path properly async (e.g. `asyncio.to_thread` / executor
+at minimum) or move parse/map to a real task queue per the Celery/Redis Month
+3+ plan. See also `backend/app/services/mapper.py` (`apply_llm_tie_breaker`).
+
