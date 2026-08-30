@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.trial_balance import ValidationCheck, ValidationResults
+from app.services.statements import compute_net_profit
 from app.services.validator import SimpleMappedAccount, validate_trial_balance
 
 
@@ -237,6 +238,79 @@ def test_retained_earnings_rollforward_fails() -> None:
     assert check.details["difference"] == "1000.00"
 
 
+def test_retained_earnings_rollforward_passes_with_realistic_pnl() -> None:
+    """Check 3 pass: prior RE + multi-line P&L profit = current RE.
+
+    Revenue 10_000 − CoS 4_000 − opex 2_500 − depreciation 500 + interest
+    income 200 − interest expense 100 − tax 300 = profit 2_800.
+    Prior closing RE 5_000 + 2_800 = expected current RE 7_800.
+    """
+    prior = [
+        _acct("1000", "Cash", debit="8000.00", canonical_line="cash"),
+        _acct("3000", "Share capital", credit="3000.00", canonical_line="share_capital"),
+        _acct("3100", "Retained earnings", credit="5000.00", canonical_line="retained_earnings"),
+    ]
+    current = [
+        _acct("1000", "Cash", debit="13600.00", canonical_line="cash"),
+        _acct("3000", "Share capital", credit="3000.00", canonical_line="share_capital"),
+        _acct("3100", "Retained earnings", credit="7800.00", canonical_line="retained_earnings"),
+        _acct("4000", "Revenue", credit="10000.00", canonical_line="revenue"),
+        _acct("5000", "Cost of sales", debit="4000.00", canonical_line="cost_of_sales"),
+        _acct("6000", "Operating expenses", debit="2500.00", canonical_line="operating_expenses"),
+        _acct("7000", "Depreciation", debit="500.00", canonical_line="depreciation"),
+        _acct("8000", "Interest income", credit="200.00", canonical_line="interest_income"),
+        _acct("8100", "Interest expense", debit="100.00", canonical_line="interest_expense"),
+        _acct("8200", "Tax", debit="300.00", canonical_line="tax"),
+    ]
+    profit = compute_net_profit(current)
+    assert profit == Decimal("2800.00")
+
+    check = _by_name(
+        validate_trial_balance(current, prior_accounts=prior),
+        "retained_earnings_rollforward",
+    )
+    assert check.passed is True
+    assert check.severity == "warning"
+    assert check.details is None
+
+
+def test_retained_earnings_rollforward_fails_with_realistic_pnl() -> None:
+    """Check 3 fail: same multi-line P&L but current RE short by 500."""
+    prior = [
+        _acct("1000", "Cash", debit="8000.00", canonical_line="cash"),
+        _acct("3000", "Share capital", credit="3000.00", canonical_line="share_capital"),
+        _acct("3100", "Retained earnings", credit="5000.00", canonical_line="retained_earnings"),
+    ]
+    current = [
+        _acct("1000", "Cash", debit="13100.00", canonical_line="cash"),
+        _acct("3000", "Share capital", credit="3000.00", canonical_line="share_capital"),
+        # 7_300 vs expected 5_000 + 2_800 = 7_800
+        _acct("3100", "Retained earnings", credit="7300.00", canonical_line="retained_earnings"),
+        _acct("4000", "Revenue", credit="10000.00", canonical_line="revenue"),
+        _acct("5000", "Cost of sales", debit="4000.00", canonical_line="cost_of_sales"),
+        _acct("6000", "Operating expenses", debit="2500.00", canonical_line="operating_expenses"),
+        _acct("7000", "Depreciation", debit="500.00", canonical_line="depreciation"),
+        _acct("8000", "Interest income", credit="200.00", canonical_line="interest_income"),
+        _acct("8100", "Interest expense", debit="100.00", canonical_line="interest_expense"),
+        _acct("8200", "Tax", debit="300.00", canonical_line="tax"),
+    ]
+    assert compute_net_profit(current) == Decimal("2800.00")
+
+    check = _by_name(
+        validate_trial_balance(current, prior_accounts=prior),
+        "retained_earnings_rollforward",
+    )
+    assert check.passed is False
+    assert check.severity == "warning"
+    assert check.details == {
+        "closing_re_prior": "5000.00",
+        "current_profit": "2800.00",
+        "expected_closing_re": "7800.00",
+        "closing_re_current": "7300.00",
+        "difference": "500.00",
+    }
+
+
 def test_retained_earnings_omitted_when_no_prior_period() -> None:
     accounts = [
         _acct("1000", "Cash", debit="100.00", canonical_line="cash"),
@@ -258,17 +332,43 @@ def test_net_assets_passes() -> None:
     assert check.passed is True
 
 
+def test_net_assets_passes_with_open_pnl_and_zero_dividends() -> None:
+    """False-positive regression: open P&L must not fail net_assets.
+
+    Assets already include the cash effect of this period's profit; opening RE
+    on the TB does not. Equity for Check 4 is SC + opening RE + period profit.
+    Revenue 5_000 − CoS 2_000 − opex 1_000 = profit 2_000.
+    Net assets 9_000 == SC 5_000 + RE 2_000 + profit 2_000.
+    """
+    accounts = [
+        _acct("1000", "Cash", debit="12000.00", canonical_line="cash"),
+        _acct("2000", "Payables", credit="3000.00", canonical_line="trade_payables"),
+        _acct("3000", "Share capital", credit="5000.00", canonical_line="share_capital"),
+        _acct("3100", "Retained earnings", credit="2000.00", canonical_line="retained_earnings"),
+        _acct("4000", "Revenue", credit="5000.00", canonical_line="revenue"),
+        _acct("5000", "Cost of sales", debit="2000.00", canonical_line="cost_of_sales"),
+        _acct("6000", "Operating expenses", debit="1000.00", canonical_line="operating_expenses"),
+    ]
+    results = validate_trial_balance(accounts)
+    net_assets = _by_name(results, "net_assets")
+    assert net_assets.passed is True
+    assert net_assets.details is None
+
+
 def test_net_assets_fails() -> None:
+    """Unmapped credit leaves SC + opening RE + profit short of net assets."""
     accounts = [
         _acct("1000", "Cash", debit="10000.00", canonical_line="cash"),
         _acct("2000", "Payables", credit="3000.00", canonical_line="trade_payables"),
         _acct("3000", "Share capital", credit="5000.00", canonical_line="share_capital"),
-        _acct("4000", "Sales", credit="2000.00", canonical_line="revenue"),
+        # 2_000 parked in unmapped — excluded from Check 4 equity.
+        _acct("9999", "Suspense", credit="2000.00", canonical_line="unmapped"),
     ]
-    # Net assets = 7000, SOFP equity (SC+RE) = 5000
     check = _by_name(validate_trial_balance(accounts), "net_assets")
     assert check.passed is False
     assert check.details is not None
+    assert check.details["net_assets"] == "7000.00"
+    assert check.details["total_equity"] == "5000.00"
     assert check.details["difference"] == "2000.00"
 
 
@@ -310,11 +410,12 @@ def test_comparatives_available_true_and_false() -> None:
 
 
 def test_balance_sheet_passes_but_net_assets_fails_with_dividends_on_tb() -> None:
-    """Trigger-critical fixture: BS equation holds, SOFP net-assets cross-check fails.
+    """Trigger-critical fixture: BS equation holds, net_assets fails on open dividends.
 
-    Dividends still on the TB reduce the BS equity side (A = L + E) but are
-    excluded from SOFP total equity (share capital + RE). An older trigger that
-    only enforced balance_sheet_balance would have missed this.
+    Zero P&L → period profit = 0. Check 4 equity = SC 5_000 + opening RE 3_000
+    + profit 0 = 8_000 (dividends still excluded). Net assets = 7_000 after the
+    cash dividend. Difference = 1_000 = open Dividends. Check 2 still passes
+    because it nets Dividends as contra-equity.
     """
     accounts = [
         _acct("1000", "Cash", debit="10000.00", canonical_line="cash"),

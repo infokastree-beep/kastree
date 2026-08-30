@@ -11,6 +11,7 @@ from decimal import Decimal
 from typing import Protocol, Sequence
 
 from app.schemas.trial_balance import ValidationCheck, ValidationResults
+from app.services.statements import compute_net_profit
 
 TOLERANCE = Decimal("0.01")
 
@@ -38,25 +39,14 @@ EQUITY_LINES_BALANCE_SHEET: frozenset[str] = frozenset(
         "dividends",
     }
 )
-# SOFP "total equity" for the net-assets cross-check (capital + RE).
-# Dividends are a SOCIE movement; when they still sit on the TB as a separate
-# line, BS balance and net-assets can diverge — which is exactly the case the
-# DB trigger must catch independently of balance_sheet_balance.
+# SOFP "total equity" for the net-assets cross-check starts from capital + opening
+# RE, then adds current-period profit (P&L still open on the TB). Dividends stay
+# excluded so this check remains independent of balance_sheet_balance — open
+# Dividends still fail net_assets by exactly the dividend amount.
 EQUITY_LINES_SOFP: frozenset[str] = frozenset(
     {
         "share_capital",
         "retained_earnings",
-    }
-)
-PROFIT_AND_LOSS_LINES: frozenset[str] = frozenset(
-    {
-        "revenue",
-        "cost_of_sales",
-        "operating_expenses",
-        "depreciation",
-        "interest_income",
-        "interest_expense",
-        "tax",
     }
 )
 
@@ -165,18 +155,16 @@ def _total_equity_balance_sheet(accounts: Sequence[MappedAccount]) -> Decimal:
 
 
 def _total_equity_sofp(accounts: Sequence[MappedAccount]) -> Decimal:
-    return _credit_normal_total(accounts, EQUITY_LINES_SOFP)
+    """Closing equity for Check 4: SC + opening RE + period profit.
 
-
-def _period_profit(accounts: Sequence[MappedAccount]) -> Decimal:
-    """P&L profit from mapped lines. Credit-normal revenue increases profit."""
-    return sum(
-        (
-            -account.net_balance
-            for account in accounts
-            if account.canonical_line in PROFIT_AND_LOSS_LINES
-        ),
-        Decimal("0"),
+    Dividends are deliberately omitted (Product Spec §4.2.1 Check 4) so an open
+    Dividends balance fails this check while balance_sheet_balance may still pass.
+    Period profit must be included: SOFP-mapped assets already reflect trading
+    cash/working-capital effects, but opening RE on an unclosed TB does not.
+    """
+    return (
+        _credit_normal_total(accounts, EQUITY_LINES_SOFP)
+        + compute_net_profit(accounts)
     )
 
 
@@ -249,8 +237,13 @@ def _check_retained_earnings_rollforward(
     accounts: Sequence[MappedAccount],
     prior_accounts: Sequence[MappedAccount],
 ) -> ValidationCheck:
+    """Check 3: prior closing RE + current-period profit = current closing RE.
+
+    Current-period profit is :func:`compute_net_profit` — the same function as
+    SOPL net_profit, SOCIE profit_for_period, and Check 4.
+    """
     closing_re_prior = _closing_retained_earnings(prior_accounts)
-    current_profit = _period_profit(accounts)
+    current_profit = compute_net_profit(accounts)
     closing_re_current = _closing_retained_earnings(accounts)
     expected = closing_re_prior + current_profit
     difference = abs(expected - closing_re_current)
@@ -284,15 +277,18 @@ def _check_retained_earnings_rollforward(
 
 
 def _check_net_assets(accounts: Sequence[MappedAccount]) -> ValidationCheck:
-    # Check 4 deliberately excludes any open Dividends balance from "total equity
-    # per SOFP" because the Product Spec's SOCIE definition (opening equity +
-    # profit - dividends = closing equity) treats dividends as a movement that
-    # closes into retained earnings, not a permanent SOFP line — so a nonzero
-    # open Dividends balance means that closing entry hasn't happened, and
-    # net_assets vs. SOFP-equity SHOULD disagree by exactly that amount. This is
-    # intentional and different from Check 2 (Balance Sheet Balance), which nets
-    # Dividends as a contra against the raw TB balances. Do not simplify these to
-    # match each other later without re-reading this comment.
+    # Check 4 compares net assets (A − L) to closing equity constructed as
+    # share_capital + opening retained_earnings + current_period_profit.
+    # Opening RE is the TB retained_earnings balance (profit still sits in open
+    # P&L accounts). Profit uses statements.compute_net_profit — the same
+    # function as SOPL net_profit / SOCIE profit_for_period.
+    #
+    # Dividends are still excluded from this equity figure (unlike SOCIE's
+    # retained_earnings_closing = opening + profit − dividends). That keeps
+    # Check 4 independent of Check 2: a balanced TB with open Dividends passes
+    # balance_sheet_balance but fails net_assets by exactly the dividend amount.
+    # Do not fold dividends into this total without re-reading Product Spec
+    # §4.2.1 and the DB trigger that keys off this check.
     assets = _total_assets(accounts)
     liabilities = _total_liabilities(accounts)
     net_assets = assets - liabilities
