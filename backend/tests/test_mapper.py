@@ -1,13 +1,19 @@
-"""Tests for hybrid account mapper Tiers 1–3."""
+"""Tests for hybrid account mapper Tiers 1–4."""
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from decimal import Decimal
+from unittest.mock import MagicMock
 
+import pytest
+
+from app.services.llm import MAPPING_TIE_BREAKER_SYSTEM
 from app.services.mapper import (
     MappingResult,
     PriorConfirmedMapping,
+    apply_llm_tie_breaker,
     map_accounts,
 )
 
@@ -191,3 +197,135 @@ def test_ambiguous_and_invalid_codes_fall_through_unmapped() -> None:
         "ABC-100",
         "10000",
     ]
+
+
+def _mock_completion(payload: dict) -> MagicMock:
+    message = MagicMock()
+    message.content = json.dumps(payload)
+    choice = MagicMock()
+    choice.message = message
+    response = MagicMock()
+    response.choices = [choice]
+    return response
+
+
+def test_tier4_successful_batch_mapping_response() -> None:
+    unmapped = [
+        MappingResult("1500", "Cash at bank", None, None, None),
+        MappingResult("2100", "Trade creditors", None, None, None),
+    ]
+    client = MagicMock()
+    client.chat.completions.create.return_value = _mock_completion(
+        {
+            "mappings": [
+                {"index": 1, "canonical_line": "cash", "reasoning": "Bank balance"},
+                {
+                    "index": 2,
+                    "canonical_line": "trade_payables",
+                    "reasoning": "Creditors",
+                },
+            ]
+        }
+    )
+    sleep_calls: list[float] = []
+
+    results = apply_llm_tie_breaker(
+        unmapped,
+        openai_client=client,
+        sleep=sleep_calls.append,
+    )
+
+    assert results == [
+        MappingResult("1500", "Cash at bank", "cash", None, "llm"),
+        MappingResult("2100", "Trade creditors", "trade_payables", None, "llm"),
+    ]
+    assert sleep_calls == []
+
+    call_kwargs = client.chat.completions.create.call_args.kwargs
+    assert call_kwargs["model"] == "gpt-4o-mini"
+    assert call_kwargs["temperature"] == 0.1
+    assert call_kwargs["response_format"] == {"type": "json_object"}
+    assert call_kwargs["messages"][0] == {
+        "role": "system",
+        "content": MAPPING_TIE_BREAKER_SYSTEM,
+    }
+    user_content = call_kwargs["messages"][1]["content"]
+    assert "Code: 1500, Name: Cash at bank" in user_content
+    assert "Code: 2100, Name: Trade creditors" in user_content
+    assert "£" not in user_content
+    assert "confidence" not in user_content.lower()
+
+
+def test_tier4_unmapped_response_path() -> None:
+    unmapped = [MappingResult("9000", "Misc clearing", None, None, None)]
+    client = MagicMock()
+    client.chat.completions.create.return_value = _mock_completion(
+        {
+            "mappings": [
+                {
+                    "index": 1,
+                    "canonical_line": "unmapped",
+                    "reasoning": "Genuinely unclear",
+                }
+            ]
+        }
+    )
+
+    results = apply_llm_tie_breaker(unmapped, openai_client=client, sleep=lambda _: None)
+
+    assert results == [
+        MappingResult("9000", "Misc clearing", None, None, "llm"),
+    ]
+
+
+def test_tier4_retry_then_succeed() -> None:
+    unmapped = [MappingResult("1500", "Cash at bank", None, None, None)]
+    client = MagicMock()
+    client.chat.completions.create.side_effect = [
+        RuntimeError("temporary outage"),
+        _mock_completion(
+            {
+                "mappings": [
+                    {"index": 1, "canonical_line": "cash", "reasoning": "Cash account"}
+                ]
+            }
+        ),
+    ]
+    sleep_calls: list[float] = []
+
+    results = apply_llm_tie_breaker(
+        unmapped,
+        openai_client=client,
+        sleep=sleep_calls.append,
+    )
+
+    assert results == [MappingResult("1500", "Cash at bank", "cash", None, "llm")]
+    assert client.chat.completions.create.call_count == 2
+    assert sleep_calls == [1]
+
+
+def test_tier4_fallback_to_gpt4o_then_give_up_leaves_unmapped() -> None:
+    unmapped = [
+        MappingResult("1500", "Cash at bank", None, None, None),
+        MappingResult("3100", "Share capital", None, None, None),
+    ]
+    client = MagicMock()
+    client.chat.completions.create.side_effect = RuntimeError("openai unavailable")
+    sleep_calls: list[float] = []
+
+    results = apply_llm_tie_breaker(
+        unmapped,
+        openai_client=client,
+        sleep=sleep_calls.append,
+    )
+
+    assert results == list(unmapped)
+    assert all(result.method is None for result in results)
+    # 1 initial + 3 retries on gpt-4o-mini, then the same on gpt-4o
+    assert client.chat.completions.create.call_count == 8
+    models = [
+        call.kwargs["model"] for call in client.chat.completions.create.call_args_list
+    ]
+    assert models == ["gpt-4o-mini"] * 4 + ["gpt-4o"] * 4
+    assert sleep_calls == [1, 2, 4, 1, 2, 4]
+

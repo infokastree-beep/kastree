@@ -1,32 +1,48 @@
-"""Hybrid account mapper — Tiers 1–3 (exact, fuzzy, code-range).
+"""Hybrid account mapper — Tiers 1–4 (exact, fuzzy, code-range, LLM).
 
-Tier 4 (LLM tie-breaker) is intentionally not implemented here. Accounts that
-fall through all three deterministic tiers are returned with
-canonical_line=None, confidence=None, method=None so a later Tier 4 pass can
-pick them up.
+Tier 4 (LLM tie-breaker) runs only on accounts that fell through Tiers 1–3
+(method=None). On LLM outage after the mini→4o fallback chain, those accounts
+remain method=None rather than failing the whole mapping request.
 """
 
 from __future__ import annotations
 
+import json
+import logging
 import re
+import time
 import uuid
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Literal, Protocol, Sequence
+from typing import Any, Callable, Literal, Protocol, Sequence
 
+from openai import OpenAI
 from rapidfuzz.distance import Levenshtein
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.account_mapping import AccountMapping
+from app.services.llm import (
+    MAPPING_TIE_BREAKER_CANONICAL_LINES,
+    MAPPING_TIE_BREAKER_SYSTEM,
+)
 
-MappingMethod = Literal["exact", "fuzzy", "code_range"]
+logger = logging.getLogger(__name__)
+
+MappingMethod = Literal["exact", "fuzzy", "code_range", "llm"]
 
 FUZZY_THRESHOLD = Decimal("0.85")
 # Absorb float noise from rapidfuzz so equal Levenshtein scores stay tied.
 FUZZY_RATIO_TIE_TOLERANCE = Decimal("1e-9")
 CODE_RANGE_CONFIDENCE = Decimal("0.65")
 EXACT_CONFIDENCE = Decimal("1.00")
+
+LLM_PRIMARY_MODEL = "gpt-4o-mini"
+LLM_FALLBACK_MODEL = "gpt-4o"
+LLM_TEMPERATURE = 0.1
+# 1 initial attempt + 3 retries (Section 7.1: "3 retries with exponential backoff").
+LLM_MAX_ATTEMPTS = 4
+LLM_BACKOFF_SECONDS = (1, 2, 4)
 
 # Appendix C ranges that resolve to exactly one canonical line.
 UNAMBIGUOUS_CODE_RANGES: tuple[tuple[int, int, str], ...] = (
@@ -35,6 +51,8 @@ UNAMBIGUOUS_CODE_RANGES: tuple[tuple[int, int, str], ...] = (
     (6000, 6999, "operating_expenses"),
     (7000, 7999, "depreciation"),
 )
+
+SleepFn = Callable[[float], None]
 
 
 @dataclass(frozen=True)
@@ -97,10 +115,18 @@ def map_accounts_for_client(
     session: Session,
     client_id: uuid.UUID,
     accounts: Sequence[MappableAccount],
+    *,
+    openai_client: OpenAI | None = None,
+    sleep: SleepFn = time.sleep,
 ) -> list[MappingResult]:
-    """Map accounts for a client using prior confirmed mappings from the DB."""
+    """Map accounts for a client through Tiers 1–4."""
     prior = fetch_confirmed_mappings(session, client_id)
-    return map_accounts(accounts, prior)
+    return map_accounts_with_llm(
+        accounts,
+        prior,
+        openai_client=openai_client,
+        sleep=sleep,
+    )
 
 
 def map_accounts(
@@ -113,6 +139,42 @@ def map_accounts(
     for Tier 4 (LLM tie-breaker).
     """
     return [_map_one(account, prior_confirmed) for account in accounts]
+
+
+def map_accounts_with_llm(
+    accounts: Sequence[MappableAccount],
+    prior_confirmed: Sequence[PriorConfirmedMapping],
+    *,
+    openai_client: OpenAI | None = None,
+    sleep: SleepFn = time.sleep,
+) -> list[MappingResult]:
+    """Run Tiers 1–3, then Tier 4 LLM tie-breaker on any remaining unmapped accounts."""
+    results = map_accounts(accounts, prior_confirmed)
+    return apply_llm_tie_breaker(results, openai_client=openai_client, sleep=sleep)
+
+
+def apply_llm_tie_breaker(
+    results: Sequence[MappingResult],
+    *,
+    openai_client: OpenAI | None = None,
+    sleep: SleepFn = time.sleep,
+) -> list[MappingResult]:
+    """Apply Tier 4 to results with method=None; leave other results unchanged.
+
+    Never raises on LLM failure — exhausted fallbacks leave those accounts as
+    method=None (Section 7.1).
+    """
+    unmapped_indexes = [index for index, result in enumerate(results) if result.method is None]
+    if not unmapped_indexes:
+        return list(results)
+
+    unmapped = [results[index] for index in unmapped_indexes]
+    llm_mapped = _llm_map_batch(unmapped, openai_client=openai_client, sleep=sleep)
+
+    merged = list(results)
+    for index, mapped in zip(unmapped_indexes, llm_mapped, strict=True):
+        merged[index] = mapped
+    return merged
 
 
 def _map_one(
@@ -230,3 +292,134 @@ def _parse_account_code(source_code: str) -> int | None:
         return int(text)
     except ValueError:
         return None
+
+
+def _llm_map_batch(
+    unmapped: Sequence[MappingResult],
+    *,
+    openai_client: OpenAI | None,
+    sleep: SleepFn,
+) -> list[MappingResult]:
+    client = openai_client if openai_client is not None else OpenAI()
+    user_prompt = _build_tie_breaker_user_prompt(unmapped)
+
+    try:
+        payload = _complete_mapping_json(
+            client,
+            model=LLM_PRIMARY_MODEL,
+            user_prompt=user_prompt,
+            sleep=sleep,
+        )
+    except Exception as primary_error:
+        logger.warning(
+            "GPT-4o-mini mapping tie-breaker failed after retries: %s; falling back to GPT-4o",
+            primary_error,
+        )
+        try:
+            payload = _complete_mapping_json(
+                client,
+                model=LLM_FALLBACK_MODEL,
+                user_prompt=user_prompt,
+                sleep=sleep,
+            )
+        except Exception as fallback_error:
+            logger.error(
+                "GPT-4o mapping tie-breaker also failed after retries: %s; leaving accounts unmapped",
+                fallback_error,
+            )
+            return list(unmapped)
+
+    return _parse_llm_mappings(unmapped, payload)
+
+
+def _build_tie_breaker_user_prompt(unmapped: Sequence[MappingResult]) -> str:
+    lines = [
+        f"{index}. Code: {account.source_code}, Name: {account.source_name}"
+        for index, account in enumerate(unmapped, start=1)
+    ]
+    return "Map the following accounts:\n" + "\n".join(lines)
+
+
+def _complete_mapping_json(
+    client: OpenAI,
+    *,
+    model: str,
+    user_prompt: str,
+    sleep: SleepFn,
+) -> dict[str, Any]:
+    last_error: Exception | None = None
+    for attempt in range(LLM_MAX_ATTEMPTS):
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                temperature=LLM_TEMPERATURE,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": MAPPING_TIE_BREAKER_SYSTEM},
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+            content = response.choices[0].message.content
+            if not content:
+                raise ValueError("Empty LLM response content")
+            payload = json.loads(content)
+            if not isinstance(payload, dict) or "mappings" not in payload:
+                raise ValueError("LLM response missing 'mappings' key")
+            if not isinstance(payload["mappings"], list):
+                raise ValueError("LLM 'mappings' value is not a list")
+            return payload
+        except Exception as exc:
+            last_error = exc
+            if attempt < LLM_MAX_ATTEMPTS - 1:
+                sleep(LLM_BACKOFF_SECONDS[attempt])
+    assert last_error is not None
+    raise last_error
+
+
+def _parse_llm_mappings(
+    unmapped: Sequence[MappingResult],
+    payload: dict[str, Any],
+) -> list[MappingResult]:
+    by_index: dict[int, str] = {}
+    for entry in payload["mappings"]:
+        if not isinstance(entry, dict):
+            continue
+        raw_index = entry.get("index")
+        raw_line = entry.get("canonical_line")
+        if not isinstance(raw_index, int) or not isinstance(raw_line, str):
+            continue
+        by_index[raw_index] = raw_line.strip()
+
+    results: list[MappingResult] = []
+    for position, account in enumerate(unmapped, start=1):
+        if position not in by_index:
+            results.append(account)
+            continue
+
+        canonical_line = by_index[position]
+        if canonical_line not in MAPPING_TIE_BREAKER_CANONICAL_LINES:
+            results.append(account)
+            continue
+
+        if canonical_line == "unmapped":
+            results.append(
+                MappingResult(
+                    source_code=account.source_code,
+                    source_name=account.source_name,
+                    canonical_line=None,
+                    confidence=None,
+                    method="llm",
+                )
+            )
+            continue
+
+        results.append(
+            MappingResult(
+                source_code=account.source_code,
+                source_name=account.source_name,
+                canonical_line=canonical_line,
+                confidence=None,
+                method="llm",
+            )
+        )
+    return results
