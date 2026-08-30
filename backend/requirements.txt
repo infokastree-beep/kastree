@@ -31,6 +31,7 @@ resend==2.6.0
 
 # Data processing
 pandas==2.2.3
+rapidfuzz==3.10.1
 
 # Security / rate limiting
 slowapi==0.1.9
