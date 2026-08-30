@@ -208,6 +208,10 @@ def provisioned_org() -> Iterator[dict]:
             {"oid": str(data["org_id"])},
         )
         session.execute(
+            text("DELETE FROM subscription_events WHERE org_id = :oid"),
+            {"oid": str(data["org_id"])},
+        )
+        session.execute(
             text("DELETE FROM organisations WHERE id = :oid"),
             {"oid": str(data["org_id"])},
         )

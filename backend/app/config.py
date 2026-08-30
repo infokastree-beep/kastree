@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     export_file_ttl_days: int = 30
     export_signed_url_ttl_seconds: int = 3600
 
+    # Stripe billing (§4.5). Webhook signature verification uses stripe_webhook_secret.
+    stripe_secret_key: str | None = None
+    stripe_webhook_secret: str | None = None
+    stripe_price_id_starter: str | None = None
+    stripe_price_id_pro: str | None = None
+    stripe_price_id_scale: str | None = None
+
     class Config:
         env_file = ".env"
 
