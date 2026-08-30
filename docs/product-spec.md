@@ -265,7 +265,7 @@ The following are NOT in MVP scope. Do not build. Do not design data models for 
 | Negative balances in revenue/costs | Flag as anomaly in risk report. Do NOT block. Include in "Negative Cash/Bank" or "Anomalous Balance Direction" risk. |
 | Duplicate account names | Treat as separate if codes differ. Show both in mapping table with codes visible. |
 | Large files (>10MB) | Accept up to 50MB. Warning: "Large file detected. Processing may take longer." Chunked parsing. |
-| LLM timeout/failure | After 3 retries with exponential backoff, generate statements without AI commentary. Banner: "AI commentary temporarily unavailable. Statements are complete." Log error. |
+| LLM timeout/failure | After 4 total call attempts (1 initial + 3 retries, exponential backoff 1s/2s/4s), generate statements without AI commentary. Banner: "AI commentary temporarily unavailable. Statements are complete." Log error. |
 | Concurrent uploads | Queue per org. Max 3 concurrent processing jobs. Show queue position if limit reached. |
 | Duplicate upload (same period) | trial_balances has a UNIQUE(client_id, period_end) constraint (Section 9.1, added in v3.1) — a second upload for a period that already exists is rejected at the API layer with: "A trial balance for this period already exists for this client. Delete the existing one first, or choose a different period end date." This replaces the v3.0 file-hash duplicate check, which only caught identical files, not a genuinely different file uploaded for a period that's already been processed. |
 | User edits statement line item | Store override in statement_line_items with is_manual_override = TRUE, overridden_by_user_id, original_value. Include in audit log. |

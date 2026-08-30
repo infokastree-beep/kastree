@@ -314,7 +314,7 @@ Model Selection (v3.1: risk explanations added explicitly — previously only im
 
 -   Fallback chain: GPT-4o → GPT-4o-mini → empty response (never fail the request).
 
--   Retry Logic: 3 retries with exponential backoff (1s, 2s, 4s). On final failure, return empty commentary array. Never fail the whole request.
+-   Retry Logic: 4 total call attempts (1 initial + 3 retries) with exponential backoff (1s, 2s, 4s). On final failure, return empty commentary array. Never fail the whole request.
 
 -   Reasoning Display: LLM must provide reasoning field in JSON. UI shows this in tooltip. User can thumbs-up/thumbs-down.
 
