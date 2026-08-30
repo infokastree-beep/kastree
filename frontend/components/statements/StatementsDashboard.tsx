@@ -133,21 +133,42 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
 
       {statementsQuery.data ? (
         <>
-          <div className="flex gap-2 border-b border-stone-200">
-            {(["SOPL", "SOFP", "SOCIE"] as Tab[]).map((name) => (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex gap-2 border-b border-stone-200">
+              {(["SOPL", "SOFP", "SOCIE"] as Tab[]).map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => setTab(name)}
+                  className={`px-3 py-2 text-sm font-medium ${
+                    tab === name
+                      ? "border-b-2 border-stone-900 text-stone-900"
+                      : "text-stone-500 hover:text-stone-800"
+                  }`}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              {generateMutation.error ? (
+                <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                  {generateMutation.error instanceof Error
+                    ? generateMutation.error.message
+                    : "Regenerate failed"}
+                </p>
+              ) : null}
               <button
-                key={name}
                 type="button"
-                onClick={() => setTab(name)}
-                className={`px-3 py-2 text-sm font-medium ${
-                  tab === name
-                    ? "border-b-2 border-stone-900 text-stone-900"
-                    : "text-stone-500 hover:text-stone-800"
-                }`}
+                disabled={generateMutation.isPending}
+                onClick={() => generateMutation.mutate()}
+                className="rounded border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-900 disabled:opacity-50"
               >
-                {name}
+                {generateMutation.isPending
+                  ? "Regenerating…"
+                  : "Regenerate Statements"}
               </button>
-            ))}
+            </div>
           </div>
           {block ? (
             <StatementTable block={block} />
