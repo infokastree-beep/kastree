@@ -1,4 +1,8 @@
-"""Clerk webhook — user/org sync including first-signup RLS bootstrap."""
+"""Clerk webhook — user/org sync including first-signup RLS bootstrap.
+
+Tracked gap: Clerk payloads are not persisted (only structured logs). See
+docs/tracked-gaps.md — "Clerk webhook payload persistence".
+"""
 
 from __future__ import annotations
 
