@@ -164,6 +164,12 @@ def provisioned_org() -> Iterator[dict]:
         )
         session.execute(
             text(
+                "DELETE FROM archived_records WHERE org_id = :oid"
+            ),
+            {"oid": str(data["org_id"])},
+        )
+        session.execute(
+            text(
                 "DELETE FROM trial_balances WHERE client_id IN "
                 "(SELECT id FROM clients WHERE org_id = :oid)"
             ),
