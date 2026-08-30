@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -92,6 +93,14 @@ export function MappingReview({ tbId }: { tbId: string }) {
     [sortedMappings, selections],
   );
 
+  const unmappedCount = useMemo(
+    () =>
+      sortedMappings.filter(
+        (row) => (selections[row.id] ?? row.suggested_canonical_line) === "unmapped",
+      ).length,
+    [sortedMappings, selections],
+  );
+
   const confirmMutation = useMutation({
     mutationFn: async (rows: MappingItem[]) => {
       const currentSelections = selectionsRef.current;
@@ -144,6 +153,24 @@ export function MappingReview({ tbId }: { tbId: string }) {
     );
   }
 
+  if (statusQuery.data?.status === "failed") {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-semibold tracking-tight">Upload failed</h1>
+        <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {statusQuery.data.error_message ??
+            "This trial balance could not be parsed. Check the file format and try uploading again."}
+        </p>
+        <Link
+          href="/upload"
+          className="inline-block rounded bg-stone-900 px-4 py-2 text-sm font-medium text-white"
+        >
+          Back to upload
+        </Link>
+      </div>
+    );
+  }
+
   if (!mappingReady) {
     return (
       <div className="space-y-3">
@@ -183,6 +210,24 @@ export function MappingReview({ tbId }: { tbId: string }) {
   const mapped = sortedMappings.filter(
     (m) => (selections[m.id] ?? m.suggested_canonical_line) !== "unmapped",
   ).length;
+
+  if (total === 0) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-semibold tracking-tight">Review mappings</h1>
+        <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          No account rows were found in this trial balance. The file may be empty or
+          could not be parsed correctly.
+        </p>
+        <Link
+          href="/upload"
+          className="inline-block rounded bg-stone-900 px-4 py-2 text-sm font-medium text-white"
+        >
+          Upload a different file
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -259,10 +304,20 @@ export function MappingReview({ tbId }: { tbId: string }) {
         </p>
       ) : null}
 
+      {unmappedCount > 0 ? (
+        <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          {unmappedCount} account{unmappedCount === 1 ? "" : "s"} still unmapped.
+          Choose a canonical line for every row before confirming.
+        </p>
+      ) : null}
+
       <button
         type="button"
         disabled={
-          confirmMutation.isPending || total === 0 || !selectionsReady
+          confirmMutation.isPending ||
+          total === 0 ||
+          !selectionsReady ||
+          unmappedCount > 0
         }
         onClick={() => confirmMutation.mutate(sortedMappings)}
         className="rounded bg-stone-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"

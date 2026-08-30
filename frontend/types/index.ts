@@ -56,6 +56,7 @@ export interface StatusResponse {
   status: string;
   progress_pct: number;
   current_step: string | null;
+  error_message: string | null;
   jobs: Array<{
     job_type: string;
     status: string;

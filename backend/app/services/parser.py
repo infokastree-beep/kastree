@@ -11,6 +11,7 @@ from typing import BinaryIO, Literal
 
 import openpyxl
 import pandas as pd
+from zipfile import BadZipFile
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +182,13 @@ def _read_csv(content: bytes) -> pd.DataFrame:
 
 
 def _prepare_xlsx(content: bytes) -> bytes:
-    workbook = openpyxl.load_workbook(BytesIO(content), data_only=True)
+    try:
+        workbook = openpyxl.load_workbook(BytesIO(content), data_only=True)
+    except BadZipFile as exc:
+        raise ParseError(
+            "This file is not a valid Excel (.xlsx) workbook. "
+            "Export your trial balance as .xlsx or .csv from your accounting software."
+        ) from exc
     merged_row_ranges: list[str] = []
 
     for worksheet in workbook.worksheets:

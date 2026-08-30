@@ -154,6 +154,54 @@ async def test_confirm_overrides_code_range_suggestion(
 
 
 @pytest.mark.asyncio
+async def test_confirm_rejects_unmapped_canonical_line(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """Explicit confirm must not accept canonical_line=unmapped."""
+    org_id = provisioned_org["org_id"]
+    client_id = provisioned_org["client_id"]
+    headers = auth_headers(provisioned_org["token"])
+    tb_id, mapping_7000_id = _seed_tb_with_code_range_mapping(
+        org_id=org_id,
+        client_id=client_id,
+    )
+
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        mapping_4000 = session.scalar(
+            select(AccountMapping).where(
+                AccountMapping.client_id == client_id,
+                AccountMapping.source_code == "4000",
+            )
+        )
+        assert mapping_4000 is not None
+
+    response = await api_client.post(
+        f"/trial-balances/{tb_id}/mapping/confirm",
+        json={
+            "mappings": [
+                {
+                    "id": str(mapping_7000_id),
+                    "canonical_line": "interest_expense",
+                    "is_confirmed": True,
+                    "is_ignored": False,
+                },
+                {
+                    "id": str(mapping_4000.id),
+                    "canonical_line": "unmapped",
+                    "is_confirmed": True,
+                    "is_ignored": False,
+                },
+            ]
+        },
+        headers=headers,
+    )
+    assert response.status_code == 400
+    assert "unmapped" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
 async def test_confirm_empty_mappings_list_rejected(
     api_client: AsyncClient,
     provisioned_org: dict,

@@ -76,6 +76,7 @@ class StatusResponse(BaseModel):
     status: str
     progress_pct: int
     current_step: str | None = None
+    error_message: str | None = None
     jobs: list[JobStatusItem]
 
 
@@ -409,6 +410,7 @@ async def get_trial_balance_status(
         status=tb.status,
         progress_pct=progress_pct,
         current_step=current_step,
+        error_message=tb.error_message,
         jobs=[
             JobStatusItem(
                 job_type=job.job_type,
@@ -513,6 +515,11 @@ async def confirm_trial_balance_mapping(
                 raise HTTPException(
                     status_code=400,
                     detail="canonical_line is required for each mapping item",
+                )
+            if item.is_confirmed and not item.is_ignored and item.canonical_line == "unmapped":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Resolve all unmapped accounts before confirming. Choose a canonical line for every row.",
                 )
             mapping.canonical_line = item.canonical_line
             mapping.is_confirmed = item.is_confirmed
