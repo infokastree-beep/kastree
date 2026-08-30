@@ -10,6 +10,7 @@ import pytest
 from app.services.statements import (
     MappedStatementAccount,
     SocieSofpEquityMismatchError,
+    _compute_socie_rollforward,
     build_socie,
     build_sofp,
     build_sopl,
@@ -192,31 +193,35 @@ def test_sofp_groups_accounts_computes_subtotals_and_provenance() -> None:
     div_a = _acct("3200", net_balance="150.00", canonical_line="dividends")
     div_b = _acct("3210", net_balance="50.00", canonical_line="dividends")
 
+    accounts = [
+        ppe_a,
+        ppe_b,
+        intang_a,
+        intang_b,
+        inv_a,
+        inv_b,
+        recv_a,
+        recv_b,
+        cash_a,
+        cash_b,
+        pay_a,
+        pay_b,
+        acc_a,
+        acc_b,
+        loan_a,
+        loan_b,
+        sc_a,
+        sc_b,
+        re_a,
+        re_b,
+        div_a,
+        div_b,
+    ]
+    rollforward = _compute_socie_rollforward(accounts)
     lines = build_sofp(
-        [
-            ppe_a,
-            ppe_b,
-            intang_a,
-            intang_b,
-            inv_a,
-            inv_b,
-            recv_a,
-            recv_b,
-            cash_a,
-            cash_b,
-            pay_a,
-            pay_b,
-            acc_a,
-            acc_b,
-            loan_a,
-            loan_b,
-            sc_a,
-            sc_b,
-            re_a,
-            re_b,
-            div_a,
-            div_b,
-        ]
+        accounts,
+        retained_earnings_closing=rollforward.retained_earnings_closing_amount,
+        retained_earnings_source_ids=rollforward.retained_earnings_closing_ids,
     )
 
     assert [line.line_item_code for line in lines] == [
@@ -253,27 +258,28 @@ def test_sofp_groups_accounts_computes_subtotals_and_provenance() -> None:
     assert total_liabilities.amount == Decimal("4500.00")
 
     assert _by_code(lines, "share_capital").amount == Decimal("4000.00")
-    assert _by_code(lines, "retained_earnings").amount == Decimal("3000.00")
+    # Zero P&L: closing RE = opening 3_000 − dividends 200 = 2_800.
+    assert _by_code(lines, "retained_earnings").amount == Decimal("2800.00")
     dividends = _by_code(lines, "dividends")
     assert dividends.amount == Decimal("200.00")
     assert dividends.is_subtotal is False
     assert set(dividends.source_account_ids) == {div_a.id, div_b.id}
 
     total_equity = _by_code(lines, "total_equity")
-    assert total_equity.amount == Decimal("7000.00")
+    assert total_equity.amount == Decimal("6800.00")
     assert total_equity.is_subtotal is True
-    # Dividends shown separately; not folded into total_equity provenance or amount.
-    assert div_a.id not in total_equity.source_account_ids
-    assert div_b.id not in total_equity.source_account_ids
-    assert set(total_equity.source_account_ids) == {sc_a.id, sc_b.id, re_a.id, re_b.id}
+    # Closing RE provenance includes dividend accounts (they reduced closing RE);
+    # total_equity amount is still SC + closing RE only (dividends not double-counted).
+    assert set(total_equity.source_account_ids) == set(rollforward.total_equity_closing_ids)
 
 
 def test_sofp_total_equity_excludes_dividends_matching_validator_fixture() -> None:
-    """Raw TB SOFP (no closing-RE override) shows opening RE; excludes dividends.
+    """SOFP with opening RE on face matches Check 4 when profit is zero.
 
     Validator Check 4 builds equity as SC + opening RE + profit (still excluding
-    dividends). With zero P&L this fixture's Check 4 equity equals raw SOFP
-    total_equity = SC 5_000 + RE 3_000 = 8_000.
+    dividends). With zero P&L this fixture's Check 4 equity equals SOFP
+    total_equity = SC 5_000 + opening RE 3_000 = 8_000 when closing RE is
+    passed explicitly as the TB opening balance (no roll-forward deduction).
     """
     accounts = [
         _acct("1000", net_balance="10000.00", canonical_line="cash"),
@@ -282,8 +288,13 @@ def test_sofp_total_equity_excludes_dividends_matching_validator_fixture() -> No
         _acct("3100", net_balance="-3000.00", canonical_line="retained_earnings"),
         _acct("3200", net_balance="1000.00", canonical_line="dividends"),
     ]
+    re_account = accounts[3]
 
-    lines = build_sofp(accounts)
+    lines = build_sofp(
+        accounts,
+        retained_earnings_closing=Decimal("3000.00"),
+        retained_earnings_source_ids=[re_account.id],
+    )
 
     assert _by_code(lines, "cash").amount == Decimal("10000.00")
     assert _by_code(lines, "trade_payables").amount == Decimal("3000.00")
@@ -381,7 +392,7 @@ def test_compute_net_profit_matches_sopl_and_socie_profit_for_period() -> None:
 
 
 def test_socie_raises_when_total_equity_disagrees_with_sofp() -> None:
-    """SOCIE closing equity (7_000) must not silently match raw-TB SOFP (8_000)."""
+    """SOCIE closing equity (7_000) must not silently match a stale SOFP (8_000)."""
     accounts = [
         _acct("1000", net_balance="10000.00", canonical_line="cash"),
         _acct("2000", net_balance="-3000.00", canonical_line="trade_payables"),
@@ -390,7 +401,13 @@ def test_socie_raises_when_total_equity_disagrees_with_sofp() -> None:
         _acct("3200", net_balance="1000.00", canonical_line="dividends"),
     ]
     sopl_lines = build_sopl(accounts)
-    sofp_lines = build_sofp(accounts)  # raw RE 3_000 → total_equity 8_000
+    # Deliberately pass opening RE as closing (8_000 total equity) while SOCIE
+    # roll-forward deducts dividends and lands at 7_000.
+    sofp_lines = build_sofp(
+        accounts,
+        retained_earnings_closing=Decimal("3000.00"),
+        retained_earnings_source_ids=[accounts[3].id],
+    )
 
     with pytest.raises(SocieSofpEquityMismatchError) as exc_info:
         build_socie(

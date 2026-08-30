@@ -270,14 +270,14 @@ def build_sopl(accounts: Sequence[StatementAccount]) -> list[StatementLineItemRe
 def build_sofp(
     accounts: Sequence[StatementAccount],
     *,
-    retained_earnings_closing: Decimal | None = None,
-    retained_earnings_source_ids: Sequence[uuid.UUID] | None = None,
+    retained_earnings_closing: Decimal,
+    retained_earnings_source_ids: Sequence[uuid.UUID],
 ) -> list[StatementLineItemRecord]:
     """Build Statement of Financial Position line items in display order.
 
-    When *retained_earnings_closing* is supplied, the retained_earnings face line
-    and total_equity use that period-end closing balance (from SOCIE). Otherwise
-    the retained_earnings line reflects raw TB balances (pre-roll-forward).
+    The retained_earnings face line and total_equity always use the supplied
+    period-end closing balance (typically from :func:`_compute_socie_rollforward`).
+    Callers must pass an explicit closing RE — there is no raw-TB default.
     """
     grouped = _group_accounts(accounts)
     lines: list[StatementLineItemRecord] = []
@@ -319,18 +319,15 @@ def build_sofp(
     order += 1
     lines.append(share_capital)
 
-    if retained_earnings_closing is not None:
-        re_ids = list(retained_earnings_source_ids or [])
-        retained_earnings = StatementLineItemRecord(
-            line_item_code="retained_earnings",
-            line_item_name=LINE_ITEM_NAMES["retained_earnings"],
-            amount=_quantize(retained_earnings_closing),
-            is_subtotal=False,
-            display_order=order,
-            source_account_ids=re_ids,
-        )
-    else:
-        retained_earnings = _leaf_line("retained_earnings", grouped, order)
+    re_ids = list(retained_earnings_source_ids)
+    retained_earnings = StatementLineItemRecord(
+        line_item_code="retained_earnings",
+        line_item_name=LINE_ITEM_NAMES["retained_earnings"],
+        amount=_quantize(retained_earnings_closing),
+        is_subtotal=False,
+        display_order=order,
+        source_account_ids=re_ids,
+    )
     order += 1
     lines.append(retained_earnings)
 
