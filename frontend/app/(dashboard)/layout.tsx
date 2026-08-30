@@ -17,6 +17,9 @@ export default function DashboardGroupLayout({
           <div className="flex items-center gap-6">
             <ProductSwitcher />
             <nav className="flex gap-4 text-sm text-stone-600">
+              <Link href="/clients" className="hover:text-stone-900">
+                Clients
+              </Link>
               <Link href="/upload" className="hover:text-stone-900">
                 Upload
               </Link>

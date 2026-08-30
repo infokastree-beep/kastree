@@ -2,8 +2,24 @@
 
 export interface IClient {
   id: string;
+  org_id: string;
   name: string;
+  company_number: string | null;
+  industry: string | null;
   functional_currency: string;
+  materiality_threshold_pct: string;
+  materiality_threshold_abs: string;
+  is_deleted: boolean;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClientCreateRequest {
+  name: string;
+  company_number?: string | null;
+  industry?: string | null;
+  functional_currency?: string;
 }
 
 export interface ClientListResponse {

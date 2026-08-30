@@ -27,3 +27,11 @@ export async function estimateCsvRowCount(file: File): Promise<number | null> {
   // Subtract header row when present.
   return Math.max(0, lines.length - 1);
 }
+
+export function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}

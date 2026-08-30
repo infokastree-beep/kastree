@@ -34,3 +34,7 @@ export const CANONICAL_LINES: readonly string[] = [
 
 export const ACCEPTED_UPLOAD_EXTENSIONS = [".xlsx", ".csv"] as const;
 export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+
+/** Supported functional currencies for client + upload forms. */
+export const FUNCTIONAL_CURRENCIES = ["GBP", "EUR", "USD"] as const;
+export type FunctionalCurrency = (typeof FUNCTIONAL_CURRENCIES)[number];
