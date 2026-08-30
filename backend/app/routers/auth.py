@@ -5,10 +5,10 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-import logging
 import uuid
 from typing import Any
 
+import structlog
 from fastapi import APIRouter, Header, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
@@ -22,7 +22,7 @@ from app.services.org_provisioning import (
     provision_first_signup,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -113,22 +113,57 @@ async def clerk_webhook(
     if not isinstance(data, dict):
         raise HTTPException(status_code=400, detail="Invalid webhook data")
 
+    log = logger.bind(request_id=svix_id, event_type=event_type)
+
     if event_type in ("organization.created", "organisation.created"):
-        return _handle_organization_created(data)
+        response = _handle_organization_created(data, log=log)
+        _log_webhook_processed(log, response)
+        return response
     if event_type in (
         "organizationMembership.created",
         "organizationMembership.updated",
     ):
-        return _handle_membership(data)
+        response = _handle_membership(data, log=log)
+        _log_webhook_processed(log, response)
+        return response
     if event_type == "user.updated":
-        return ClerkWebhookResponse(status="ignored", detail="user.updated deferred")
+        response = ClerkWebhookResponse(status="ignored", detail="user.updated deferred")
+        log.info(
+            "clerk_webhook_ignored",
+            status=response.status,
+            detail=response.detail,
+        )
+        return response
 
-    return ClerkWebhookResponse(
+    response = ClerkWebhookResponse(
         status="ignored", detail=f"Unhandled event type: {event_type}"
+    )
+    log.warning(
+        "clerk_webhook_unhandled",
+        status=response.status,
+        detail=response.detail,
+    )
+    return response
+
+
+def _log_webhook_processed(
+    log: structlog.stdlib.BoundLogger,
+    response: ClerkWebhookResponse,
+) -> None:
+    log.info(
+        "clerk_webhook_processed",
+        status=response.status,
+        org_id=response.organisation_id,
+        user_id=response.user_id,
+        detail=response.detail,
     )
 
 
-def _handle_organization_created(data: dict[str, Any]) -> ClerkWebhookResponse:
+def _handle_organization_created(
+    data: dict[str, Any],
+    *,
+    log: structlog.stdlib.BoundLogger,
+) -> ClerkWebhookResponse:
     """First organisation for a brand-new signup — RLS bootstrap in one transaction."""
     clerk_org_id = str(data["id"])
     org_name = str(data.get("name") or "New Organisation")
@@ -139,6 +174,8 @@ def _handle_organization_created(data: dict[str, Any]) -> ClerkWebhookResponse:
             detail="organization.created requires data.created_by for first-user provisioning",
         )
     email = _owner_email(data)
+    clerk_user_id = str(created_by)
+    log = log.bind(clerk_org_id=clerk_org_id, clerk_user_id=clerk_user_id)
 
     with SyncSessionLocal() as session:
         try:
@@ -146,24 +183,38 @@ def _handle_organization_created(data: dict[str, Any]) -> ClerkWebhookResponse:
                 session,
                 clerk_org_id=clerk_org_id,
                 org_name=org_name,
-                clerk_user_id=str(created_by),
+                clerk_user_id=clerk_user_id,
                 email=email,
                 role="owner",
             )
             session.commit()
         except Exception:
             session.rollback()
-            logger.exception("Failed to provision organisation %s", clerk_org_id)
+            log.exception(
+                "clerk_webhook_organization_created_failed",
+                clerk_org_id=clerk_org_id,
+            )
             raise
 
+        outcome = "created" if provisioned.created else "exists"
+        log.info(
+            "clerk_webhook_organization_created",
+            org_id=str(provisioned.organisation.id),
+            user_id=str(provisioned.user.id),
+            outcome=outcome,
+        )
         return ClerkWebhookResponse(
-            status="created" if provisioned.created else "exists",
+            status=outcome,
             organisation_id=str(provisioned.organisation.id),
             user_id=str(provisioned.user.id),
         )
 
 
-def _handle_membership(data: dict[str, Any]) -> ClerkWebhookResponse:
+def _handle_membership(
+    data: dict[str, Any],
+    *,
+    log: structlog.stdlib.BoundLogger,
+) -> ClerkWebhookResponse:
     """Additional member sync — derive org UUID from Clerk org id, SET LOCAL, insert."""
     org_payload = data.get("organization") or {}
     public_user = data.get("public_user_data") or {}
@@ -183,15 +234,22 @@ def _handle_membership(data: dict[str, Any]) -> ClerkWebhookResponse:
         role = "viewer"
 
     org_id = organisation_id_for_clerk_org(clerk_org_id)
+    log = log.bind(clerk_org_id=clerk_org_id, clerk_user_id=clerk_user_id, org_id=str(org_id))
 
     with SyncSessionLocal() as session:
         set_rls_org_id(session, org_id)
         org = session.get(Organisation, org_id)
         if org is None:
-            return ClerkWebhookResponse(
+            response = ClerkWebhookResponse(
                 status="skipped",
                 detail="Organisation not provisioned yet; wait for organization.created",
             )
+            log.info(
+                "clerk_webhook_membership_skipped",
+                status=response.status,
+                detail=response.detail,
+            )
+            return response
 
         existing_user = session.scalar(
             select(User).where(
@@ -200,11 +258,17 @@ def _handle_membership(data: dict[str, Any]) -> ClerkWebhookResponse:
             )
         )
         if existing_user is not None:
-            return ClerkWebhookResponse(
+            response = ClerkWebhookResponse(
                 status="exists",
                 organisation_id=str(org_id),
                 user_id=str(existing_user.id),
             )
+            log.info(
+                "clerk_webhook_membership_exists",
+                status=response.status,
+                user_id=str(existing_user.id),
+            )
+            return response
 
         user = User(
             id=uuid.uuid5(uuid.NAMESPACE_URL, f"findraft:user:{clerk_user_id}"),
@@ -215,6 +279,12 @@ def _handle_membership(data: dict[str, Any]) -> ClerkWebhookResponse:
         )
         session.add(user)
         session.commit()
+        log.info(
+            "clerk_webhook_membership_created",
+            status="created",
+            user_id=str(user.id),
+            role=role,
+        )
         return ClerkWebhookResponse(
             status="created",
             organisation_id=str(org_id),

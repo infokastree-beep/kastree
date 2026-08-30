@@ -1,9 +1,12 @@
 """FastAPI application factory."""
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.logging_config import configure_logging
 from app.routers import (
     archived_records,
     auth,
@@ -18,7 +21,13 @@ from app.routers import (
     webhooks,
 )
 
-app = FastAPI(title="FinDraft API", version="0.1.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    configure_logging()
+    yield
+
+
+app = FastAPI(title="FinDraft API", version="0.1.0", lifespan=lifespan)
 
 _origins = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
 app.add_middleware(
