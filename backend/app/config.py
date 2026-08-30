@@ -9,11 +9,14 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://findraft:local@localhost/findraft_dev"
     database_url_sync: str = "postgresql://findraft:local@localhost/findraft_dev"
 
-    # Clerk — JWT verification (HS256 local/test secret; production uses Clerk JWKS).
+    # Clerk — production/request auth verifies session JWTs via JWKS (RS256 only).
     clerk_secret_key: str | None = None
     clerk_publishable_key: str | None = None
     clerk_webhook_secret: str | None = None
-    # Shared HS256 secret for issuing/verifying Bearer tokens in tests and local MVP.
+    # JWKS URL for Clerk RS256. When unset, derived from clerk_publishable_key.
+    clerk_jwks_url: str | None = None
+    # HS256 secret used ONLY by pytest (decode_test_hs256_token / make_access_token).
+    # Never accepted by the live request auth path (decode_clerk_rs256_token).
     auth_jwt_secret: str = "findraft-dev-jwt-secret-change-me"
     auth_jwt_algorithm: str = "HS256"
 

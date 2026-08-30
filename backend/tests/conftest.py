@@ -51,6 +51,23 @@ def _force_rls_on_all_tables() -> None:
         session.commit()
 
 
+@pytest.fixture(autouse=True)
+def _patch_request_auth_to_test_hs256(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Route request auth through HS256 test tokens for the ASGI suite only.
+
+    Production ``decode_access_token`` is RS256/Clerk JWKS only. Tests mint
+    HS256 tokens via ``make_access_token`` and swap the entry point here so
+    ``get_auth_context`` never needs a live JWKS. This patch does not exist
+    outside pytest.
+    """
+    from app.dependencies import decode_test_hs256_token
+
+    monkeypatch.setattr(
+        "app.dependencies.decode_access_token",
+        decode_test_hs256_token,
+    )
+
+
 def make_access_token(
     *,
     clerk_user_id: str,
