@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from datetime import date, datetime, timezone
 from typing import Any
 
@@ -44,6 +45,11 @@ def canonical_json_bytes(payload: dict[str, Any]) -> bytes:
 
 def sha256_hex(payload: dict[str, Any]) -> str:
     return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
+
+
+def verify_archive_hash(archived_data: dict[str, Any], archive_hash: str) -> bool:
+    """Recompute SHA-256 of archived_data and compare to stored archive_hash (§10.2)."""
+    return sha256_hex(archived_data) == archive_hash
 
 
 def client_snapshot(client: Client) -> dict[str, Any]:

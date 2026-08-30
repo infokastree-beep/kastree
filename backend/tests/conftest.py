@@ -149,6 +149,15 @@ def provisioned_org() -> Iterator[dict]:
         )
         session.execute(
             text(
+                "DELETE FROM commentary_feedback WHERE variance_id IN "
+                "(SELECT id FROM variance_analyses WHERE tb_id IN "
+                "(SELECT id FROM trial_balances WHERE client_id IN "
+                "(SELECT id FROM clients WHERE org_id = :oid)))"
+            ),
+            {"oid": str(data["org_id"])},
+        )
+        session.execute(
+            text(
                 "DELETE FROM variance_analyses WHERE tb_id IN "
                 "(SELECT id FROM trial_balances WHERE client_id IN "
                 "(SELECT id FROM clients WHERE org_id = :oid))"
@@ -201,6 +210,10 @@ def provisioned_org() -> Iterator[dict]:
         )
         session.execute(
             text("DELETE FROM clients WHERE org_id = :oid"),
+            {"oid": str(data["org_id"])},
+        )
+        session.execute(
+            text("DELETE FROM notifications WHERE org_id = :oid"),
             {"oid": str(data["org_id"])},
         )
         session.execute(
