@@ -1,8 +1,13 @@
-"""FastAPI app factory. Implementation pending."""
+"""FastAPI application factory."""
 
 from fastapi import FastAPI
 
+from app.routers import auth, trial_balances
+
 app = FastAPI(title="FinDraft API", version="0.1.0")
+
+app.include_router(auth.router)
+app.include_router(trial_balances.router)
 
 
 @app.get("/health")
