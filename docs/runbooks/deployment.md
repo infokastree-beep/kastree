@@ -101,3 +101,7 @@ session GUC (an earlier draft did; it was caught in review and rejected).
 Browser calls hit FastAPI directly at `NEXT_PUBLIC_API_BASE_URL`. Set backend `CORS_ORIGINS` to the frontend origin(s), comma-separated (default includes `http://127.0.0.1:43123` and `http://localhost:43123`). No wildcards in production (Product Spec §12).
 
 For Clerk session JWTs, set `CLERK_PUBLISHABLE_KEY` (or `CLERK_JWKS_URL`) on the API so RS256 verification works; local tests continue to use HS256 `AUTH_JWT_SECRET`.
+
+## Local / dev backend process
+
+Run **one** uvicorn instance per environment during dev and testing (e.g. `uvicorn app.main:app --reload` on a single port); a second process without `--reload` will serve stale code and write confusing validation or statement results while the reloaded instance has the fix.
