@@ -17,6 +17,12 @@ import type {
 
 const MAPPING_STATUSES = new Set(["pending", "parsing", "mapping"]);
 
+function isAutoMappingComplete(jobs: StatusResponse["jobs"]): boolean {
+  const parse = jobs.find((job) => job.job_type === "parse");
+  const map = jobs.find((job) => job.job_type === "map");
+  return parse?.status === "complete" && map?.status === "complete";
+}
+
 export function MappingReview({ tbId }: { tbId: string }) {
   const router = useRouter();
   const { getToken } = useAuth();
@@ -27,15 +33,18 @@ export function MappingReview({ tbId }: { tbId: string }) {
     queryFn: () =>
       apiFetch<StatusResponse>(`/trial-balances/${tbId}/status`, { getToken }),
     refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      if (!status || MAPPING_STATUSES.has(status)) return 1500;
-      return false;
+      const data = query.state.data;
+      if (!data) return 1500;
+      if (isAutoMappingComplete(data.jobs)) return false;
+      if (!MAPPING_STATUSES.has(data.status)) return false;
+      return 1500;
     },
   });
 
   const mappingReady =
     Boolean(statusQuery.data) &&
-    !MAPPING_STATUSES.has(statusQuery.data?.status ?? "pending");
+    (isAutoMappingComplete(statusQuery.data.jobs) ||
+      !MAPPING_STATUSES.has(statusQuery.data?.status ?? "pending"));
 
   const mappingQuery = useQuery({
     queryKey: ["tb-mapping", tbId],

@@ -111,7 +111,8 @@ def run_parse_and_map_job(
             map_job.status = "complete"
             map_job.progress_pct = 100
             map_job.completed_at = _utcnow()
-            tb.status = "mapping"
+            map_job.step = "Mapping complete — ready for review"
+            # TB stays in "mapping" until the user confirms (product state machine).
             session.commit()
         except Exception as exc:
             session.rollback()
