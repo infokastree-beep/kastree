@@ -187,16 +187,40 @@ def test_balance_sheet_balance_passes() -> None:
 
 
 def test_balance_sheet_balance_fails() -> None:
+    """Assets exceed SC + opening RE + profit — no P&L line explains the gap."""
     accounts = [
-        _acct("1000", "Cash", debit="10000.00", canonical_line="cash"),
+        _acct("1000", "Cash", debit="11000.00", canonical_line="cash"),
         _acct("2000", "Payables", credit="4000.00", canonical_line="trade_payables"),
         _acct("3000", "Share capital", credit="5000.00", canonical_line="share_capital"),
-        _acct("4000", "Sales", credit="1000.00", canonical_line="revenue"),
+        _acct("9999", "Suspense", credit="2000.00", canonical_line="unmapped"),
     ]
     check = _by_name(validate_trial_balance(accounts), "balance_sheet_balance")
     assert check.passed is False
     assert check.details is not None
-    assert check.details["difference"] == "1000.00"
+    assert check.details["difference"] == "2000.00"
+
+
+def test_balance_sheet_balance_passes_with_open_pnl_and_zero_dividends() -> None:
+    """False-positive regression: open P&L must not fail balance_sheet_balance.
+
+    Same fixture as test_net_assets_passes_with_open_pnl_and_zero_dividends.
+    Revenue 5_000 − CoS 2_000 − opex 1_000 = profit 2_000.
+    Assets 12_000 == payables 3_000 + SC 5_000 + opening RE 2_000 + profit 2_000.
+    """
+    accounts = [
+        _acct("1000", "Cash", debit="12000.00", canonical_line="cash"),
+        _acct("2000", "Payables", credit="3000.00", canonical_line="trade_payables"),
+        _acct("3000", "Share capital", credit="5000.00", canonical_line="share_capital"),
+        _acct("3100", "Retained earnings", credit="2000.00", canonical_line="retained_earnings"),
+        _acct("4000", "Revenue", credit="5000.00", canonical_line="revenue"),
+        _acct("5000", "Cost of sales", debit="2000.00", canonical_line="cost_of_sales"),
+        _acct("6000", "Operating expenses", debit="1000.00", canonical_line="operating_expenses"),
+    ]
+    results = validate_trial_balance(accounts)
+    balance_sheet = _by_name(results, "balance_sheet_balance")
+    assert balance_sheet.passed is True
+    assert balance_sheet.details is None
+    assert _by_name(results, "net_assets").passed is True
 
 
 def test_retained_earnings_rollforward_passes() -> None:

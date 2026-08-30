@@ -31,18 +31,10 @@ LIABILITY_LINES: frozenset[str] = frozenset(
         "loans",
     }
 )
-# Full equity side of A = L + E (includes dividends debit reducing equity).
-EQUITY_LINES_BALANCE_SHEET: frozenset[str] = frozenset(
-    {
-        "share_capital",
-        "retained_earnings",
-        "dividends",
-    }
-)
 # SOFP "total equity" for the net-assets cross-check starts from capital + opening
 # RE, then adds current-period profit (P&L still open on the TB). Dividends stay
 # excluded so this check remains independent of balance_sheet_balance — open
-# Dividends still fail net_assets by exactly the dividend amount.
+# dividends still fail net_assets by exactly the dividend amount.
 EQUITY_LINES_SOFP: frozenset[str] = frozenset(
     {
         "share_capital",
@@ -151,7 +143,18 @@ def _total_liabilities(accounts: Sequence[MappedAccount]) -> Decimal:
 
 
 def _total_equity_balance_sheet(accounts: Sequence[MappedAccount]) -> Decimal:
-    return _credit_normal_total(accounts, EQUITY_LINES_BALANCE_SHEET)
+    """Closing equity for Check 2: SC + opening RE + period profit + dividends.
+
+    Dividends are debit-normal contra-equity (credit-normal sum reduces equity).
+    Period profit uses :func:`compute_net_profit` — the same function as Check 3,
+    Check 4, SOPL, and SOCIE. Without it, open P&L false-fails Check 2 the way
+    Check 4 did before the net_assets fix.
+    """
+    return (
+        _credit_normal_total(accounts, EQUITY_LINES_SOFP)
+        + compute_net_profit(accounts)
+        + _credit_normal_total(accounts, frozenset({"dividends"}))
+    )
 
 
 def _total_equity_sofp(accounts: Sequence[MappedAccount]) -> Decimal:
@@ -204,6 +207,7 @@ def _check_tb_integrity(accounts: Sequence[MappedAccount]) -> ValidationCheck:
 def _check_balance_sheet_balance(accounts: Sequence[MappedAccount]) -> ValidationCheck:
     assets = _total_assets(accounts)
     liabilities = _total_liabilities(accounts)
+    # SC + opening RE + compute_net_profit(accounts) + dividends (contra-equity).
     equity = _total_equity_balance_sheet(accounts)
     right_hand_side = liabilities + equity
     difference = abs(assets - right_hand_side)
