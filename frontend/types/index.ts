@@ -29,6 +29,21 @@ export interface ClientListResponse {
   offset: number;
 }
 
+export interface TrialBalanceListItem {
+  id: string;
+  client_id: string;
+  period_end: string;
+  status: string;
+  created_at: string;
+}
+
+export interface TrialBalanceListResponse {
+  items: TrialBalanceListItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface UploadAcceptedResponse {
   tb_id: string;
   job_id: string;

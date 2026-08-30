@@ -423,3 +423,95 @@ async def test_cross_org_trial_balance_returns_404_not_403(
             {"oid": str(other_org_id)},
         )
         session.commit()
+
+
+@pytest.mark.asyncio
+async def test_list_trial_balances_for_client(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    headers = auth_headers(provisioned_org["token"])
+    client_id = provisioned_org["client_id"]
+    files = {
+        "file": (
+            "tb.xlsx",
+            balanced_tb_xlsx_bytes(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    }
+    upload = await api_client.post(
+        "/trial-balances/upload",
+        data={
+            "client_id": str(client_id),
+            "period_end": "2026-07-31",
+            "currency": "GBP",
+        },
+        files=files,
+        headers=headers,
+    )
+    assert upload.status_code == 202, upload.text
+    tb_id = upload.json()["tb_id"]
+
+    listed = await api_client.get(
+        f"/trial-balances?client_id={client_id}",
+        headers=headers,
+    )
+    assert listed.status_code == 200, listed.text
+    body = listed.json()
+    assert body["total"] >= 1
+    assert any(item["id"] == tb_id for item in body["items"])
+    row = next(item for item in body["items"] if item["id"] == tb_id)
+    assert row["period_end"] == "2026-07-31"
+    assert row["status"] in {
+        "pending",
+        "parsing",
+        "mapping",
+        "validating",
+        "generating",
+        "analysing",
+        "complete",
+        "failed",
+    }
+    assert "created_at" in row
+
+
+@pytest.mark.asyncio
+async def test_list_trial_balances_cross_org_client_404(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    suffix = uuid.uuid4().hex[:10]
+    clerk_org_id = f"org_other_{suffix}"
+    clerk_user_id = f"user_other_{suffix}"
+    with SyncSessionLocal() as session:
+        other = provision_first_signup(
+            session,
+            clerk_org_id=clerk_org_id,
+            org_name="Other Org",
+            clerk_user_id=clerk_user_id,
+            email=f"other-{suffix}@example.com",
+        )
+        session.commit()
+        other_org_id = other.organisation.id
+
+    token_b = make_access_token(
+        clerk_user_id=clerk_user_id,
+        clerk_org_id=clerk_org_id,
+        org_uuid=other_org_id,
+    )
+    response = await api_client.get(
+        f"/trial-balances?client_id={provisioned_org['client_id']}",
+        headers=auth_headers(token_b),
+    )
+    assert response.status_code == 404
+
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, other_org_id)
+        session.execute(
+            text("DELETE FROM users WHERE org_id = :oid"), {"oid": str(other_org_id)}
+        )
+        session.execute(
+            text("DELETE FROM organisations WHERE id = :oid"),
+            {"oid": str(other_org_id)},
+        )
+        session.commit()

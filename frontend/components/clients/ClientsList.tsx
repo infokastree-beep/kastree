@@ -71,12 +71,19 @@ export function ClientsList() {
             <tbody>
               {clients.map((client) => (
                 <tr key={client.id} className="border-b border-stone-100">
-                  <td className="px-3 py-2 font-medium">{client.name}</td>
-                  <td className="px-3 py-2 font-mono text-xs">
-                    {client.functional_currency}
-                  </td>
-                  <td className="px-3 py-2 text-stone-600">
-                    {formatDateTime(client.created_at)}
+                  <td colSpan={3} className="p-0">
+                    <Link
+                      href={`/clients/${client.id}`}
+                      className="grid grid-cols-3 gap-4 px-3 py-2 hover:bg-stone-50"
+                    >
+                      <span className="font-medium">{client.name}</span>
+                      <span className="font-mono text-xs">
+                        {client.functional_currency}
+                      </span>
+                      <span className="text-stone-600">
+                        {formatDateTime(client.created_at)}
+                      </span>
+                    </Link>
                   </td>
                 </tr>
               ))}

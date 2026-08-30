@@ -15,11 +15,12 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
     UploadFile,
     status,
 )
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -166,6 +167,29 @@ class StatementsGenerateResponse(BaseModel):
     tb_id: uuid.UUID
     status: str
     statements: list[StatementBlockResponse]
+
+
+class TrialBalanceListItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    client_id: uuid.UUID
+    period_end: date
+    status: str
+    created_at: datetime
+
+
+class TrialBalanceListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[TrialBalanceListItem]
+    total: int
+    limit: int
+    offset: int
+
+
+_DEFAULT_TB_PAGE = 20
+_MAX_TB_PAGE = 100
 
 
 # --- helpers -----------------------------------------------------------------
@@ -325,6 +349,43 @@ async def upload_trial_balance(
         job_id=parse_job.id,
         status="pending",
         message="Upload accepted. Processing will begin shortly.",
+    )
+
+
+@router.get("", response_model=TrialBalanceListResponse)
+async def list_trial_balances(
+    client_id: Annotated[uuid.UUID, Query()],
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    limit: Annotated[int, Query(ge=1, le=_MAX_TB_PAGE)] = _DEFAULT_TB_PAGE,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> TrialBalanceListResponse:
+    """List trial balances for a client (paginated). Cross-org client_id → 404."""
+    await aset_rls_org_id(session, auth.org_id)
+    await _get_owned_client(session, client_id=client_id, org_id=auth.org_id)
+
+    base = select(TrialBalance).where(TrialBalance.client_id == client_id)
+    total = await session.scalar(select(func.count()).select_from(base.subquery()))
+    result = await session.execute(
+        base.order_by(TrialBalance.period_end.desc(), TrialBalance.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    items = list(result.scalars().all())
+    return TrialBalanceListResponse(
+        items=[
+            TrialBalanceListItem(
+                id=tb.id,
+                client_id=tb.client_id,
+                period_end=tb.period_end,
+                status=tb.status,
+                created_at=tb.created_at,
+            )
+            for tb in items
+        ],
+        total=int(total or 0),
+        limit=limit,
+        offset=offset,
     )
 
 
