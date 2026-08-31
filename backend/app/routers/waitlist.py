@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+import uuid
+from datetime import timedelta
+
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 
+from app.config import settings
 from app.db import SyncSessionLocal
 from app.models.waitlist_signup import WaitlistSignup
 from app.schemas.waitlist import WaitlistSignupRequest, WaitlistSignupResponse
+from app.services.rate_limit import enforce_rate_limit
 
 router = APIRouter(tags=["waitlist"])
 
@@ -18,10 +23,20 @@ router = APIRouter(tags=["waitlist"])
     response_model=WaitlistSignupResponse,
 )
 async def create_waitlist_signup(
+    request: Request,
     body: WaitlistSignupRequest,
 ) -> WaitlistSignupResponse:
     """Record a public waitlist signup. No authentication required."""
+    enforce_rate_limit(
+        request,
+        key_prefix="waitlist",
+        max_requests=settings.waitlist_rate_limit_per_ip_per_hour,
+        window=timedelta(hours=1),
+    )
+
+    signup_id = uuid.uuid4()
     signup = WaitlistSignup(
+        id=signup_id,
         name=body.name.strip(),
         email=body.email.strip().lower(),
         firm=body.firm.strip(),
@@ -35,7 +50,6 @@ async def create_waitlist_signup(
         session.add(signup)
         try:
             session.flush()
-            signup_id = signup.id
             session.commit()
         except IntegrityError as exc:
             session.rollback()

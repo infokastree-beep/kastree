@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     stripe_price_id_pro: str | None = None
     stripe_price_id_scale: str | None = None
 
+    # Public POST /waitlist — per-IP cap (in-memory, process-local).
+    waitlist_rate_limit_per_ip_per_hour: int = 10
+
     class Config:
         env_file = ".env"
 

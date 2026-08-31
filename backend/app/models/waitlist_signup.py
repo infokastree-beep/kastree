@@ -1,9 +1,9 @@
 """Public marketing waitlist signups — no org_id; insert-only via /waitlist."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Index, String, Text, func
+from sqlalchemy import DateTime, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -12,7 +12,11 @@ from app.models.base import Base
 
 class WaitlistSignup(Base):
     __tablename__ = "waitlist_signups"
-    __table_args__ = (Index("idx_waitlist_signups_email", "email"),)
+    __table_args__ = (
+        Index("idx_waitlist_signups_email", "email"),
+        # No SELECT RLS policy exists — disable RETURNING so INSERT policy alone suffices.
+        {"implicit_returning": False},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -24,5 +28,7 @@ class WaitlistSignup(Base):
     approx_client_count: Mapped[str | None] = mapped_column(String, nullable=True)
     pain_point: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
     )

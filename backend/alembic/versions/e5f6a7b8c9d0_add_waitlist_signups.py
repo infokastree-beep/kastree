@@ -37,6 +37,7 @@ def upgrade() -> None:
     op.create_index("idx_waitlist_signups_email", "waitlist_signups", ["email"])
 
     op.execute("ALTER TABLE waitlist_signups ENABLE ROW LEVEL SECURITY")
+    op.execute("ALTER TABLE waitlist_signups FORCE ROW LEVEL SECURITY")
     op.execute(
         """
         CREATE POLICY waitlist_signups_public_insert ON waitlist_signups
@@ -50,5 +51,6 @@ def downgrade() -> None:
     op.execute(
         "DROP POLICY IF EXISTS waitlist_signups_public_insert ON waitlist_signups"
     )
+    op.execute("ALTER TABLE waitlist_signups NO FORCE ROW LEVEL SECURITY")
     op.drop_index("idx_waitlist_signups_email", table_name="waitlist_signups")
     op.drop_table("waitlist_signups")

@@ -46,6 +46,7 @@ def _force_rls_on_all_tables() -> None:
         "processing_jobs",
         "statement_line_items",
         "commentary_feedback",
+        "waitlist_signups",
     )
     with SyncSessionLocal() as session:
         for table in tables:
