@@ -19,6 +19,7 @@ from app.routers import (
     risk,
     trial_balances,
     variance,
+    waitlist,
     webhooks,
 )
 
@@ -45,6 +46,7 @@ app.include_router(companies.router)
 app.include_router(organisations.router)
 app.include_router(trial_balances.router)
 app.include_router(variance.router)
+app.include_router(waitlist.router)
 app.include_router(risk.router)
 app.include_router(export.trial_balances_router)
 app.include_router(export.exports_router)

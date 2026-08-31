@@ -57,10 +57,11 @@ export function MappingReview({ tbId }: { tbId: string }) {
     },
   });
 
-  const mappingReady =
-    Boolean(statusQuery.data) &&
-    (isAutoMappingComplete(statusQuery.data.jobs) ||
-      !MAPPING_STATUSES.has(statusQuery.data?.status ?? "pending"));
+  const statusData = statusQuery.data;
+  const mappingReady = statusData
+    ? isAutoMappingComplete(statusData.jobs) ||
+      !MAPPING_STATUSES.has(statusData.status ?? "pending")
+    : false;
 
   const mappingQuery = useQuery({
     queryKey: ["tb-mapping", tbId],

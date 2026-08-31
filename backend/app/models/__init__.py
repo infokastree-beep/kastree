@@ -18,6 +18,7 @@ from app.models.subscription_event import SubscriptionEvent
 from app.models.trial_balance import TrialBalance
 from app.models.user import User
 from app.models.variance_analysis import VarianceAnalysis
+from app.models.waitlist_signup import WaitlistSignup
 
 __all__ = [
     "Base",
@@ -38,4 +39,5 @@ __all__ = [
     "TrialBalance",
     "User",
     "VarianceAnalysis",
+    "WaitlistSignup",
 ]
