@@ -42,6 +42,7 @@ from app.services.statements import (
     build_statements,
 )
 from app.services.ownership import get_owned_company
+from app.services.llm import MAPPING_TIE_BREAKER_CANONICAL_LINES
 from app.services.tb_pipeline import parsed_rows_from_tb, run_parse_and_map_job
 from app.services.validator import SimpleMappedAccount, validate_trial_balance
 
@@ -520,6 +521,14 @@ async def confirm_trial_balance_mapping(
                 raise HTTPException(
                     status_code=400,
                     detail="Resolve all unmapped accounts before confirming. Choose a canonical line for every row.",
+                )
+            if item.canonical_line not in MAPPING_TIE_BREAKER_CANONICAL_LINES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f'Invalid canonical_line "{item.canonical_line}". '
+                        "Must be one of the Appendix A account categories."
+                    ),
                 )
             mapping.canonical_line = item.canonical_line
             mapping.is_confirmed = item.is_confirmed

@@ -202,6 +202,61 @@ async def test_confirm_rejects_unmapped_canonical_line(
 
 
 @pytest.mark.asyncio
+async def test_confirm_rejects_invalid_canonical_line(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """Bogus canonical_line values must not be persisted (e.g. agent typo cash_and_bank)."""
+    org_id = provisioned_org["org_id"]
+    company_id = provisioned_org["company_id"]
+    headers = auth_headers(provisioned_org["token"])
+    tb_id, mapping_7000_id = _seed_tb_with_code_range_mapping(
+        org_id=org_id,
+        company_id=company_id,
+    )
+
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        mapping_4000 = session.scalar(
+            select(AccountMapping).where(
+                AccountMapping.company_id == company_id,
+                AccountMapping.source_code == "4000",
+            )
+        )
+        assert mapping_4000 is not None
+
+    response = await api_client.post(
+        f"/trial-balances/{tb_id}/mapping/confirm",
+        json={
+            "mappings": [
+                {
+                    "id": str(mapping_7000_id),
+                    "canonical_line": "cash_and_bank",
+                    "is_confirmed": True,
+                    "is_ignored": False,
+                },
+                {
+                    "id": str(mapping_4000.id),
+                    "canonical_line": "revenue",
+                    "is_confirmed": True,
+                    "is_ignored": False,
+                },
+            ]
+        },
+        headers=headers,
+    )
+    assert response.status_code == 400
+    assert "cash_and_bank" in response.json()["detail"]
+
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        row_7000 = session.get(AccountMapping, mapping_7000_id)
+        assert row_7000 is not None
+        assert row_7000.canonical_line == "depreciation"
+        assert row_7000.is_confirmed is False
+
+
+@pytest.mark.asyncio
 async def test_confirm_empty_mappings_list_rejected(
     api_client: AsyncClient,
     provisioned_org: dict,
