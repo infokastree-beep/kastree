@@ -1,8 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 import { SignInButton } from "@clerk/nextjs";
 import { clerkReady } from "@/components/providers/AppProviders";
 import { WaitlistForm } from "@/components/landing/WaitlistForm";
@@ -56,14 +54,7 @@ const FAQ = [
 ] as const;
 
 export function LandingPage() {
-  const { isLoaded, isSignedIn } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (isLoaded && isSignedIn) {
-      router.replace(POST_AUTH_PATH);
-    }
-  }, [isLoaded, isSignedIn, router]);
+  const { isSignedIn } = useAuth();
 
   return (
     <div className="min-h-screen bg-stone-50 text-stone-900">
