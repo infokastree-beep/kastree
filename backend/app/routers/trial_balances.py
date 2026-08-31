@@ -161,6 +161,7 @@ class StatementsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tb_id: uuid.UUID
+    functional_currency: str
     statements: list[StatementBlockResponse]
 
 
@@ -169,6 +170,7 @@ class StatementsGenerateResponse(BaseModel):
 
     tb_id: uuid.UUID
     status: str
+    functional_currency: str
     statements: list[StatementBlockResponse]
 
 
@@ -219,6 +221,18 @@ async def _get_owned_tb(
     if tb is None:
         raise HTTPException(status_code=404, detail="Trial balance not found")
     return tb
+
+
+async def _get_tb_functional_currency(
+    session: AsyncSession,
+    *,
+    tb: TrialBalance,
+) -> str:
+    result = await session.execute(
+        select(Company.functional_currency).where(Company.id == tb.company_id)
+    )
+    currency = result.scalar_one_or_none()
+    return (currency or "GBP").upper()
 
 
 def _file_extension(filename: str) -> str:
@@ -693,6 +707,7 @@ async def generate_statements(
     return StatementsGenerateResponse(
         tb_id=tb.id,
         status="complete",
+        functional_currency=await _get_tb_functional_currency(session, tb=tb),
         statements=payload,
     )
 
@@ -854,4 +869,8 @@ async def get_statements(
                 ],
             )
         )
-    return StatementsResponse(tb_id=tb.id, statements=blocks)
+    return StatementsResponse(
+        tb_id=tb.id,
+        functional_currency=await _get_tb_functional_currency(session, tb=tb),
+        statements=blocks,
+    )

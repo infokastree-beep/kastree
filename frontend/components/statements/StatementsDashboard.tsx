@@ -4,12 +4,19 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
+import { formatCurrency, formatCurrencyCode } from "@/lib/currency";
 import { DISCLAIMER_TEXT } from "@/lib/constants";
 import type { StatementBlock, StatementsResponse } from "@/types";
 
 type Tab = "SOPL" | "SOFP" | "SOCIE";
 
-function StatementTable({ block }: { block: StatementBlock }) {
+function StatementTable({
+  block,
+  currencyCode,
+}: {
+  block: StatementBlock;
+  currencyCode: string;
+}) {
   return (
     <div className="overflow-x-auto rounded border border-stone-200 bg-white">
       <table className="min-w-full text-left text-sm">
@@ -20,23 +27,27 @@ function StatementTable({ block }: { block: StatementBlock }) {
           </tr>
         </thead>
         <tbody>
-          {block.lines.map((line) => (
-            <tr
-              key={line.id}
-              className={`border-b border-stone-100 ${line.is_subtotal ? "bg-stone-50" : ""}`}
-            >
-              <td
-                className={`px-3 py-2 ${line.is_subtotal ? "font-semibold" : ""}`}
+          {block.lines.map((line) => {
+            const numericAmount = Number.parseFloat(line.amount);
+            const isNegative = Number.isFinite(numericAmount) && numericAmount < 0;
+            return (
+              <tr
+                key={line.id}
+                className={`border-b border-stone-100 ${line.is_subtotal ? "bg-stone-50" : ""}`}
               >
-                {line.line_item_name}
-              </td>
-              <td
-                className={`px-3 py-2 text-right tabular-nums ${line.is_subtotal ? "font-semibold" : ""}`}
-              >
-                {line.amount}
-              </td>
-            </tr>
-          ))}
+                <td
+                  className={`px-3 py-2 ${line.is_subtotal ? "font-semibold" : ""}`}
+                >
+                  {line.line_item_name}
+                </td>
+                <td
+                  className={`px-3 py-2 text-right tabular-nums ${line.is_subtotal ? "font-semibold" : ""} ${isNegative ? "text-red-700" : ""}`}
+                >
+                  {formatCurrency(line.amount, currencyCode)}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -76,9 +87,10 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
     },
   });
 
-  const block = statementsQuery.data?.statements.find(
-    (s) => s.statement_type === tab,
-  );
+  const statementsData = statementsQuery.data ?? generateMutation.data ?? null;
+  const currencyCode = statementsData?.functional_currency ?? "GBP";
+
+  const block = statementsData?.statements.find((s) => s.statement_type === tab);
 
   return (
     <div className="space-y-6">
@@ -131,8 +143,14 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
         </div>
       ) : null}
 
-      {statementsQuery.data ? (
+      {statementsData ? (
         <>
+          <p className="text-sm text-stone-700">
+            All amounts in{" "}
+            <span className="font-mono font-medium">
+              {formatCurrencyCode(currencyCode)}
+            </span>
+          </p>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex gap-2 border-b border-stone-200">
               {(["SOPL", "SOFP", "SOCIE"] as Tab[]).map((name) => (
@@ -171,7 +189,7 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
             </div>
           </div>
           {block ? (
-            <StatementTable block={block} />
+            <StatementTable block={block} currencyCode={currencyCode} />
           ) : (
             <p className="text-sm text-stone-600">No {tab} lines returned.</p>
           )}

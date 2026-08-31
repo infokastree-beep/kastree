@@ -4,8 +4,11 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { CompanyEntityForm } from "@/components/clients/CompanyEntityForm";
+import type { CompanyEntityFormValues } from "@/lib/company-form";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
+import { createCompanyEntity } from "@/lib/companies";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import type {
   CompanyListResponse,
@@ -116,6 +119,7 @@ export function ClientDetail({ clientId }: { clientId: string }) {
   const queryClient = useQueryClient();
   const { getToken } = useAuth();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showAddCompany, setShowAddCompany] = useState(false);
 
   const clientQuery = useQuery({
     queryKey: ["client", clientId],
@@ -142,6 +146,16 @@ export function ClientDetail({ clientId }: { clientId: string }) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["clients"] });
       router.push("/clients");
+    },
+  });
+
+  const addCompanyMutation = useMutation({
+    mutationFn: (values: CompanyEntityFormValues) =>
+      createCompanyEntity(clientId, values, getToken),
+    onSuccess: () => {
+      setShowAddCompany(false);
+      void queryClient.invalidateQueries({ queryKey: ["companies", clientId] });
+      void queryClient.invalidateQueries({ queryKey: ["clients"] });
     },
   });
 
@@ -179,6 +193,8 @@ export function ClientDetail({ clientId }: { clientId: string }) {
   }
 
   const companies = companiesQuery.data?.items ?? [];
+  const addCompanyError =
+    addCompanyMutation.error instanceof Error ? addCompanyMutation.error.message : null;
 
   return (
     <div className="space-y-8">
@@ -256,7 +272,39 @@ export function ClientDetail({ clientId }: { clientId: string }) {
       </div>
 
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold tracking-tight">Companies</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold tracking-tight">Companies</h2>
+          {!showAddCompany ? (
+            <button
+              type="button"
+              onClick={() => setShowAddCompany(true)}
+              className="rounded bg-stone-900 px-3 py-1.5 text-sm font-medium text-white"
+            >
+              + Add company
+            </button>
+          ) : null}
+        </div>
+
+        {showAddCompany ? (
+          <div className="rounded border border-stone-200 bg-white p-4">
+            <CompanyEntityForm
+              intro={
+                <p className="text-sm text-stone-600">
+                  Add a company entity to{" "}
+                  <span className="font-medium text-stone-900">{client.name}</span>.
+                </p>
+              }
+              submitLabel="Add company"
+              isPending={addCompanyMutation.isPending}
+              errorMessage={addCompanyError}
+              onSubmit={(values) => addCompanyMutation.mutate(values)}
+              onCancel={() => {
+                setShowAddCompany(false);
+                addCompanyMutation.reset();
+              }}
+            />
+          </div>
+        ) : null}
 
         {companiesQuery.isLoading ? (
           <p className="text-sm text-stone-600">Loading companies…</p>
@@ -266,21 +314,24 @@ export function ClientDetail({ clientId }: { clientId: string }) {
               ? companiesQuery.error.message
               : "Failed to load companies"}
           </p>
-        ) : companies.length === 0 ? (
-          <p className="rounded border border-stone-200 bg-white px-4 py-6 text-sm text-stone-600">
-            No companies yet. Use{" "}
-            <Link href="/clients/new" className="font-medium text-stone-900 underline">
-              + New client
-            </Link>{" "}
-            to create a client group with its first company.
-          </p>
-        ) : (
+        ) : companies.length === 0 && !showAddCompany ? (
+          <div className="rounded border border-stone-200 bg-white px-4 py-6 text-sm text-stone-600">
+            <p>No companies yet for this client group.</p>
+            <button
+              type="button"
+              onClick={() => setShowAddCompany(true)}
+              className="mt-3 rounded bg-stone-900 px-3 py-1.5 text-sm font-medium text-white"
+            >
+              + Add company
+            </button>
+          </div>
+        ) : companies.length > 0 ? (
           <div className="space-y-4">
             {companies.map((company) => (
               <CompanyTrialBalances key={company.id} company={company} />
             ))}
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

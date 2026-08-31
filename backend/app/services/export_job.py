@@ -125,6 +125,7 @@ def _load_export_context(
         client_name=company.name,
         period_end=tb.period_end,
         generated_at=datetime.now(timezone.utc),
+        functional_currency=company.functional_currency,
         organisation_name=organisation.name,
     )
     package = ExportPackage(

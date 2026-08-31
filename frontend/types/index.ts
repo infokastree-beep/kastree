@@ -140,5 +140,6 @@ export interface StatementBlock {
 
 export interface StatementsResponse {
   tb_id: string;
+  functional_currency: string;
   statements: StatementBlock[];
 }

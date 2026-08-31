@@ -22,6 +22,7 @@ from app.services.exporter import (
     build_csv,
     build_excel,
     build_export,
+    format_currency,
     regenerate_export_if_missing,
     render_pdf_html,
     run_export_job,
@@ -129,6 +130,104 @@ def _package() -> ExportPackage:
         risk_flags=risks,
         mappings=mappings,
     )
+
+
+def test_format_currency_follows_section_10_7() -> None:
+    assert format_currency(Decimal("1234567.89"), "GBP") == "£1,234,567.89"
+    assert format_currency(Decimal("1234567.89"), "USD") == "$1,234,567.89"
+    assert format_currency(Decimal("1234567.89"), "EUR") == "€1 234 567.89"
+    assert format_currency(Decimal("-100.50"), "EUR") == "-€100.50"
+
+
+def test_excel_statement_sheet_shows_currency_in_branding() -> None:
+    branding = ExportBranding(
+        client_name="Euro Co",
+        period_end=date(2026, 3, 31),
+        generated_at=datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc),
+        functional_currency="EUR",
+    )
+    content = build_excel(branding, _package(), organisation=_Org("starter"))
+    workbook = load_workbook(io.BytesIO(content))
+    values = [
+        str(cell.value)
+        for row in workbook["SOPL"].iter_rows(max_row=8, max_col=1)
+        for cell in row
+        if cell.value is not None
+    ]
+    assert any("All amounts in EUR" in value for value in values)
+
+
+def test_pdf_statement_sections_include_currency_label() -> None:
+    branding = ExportBranding(
+        client_name="Euro Co",
+        period_end=date(2026, 3, 31),
+        generated_at=datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc),
+        functional_currency="EUR",
+    )
+    html = render_pdf_html(branding, _package(), organisation=_Org("starter"))
+    assert "All amounts in <strong>EUR</strong>" in html
+    assert "€10,000.00" not in html
+    assert "€10 000.00" in html
+
+
+def test_eur_excel_amounts_render_with_space_thousands_via_libreoffice() -> None:
+    """Open the generated .xlsx in LibreOffice and read rendered cell text.
+
+    Excel number formats are locale-sensitive; format strings alone are not enough.
+    """
+    import re
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    if shutil.which("libreoffice") is None:
+        import pytest
+
+        pytest.skip("libreoffice not installed")
+
+    branding = ExportBranding(
+        client_name="Euro Co",
+        period_end=date(2026, 3, 31),
+        generated_at=datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc),
+        functional_currency="EUR",
+    )
+    package = ExportPackage(
+        sopl=[
+            _line("revenue", "Revenue", "1234567.89", display_order=1),
+            _line("gross_profit", "Gross profit", "-100.50", display_order=2, is_subtotal=True),
+        ],
+        sofp=[],
+        socie=[],
+        variance=None,
+        risk_flags=[],
+        mappings=[],
+    )
+    out = Path("/tmp/findraft-eur-export-libreoffice-test.xlsx")
+    out.write_bytes(build_excel(branding, package, organisation=_Org("starter")))
+    html_path = out.with_suffix(".html")
+    if html_path.exists():
+        html_path.unlink()
+    subprocess.run(
+        [
+            "libreoffice",
+            "--headless",
+            "--convert-to",
+            "html",
+            str(out),
+            "--outdir",
+            str(out.parent),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    html = html_path.read_text(encoding="utf-8")
+    revenue = re.search(
+        r"Revenue</font></td>\s*<td[^>]*><font[^>]*>([^<]+)</font>",
+        html,
+    )
+    assert revenue is not None, html[:500]
+    # # ### ##0.00 — correct space grouping for large EUR amounts
+    assert revenue.group(1).strip() == "1 234 567.89"
 
 
 def test_tier_requires_watermark_only_for_free() -> None:

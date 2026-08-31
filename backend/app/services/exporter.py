@@ -47,7 +47,42 @@ _HEADER_FONT = Font(color="FFFFFF", bold=True)
 _BRAND_FONT = Font(name="Calibri", size=14, bold=True)
 _DISCLAIMER_FONT = Font(name="Calibri", size=9, italic=True, color="666666")
 _WATERMARK_FONT = Font(name="Calibri", size=20, bold=True, color="DDDDDD")
-_MONEY_FORMAT = "#,##0.00"
+_MONEY_FORMAT_GBP_USD = "#,##0.00"
+# # ### ##0.00 — space-separated thousands that render correctly in Excel/LibreOffice
+# (# ##0.00 only groups as "1234 567", missing the separator after the first digit group)
+_MONEY_FORMAT_EUR = "# ### ##0.00"
+
+_CURRENCY_SYMBOLS: dict[str, str] = {
+    "GBP": "£",
+    "USD": "$",
+    "EUR": "€",
+}
+
+
+def format_currency(amount: Decimal, currency_code: str) -> str:
+    """Format monetary amounts per Cursor Rules §10.7 (comma GBP/USD, space EUR)."""
+    code = currency_code.upper()
+    quantized = amount.quantize(Decimal("0.01"))
+    sign = "-" if quantized < 0 else ""
+    abs_val = abs(quantized)
+    whole, _, frac = f"{abs_val:.2f}".partition(".")
+    groups: list[str] = []
+    digits = whole
+    while digits:
+        groups.insert(0, digits[-3:])
+        digits = digits[:-3]
+    separator = " " if code == "EUR" else ","
+    int_part = separator.join(groups)
+    symbol = _CURRENCY_SYMBOLS.get(code, code)
+    return f"{sign}{symbol}{int_part}.{frac}"
+
+
+def _money_number_format(currency_code: str) -> str:
+    return (
+        _MONEY_FORMAT_EUR
+        if currency_code.upper() == "EUR"
+        else _MONEY_FORMAT_GBP_USD
+    )
 
 
 class OrganisationTier(Protocol):
@@ -61,6 +96,7 @@ class ExportBranding:
     client_name: str
     period_end: date
     generated_at: datetime
+    functional_currency: str = "GBP"
     organisation_name: str = ""
 
 
@@ -169,7 +205,8 @@ def build_csv(branding: ExportBranding, package: ExportPackage) -> bytes:
     buffer.write(f"# DISCLAIMER: {DISCLAIMER_TEXT}\n")
     buffer.write(
         f"# Client: {branding.client_name} | Period end: {branding.period_end.isoformat()} "
-        f"| Generated: {branding.generated_at.date().isoformat()}\n"
+        f"| Generated: {branding.generated_at.date().isoformat()} "
+        f"| Currency: {branding.functional_currency.upper()}\n"
     )
     writer = csv.writer(buffer)
     writer.writerow(
@@ -196,7 +233,7 @@ def build_csv(branding: ExportBranding, package: ExportPackage) -> bytes:
                     statement_type,
                     line.line_item_code,
                     line.line_item_name,
-                    _money_str(line.amount),
+                    format_currency(line.amount, branding.functional_currency),
                     "true" if line.is_subtotal else "false",
                     line.display_order,
                     branding.client_name,
@@ -255,15 +292,17 @@ def render_pdf_html(
 
     body_sections: list[str] = []
     for title, lines in sections:
+        currency_label = branding.functional_currency.upper()
         rows = "".join(
             "<tr>"
             f"<td>{_html_escape(line.line_item_name)}</td>"
-            f"<td class='num'>{_money_str(line.amount)}</td>"
+            f"<td class='num'>{_html_escape(format_currency(line.amount, branding.functional_currency))}</td>"
             "</tr>"
             for line in lines
         )
         body_sections.append(
             f"<section><h2>{_html_escape(title)}</h2>"
+            f"<p>All amounts in <strong>{currency_label}</strong></p>"
             f"<table><thead><tr><th>Line</th><th>Amount</th></tr></thead>"
             f"<tbody>{rows}</tbody></table></section>"
         )
@@ -347,6 +386,7 @@ def render_pdf_html(
   <p><strong>Client:</strong> {_html_escape(branding.client_name)}</p>
   {org_line}
   <p><strong>Period end:</strong> {branding.period_end.isoformat()}</p>
+  <p><strong>Currency:</strong> {branding.functional_currency.upper()}</p>
   <p><strong>Generated:</strong> {branding.generated_at.isoformat()}</p>
   <div class="disclaimer"><strong>Disclaimer:</strong> {_html_escape(DISCLAIMER_TEXT)}</div>
   <h2>Contents</h2>
@@ -549,13 +589,18 @@ def _write_branding(
     ws.cell(
         start_row + 2,
         1,
+        f"All amounts in {branding.functional_currency.upper()}",
+    )
+    ws.cell(
+        start_row + 3,
+        1,
         f"Generated: {branding.generated_at.strftime('%Y-%m-%d %H:%M UTC')}",
     )
     if branding.organisation_name:
-        ws.cell(start_row + 3, 1, f"Organisation: {branding.organisation_name}")
-        next_row = start_row + 4
+        ws.cell(start_row + 4, 1, f"Organisation: {branding.organisation_name}")
+        next_row = start_row + 5
     else:
-        next_row = start_row + 3
+        next_row = start_row + 4
     if watermark:
         cell = ws.cell(next_row, 1, WATERMARK_TEXT)
         cell.font = _WATERMARK_FONT
@@ -587,10 +632,11 @@ def _write_statement_sheet(
     ws.cell(row, 3, "Subtotal").font = _HEADER_FONT
     ws.cell(row, 3).fill = _HEADER_FILL
     row += 1
+    money_format = _money_number_format(branding.functional_currency)
     for line in lines:
         ws.cell(row, 1, line.line_item_name)
         amount_cell = ws.cell(row, 2, _excel_money(line.amount))
-        amount_cell.number_format = _MONEY_FORMAT
+        amount_cell.number_format = money_format
         amount_cell.alignment = Alignment(horizontal="right")
         ws.cell(row, 3, "Yes" if line.is_subtotal else "No")
         row += 1
@@ -620,6 +666,7 @@ def _write_variance_sheet(
         cell.font = _HEADER_FONT
         cell.fill = _HEADER_FILL
     row += 1
+    money_format = _money_number_format(branding.functional_currency)
     if variance is not None:
         for item in variance.items:
             ws.cell(row, 1, item.line_item_name)
@@ -628,7 +675,7 @@ def _write_variance_sheet(
                 start=2,
             ):
                 cell = ws.cell(row, col, _excel_money(Decimal(raw)))
-                cell.number_format = _MONEY_FORMAT
+                cell.number_format = money_format
             ws.cell(
                 row,
                 5,
