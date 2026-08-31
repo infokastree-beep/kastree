@@ -58,3 +58,24 @@ the canonical set. If expanded, scope the downstream changes: Statement Builder
 line placement, validator rules, frontend dropdown/constants, and LLM tie-breaker
 prompts must stay aligned.
 
+## CreateClientForm step-1-only recovery (misleading empty state)
+
+`CreateClientForm` is a two-step flow: step 1 creates the client group (`POST
+/clients`); step 2 creates the first company (`POST /clients/{id}/companies`). If
+a user completes step 1 but abandons or errors out before step 2, the client
+group **persists** and remains visible — it is not a dead end. `ClientsList`
+shows **0** in the Companies column; `ClientDetail` shows **0 companies** in
+the header and an empty-state message.
+
+The recovery action on `ClientDetail` is **semantically wrong**: the empty state
+links to **+ New client** (`/clients/new`), which starts a **new** client group
+rather than adding a company to the existing one. A user recovering from an
+abandoned step 2 could create duplicate/orphaned client groups (each stuck at 0
+companies) instead of finishing the one they started.
+
+**Follow-up, not urgent.** Add a proper **Add company** action on `ClientDetail`
+that calls `POST /clients/{id}/companies` directly from that page — not routed
+through `CreateClientForm`'s two-step flow. Step 2 of create remains the happy
+path for new client + first company; detail-page add company is the recovery
+path for client groups with zero companies.
+
