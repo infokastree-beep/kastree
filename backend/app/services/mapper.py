@@ -89,13 +89,13 @@ def normalize_text(value: str | None) -> str:
 
 def fetch_confirmed_mappings(
     session: Session,
-    client_id: uuid.UUID,
+    company_id: uuid.UUID,
 ) -> list[PriorConfirmedMapping]:
     """Load confirmed prior mappings for Tier 1/2 (Product Spec §4.2)."""
     statement = (
         select(AccountMapping)
         .where(
-            AccountMapping.client_id == client_id,
+            AccountMapping.company_id == company_id,
             AccountMapping.is_confirmed.is_(True),
         )
         .order_by(AccountMapping.created_at)
@@ -111,22 +111,26 @@ def fetch_confirmed_mappings(
     ]
 
 
-def map_accounts_for_client(
+def map_accounts_for_company(
     session: Session,
-    client_id: uuid.UUID,
+    company_id: uuid.UUID,
     accounts: Sequence[MappableAccount],
     *,
     openai_client: OpenAI | None = None,
     sleep: SleepFn = time.sleep,
 ) -> list[MappingResult]:
-    """Map accounts for a client through Tiers 1–4."""
-    prior = fetch_confirmed_mappings(session, client_id)
+    """Map accounts for a company through Tiers 1–4."""
+    prior = fetch_confirmed_mappings(session, company_id)
     return map_accounts_with_llm(
         accounts,
         prior,
         openai_client=openai_client,
         sleep=sleep,
     )
+
+
+# Backward-compatible alias for callers not yet renamed.
+map_accounts_for_client = map_accounts_for_company
 
 
 def map_accounts(

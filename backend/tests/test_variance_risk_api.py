@@ -27,7 +27,7 @@ from tests.conftest import auth_headers
 def _seed_tb(
     *,
     org_id: uuid.UUID,
-    client_id: uuid.UUID,
+    company_id: uuid.UUID,
     period_end: date,
     lines: list[tuple[str, str, str, bool]],
     parsed_rows: list[dict] | None = None,
@@ -41,7 +41,7 @@ def _seed_tb(
         set_rls_org_id(session, org_id)
         tb = TrialBalance(
             id=tb_id,
-            client_id=client_id,
+            company_id=company_id,
             period_end=period_end,
             file_url=f"/tmp/{tb_id}.xlsx",
             file_type="xlsx",
@@ -94,7 +94,7 @@ def _seed_tb(
 def _seed_tb_without_statements(
     *,
     org_id: uuid.UUID,
-    client_id: uuid.UUID,
+    company_id: uuid.UUID,
     period_end: date,
     parsed_rows: list[dict] | None = None,
 ) -> uuid.UUID:
@@ -105,7 +105,7 @@ def _seed_tb_without_statements(
         session.add(
             TrialBalance(
                 id=tb_id,
-                client_id=client_id,
+                company_id=company_id,
                 period_end=period_end,
                 file_url=f"/tmp/{tb_id}.xlsx",
                 file_type="xlsx",
@@ -121,7 +121,7 @@ def _seed_tb_without_statements(
 def _seed_mapping(
     *,
     org_id: uuid.UUID,
-    client_id: uuid.UUID,
+    company_id: uuid.UUID,
     source_code: str,
     source_name: str,
     canonical_line: str,
@@ -130,7 +130,7 @@ def _seed_mapping(
         set_rls_org_id(session, org_id)
         session.add(
             AccountMapping(
-                client_id=client_id,
+                company_id=company_id,
                 source_code=source_code,
                 source_name=source_name,
                 canonical_line=canonical_line,
@@ -148,12 +148,12 @@ async def test_variance_generation_with_real_prior_period(
     provisioned_org: dict,
 ) -> None:
     org_id = provisioned_org["org_id"]
-    client_id = provisioned_org["client_id"]
+    company_id = provisioned_org["company_id"]
     headers = auth_headers(provisioned_org["token"])
 
     prior_id = _seed_tb(
         org_id=org_id,
-        client_id=client_id,
+        company_id=company_id,
         period_end=date(2026, 6, 30),
         lines=[
             ("revenue", "Revenue", "210000.00", False),
@@ -162,7 +162,7 @@ async def test_variance_generation_with_real_prior_period(
     )
     current_id = _seed_tb(
         org_id=org_id,
-        client_id=client_id,
+        company_id=company_id,
         period_end=date(2026, 7, 31),
         lines=[
             ("revenue", "Revenue", "250000.00", False),
@@ -208,24 +208,24 @@ async def test_variance_auto_detect_picks_most_recent_prior_not_oldest(
 ) -> None:
     """§6.2: most recent period_end < current — not an older TB by accident."""
     org_id = provisioned_org["org_id"]
-    client_id = provisioned_org["client_id"]
+    company_id = provisioned_org["company_id"]
     headers = auth_headers(provisioned_org["token"])
 
     oldest_id = _seed_tb(
         org_id=org_id,
-        client_id=client_id,
+        company_id=company_id,
         period_end=date(2026, 1, 31),
         lines=[("revenue", "Revenue", "100000.00", False)],
     )
     expected_prior_id = _seed_tb(
         org_id=org_id,
-        client_id=client_id,
+        company_id=company_id,
         period_end=date(2026, 2, 28),
         lines=[("revenue", "Revenue", "200000.00", False)],
     )
     current_id = _seed_tb(
         org_id=org_id,
-        client_id=client_id,
+        company_id=company_id,
         period_end=date(2026, 3, 31),
         lines=[("revenue", "Revenue", "300000.00", False)],
     )
@@ -253,12 +253,12 @@ async def test_variance_no_prior_period_returns_unavailable_not_error(
     provisioned_org: dict,
 ) -> None:
     org_id = provisioned_org["org_id"]
-    client_id = provisioned_org["client_id"]
+    company_id = provisioned_org["company_id"]
     headers = auth_headers(provisioned_org["token"])
 
     current_id = _seed_tb(
         org_id=org_id,
-        client_id=client_id,
+        company_id=company_id,
         period_end=date(2026, 7, 31),
         lines=[("revenue", "Revenue", "250000.00", False)],
     )
@@ -283,12 +283,12 @@ async def test_variance_prior_without_statements_returns_unavailable_not_error(
 ) -> None:
     """Prior uploaded/mapped but never POST .../statements — unavailable, not 4xx/wrong numbers."""
     org_id = provisioned_org["org_id"]
-    client_id = provisioned_org["client_id"]
+    company_id = provisioned_org["company_id"]
     headers = auth_headers(provisioned_org["token"])
 
     prior_id = _seed_tb_without_statements(
         org_id=org_id,
-        client_id=client_id,
+        company_id=company_id,
         period_end=date(2026, 6, 30),
         parsed_rows=[
             {
@@ -304,14 +304,14 @@ async def test_variance_prior_without_statements_returns_unavailable_not_error(
     )
     _seed_mapping(
         org_id=org_id,
-        client_id=client_id,
+        company_id=company_id,
         source_code="4100",
         source_name="Sales",
         canonical_line="revenue",
     )
     current_id = _seed_tb(
         org_id=org_id,
-        client_id=client_id,
+        company_id=company_id,
         period_end=date(2026, 7, 31),
         lines=[("revenue", "Revenue", "250000.00", False)],
     )
@@ -344,18 +344,18 @@ async def test_variance_items_jsonb_round_trips_to_same_pydantic_model(
 ) -> None:
     """Write via to_jsonb(); read back into VarianceAnalysisResult — exact match."""
     org_id = provisioned_org["org_id"]
-    client_id = provisioned_org["client_id"]
+    company_id = provisioned_org["company_id"]
     headers = auth_headers(provisioned_org["token"])
 
     prior_id = _seed_tb(
         org_id=org_id,
-        client_id=client_id,
+        company_id=company_id,
         period_end=date(2026, 5, 31),
         lines=[("revenue", "Revenue", "100.00", False)],
     )
     current_id = _seed_tb(
         org_id=org_id,
-        client_id=client_id,
+        company_id=company_id,
         period_end=date(2026, 6, 30),
         lines=[("revenue", "Revenue", "150.00", False)],
     )
@@ -403,7 +403,7 @@ async def test_risk_negative_cash_flagged(
     provisioned_org: dict,
 ) -> None:
     org_id = provisioned_org["org_id"]
-    client_id = provisioned_org["client_id"]
+    company_id = provisioned_org["company_id"]
     headers = auth_headers(provisioned_org["token"])
 
     parsed_rows = [
@@ -428,21 +428,21 @@ async def test_risk_negative_cash_flagged(
     ]
     tb_id = _seed_tb(
         org_id=org_id,
-        client_id=client_id,
+        company_id=company_id,
         period_end=date(2026, 8, 31),
         lines=[("revenue", "Revenue", "0.00", False)],
         parsed_rows=parsed_rows,
     )
     _seed_mapping(
         org_id=org_id,
-        client_id=client_id,
+        company_id=company_id,
         source_code="1100",
         source_name="Cash at bank",
         canonical_line="cash",
     )
     _seed_mapping(
         org_id=org_id,
-        client_id=client_id,
+        company_id=company_id,
         source_code="3000",
         source_name="Share capital",
         canonical_line="share_capital",
@@ -476,18 +476,18 @@ async def test_risk_rule2_skipped_with_empty_history_not_fabricated(
 ) -> None:
     """Large variance_pct must NOT produce unusual_variance when history is empty."""
     org_id = provisioned_org["org_id"]
-    client_id = provisioned_org["client_id"]
+    company_id = provisioned_org["company_id"]
     headers = auth_headers(provisioned_org["token"])
 
     prior_id = _seed_tb(
         org_id=org_id,
-        client_id=client_id,
+        company_id=company_id,
         period_end=date(2026, 4, 30),
         lines=[("revenue", "Revenue", "100.00", False)],
     )
     current_id = _seed_tb(
         org_id=org_id,
-        client_id=client_id,
+        company_id=company_id,
         period_end=date(2026, 5, 31),
         lines=[("revenue", "Revenue", "500.00", False)],
         parsed_rows=[
@@ -504,7 +504,7 @@ async def test_risk_rule2_skipped_with_empty_history_not_fabricated(
     )
     _seed_mapping(
         org_id=org_id,
-        client_id=client_id,
+        company_id=company_id,
         source_code="4100",
         source_name="Sales",
         canonical_line="revenue",

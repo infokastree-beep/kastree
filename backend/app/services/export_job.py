@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.db import SyncSessionLocal, set_rls_org_id
 from app.models.account_mapping import AccountMapping
 from app.models.client import Client
+from app.models.company import Company
 from app.models.export import Export
 from app.models.financial_statement import FinancialStatement
 from app.models.organisation import Organisation
@@ -93,7 +94,11 @@ def _load_export_context(
     if tb is None:
         raise ValueError("Trial balance not found for export")
 
-    client = session.get(Client, tb.client_id)
+    company = session.get(Company, tb.company_id)
+    if company is None or company.is_deleted:
+        raise ValueError("Company not found for export")
+
+    client = session.get(Client, company.client_id)
     if client is None or client.org_id != org_id or client.is_deleted:
         raise ValueError("Client not found for export")
 
@@ -114,10 +119,10 @@ def _load_export_context(
 
     variance = _load_variance(session, tb.id)
     risk_flags = _load_risk_flags(session, tb.id) if include_risk else []
-    mappings = _load_mappings(session, tb.client_id) if include_mapping else []
+    mappings = _load_mappings(session, tb.company_id) if include_mapping else []
 
     branding = ExportBranding(
-        client_name=client.name,
+        client_name=company.name,
         period_end=tb.period_end,
         generated_at=datetime.now(timezone.utc),
         organisation_name=organisation.name,
@@ -206,12 +211,12 @@ def _load_risk_flags(session: Session, tb_id: uuid.UUID) -> list[RiskFlagRecord]
     return records
 
 
-def _load_mappings(session: Session, client_id: uuid.UUID) -> list[MappingResult]:
+def _load_mappings(session: Session, company_id: uuid.UUID) -> list[MappingResult]:
     rows = list(
         session.scalars(
             select(AccountMapping)
             .where(
-                AccountMapping.client_id == client_id,
+                AccountMapping.company_id == company_id,
                 AccountMapping.is_confirmed.is_(True),
             )
             .order_by(AccountMapping.source_code.asc())

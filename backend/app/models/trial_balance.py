@@ -25,7 +25,9 @@ from app.models.base import Base
 class TrialBalance(Base):
     __tablename__ = "trial_balances"
     __table_args__ = (
-        UniqueConstraint("client_id", "period_end", name="trial_balances_client_id_period_end_key"),
+        UniqueConstraint(
+            "company_id", "period_end", name="trial_balances_company_id_period_end_key"
+        ),
         CheckConstraint(
             "file_type IN ('xlsx', 'csv')",
             name="trial_balances_file_type_check",
@@ -35,17 +37,17 @@ class TrialBalance(Base):
             "'generating', 'analysing', 'complete', 'failed')",
             name="trial_balances_status_check",
         ),
-        Index("idx_trial_balances_client_id", "client_id"),
-        Index("idx_trial_balances_client_period", "client_id", "period_end"),
+        Index("idx_trial_balances_company_id", "company_id"),
+        Index("idx_trial_balances_company_period", "company_id", "period_end"),
         Index("idx_trial_balances_status", "status"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    client_id: Mapped[uuid.UUID] = mapped_column(
+    company_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("clients.id", ondelete="CASCADE"),
+        ForeignKey("companies.id", ondelete="CASCADE"),
         nullable=False,
     )
     period_end: Mapped[date] = mapped_column(Date, nullable=False)

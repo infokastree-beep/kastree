@@ -8,6 +8,7 @@ when a client has multiple companies.
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import uuid
 from datetime import date
 from decimal import Decimal
@@ -134,10 +135,11 @@ def _column_exists(session, table: str, column: str) -> bool:
 
 
 def _seed_org_with_client_tb(*, suffix: str) -> dict:
-    """Create org + client + TB + mappings under pre-migration schema."""
+    """Create org + client + TB + mappings under pre-migration (downgraded) schema."""
     clerk_org_id = f"org_mig_{suffix}"
     clerk_user_id = f"user_mig_{suffix}"
     tb_id = uuid.uuid4()
+    client_id = uuid.uuid4()
 
     company_number = f"CO-{suffix[:6]}"
     with SyncSessionLocal() as session:
@@ -151,56 +153,84 @@ def _seed_org_with_client_tb(*, suffix: str) -> dict:
         )
         org_id = provisioned.organisation.id
         set_rls_org_id(session, org_id)
-        client = Client(
-            org_id=org_id,
-            name=f"Client {suffix}",
-            company_number=company_number,
-            industry="Testing",
-            functional_currency="EUR",
-            materiality_threshold_pct=Decimal("12.50"),
-            materiality_threshold_abs=Decimal("2500.00"),
+        session.execute(
+            text(
+                """
+                INSERT INTO clients (
+                    id, org_id, name, company_number, industry,
+                    functional_currency, materiality_threshold_pct,
+                    materiality_threshold_abs, is_deleted
+                )
+                VALUES (
+                    :id, :org_id, :name, :company_number, :industry,
+                    :functional_currency, :materiality_pct, :materiality_abs, false
+                )
+                """
+            ),
+            {
+                "id": str(client_id),
+                "org_id": str(org_id),
+                "name": f"Client {suffix}",
+                "company_number": company_number,
+                "industry": "Testing",
+                "functional_currency": "EUR",
+                "materiality_pct": "12.50",
+                "materiality_abs": "2500.00",
+            },
         )
-        session.add(client)
-        session.flush()
-
-        session.add(
-            TrialBalance(
-                id=tb_id,
-                client_id=client.id,
-                period_end=date(2026, 6, 30),
-                file_url=f"file:///tmp/mig-{suffix}.xlsx",
-                file_type="xlsx",
-                status="mapping",
-                currency="EUR",
-            )
+        session.execute(
+            text(
+                """
+                INSERT INTO trial_balances (
+                    id, client_id, period_end, file_url, file_type, status, currency
+                )
+                VALUES (
+                    :id, :client_id, :period_end, :file_url, 'xlsx', 'mapping', 'EUR'
+                )
+                """
+            ),
+            {
+                "id": str(tb_id),
+                "client_id": str(client_id),
+                "period_end": date(2026, 6, 30),
+                "file_url": f"file:///tmp/mig-{suffix}.xlsx",
+            },
         )
-        session.add(
-            AccountMapping(
-                client_id=client.id,
-                source_code="1000",
-                source_name="Cash",
-                canonical_line="cash",
-                confidence=Decimal("1.00"),
-                method="exact",
-                is_confirmed=True,
-            )
+        session.execute(
+            text(
+                """
+                INSERT INTO account_mappings (
+                    id, client_id, source_code, source_name, canonical_line,
+                    confidence, method, is_confirmed, is_ignored
+                )
+                VALUES (
+                    gen_random_uuid(), :client_id, '1000', 'Cash', 'cash',
+                    1.00, 'exact', true, false
+                )
+                """
+            ),
+            {"client_id": str(client_id)},
         )
-        session.add(
-            AccountMapping(
-                client_id=client.id,
-                source_code="4000",
-                source_name="Revenue",
-                canonical_line="revenue",
-                confidence=Decimal("0.90"),
-                method="fuzzy",
-                is_confirmed=False,
-            )
+        session.execute(
+            text(
+                """
+                INSERT INTO account_mappings (
+                    id, client_id, source_code, source_name, canonical_line,
+                    confidence, method, is_confirmed, is_ignored
+                )
+                VALUES (
+                    gen_random_uuid(), :client_id, '4000', 'Revenue', 'revenue',
+                    0.90, 'fuzzy', false, false
+                )
+                """
+            ),
+            {"client_id": str(client_id)},
         )
         session.commit()
 
     return {
         "org_id": org_id,
-        "client_id": client.id,
+        "client_id": client_id,
         "tb_id": tb_id,
         "clerk_org_id": clerk_org_id,
         "company_number": company_number,
@@ -470,6 +500,30 @@ def _cleanup_org(org_id: uuid.UUID) -> None:
         session.commit()
 
 
+def _prepare_downgrade_safe_state() -> None:
+    """Keep one company per client so migration downgrade guard passes on shared dev DB."""
+    subprocess.run(
+        [
+            "sudo",
+            "-u",
+            "postgres",
+            "psql",
+            "findraft_dev",
+            "-c",
+            """
+            DELETE FROM companies
+            WHERE id NOT IN (
+                SELECT DISTINCT ON (client_id) id
+                FROM companies
+                ORDER BY client_id, created_at ASC
+            );
+            """,
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+
 @pytest.fixture
 def migration_revision_guard():
     """Ensure we leave the DB at the revision we started on."""
@@ -481,14 +535,16 @@ def migration_revision_guard():
         )
     try:
         if original == UP_REVISION:
+            _prepare_downgrade_safe_state()
             _alembic_downgrade(DOWN_REVISION)
         yield original
     finally:
         current = _current_revision()
-        if current == UP_REVISION and original == DOWN_REVISION:
-            _alembic_downgrade(DOWN_REVISION)
-        elif current == DOWN_REVISION and original == UP_REVISION:
+        if original == UP_REVISION and current != UP_REVISION:
             _alembic_upgrade(UP_REVISION)
+        elif current == UP_REVISION and original == DOWN_REVISION:
+            _prepare_downgrade_safe_state()
+            _alembic_downgrade(DOWN_REVISION)
         elif current is None and original:
             _alembic_upgrade(original)
 
@@ -699,6 +755,7 @@ def test_companies_migration_downgrade_raises_for_multi_company_client(
                 session.commit()
         _cleanup_org(seeded["org_id"])
         if _current_revision() == UP_REVISION and migration_revision_guard == DOWN_REVISION:
+            _prepare_downgrade_safe_state()
             _alembic_downgrade(DOWN_REVISION)
 
 
@@ -769,6 +826,8 @@ def test_migration_failure_rolls_back_rls_disable(migration_revision_guard, monk
 
         with pytest.raises(RuntimeError, match="simulated migration failure"):
             _alembic_upgrade(UP_REVISION)
+
+        monkeypatch.undo()
 
         assert _current_revision() == DOWN_REVISION
         with SyncSessionLocal() as session:

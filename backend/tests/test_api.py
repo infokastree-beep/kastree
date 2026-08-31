@@ -245,7 +245,7 @@ async def test_full_happy_path_upload_to_statements(
         )
     }
     form = {
-        "client_id": str(provisioned_org["client_id"]),
+        "company_id": str(provisioned_org["company_id"]),
         "period_end": "2026-07-31",
         "currency": "GBP",
     }
@@ -371,7 +371,7 @@ async def test_cross_org_trial_balance_returns_404_not_403(
     upload = await api_client.post(
         "/trial-balances/upload",
         data={
-            "client_id": str(provisioned_org["client_id"]),
+            "company_id": str(provisioned_org["company_id"]),
             "period_end": "2026-06-30",
             "currency": "GBP",
         },
@@ -431,7 +431,7 @@ async def test_list_trial_balances_for_client(
     provisioned_org: dict,
 ) -> None:
     headers = auth_headers(provisioned_org["token"])
-    client_id = provisioned_org["client_id"]
+    company_id = provisioned_org["company_id"]
     files = {
         "file": (
             "tb.xlsx",
@@ -442,7 +442,7 @@ async def test_list_trial_balances_for_client(
     upload = await api_client.post(
         "/trial-balances/upload",
         data={
-            "client_id": str(client_id),
+            "company_id": str(company_id),
             "period_end": "2026-07-31",
             "currency": "GBP",
         },
@@ -453,7 +453,7 @@ async def test_list_trial_balances_for_client(
     tb_id = upload.json()["tb_id"]
 
     listed = await api_client.get(
-        f"/trial-balances?client_id={client_id}",
+        f"/trial-balances?company_id={company_id}",
         headers=headers,
     )
     assert listed.status_code == 200, listed.text
@@ -500,7 +500,7 @@ async def test_list_trial_balances_cross_org_client_404(
         org_uuid=other_org_id,
     )
     response = await api_client.get(
-        f"/trial-balances?client_id={provisioned_org['client_id']}",
+        f"/trial-balances?company_id={provisioned_org['company_id']}",
         headers=auth_headers(token_b),
     )
     assert response.status_code == 404

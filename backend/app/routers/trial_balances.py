@@ -30,6 +30,7 @@ from app.db import SyncSessionLocal, aset_rls_org_id, set_rls_org_id
 from app.dependencies import AuthContext, get_auth_context, get_db_session
 from app.models.account_mapping import AccountMapping
 from app.models.client import Client
+from app.models.company import Company
 from app.models.financial_statement import FinancialStatement
 from app.models.processing_job import ProcessingJob
 from app.models.statement_line_item import StatementLineItem
@@ -40,6 +41,7 @@ from app.services.statements import (
     StatementLineItemRecord,
     build_statements,
 )
+from app.services.ownership import get_owned_company
 from app.services.tb_pipeline import parsed_rows_from_tb, run_parse_and_map_job
 from app.services.validator import SimpleMappedAccount, validate_trial_balance
 
@@ -174,7 +176,7 @@ class TrialBalanceListItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: uuid.UUID
-    client_id: uuid.UUID
+    company_id: uuid.UUID
     period_end: date
     status: str
     created_at: datetime
@@ -196,25 +198,6 @@ _MAX_TB_PAGE = 100
 # --- helpers -----------------------------------------------------------------
 
 
-async def _get_owned_client(
-    session: AsyncSession,
-    *,
-    client_id: uuid.UUID,
-    org_id: uuid.UUID,
-) -> Client:
-    result = await session.execute(
-        select(Client).where(
-            Client.id == client_id,
-            Client.org_id == org_id,
-            Client.is_deleted.is_(False),
-        )
-    )
-    client = result.scalar_one_or_none()
-    if client is None:
-        raise HTTPException(status_code=404, detail="Client not found")
-    return client
-
-
 async def _get_owned_tb(
     session: AsyncSession,
     *,
@@ -223,11 +206,13 @@ async def _get_owned_tb(
 ) -> TrialBalance:
     result = await session.execute(
         select(TrialBalance)
-        .join(Client, Client.id == TrialBalance.client_id)
+        .join(Company, Company.id == TrialBalance.company_id)
+        .join(Client, Client.id == Company.client_id)
         .where(
             TrialBalance.id == tb_id,
             Client.org_id == org_id,
             Client.is_deleted.is_(False),
+            Company.is_deleted.is_(False),
         )
     )
     tb = result.scalar_one_or_none()
@@ -277,13 +262,13 @@ async def upload_trial_balance(
     background_tasks: BackgroundTasks,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
-    client_id: Annotated[uuid.UUID, Form()],
+    company_id: Annotated[uuid.UUID, Form()],
     period_end: Annotated[date, Form()],
     file: Annotated[UploadFile, File()],
     currency: Annotated[str, Form()] = "GBP",
 ) -> UploadAcceptedResponse:
     await aset_rls_org_id(session, auth.org_id)
-    await _get_owned_client(session, client_id=client_id, org_id=auth.org_id)
+    company = await get_owned_company(session, company_id=company_id, org_id=auth.org_id)
 
     filename = file.filename or "upload.xlsx"
     file_type = _file_extension(filename)
@@ -298,7 +283,7 @@ async def upload_trial_balance(
     stored_path.write_bytes(content)
 
     tb = TrialBalance(
-        client_id=client_id,
+        company_id=company.id,
         period_end=period_end,
         file_url=f"file://{stored_path}",
         file_type=file_type,
@@ -313,7 +298,7 @@ async def upload_trial_balance(
         await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="A trial balance already exists for this client and period_end",
+            detail="A trial balance already exists for this company and period_end",
         ) from exc
 
     parse_job = ProcessingJob(
@@ -355,17 +340,17 @@ async def upload_trial_balance(
 
 @router.get("", response_model=TrialBalanceListResponse)
 async def list_trial_balances(
-    client_id: Annotated[uuid.UUID, Query()],
+    company_id: Annotated[uuid.UUID, Query()],
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     limit: Annotated[int, Query(ge=1, le=_MAX_TB_PAGE)] = _DEFAULT_TB_PAGE,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> TrialBalanceListResponse:
-    """List trial balances for a client (paginated). Cross-org client_id → 404."""
+    """List trial balances for a company (paginated). Cross-org company_id → 404."""
     await aset_rls_org_id(session, auth.org_id)
-    await _get_owned_client(session, client_id=client_id, org_id=auth.org_id)
+    await get_owned_company(session, company_id=company_id, org_id=auth.org_id)
 
-    base = select(TrialBalance).where(TrialBalance.client_id == client_id)
+    base = select(TrialBalance).where(TrialBalance.company_id == company_id)
     total = await session.scalar(select(func.count()).select_from(base.subquery()))
     result = await session.execute(
         base.order_by(TrialBalance.period_end.desc(), TrialBalance.created_at.desc())
@@ -377,7 +362,7 @@ async def list_trial_balances(
         items=[
             TrialBalanceListItem(
                 id=tb.id,
-                client_id=tb.client_id,
+                company_id=tb.company_id,
                 period_end=tb.period_end,
                 status=tb.status,
                 created_at=tb.created_at,
@@ -435,7 +420,7 @@ async def get_trial_balance_mapping(
     codes_names = {(row.account_code, row.account_name) for row in rows}
 
     mappings_result = await session.execute(
-        select(AccountMapping).where(AccountMapping.client_id == tb.client_id)
+        select(AccountMapping).where(AccountMapping.company_id == tb.company_id)
     )
     all_mappings = list(mappings_result.scalars().all())
     relevant = [
@@ -496,7 +481,7 @@ async def confirm_trial_balance_mapping(
     tb = await _get_owned_tb(session, tb_id=tb_id, org_id=auth.org_id)
 
     mappings_result = await session.execute(
-        select(AccountMapping).where(AccountMapping.client_id == tb.client_id)
+        select(AccountMapping).where(AccountMapping.company_id == tb.company_id)
     )
     by_id = {mapping.id: mapping for mapping in mappings_result.scalars().all()}
 
@@ -622,7 +607,7 @@ def _mapped_accounts_for_tb(session: Session, tb: TrialBalance) -> list[SimpleMa
     rows = parsed_rows_from_tb(tb)
     mappings = list(
         session.scalars(
-            select(AccountMapping).where(AccountMapping.client_id == tb.client_id)
+            select(AccountMapping).where(AccountMapping.company_id == tb.company_id)
         ).all()
     )
     by_key = {
@@ -802,7 +787,7 @@ def _statement_accounts(
     mappings = list(
         session.scalars(
             select(AccountMapping).where(
-                AccountMapping.client_id == tb.client_id,
+                AccountMapping.company_id == tb.company_id,
                 AccountMapping.is_confirmed.is_(True),
             )
         ).all()

@@ -13,6 +13,7 @@ from sqlalchemy import select, text
 from app.db import SyncSessionLocal, set_rls_org_id
 from app.models.archived_record import ArchivedRecord
 from app.models.client import Client
+from app.models.company import Company
 from app.models.notification import Notification
 from app.models.trial_balance import TrialBalance
 from app.models.user import User
@@ -25,7 +26,7 @@ from tests.conftest import auth_headers, make_access_token
 def _seed_variance_with_commentary(
     *,
     org_id: uuid.UUID,
-    client_id: uuid.UUID,
+    company_id: uuid.UUID,
     ai_text: str = "Revenue increased due to online sales.",
 ) -> uuid.UUID:
     tb_id = uuid.uuid4()
@@ -35,7 +36,7 @@ def _seed_variance_with_commentary(
         session.add(
             TrialBalance(
                 id=tb_id,
-                client_id=client_id,
+                company_id=company_id,
                 period_end=date(2026, 7, 31),
                 file_url=f"/tmp/{tb_id}.xlsx",
                 file_type="xlsx",
@@ -130,7 +131,7 @@ async def test_commentary_feedback_thumbs_and_correction_preserves_original(
     ai_text = "Revenue increased due to online sales."
     variance_id = _seed_variance_with_commentary(
         org_id=org_id,
-        client_id=provisioned_org["client_id"],
+        company_id=provisioned_org["company_id"],
         ai_text=ai_text,
     )
 
@@ -184,12 +185,18 @@ async def test_commentary_feedback_cross_org_variance_404(
         other_client = Client(
             org_id=provisioned.organisation.id,
             name="Other Client",
-            functional_currency="GBP",
         )
         session.add(other_client)
+        session.flush()
+        other_company = Company(
+            client_id=other_client.id,
+            name="Other Client",
+            functional_currency="GBP",
+        )
+        session.add(other_company)
         session.commit()
         other_org_id = provisioned.organisation.id
-        other_client_id = other_client.id
+        other_company_id = other_company.id
         other_token = make_access_token(
             clerk_user_id=f"user_other_{suffix}",
             clerk_org_id=f"org_other_{suffix}",
@@ -197,7 +204,7 @@ async def test_commentary_feedback_cross_org_variance_404(
         )
 
     variance_id = _seed_variance_with_commentary(
-        org_id=other_org_id, client_id=other_client_id
+        org_id=other_org_id, company_id=other_company_id
     )
     # Org A cannot feedback on Org B's variance.
     forbidden = await api_client.post(

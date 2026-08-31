@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
@@ -12,7 +12,12 @@ import {
   MAX_UPLOAD_BYTES,
 } from "@/lib/constants";
 import { estimateCsvRowCount, formatBytes } from "@/lib/utils";
-import type { ClientListResponse, UploadAcceptedResponse } from "@/types";
+import type {
+  ClientListResponse,
+  CompanyListResponse,
+  ICompany,
+  UploadAcceptedResponse,
+} from "@/types";
 
 const NEW_CLIENT_VALUE = "__new_client__";
 
@@ -22,21 +27,22 @@ function isAcceptedFile(file: File): boolean {
 }
 
 type UploadFormProps = {
-  initialClientId?: string;
+  initialCompanyId?: string;
 };
 
-export function UploadForm({ initialClientId = "" }: UploadFormProps) {
+export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
   const router = useRouter();
   const { getToken } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [rowCount, setRowCount] = useState<number | null>(null);
   const [periodEnd, setPeriodEnd] = useState(() => {
     const d = new Date();
-    d.setDate(0); // last day of previous month
+    d.setDate(0);
     return d.toISOString().slice(0, 10);
   });
   const [currency, setCurrency] = useState("GBP");
-  const [clientId, setClientId] = useState(initialClientId);
+  const [clientId, setClientId] = useState("");
+  const [companyId, setCompanyId] = useState(initialCompanyId);
   const [dragOver, setDragOver] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -51,26 +57,69 @@ export function UploadForm({ initialClientId = "" }: UploadFormProps) {
     [clientsQuery.data?.items],
   );
 
-  useEffect(() => {
-    if (initialClientId) {
-      setClientId(initialClientId);
-    }
-  }, [initialClientId]);
+  const companiesQueries = useQueries({
+    queries: clientOptions.map((client) => ({
+      queryKey: ["companies", client.id],
+      queryFn: () =>
+        apiFetch<CompanyListResponse>(`/clients/${client.id}/companies`, {
+          getToken,
+        }),
+      enabled: clientsQuery.isSuccess,
+    })),
+  });
+
+  const companiesByClientId = useMemo(() => {
+    const map = new Map<string, CompanyListResponse["items"]>();
+    clientOptions.forEach((client, index) => {
+      map.set(client.id, companiesQueries[index]?.data?.items ?? []);
+    });
+    return map;
+  }, [clientOptions, companiesQueries]);
+
+  const companyOptions = useMemo(
+    () => companiesByClientId.get(clientId) ?? [],
+    [companiesByClientId, clientId],
+  );
+
+  const initialCompanyQuery = useQuery({
+    queryKey: ["company", initialCompanyId],
+    queryFn: () =>
+      apiFetch<ICompany>(`/companies/${initialCompanyId}`, { getToken }),
+    enabled: Boolean(initialCompanyId),
+  });
 
   useEffect(() => {
-    const selected = clientOptions.find((client) => client.id === clientId);
+    if (initialCompanyQuery.data) {
+      setClientId(initialCompanyQuery.data.client_id);
+      setCompanyId(initialCompanyQuery.data.id);
+      setCurrency(initialCompanyQuery.data.functional_currency);
+    }
+  }, [initialCompanyQuery.data]);
+
+  useEffect(() => {
+    const selected = companyOptions.find((company) => company.id === companyId);
     if (selected) {
       setCurrency(selected.functional_currency);
     }
-  }, [clientId, clientOptions]);
+  }, [companyId, companyOptions]);
+
+  useEffect(() => {
+    if (!clientId) {
+      setCompanyId("");
+      return;
+    }
+    if (companyId && !companyOptions.some((company) => company.id === companyId)) {
+      setCompanyId("");
+    }
+  }, [clientId, companyId, companyOptions]);
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
       if (!file) throw new Error("Choose a .xlsx or .csv file first");
-      if (!clientId) throw new Error("Select a client before uploading");
+      if (!companyId) throw new Error("Select a company before uploading");
       const form = new FormData();
       form.append("file", file);
-      form.append("client_id", clientId);
+      form.append("company_id", companyId);
       form.append("period_end", periodEnd);
       form.append("currency", currency);
       return apiFetch<UploadAcceptedResponse>("/trial-balances/upload", {
@@ -123,16 +172,22 @@ export function UploadForm({ initialClientId = "" }: UploadFormProps) {
         return;
       }
       setClientId(value);
+      setCompanyId("");
     },
     [router],
   );
+
+  const companiesLoading = companiesQueries.some((query) => query.isLoading);
 
   const errorMessage =
     localError ||
     (uploadMutation.error instanceof Error
       ? uploadMutation.error.message
       : null) ||
-    (clientsQuery.error instanceof Error ? clientsQuery.error.message : null);
+    (clientsQuery.error instanceof Error ? clientsQuery.error.message : null) ||
+    (initialCompanyQuery.error instanceof Error
+      ? initialCompanyQuery.error.message
+      : null);
 
   return (
     <div className="space-y-6">
@@ -195,7 +250,7 @@ export function UploadForm({ initialClientId = "" }: UploadFormProps) {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block text-sm">
-          <span className="mb-1 block text-stone-600">Client</span>
+          <span className="mb-1 block text-stone-600">Client group</span>
           <select
             className="w-full rounded border border-stone-300 bg-white px-3 py-2"
             value={clientId}
@@ -203,7 +258,7 @@ export function UploadForm({ initialClientId = "" }: UploadFormProps) {
             disabled={clientsQuery.isLoading}
           >
             <option value="">
-              {clientsQuery.isLoading ? "Loading clients…" : "Select a client"}
+              {clientsQuery.isLoading ? "Loading clients…" : "Select a client group"}
             </option>
             {clientOptions.map((client) => (
               <option key={client.id} value={client.id}>
@@ -212,16 +267,41 @@ export function UploadForm({ initialClientId = "" }: UploadFormProps) {
             ))}
             <option value={NEW_CLIENT_VALUE}>+ New client</option>
           </select>
-          {clientOptions.length === 0 && !clientsQuery.isLoading ? (
+        </label>
+
+        <label className="block text-sm">
+          <span className="mb-1 block text-stone-600">Company</span>
+          <select
+            className="w-full rounded border border-stone-300 bg-white px-3 py-2"
+            value={companyId}
+            onChange={(e) => setCompanyId(e.target.value)}
+            disabled={!clientId || companiesLoading}
+          >
+            <option value="">
+              {!clientId
+                ? "Select a client group first"
+                : companiesLoading
+                  ? "Loading companies…"
+                  : companyOptions.length === 0
+                    ? "No companies — create one first"
+                    : "Select a company"}
+            </option>
+            {companyOptions.map((company) => (
+              <option key={company.id} value={company.id}>
+                {company.name} ({company.functional_currency})
+              </option>
+            ))}
+          </select>
+          {clientId && !companiesLoading && companyOptions.length === 0 ? (
             <p className="mt-1 text-xs text-stone-500">
-              No clients yet. Choose{" "}
-              <Link href="/clients/new" className="underline">
-                + New client
-              </Link>
-              .
+              <Link href={`/clients/${clientId}`} className="underline">
+                Add a company
+              </Link>{" "}
+              to this client group before uploading.
             </p>
           ) : null}
         </label>
+
         <label className="block text-sm">
           <span className="mb-1 block text-stone-600">Period end</span>
           <input
@@ -247,6 +327,16 @@ export function UploadForm({ initialClientId = "" }: UploadFormProps) {
         </label>
       </div>
 
+      {clientOptions.length === 0 && !clientsQuery.isLoading ? (
+        <p className="text-xs text-stone-500">
+          No clients yet. Choose{" "}
+          <Link href="/clients/new" className="underline">
+            + New client
+          </Link>
+          .
+        </p>
+      ) : null}
+
       {errorMessage ? (
         <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
           {errorMessage}
@@ -255,7 +345,7 @@ export function UploadForm({ initialClientId = "" }: UploadFormProps) {
 
       <button
         type="button"
-        disabled={!file || !clientId || uploadMutation.isPending}
+        disabled={!file || !companyId || uploadMutation.isPending}
         onClick={() => uploadMutation.mutate()}
         className="rounded bg-stone-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
       >

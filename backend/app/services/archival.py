@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.archived_record import ArchivedRecord
 from app.models.client import Client
+from app.models.company import Company
 
 RETENTION_YEARS = 7
 
@@ -53,24 +54,33 @@ def verify_archive_hash(archived_data: dict[str, Any], archive_hash: str) -> boo
 
 
 def client_snapshot(client: Client) -> dict[str, Any]:
-    """Full clients-row snapshot for archived_data.
-
-    Values are plain JSON-friendly types; hashing still uses sort_keys so key
-    order in this literal does not affect archive_hash.
-    """
+    """Full clients-row snapshot for archived_data."""
     return {
         "id": str(client.id),
         "org_id": str(client.org_id),
         "name": client.name,
-        "company_number": client.company_number,
-        "industry": client.industry,
-        "functional_currency": client.functional_currency,
-        "materiality_threshold_pct": str(client.materiality_threshold_pct),
-        "materiality_threshold_abs": str(client.materiality_threshold_abs),
         "is_deleted": client.is_deleted,
         "deleted_at": client.deleted_at.isoformat() if client.deleted_at else None,
         "created_at": client.created_at.isoformat() if client.created_at else None,
         "updated_at": client.updated_at.isoformat() if client.updated_at else None,
+    }
+
+
+def company_snapshot(company: Company) -> dict[str, Any]:
+    """Full companies-row snapshot for archived_data."""
+    return {
+        "id": str(company.id),
+        "client_id": str(company.client_id),
+        "name": company.name,
+        "company_number": company.company_number,
+        "industry": company.industry,
+        "functional_currency": company.functional_currency,
+        "materiality_threshold_pct": str(company.materiality_threshold_pct),
+        "materiality_threshold_abs": str(company.materiality_threshold_abs),
+        "is_deleted": company.is_deleted,
+        "deleted_at": company.deleted_at.isoformat() if company.deleted_at else None,
+        "created_at": company.created_at.isoformat() if company.created_at else None,
+        "updated_at": company.updated_at.isoformat() if company.updated_at else None,
     }
 
 
@@ -89,6 +99,33 @@ async def archive_client_user_deleted(
         client_id=client.id,
         entity_type="client",
         entity_id=client.id,
+        archive_reason="user_deleted",
+        archived_by_user_id=archived_by_user_id,
+        archived_data=snapshot,
+        archive_hash=sha256_hex(snapshot),
+        retention_until=add_years(when.date(), RETENTION_YEARS),
+    )
+    session.add(record)
+    await session.flush()
+    return record
+
+
+async def archive_company_user_deleted(
+    session: AsyncSession,
+    *,
+    company: Company,
+    org_id: uuid.UUID,
+    archived_by_user_id: uuid.UUID,
+    archived_at: datetime | None = None,
+) -> ArchivedRecord:
+    """Append archived_records row for a user soft-deleted company (same txn)."""
+    when = archived_at or datetime.now(timezone.utc)
+    snapshot = company_snapshot(company)
+    record = ArchivedRecord(
+        org_id=org_id,
+        client_id=company.client_id,
+        entity_type="company",
+        entity_id=company.id,
         archive_reason="user_deleted",
         archived_by_user_id=archived_by_user_id,
         archived_data=snapshot,

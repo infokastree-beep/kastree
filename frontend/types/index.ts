@@ -4,6 +4,27 @@ export interface IClient {
   id: string;
   org_id: string;
   name: string;
+  is_deleted: boolean;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClientCreateRequest {
+  name: string;
+}
+
+export interface ClientListResponse {
+  items: IClient[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ICompany {
+  id: string;
+  client_id: string;
+  name: string;
   company_number: string | null;
   industry: string | null;
   functional_currency: string;
@@ -15,23 +36,27 @@ export interface IClient {
   updated_at: string;
 }
 
-export interface ClientCreateRequest {
+export interface CompanyCreateRequest {
   name: string;
   company_number?: string | null;
   industry?: string | null;
   functional_currency?: string;
 }
 
-export interface ClientListResponse {
-  items: IClient[];
+export interface CompanyUpdateRequest {
+  materiality_threshold_pct?: string;
+  materiality_threshold_abs?: string;
+}
+
+export interface CompanyListResponse {
+  client_id: string;
+  items: ICompany[];
   total: number;
-  limit: number;
-  offset: number;
 }
 
 export interface TrialBalanceListItem {
   id: string;
-  client_id: string;
+  company_id: string;
   period_end: string;
   status: string;
   created_at: string;

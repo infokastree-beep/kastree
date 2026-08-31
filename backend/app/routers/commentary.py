@@ -13,6 +13,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.db import aset_rls_org_id
 from app.dependencies import AuthContext, get_auth_context, get_db_session
 from app.models.client import Client
+from app.models.company import Company
 from app.models.commentary_feedback import CommentaryFeedback
 from app.models.trial_balance import TrialBalance
 from app.models.variance_analysis import VarianceAnalysis
@@ -36,7 +37,8 @@ async def _get_owned_variance(
     result = await session.execute(
         select(VarianceAnalysis)
         .join(TrialBalance, TrialBalance.id == VarianceAnalysis.tb_id)
-        .join(Client, Client.id == TrialBalance.client_id)
+        .join(Company, Company.id == TrialBalance.company_id)
+        .join(Client, Client.id == Company.client_id)
         .where(
             VarianceAnalysis.id == variance_id,
             Client.org_id == org_id,

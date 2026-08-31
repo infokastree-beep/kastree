@@ -1,10 +1,9 @@
-"""Client SQLAlchemy model."""
+"""Client SQLAlchemy model — practice client group (companies live underneath)."""
 
 import uuid
 from datetime import datetime
-from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, func, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -27,17 +26,6 @@ class Client(Base):
         nullable=False,
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
-    company_number: Mapped[str | None] = mapped_column(String, nullable=True)
-    industry: Mapped[str | None] = mapped_column(String, nullable=True)
-    functional_currency: Mapped[str] = mapped_column(
-        String(3), nullable=False, server_default=text("'GBP'")
-    )
-    materiality_threshold_pct: Mapped[Decimal] = mapped_column(
-        Numeric(5, 2), nullable=False, server_default=text("10.00")
-    )
-    materiality_threshold_abs: Mapped[Decimal] = mapped_column(
-        Numeric(19, 2), nullable=False, server_default=text("1000.00")
-    )
     is_deleted: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )

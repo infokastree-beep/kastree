@@ -5,6 +5,7 @@ from app.models.archived_record import ArchivedRecord
 from app.models.audit_log import AuditLog
 from app.models.base import Base
 from app.models.client import Client
+from app.models.company import Company
 from app.models.commentary_feedback import CommentaryFeedback
 from app.models.export import Export
 from app.models.financial_statement import FinancialStatement
@@ -24,6 +25,7 @@ __all__ = [
     "ArchivedRecord",
     "AuditLog",
     "Client",
+    "Company",
     "CommentaryFeedback",
     "Export",
     "FinancialStatement",

@@ -25,7 +25,7 @@ from app.models.trial_balance import TrialBalance
 from app.services.mapper import (
     MappingResult,
     SleepFn,
-    map_accounts_for_client,
+    map_accounts_for_company,
 )
 from app.services.parser import TBRow, parse_tb_file
 
@@ -104,14 +104,14 @@ def run_parse_and_map_job(
             # Always run Tiers 1–4. When openai_client is None, mapper constructs
             # OpenAI() from env; missing OPENAI_API_KEY correctly exhausts the
             # mini→4o retry chain and leaves method=None for persistence as llm.
-            results = map_accounts_for_client(
+            results = map_accounts_for_company(
                 session,
-                tb.client_id,
+                tb.company_id,
                 rows,
                 openai_client=openai_client,
                 sleep=sleep,
             )
-            _persist_mapping_results(session, client_id=tb.client_id, results=results)
+            _persist_mapping_results(session, company_id=tb.company_id, results=results)
             map_job.status = "complete"
             map_job.progress_pct = 100
             map_job.completed_at = _utcnow()
@@ -140,13 +140,11 @@ def run_parse_and_map_job(
 def _persist_mapping_results(
     session: Session,
     *,
-    client_id: uuid.UUID,
+    company_id: uuid.UUID,
     results: list[MappingResult],
 ) -> None:
     for result in results:
         if result.method is None:
-            # Tier 4 was attempted (or returned unmapped) and did not resolve.
-            # Persist as llm + unmapped — never "manual" (reserved for human confirm).
             canonical = "unmapped"
             method = "llm"
         else:
@@ -154,7 +152,7 @@ def _persist_mapping_results(
             method = result.method
         existing = session.scalar(
             select(AccountMapping).where(
-                AccountMapping.client_id == client_id,
+                AccountMapping.company_id == company_id,
                 AccountMapping.source_code == result.source_code,
                 AccountMapping.source_name == result.source_name,
             )
@@ -168,7 +166,7 @@ def _persist_mapping_results(
             continue
         session.add(
             AccountMapping(
-                client_id=client_id,
+                company_id=company_id,
                 source_code=result.source_code,
                 source_name=result.source_name,
                 canonical_line=canonical,

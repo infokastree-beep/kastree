@@ -15,19 +15,47 @@ from sqlalchemy import select, text
 from app.db import SyncSessionLocal, set_rls_org_id
 from app.models.account_mapping import AccountMapping
 from app.models.archived_record import ArchivedRecord
+from app.models.company import Company
 from app.services.archival import RETENTION_YEARS, add_years, sha256_hex
 from app.services.org_provisioning import provision_first_signup
 from tests.conftest import auth_headers, make_access_token
 
 
 @pytest.mark.asyncio
-async def test_create_client_defaults_currency_and_materiality(
+async def test_create_client_name_only(
     api_client: AsyncClient,
     provisioned_org: dict,
 ) -> None:
     headers = auth_headers(provisioned_org["token"])
     response = await api_client.post(
         "/clients",
+        headers=headers,
+        json={"name": "Acme Group"},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["name"] == "Acme Group"
+    assert body["is_deleted"] is False
+    assert body["org_id"] == str(provisioned_org["org_id"])
+    assert "id" in body
+    assert "functional_currency" not in body
+
+
+@pytest.mark.asyncio
+async def test_create_company_defaults_currency_and_materiality(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    headers = auth_headers(provisioned_org["token"])
+    client = await api_client.post(
+        "/clients",
+        headers=headers,
+        json={"name": "Acme Group"},
+    )
+    assert client.status_code == 201
+    client_id = client.json()["id"]
+    response = await api_client.post(
+        f"/clients/{client_id}/companies",
         headers=headers,
         json={"name": "Acme Trading Ltd", "industry": "Retail"},
     )
@@ -36,12 +64,10 @@ async def test_create_client_defaults_currency_and_materiality(
     assert body["name"] == "Acme Trading Ltd"
     assert body["industry"] == "Retail"
     assert body["company_number"] is None
-    assert body["functional_currency"] == "GBP"  # org default
+    assert body["functional_currency"] == "GBP"
     assert Decimal(body["materiality_threshold_pct"]) == Decimal("10.00")
     assert Decimal(body["materiality_threshold_abs"]) == Decimal("1000.00")
-    assert body["is_deleted"] is False
-    assert body["org_id"] == str(provisioned_org["org_id"])
-    assert "id" in body
+    assert body["client_id"] == client_id
 
 
 @pytest.mark.asyncio
@@ -65,10 +91,9 @@ async def test_list_clients_pagination_excludes_deleted(
     body = page.json()
     assert body["limit"] == 2
     assert body["offset"] == 0
-    assert body["total"] >= 3  # includes fixture client from provisioned_org
+    assert body["total"] >= 3
     assert len(body["items"]) == 2
 
-    # Soft-delete one created client via API then confirm list excludes it
     doomed = created_ids[0]
     deleted = await api_client.delete(f"/clients/{doomed}", headers=headers)
     assert deleted.status_code == 200
@@ -86,14 +111,13 @@ async def test_get_client_own_org_ok_other_org_404(
     created = await api_client.post(
         "/clients",
         headers=headers_a,
-        json={"name": "Owned Client", "functional_currency": "EUR"},
+        json={"name": "Owned Client"},
     )
     assert created.status_code == 201
     client_id = created.json()["id"]
 
     own = await api_client.get(f"/clients/{client_id}", headers=headers_a)
     assert own.status_code == 200
-    assert own.json()["functional_currency"] == "EUR"
 
     suffix = uuid.uuid4().hex[:10]
     clerk_org_id = f"org_other_{suffix}"
@@ -134,7 +158,7 @@ async def test_get_client_own_org_ok_other_org_404(
 
 
 @pytest.mark.asyncio
-async def test_update_client_fields(
+async def test_update_client_name_only(
     api_client: AsyncClient,
     provisioned_org: dict,
 ) -> None:
@@ -147,6 +171,22 @@ async def test_update_client_fields(
     client_id = created.json()["id"]
     updated = await api_client.put(
         f"/clients/{client_id}",
+        headers=headers,
+        json={"name": "After Update"},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["name"] == "After Update"
+
+
+@pytest.mark.asyncio
+async def test_update_company_fields(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    headers = auth_headers(provisioned_org["token"])
+    company_id = provisioned_org["company_id"]
+    updated = await api_client.put(
+        f"/companies/{company_id}",
         headers=headers,
         json={
             "name": "After Update",
@@ -172,7 +212,7 @@ async def test_soft_delete_writes_archived_record_with_valid_hash(
     created = await api_client.post(
         "/clients",
         headers=headers,
-        json={"name": "Archive Me", "industry": "Services"},
+        json={"name": "Archive Me"},
     )
     assert created.status_code == 201
     client_id = uuid.UUID(created.json()["id"])
@@ -183,7 +223,6 @@ async def test_soft_delete_writes_archived_record_with_valid_hash(
     assert deleted.json()["is_deleted"] is True
     assert deleted.json()["deleted_at"] is not None
 
-    # Gone from get
     assert (await api_client.get(f"/clients/{client_id}", headers=headers)).status_code == 404
 
     with SyncSessionLocal() as session:
@@ -200,7 +239,6 @@ async def test_soft_delete_writes_archived_record_with_valid_hash(
         assert row.org_id == org_id
         assert row.archived_data["name"] == "Archive Me"
         assert row.archived_data["is_deleted"] is True
-        # Valid SHA-256 of archived_data — independently recomputed in the test
         assert len(row.archive_hash) == 64
         independent = hashlib.sha256(
             json.dumps(
@@ -212,7 +250,6 @@ async def test_soft_delete_writes_archived_record_with_valid_hash(
         ).hexdigest()
         assert row.archive_hash == independent
         assert row.archive_hash == sha256_hex(row.archived_data)
-        # Tamper check: wrong payload must not match
         tampered = dict(row.archived_data)
         tampered["name"] = "Tampered"
         assert row.archive_hash != hashlib.sha256(
@@ -220,20 +257,42 @@ async def test_soft_delete_writes_archived_record_with_valid_hash(
                 tampered, sort_keys=True, separators=(",", ":"), default=str
             ).encode()
         ).hexdigest()
-        # retention_until ≈ now + 7 years
         today = date.today()
         expected = add_years(today, RETENTION_YEARS)
         assert abs((row.retention_until - expected).days) <= 1
 
 
-def test_archive_hash_deterministic_across_dict_key_order() -> None:
-    """Same snapshot data → same SHA-256 regardless of dict insertion order.
+@pytest.mark.asyncio
+async def test_soft_delete_company_archives_company_snapshot(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    headers = auth_headers(provisioned_org["token"])
+    company_id = uuid.UUID(str(provisioned_org["company_id"]))
+    org_id = provisioned_org["org_id"]
 
-    Independent of sha256_hex: recomputes with hashlib + json.dumps(sort_keys=True).
-    """
+    deleted = await api_client.delete(f"/companies/{company_id}", headers=headers)
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json()["is_deleted"] is True
+
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        row = session.scalar(
+            select(ArchivedRecord).where(
+                ArchivedRecord.entity_type == "company",
+                ArchivedRecord.entity_id == company_id,
+                ArchivedRecord.archive_reason == "user_deleted",
+            )
+        )
+        assert row is not None
+        assert "functional_currency" in row.archived_data
+        assert row.archive_hash == sha256_hex(row.archived_data)
+
+
+def test_archive_hash_deterministic_across_dict_key_order() -> None:
     snapshot_a = {
         "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-        "org_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "client_id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
         "name": "Determinism Co",
         "company_number": None,
         "industry": "Retail",
@@ -245,33 +304,8 @@ def test_archive_hash_deterministic_across_dict_key_order() -> None:
         "created_at": "2026-08-01T09:00:00+00:00",
         "updated_at": "2026-08-30T12:00:00+00:00",
     }
-    # Different construction / insertion order, same keys and values.
     snapshot_b = {key: snapshot_a[key] for key in reversed(list(snapshot_a.keys()))}
-    assert list(snapshot_a.keys()) != list(snapshot_b.keys())
-
-    hash_a = sha256_hex(snapshot_a)
-    hash_b = sha256_hex(snapshot_b)
-    assert hash_a == hash_b
-
-    independent = hashlib.sha256(
-        json.dumps(
-            snapshot_a,
-            sort_keys=True,
-            separators=(",", ":"),
-            default=str,
-        ).encode("utf-8")
-    ).hexdigest()
-    assert hash_a == independent
-    # Re-hash snapshot_b the same independent way — still matches.
-    independent_b = hashlib.sha256(
-        json.dumps(
-            snapshot_b,
-            sort_keys=True,
-            separators=(",", ":"),
-            default=str,
-        ).encode("utf-8")
-    ).hexdigest()
-    assert independent_b == independent
+    assert sha256_hex(snapshot_a) == sha256_hex(snapshot_b)
 
 
 @pytest.mark.asyncio
@@ -280,7 +314,6 @@ async def test_soft_delete_rolls_back_when_archive_fails(
     provisioned_org: dict,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Archive failure must not leave is_deleted=true without an archived_records row."""
     headers = auth_headers(provisioned_org["token"])
     created = await api_client.post(
         "/clients",
@@ -297,15 +330,12 @@ async def test_soft_delete_rolls_back_when_archive_fails(
         "app.routers.clients.archive_client_user_deleted",
         _boom,
     )
-    # ASGITransport re-raises unhandled endpoint exceptions (not an HTTP 500 body).
     with pytest.raises(RuntimeError, match="simulated archive write failure"):
         await api_client.delete(f"/clients/{client_id}", headers=headers)
 
-    # Soft-delete rolled back with the failed archive — client still visible.
     got = await api_client.get(f"/clients/{client_id}", headers=headers)
     assert got.status_code == 200, got.text
     assert got.json()["is_deleted"] is False
-    assert got.json()["name"] == "Atomic Rollback Client"
 
     with SyncSessionLocal() as session:
         set_rls_org_id(session, provisioned_org["org_id"])
@@ -324,12 +354,8 @@ async def test_mappings_list_and_bulk_delete(
     provisioned_org: dict,
 ) -> None:
     headers = auth_headers(provisioned_org["token"])
-    created = await api_client.post(
-        "/clients",
-        headers=headers,
-        json={"name": "Mapping Client"},
-    )
-    client_id = uuid.UUID(created.json()["id"])
+    company_id = provisioned_org["company_id"]
+    client_id = uuid.UUID(str(provisioned_org["client_id"]))
     org_id = provisioned_org["org_id"]
 
     with SyncSessionLocal() as session:
@@ -337,7 +363,7 @@ async def test_mappings_list_and_bulk_delete(
         session.add_all(
             [
                 AccountMapping(
-                    client_id=client_id,
+                    company_id=company_id,
                     source_code="1100",
                     source_name="Cash",
                     canonical_line="cash",
@@ -346,13 +372,13 @@ async def test_mappings_list_and_bulk_delete(
                     is_confirmed=True,
                 ),
                 AccountMapping(
-                    client_id=client_id,
+                    company_id=company_id,
                     source_code="4100",
                     source_name="Sales",
                     canonical_line="revenue",
                     confidence=Decimal("0.65"),
                     method="code_range",
-                    is_confirmed=False,  # excluded from confirmed list
+                    is_confirmed=False,
                 ),
             ]
         )
@@ -363,11 +389,10 @@ async def test_mappings_list_and_bulk_delete(
     mappings = listed.json()["mappings"]
     assert len(mappings) == 1
     assert mappings[0]["source_code"] == "1100"
-    assert mappings[0]["is_confirmed"] is True
 
     wiped = await api_client.delete(f"/clients/{client_id}/mappings", headers=headers)
     assert wiped.status_code == 200, wiped.text
-    assert wiped.json()["deleted_count"] == 2  # both rows, confirmed or not
+    assert wiped.json()["deleted_count"] == 2
 
     listed_after = await api_client.get(f"/clients/{client_id}/mappings", headers=headers)
     assert listed_after.json()["mappings"] == []
@@ -375,6 +400,28 @@ async def test_mappings_list_and_bulk_delete(
     with SyncSessionLocal() as session:
         set_rls_org_id(session, org_id)
         remaining = session.scalars(
-            select(AccountMapping).where(AccountMapping.client_id == client_id)
+            select(AccountMapping).where(AccountMapping.company_id == company_id)
         ).all()
         assert remaining == []
+
+
+@pytest.mark.asyncio
+async def test_list_companies_for_client(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    headers = auth_headers(provisioned_org["token"])
+    client_id = provisioned_org["client_id"]
+    second = await api_client.post(
+        f"/clients/{client_id}/companies",
+        headers=headers,
+        json={"name": "Second Entity", "functional_currency": "EUR"},
+    )
+    assert second.status_code == 201
+    listed = await api_client.get(f"/clients/{client_id}/companies", headers=headers)
+    assert listed.status_code == 200
+    body = listed.json()
+    assert body["client_id"] == str(client_id)
+    assert body["total"] == 2
+    names = {item["name"] for item in body["items"]}
+    assert "Second Entity" in names

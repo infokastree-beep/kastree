@@ -67,7 +67,7 @@ async def _load_risk_accounts(
         (
             await session.execute(
                 select(AccountMapping).where(
-                    AccountMapping.client_id == tb.client_id,
+                    AccountMapping.company_id == tb.company_id,
                     AccountMapping.is_confirmed.is_(True),
                 )
             )

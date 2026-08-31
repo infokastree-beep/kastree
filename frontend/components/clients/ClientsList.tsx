@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/utils";
-import type { ClientListResponse } from "@/types";
+import type { ClientListResponse, CompanyListResponse } from "@/types";
 
 export function ClientsList() {
   const { getToken } = useAuth();
@@ -14,6 +14,19 @@ export function ClientsList() {
     queryKey: ["clients"],
     queryFn: () =>
       apiFetch<ClientListResponse>("/clients?limit=100", { getToken }),
+  });
+
+  const clients = clientsQuery.data?.items ?? [];
+
+  const companyCountQueries = useQueries({
+    queries: clients.map((client) => ({
+      queryKey: ["companies", client.id],
+      queryFn: () =>
+        apiFetch<CompanyListResponse>(`/clients/${client.id}/companies`, {
+          getToken,
+        }),
+      enabled: clientsQuery.isSuccess,
+    })),
   });
 
   if (clientsQuery.isLoading) {
@@ -29,8 +42,6 @@ export function ClientsList() {
       </p>
     );
   }
-
-  const clients = clientsQuery.data?.items ?? [];
 
   return (
     <div className="space-y-6">
@@ -64,29 +75,36 @@ export function ClientsList() {
             <thead className="border-b border-stone-200 bg-stone-50 text-xs uppercase tracking-wide text-stone-500">
               <tr>
                 <th className="px-3 py-2 font-medium">Name</th>
-                <th className="px-3 py-2 font-medium">Currency</th>
+                <th className="px-3 py-2 font-medium">Companies</th>
                 <th className="px-3 py-2 font-medium">Created</th>
               </tr>
             </thead>
             <tbody>
-              {clients.map((client) => (
-                <tr key={client.id} className="border-b border-stone-100">
-                  <td colSpan={3} className="p-0">
-                    <Link
-                      href={`/clients/${client.id}`}
-                      className="grid grid-cols-3 gap-4 px-3 py-2 hover:bg-stone-50"
-                    >
-                      <span className="font-medium">{client.name}</span>
-                      <span className="font-mono text-xs">
-                        {client.functional_currency}
-                      </span>
-                      <span className="text-stone-600">
-                        {formatDateTime(client.created_at)}
-                      </span>
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+              {clients.map((client, index) => {
+                const companyQuery = companyCountQueries[index];
+                const companyCount = companyQuery?.data?.total;
+                const companyLabel =
+                  companyQuery?.isLoading || companyCount === undefined
+                    ? "…"
+                    : String(companyCount);
+
+                return (
+                  <tr key={client.id} className="border-b border-stone-100">
+                    <td colSpan={3} className="p-0">
+                      <Link
+                        href={`/clients/${client.id}`}
+                        className="grid grid-cols-3 gap-4 px-3 py-2 hover:bg-stone-50"
+                      >
+                        <span className="font-medium">{client.name}</span>
+                        <span className="text-stone-600">{companyLabel}</span>
+                        <span className="text-stone-600">
+                          {formatDateTime(client.created_at)}
+                        </span>
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

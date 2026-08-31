@@ -7,9 +7,109 @@ import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
 import { formatDate, formatDateTime } from "@/lib/utils";
-import type { IClient, TrialBalanceListResponse } from "@/types";
+import type {
+  CompanyListResponse,
+  IClient,
+  ICompany,
+  TrialBalanceListResponse,
+} from "@/types";
 
 const TB_PAGE_SIZE = 20;
+
+function CompanyTrialBalances({ company }: { company: ICompany }) {
+  const { getToken } = useAuth();
+
+  const trialBalancesQuery = useQuery({
+    queryKey: ["trial-balances", company.id],
+    queryFn: () =>
+      apiFetch<TrialBalanceListResponse>(
+        `/trial-balances?company_id=${company.id}&limit=${TB_PAGE_SIZE}`,
+        { getToken },
+      ),
+  });
+
+  const trialBalances = trialBalancesQuery.data?.items ?? [];
+
+  return (
+    <div className="space-y-3 rounded border border-stone-200 bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-stone-900">{company.name}</h3>
+          <p className="mt-0.5 text-sm text-stone-600">
+            <span className="font-mono text-xs">{company.functional_currency}</span>
+            {company.company_number ? (
+              <>
+                {" "}
+                · Co. no. {company.company_number}
+              </>
+            ) : null}
+          </p>
+        </div>
+        <Link
+          href={`/upload?company=${company.id}`}
+          className="rounded bg-stone-900 px-3 py-1.5 text-sm font-medium text-white"
+        >
+          Upload trial balance
+        </Link>
+      </div>
+
+      {trialBalancesQuery.isLoading ? (
+        <p className="text-sm text-stone-600">Loading trial balances…</p>
+      ) : trialBalancesQuery.error ? (
+        <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {trialBalancesQuery.error instanceof Error
+            ? trialBalancesQuery.error.message
+            : "Failed to load trial balances"}
+        </p>
+      ) : trialBalances.length === 0 ? (
+        <p className="text-sm text-stone-600">
+          No trial balances yet.{" "}
+          <Link
+            href={`/upload?company=${company.id}`}
+            className="font-medium text-stone-900 underline"
+          >
+            Upload one
+          </Link>
+          .
+        </p>
+      ) : (
+        <div className="overflow-x-auto rounded border border-stone-100">
+          <table className="min-w-full text-left text-sm">
+            <thead className="border-b border-stone-200 bg-stone-50 text-xs uppercase tracking-wide text-stone-500">
+              <tr>
+                <th className="px-3 py-2 font-medium">Period end</th>
+                <th className="px-3 py-2 font-medium">Status</th>
+                <th className="px-3 py-2 font-medium">Uploaded</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trialBalances.map((tb) => (
+                <tr key={tb.id} className="border-b border-stone-100">
+                  <td colSpan={3} className="p-0">
+                    <Link
+                      href={`/dashboard/${tb.id}`}
+                      className="grid grid-cols-3 gap-4 px-3 py-2 hover:bg-stone-50"
+                    >
+                      <span className="font-medium">{formatDate(tb.period_end)}</span>
+                      <span>
+                        <span className="rounded bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-700">
+                          {tb.status}
+                        </span>
+                      </span>
+                      <span className="text-stone-600">
+                        {formatDateTime(tb.created_at)}
+                      </span>
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function ClientDetail({ clientId }: { clientId: string }) {
   const router = useRouter();
@@ -24,13 +124,10 @@ export function ClientDetail({ clientId }: { clientId: string }) {
       !(error instanceof ApiError && error.status === 404) && failureCount < 2,
   });
 
-  const trialBalancesQuery = useQuery({
-    queryKey: ["trial-balances", clientId],
+  const companiesQuery = useQuery({
+    queryKey: ["companies", clientId],
     queryFn: () =>
-      apiFetch<TrialBalanceListResponse>(
-        `/trial-balances?client_id=${clientId}&limit=${TB_PAGE_SIZE}`,
-        { getToken },
-      ),
+      apiFetch<CompanyListResponse>(`/clients/${clientId}/companies`, { getToken }),
     enabled: clientQuery.isSuccess,
     retry: (failureCount, error) =>
       !(error instanceof ApiError && error.status === 404) && failureCount < 2,
@@ -81,7 +178,7 @@ export function ClientDetail({ clientId }: { clientId: string }) {
     return null;
   }
 
-  const trialBalances = trialBalancesQuery.data?.items ?? [];
+  const companies = companiesQuery.data?.items ?? [];
 
   return (
     <div className="space-y-8">
@@ -144,95 +241,44 @@ export function ClientDetail({ clientId }: { clientId: string }) {
       <div className="rounded border border-stone-200 bg-white p-4 text-sm">
         <dl className="grid gap-4 sm:grid-cols-2">
           <div>
-            <dt className="text-xs uppercase tracking-wide text-stone-400">
-              Functional currency
-            </dt>
-            <dd className="mt-1 font-mono">{client.functional_currency}</dd>
-          </div>
-          <div>
             <dt className="text-xs uppercase tracking-wide text-stone-400">Created</dt>
             <dd className="mt-1 text-stone-700">{formatDateTime(client.created_at)}</dd>
           </div>
           <div>
-            <dt className="text-xs uppercase tracking-wide text-stone-400">
-              Company number
-            </dt>
+            <dt className="text-xs uppercase tracking-wide text-stone-400">Companies</dt>
             <dd className="mt-1 text-stone-700">
-              {client.company_number ?? "—"}
+              {companiesQuery.isLoading
+                ? "…"
+                : `${companies.length} ${companies.length === 1 ? "company" : "companies"}`}
             </dd>
-          </div>
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-stone-400">Industry</dt>
-            <dd className="mt-1 text-stone-700">{client.industry ?? "—"}</dd>
           </div>
         </dl>
       </div>
 
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <h2 className="text-lg font-semibold tracking-tight">Trial balances</h2>
-          <Link
-            href={`/upload?client=${client.id}`}
-            className="rounded bg-stone-900 px-3 py-1.5 text-sm font-medium text-white"
-          >
-            Upload trial balance
-          </Link>
-        </div>
+      <div className="space-y-4">
+        <h2 className="text-lg font-semibold tracking-tight">Companies</h2>
 
-        {trialBalancesQuery.isLoading ? (
-          <p className="text-sm text-stone-600">Loading trial balances…</p>
-        ) : trialBalancesQuery.error ? (
+        {companiesQuery.isLoading ? (
+          <p className="text-sm text-stone-600">Loading companies…</p>
+        ) : companiesQuery.error ? (
           <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-            {trialBalancesQuery.error instanceof Error
-              ? trialBalancesQuery.error.message
-              : "Failed to load trial balances"}
+            {companiesQuery.error instanceof Error
+              ? companiesQuery.error.message
+              : "Failed to load companies"}
           </p>
-        ) : trialBalances.length === 0 ? (
+        ) : companies.length === 0 ? (
           <p className="rounded border border-stone-200 bg-white px-4 py-6 text-sm text-stone-600">
-            No trial balances uploaded yet.{" "}
-            <Link
-              href={`/upload?client=${client.id}`}
-              className="font-medium text-stone-900 underline"
-            >
-              Upload a trial balance
+            No companies yet. Use{" "}
+            <Link href="/clients/new" className="font-medium text-stone-900 underline">
+              + New client
             </Link>{" "}
-            to get started.
+            to create a client group with its first company.
           </p>
         ) : (
-          <div className="overflow-x-auto rounded border border-stone-200 bg-white">
-            <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-stone-200 bg-stone-50 text-xs uppercase tracking-wide text-stone-500">
-                <tr>
-                  <th className="px-3 py-2 font-medium">Period end</th>
-                  <th className="px-3 py-2 font-medium">Status</th>
-                  <th className="px-3 py-2 font-medium">Uploaded</th>
-                </tr>
-              </thead>
-              <tbody>
-                {trialBalances.map((tb) => (
-                  <tr key={tb.id} className="border-b border-stone-100">
-                    <td colSpan={3} className="p-0">
-                      <Link
-                        href={`/dashboard/${tb.id}`}
-                        className="grid grid-cols-3 gap-4 px-3 py-2 hover:bg-stone-50"
-                      >
-                        <span className="font-medium">
-                          {formatDate(tb.period_end)}
-                        </span>
-                        <span>
-                          <span className="rounded bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-700">
-                            {tb.status}
-                          </span>
-                        </span>
-                        <span className="text-stone-600">
-                          {formatDateTime(tb.created_at)}
-                        </span>
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-4">
+            {companies.map((company) => (
+              <CompanyTrialBalances key={company.id} company={company} />
+            ))}
           </div>
         )}
       </div>

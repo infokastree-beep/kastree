@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import SyncSessionLocal, aset_rls_org_id, set_rls_org_id
 from app.dependencies import AuthContext, get_auth_context, get_db_session
 from app.models.client import Client
+from app.models.company import Company
 from app.models.export import Export
 from app.models.financial_statement import FinancialStatement
 from app.models.trial_balance import TrialBalance
@@ -55,7 +56,8 @@ async def _get_owned_export(
     result = await session.execute(
         select(Export)
         .join(TrialBalance, TrialBalance.id == Export.tb_id)
-        .join(Client, Client.id == TrialBalance.client_id)
+        .join(Company, Company.id == TrialBalance.company_id)
+        .join(Client, Client.id == Company.client_id)
         .where(
             Export.id == export_id,
             Client.org_id == org_id,

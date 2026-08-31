@@ -26,25 +26,25 @@ class AccountMapping(Base):
     __tablename__ = "account_mappings"
     __table_args__ = (
         UniqueConstraint(
-            "client_id",
+            "company_id",
             "source_code",
             "source_name",
-            name="account_mappings_client_id_source_code_source_name_key",
+            name="account_mappings_company_id_source_code_source_name_key",
         ),
         CheckConstraint(
             "method IN ('exact', 'fuzzy', 'code_range', 'llm', 'manual')",
             name="account_mappings_method_check",
         ),
-        Index("idx_account_mappings_client_id", "client_id"),
-        Index("idx_account_mappings_client_confirmed", "client_id", "is_confirmed"),
+        Index("idx_account_mappings_company_id", "company_id"),
+        Index("idx_account_mappings_company_confirmed", "company_id", "is_confirmed"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    client_id: Mapped[uuid.UUID] = mapped_column(
+    company_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("clients.id", ondelete="CASCADE"),
+        ForeignKey("companies.id", ondelete="CASCADE"),
         nullable=False,
     )
     source_code: Mapped[str | None] = mapped_column(String, nullable=True)

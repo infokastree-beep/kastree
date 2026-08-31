@@ -18,6 +18,7 @@ from app.config import settings
 from app.db import SyncSessionLocal, set_rls_org_id
 from app.main import app
 from app.models.client import Client
+from app.models.company import Company
 from app.services.org_provisioning import (
     organisation_id_for_clerk_org,
     provision_first_signup,
@@ -35,6 +36,7 @@ def _force_rls_on_all_tables() -> None:
         "users",
         "subscription_events",
         "organisations",
+        "companies",
         "trial_balances",
         "account_mappings",
         "financial_statements",
@@ -128,14 +130,21 @@ def provisioned_org() -> Iterator[dict]:
         client = Client(
             org_id=provisioned.organisation.id,
             name=f"Client {suffix}",
-            functional_currency="GBP",
         )
         session.add(client)
+        session.flush()
+        company = Company(
+            client_id=client.id,
+            name=f"Company {suffix}",
+            functional_currency="GBP",
+        )
+        session.add(company)
         session.commit()
         data = {
             "org_id": provisioned.organisation.id,
             "user_id": provisioned.user.id,
             "client_id": client.id,
+            "company_id": company.id,
             "clerk_org_id": clerk_org_id,
             "clerk_user_id": clerk_user_id,
             "token": make_access_token(
@@ -151,16 +160,18 @@ def provisioned_org() -> Iterator[dict]:
             text(
                 "DELETE FROM statement_line_items WHERE statement_id IN "
                 "(SELECT id FROM financial_statements WHERE tb_id IN "
-                "(SELECT id FROM trial_balances WHERE client_id IN "
-                "(SELECT id FROM clients WHERE org_id = :oid)))"
+                "(SELECT id FROM trial_balances WHERE company_id IN "
+                "(SELECT id FROM companies WHERE client_id IN "
+                "(SELECT id FROM clients WHERE org_id = :oid))))"
             ),
             {"oid": str(data["org_id"])},
         )
         session.execute(
             text(
                 "DELETE FROM financial_statements WHERE tb_id IN "
-                "(SELECT id FROM trial_balances WHERE client_id IN "
-                "(SELECT id FROM clients WHERE org_id = :oid))"
+                "(SELECT id FROM trial_balances WHERE company_id IN "
+                "(SELECT id FROM companies WHERE client_id IN "
+                "(SELECT id FROM clients WHERE org_id = :oid)))"
             ),
             {"oid": str(data["org_id"])},
         )
@@ -168,47 +179,53 @@ def provisioned_org() -> Iterator[dict]:
             text(
                 "DELETE FROM commentary_feedback WHERE variance_id IN "
                 "(SELECT id FROM variance_analyses WHERE tb_id IN "
-                "(SELECT id FROM trial_balances WHERE client_id IN "
-                "(SELECT id FROM clients WHERE org_id = :oid)))"
+                "(SELECT id FROM trial_balances WHERE company_id IN "
+                "(SELECT id FROM companies WHERE client_id IN "
+                "(SELECT id FROM clients WHERE org_id = :oid))))"
             ),
             {"oid": str(data["org_id"])},
         )
         session.execute(
             text(
                 "DELETE FROM variance_analyses WHERE tb_id IN "
-                "(SELECT id FROM trial_balances WHERE client_id IN "
-                "(SELECT id FROM clients WHERE org_id = :oid))"
+                "(SELECT id FROM trial_balances WHERE company_id IN "
+                "(SELECT id FROM companies WHERE client_id IN "
+                "(SELECT id FROM clients WHERE org_id = :oid)))"
             ),
             {"oid": str(data["org_id"])},
         )
         session.execute(
             text(
                 "DELETE FROM risk_flags WHERE tb_id IN "
-                "(SELECT id FROM trial_balances WHERE client_id IN "
-                "(SELECT id FROM clients WHERE org_id = :oid))"
+                "(SELECT id FROM trial_balances WHERE company_id IN "
+                "(SELECT id FROM companies WHERE client_id IN "
+                "(SELECT id FROM clients WHERE org_id = :oid)))"
             ),
             {"oid": str(data["org_id"])},
         )
         session.execute(
             text(
                 "DELETE FROM exports WHERE tb_id IN "
-                "(SELECT id FROM trial_balances WHERE client_id IN "
-                "(SELECT id FROM clients WHERE org_id = :oid))"
+                "(SELECT id FROM trial_balances WHERE company_id IN "
+                "(SELECT id FROM companies WHERE client_id IN "
+                "(SELECT id FROM clients WHERE org_id = :oid)))"
             ),
             {"oid": str(data["org_id"])},
         )
         session.execute(
             text(
                 "DELETE FROM processing_jobs WHERE tb_id IN "
-                "(SELECT id FROM trial_balances WHERE client_id IN "
-                "(SELECT id FROM clients WHERE org_id = :oid))"
+                "(SELECT id FROM trial_balances WHERE company_id IN "
+                "(SELECT id FROM companies WHERE client_id IN "
+                "(SELECT id FROM clients WHERE org_id = :oid)))"
             ),
             {"oid": str(data["org_id"])},
         )
         session.execute(
             text(
-                "DELETE FROM account_mappings WHERE client_id IN "
-                "(SELECT id FROM clients WHERE org_id = :oid)"
+                "DELETE FROM account_mappings WHERE company_id IN "
+                "(SELECT id FROM companies WHERE client_id IN "
+                "(SELECT id FROM clients WHERE org_id = :oid))"
             ),
             {"oid": str(data["org_id"])},
         )
@@ -220,7 +237,15 @@ def provisioned_org() -> Iterator[dict]:
         )
         session.execute(
             text(
-                "DELETE FROM trial_balances WHERE client_id IN "
+                "DELETE FROM trial_balances WHERE company_id IN "
+                "(SELECT id FROM companies WHERE client_id IN "
+                "(SELECT id FROM clients WHERE org_id = :oid))"
+            ),
+            {"oid": str(data["org_id"])},
+        )
+        session.execute(
+            text(
+                "DELETE FROM companies WHERE client_id IN "
                 "(SELECT id FROM clients WHERE org_id = :oid)"
             ),
             {"oid": str(data["org_id"])},

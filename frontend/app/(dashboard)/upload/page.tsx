@@ -4,7 +4,7 @@ import { UploadForm } from "@/components/upload/UploadForm";
 export default function UploadPage({
   searchParams,
 }: {
-  searchParams?: { client?: string };
+  searchParams?: { company?: string };
 }) {
-  return <UploadForm initialClientId={searchParams?.client ?? ""} />;
+  return <UploadForm initialCompanyId={searchParams?.company ?? ""} />;
 }

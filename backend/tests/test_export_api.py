@@ -55,7 +55,7 @@ class InMemoryObjectStorage:
 def _seed_tb_with_statements(
     *,
     org_id: uuid.UUID,
-    client_id: uuid.UUID,
+    company_id: uuid.UUID,
     period_end: date,
 ) -> uuid.UUID:
     tb_id = uuid.uuid4()
@@ -64,7 +64,7 @@ def _seed_tb_with_statements(
         session.add(
             TrialBalance(
                 id=tb_id,
-                client_id=client_id,
+                company_id=company_id,
                 period_end=period_end,
                 file_url=f"/tmp/{tb_id}.xlsx",
                 file_type="xlsx",
@@ -177,7 +177,7 @@ async def test_export_request_202_poll_complete(
     headers = auth_headers(provisioned_org["token"])
     tb_id = _seed_tb_with_statements(
         org_id=provisioned_org["org_id"],
-        client_id=provisioned_org["client_id"],
+        company_id=provisioned_org["company_id"],
         period_end=date(2026, 7, 31),
     )
 
@@ -228,7 +228,7 @@ async def test_free_tier_export_is_watermarked_in_file_bytes(
     headers = auth_headers(provisioned_org["token"])
     tb_id = _seed_tb_with_statements(
         org_id=org_id,
-        client_id=provisioned_org["client_id"],
+        company_id=provisioned_org["company_id"],
         period_end=date(2026, 8, 31),
     )
 
@@ -260,7 +260,7 @@ async def test_starter_tier_export_has_no_watermark(
     headers = auth_headers(provisioned_org["token"])
     tb_id = _seed_tb_with_statements(
         org_id=org_id,
-        client_id=provisioned_org["client_id"],
+        company_id=provisioned_org["company_id"],
         period_end=date(2026, 9, 30),
     )
 
@@ -293,7 +293,7 @@ async def test_request_body_tier_watermark_override_ignored(
     headers = auth_headers(provisioned_org["token"])
     tb_id = _seed_tb_with_statements(
         org_id=org_id,
-        client_id=provisioned_org["client_id"],
+        company_id=provisioned_org["company_id"],
         period_end=date(2026, 10, 31),
     )
 
@@ -339,7 +339,7 @@ async def test_download_after_expiry_invokes_regenerate_export_if_missing(
     headers = auth_headers(provisioned_org["token"])
     tb_id = _seed_tb_with_statements(
         org_id=provisioned_org["org_id"],
-        client_id=provisioned_org["client_id"],
+        company_id=provisioned_org["company_id"],
         period_end=date(2026, 11, 30),
     )
 
@@ -389,7 +389,7 @@ async def test_download_while_pending_returns_conflict_not_broken_url(
     headers = auth_headers(provisioned_org["token"])
     tb_id = _seed_tb_with_statements(
         org_id=provisioned_org["org_id"],
-        client_id=provisioned_org["client_id"],
+        company_id=provisioned_org["company_id"],
         period_end=date(2026, 12, 31),
     )
     # Insert a stuck pending export without running the job.

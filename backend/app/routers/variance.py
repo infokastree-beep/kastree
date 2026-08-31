@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import aset_rls_org_id
 from app.dependencies import AuthContext, get_auth_context, get_db_session
 from app.models.client import Client
+from app.models.company import Company
 from app.models.financial_statement import FinancialStatement
 from app.models.statement_line_item import StatementLineItem
 from app.models.trial_balance import TrialBalance
@@ -55,7 +56,7 @@ async def _resolve_prior_tb(
         result = await session.execute(
             select(TrialBalance).where(
                 TrialBalance.id == prior_tb_id,
-                TrialBalance.client_id == current.client_id,
+                TrialBalance.company_id == current.company_id,
             )
         )
         prior = result.scalar_one_or_none()
@@ -66,7 +67,7 @@ async def _resolve_prior_tb(
     result = await session.execute(
         select(TrialBalance)
         .where(
-            TrialBalance.client_id == current.client_id,
+            TrialBalance.company_id == current.company_id,
             TrialBalance.period_end < current.period_end,
         )
         .order_by(TrialBalance.period_end.desc())
@@ -170,7 +171,7 @@ def _analysis_response(
     *,
     tb_id: uuid.UUID,
     prior_tb_id: uuid.UUID,
-    client: Client,
+    company: Company,
     row: VarianceAnalysis,
 ) -> VarianceResponse:
     analysis = VarianceAnalysisResult.model_validate(row.items)
@@ -179,8 +180,8 @@ def _analysis_response(
         prior_tb_id=prior_tb_id,
         variance_available=True,
         message=None,
-        materiality_threshold_pct=float(client.materiality_threshold_pct),
-        materiality_threshold_abs=f"{Decimal(client.materiality_threshold_abs):.2f}",
+        materiality_threshold_pct=float(company.materiality_threshold_pct),
+        materiality_threshold_abs=f"{Decimal(company.materiality_threshold_abs):.2f}",
         items=_items_with_commentary(analysis, row.commentary),
     )
 
@@ -194,7 +195,10 @@ async def generate_variance(
 ) -> VarianceResponse:
     await aset_rls_org_id(session, auth.org_id)
     tb = await _get_owned_tb(session, tb_id=tb_id, org_id=auth.org_id)
-    client = await session.get(Client, tb.client_id)
+    company = await session.get(Company, tb.company_id)
+    if company is None or company.is_deleted:
+        raise HTTPException(status_code=404, detail="Company not found")
+    client = await session.get(Client, company.client_id)
     if client is None or client.org_id != auth.org_id or client.is_deleted:
         raise HTTPException(status_code=404, detail="Client not found")
 
@@ -221,8 +225,8 @@ async def generate_variance(
     result = compute_variance(
         current_lines,
         prior_lines,
-        materiality_threshold_pct=Decimal(client.materiality_threshold_pct),
-        materiality_threshold_abs=Decimal(client.materiality_threshold_abs),
+        materiality_threshold_pct=Decimal(company.materiality_threshold_pct),
+        materiality_threshold_abs=Decimal(company.materiality_threshold_abs),
     )
     # Persist the canonical JSONB shape — round-trips via VarianceAnalysisResult.
     items_jsonb = result.to_jsonb()
@@ -248,7 +252,7 @@ async def generate_variance(
     return _analysis_response(
         tb_id=tb.id,
         prior_tb_id=prior.id,
-        client=client,
+        company=company,
         row=row,
     )
 
@@ -261,7 +265,10 @@ async def get_variance(
 ) -> VarianceResponse:
     await aset_rls_org_id(session, auth.org_id)
     tb = await _get_owned_tb(session, tb_id=tb_id, org_id=auth.org_id)
-    client = await session.get(Client, tb.client_id)
+    company = await session.get(Company, tb.company_id)
+    if company is None or company.is_deleted:
+        raise HTTPException(status_code=404, detail="Company not found")
+    client = await session.get(Client, company.client_id)
     if client is None or client.org_id != auth.org_id or client.is_deleted:
         raise HTTPException(status_code=404, detail="Client not found")
 
@@ -285,6 +292,6 @@ async def get_variance(
     return _analysis_response(
         tb_id=tb.id,
         prior_tb_id=row.prior_tb_id,
-        client=client,
+        company=company,
         row=row,
     )

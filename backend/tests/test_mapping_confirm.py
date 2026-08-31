@@ -22,7 +22,7 @@ from tests.conftest import auth_headers
 def _seed_tb_with_code_range_mapping(
     *,
     org_id: uuid.UUID,
-    client_id: uuid.UUID,
+    company_id: uuid.UUID,
 ) -> tuple[uuid.UUID, uuid.UUID]:
     """TB with 7000 (code_range → depreciation) and 4000 (unmapped). Returns tb_id, mapping_id."""
     tb_id = uuid.uuid4()
@@ -32,7 +32,7 @@ def _seed_tb_with_code_range_mapping(
         session.add(
             TrialBalance(
                 id=tb_id,
-                client_id=client_id,
+                company_id=company_id,
                 period_end=date(2026, 7, 31),
                 file_url=f"file:///tmp/{tb_id}.xlsx",
                 file_type="xlsx",
@@ -65,7 +65,7 @@ def _seed_tb_with_code_range_mapping(
         session.add(
             AccountMapping(
                 id=mapping_7000_id,
-                client_id=client_id,
+                company_id=company_id,
                 source_code="7000",
                 source_name="Interest Expense",
                 canonical_line="depreciation",
@@ -76,7 +76,7 @@ def _seed_tb_with_code_range_mapping(
         )
         session.add(
             AccountMapping(
-                client_id=client_id,
+                company_id=company_id,
                 source_code="4000",
                 source_name="Sales Revenue",
                 canonical_line="unmapped",
@@ -96,18 +96,18 @@ async def test_confirm_overrides_code_range_suggestion(
 ) -> None:
     """User override of a Tier-3 code_range row must replace the heuristic guess."""
     org_id = provisioned_org["org_id"]
-    client_id = provisioned_org["client_id"]
+    company_id = provisioned_org["company_id"]
     headers = auth_headers(provisioned_org["token"])
     tb_id, mapping_7000_id = _seed_tb_with_code_range_mapping(
         org_id=org_id,
-        client_id=client_id,
+        company_id=company_id,
     )
 
     with SyncSessionLocal() as session:
         set_rls_org_id(session, org_id)
         mapping_4000 = session.scalar(
             select(AccountMapping).where(
-                AccountMapping.client_id == client_id,
+                AccountMapping.company_id == company_id,
                 AccountMapping.source_code == "4000",
             )
         )
@@ -160,18 +160,18 @@ async def test_confirm_rejects_unmapped_canonical_line(
 ) -> None:
     """Explicit confirm must not accept canonical_line=unmapped."""
     org_id = provisioned_org["org_id"]
-    client_id = provisioned_org["client_id"]
+    company_id = provisioned_org["company_id"]
     headers = auth_headers(provisioned_org["token"])
     tb_id, mapping_7000_id = _seed_tb_with_code_range_mapping(
         org_id=org_id,
-        client_id=client_id,
+        company_id=company_id,
     )
 
     with SyncSessionLocal() as session:
         set_rls_org_id(session, org_id)
         mapping_4000 = session.scalar(
             select(AccountMapping).where(
-                AccountMapping.client_id == client_id,
+                AccountMapping.company_id == company_id,
                 AccountMapping.source_code == "4000",
             )
         )
@@ -208,9 +208,9 @@ async def test_confirm_empty_mappings_list_rejected(
 ) -> None:
     """Empty mappings[] must not hit the legacy confirm-without-overrides path."""
     org_id = provisioned_org["org_id"]
-    client_id = provisioned_org["client_id"]
+    company_id = provisioned_org["company_id"]
     headers = auth_headers(provisioned_org["token"])
-    tb_id, _ = _seed_tb_with_code_range_mapping(org_id=org_id, client_id=client_id)
+    tb_id, _ = _seed_tb_with_code_range_mapping(org_id=org_id, company_id=company_id)
 
     response = await api_client.post(
         f"/trial-balances/{tb_id}/mapping/confirm",
@@ -223,7 +223,7 @@ async def test_confirm_empty_mappings_list_rejected(
         set_rls_org_id(session, org_id)
         row = session.scalar(
             select(AccountMapping).where(
-                AccountMapping.client_id == client_id,
+                AccountMapping.company_id == company_id,
                 AccountMapping.source_code == "7000",
             )
         )
@@ -248,11 +248,11 @@ async def test_confirmed_confidence_survives_reupload(
 ) -> None:
     """Human-confirmed confidence must stay 1.00 after a later map job skips the row."""
     org_id = provisioned_org["org_id"]
-    client_id = provisioned_org["client_id"]
+    company_id = provisioned_org["company_id"]
     headers = auth_headers(provisioned_org["token"])
     tb_id, mapping_7000_id = _seed_tb_with_code_range_mapping(
         org_id=org_id,
-        client_id=client_id,
+        company_id=company_id,
     )
 
     confirm = await api_client.post(
@@ -281,7 +281,7 @@ async def test_confirmed_confidence_survives_reupload(
         # Simulate a subsequent upload where Tier 1 would produce exact/1.00.
         _persist_mapping_results(
             session,
-            client_id=client_id,
+            company_id=company_id,
             results=[
                 MappingResult(
                     source_code="7000",

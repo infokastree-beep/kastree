@@ -12,6 +12,7 @@ from app.routers import (
     auth,
     clients,
     commentary,
+    companies,
     export,
     notifications,
     organisations,
@@ -40,6 +41,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(clients.router)
+app.include_router(companies.router)
 app.include_router(organisations.router)
 app.include_router(trial_balances.router)
 app.include_router(variance.router)

@@ -1,14 +1,4 @@
-"""Clients API — CRUD, soft-delete archival, mapping list/reset (Product Spec §10.2).
-
-Archival WRITE-path gap (read-only for this prompt beyond clients):
-- trial_balances: DELETE /trial-balances/{id} is specified in §10.2 and §12.2
-  requires an archived_records snapshot on TB delete, but no delete handler or
-  archive write exists yet.
-- financial_statements: listed as an entity_type in archived_records DDL, but
-  there is no delete/archive write path (statements are replaced in place on
-  regenerate; no soft-delete column or archival call).
-Only clients soft-delete writes archived_records in this slice.
-"""
+"""Clients API — CRUD for client groups; companies nested under /clients/{id}/companies."""
 
 from __future__ import annotations
 
@@ -24,40 +14,29 @@ from app.db import aset_rls_org_id
 from app.dependencies import AuthContext, get_auth_context, get_db_session
 from app.models.account_mapping import AccountMapping
 from app.models.client import Client
+from app.models.company import Company
 from app.models.organisation import Organisation
 from app.schemas.client import (
-    BulkDeleteMappingsResponse,
     ClientCreateRequest,
     ClientListResponse,
-    ClientMappingsResponse,
     ClientResponse,
     ClientUpdateRequest,
+)
+from app.schemas.company import (
+    ClientGroupBulkDeleteMappingsResponse,
+    ClientGroupMappingsResponse,
+    CompanyCreateRequest,
+    CompanyListResponse,
+    CompanyResponse,
     MappingListItem,
 )
 from app.services.archival import archive_client_user_deleted
+from app.services.ownership import get_owned_client
 
 router = APIRouter(prefix="/clients", tags=["clients"])
 
 _DEFAULT_PAGE = 20
 _MAX_PAGE = 100
-
-
-async def _get_owned_client(
-    session: AsyncSession,
-    *,
-    client_id: uuid.UUID,
-    org_id: uuid.UUID,
-    include_deleted: bool = False,
-) -> Client:
-    """App-layer org ownership check — 404 for missing or cross-org (no 403 leak)."""
-    clauses = [Client.id == client_id, Client.org_id == org_id]
-    if not include_deleted:
-        clauses.append(Client.is_deleted.is_(False))
-    result = await session.execute(select(Client).where(*clauses))
-    client = result.scalar_one_or_none()
-    if client is None:
-        raise HTTPException(status_code=404, detail="Client not found")
-    return client
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=ClientResponse)
@@ -71,14 +50,9 @@ async def create_client(
     if org is None:
         raise HTTPException(status_code=401, detail="Unknown organisation")
 
-    currency = (body.functional_currency or org.functional_currency or "GBP").upper()
     client = Client(
         org_id=auth.org_id,
         name=body.name.strip(),
-        company_number=body.company_number,
-        industry=body.industry,
-        functional_currency=currency,
-        # materiality_threshold_pct/abs use DB server defaults (10.00 / 1000.00)
     )
     session.add(client)
     await session.flush()
@@ -120,7 +94,7 @@ async def get_client(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Client:
     await aset_rls_org_id(session, auth.org_id)
-    return await _get_owned_client(session, client_id=client_id, org_id=auth.org_id)
+    return await get_owned_client(session, client_id=client_id, org_id=auth.org_id)
 
 
 @router.put("/{client_id}", response_model=ClientResponse)
@@ -131,10 +105,8 @@ async def update_client(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Client:
     await aset_rls_org_id(session, auth.org_id)
-    client = await _get_owned_client(session, client_id=client_id, org_id=auth.org_id)
+    client = await get_owned_client(session, client_id=client_id, org_id=auth.org_id)
     updates = body.model_dump(exclude_unset=True)
-    if "functional_currency" in updates and updates["functional_currency"] is not None:
-        updates["functional_currency"] = updates["functional_currency"].upper()
     if "name" in updates and updates["name"] is not None:
         updates["name"] = updates["name"].strip()
     for field, value in updates.items():
@@ -150,15 +122,9 @@ async def soft_delete_client(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Client:
-    """Soft delete + archived_records snapshot in the same transaction (§12.2).
-
-    Both writes use this request's AsyncSession. ``flush`` only pushes SQL to the
-    open transaction — the single ``commit`` is in ``get_db_session`` after the
-    handler returns successfully. If ``archive_client_user_deleted`` raises, the
-    dependency rolls back and the soft-delete is undone with the archive insert.
-    """
+    """Soft delete + archived_records snapshot in the same transaction (§12.2)."""
     await aset_rls_org_id(session, auth.org_id)
-    client = await _get_owned_client(session, client_id=client_id, org_id=auth.org_id)
+    client = await get_owned_client(session, client_id=client_id, org_id=auth.org_id)
     now = datetime.now(timezone.utc)
     client.is_deleted = True
     client.deleted_at = now
@@ -173,24 +139,82 @@ async def soft_delete_client(
     return client
 
 
-@router.get("/{client_id}/mappings", response_model=ClientMappingsResponse)
+@router.post(
+    "/{client_id}/companies",
+    status_code=status.HTTP_201_CREATED,
+    response_model=CompanyResponse,
+)
+async def create_company_for_client(
+    client_id: uuid.UUID,
+    body: CompanyCreateRequest,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> Company:
+    await aset_rls_org_id(session, auth.org_id)
+    client = await get_owned_client(session, client_id=client_id, org_id=auth.org_id)
+    org = await session.get(Organisation, auth.org_id)
+    if org is None:
+        raise HTTPException(status_code=401, detail="Unknown organisation")
+
+    currency = (body.functional_currency or org.functional_currency or "GBP").upper()
+    company = Company(
+        client_id=client.id,
+        name=body.name.strip(),
+        company_number=body.company_number,
+        industry=body.industry,
+        functional_currency=currency,
+    )
+    session.add(company)
+    await session.flush()
+    await session.refresh(company)
+    return company
+
+
+@router.get("/{client_id}/companies", response_model=CompanyListResponse)
+async def list_companies_for_client(
+    client_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> CompanyListResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    await get_owned_client(session, client_id=client_id, org_id=auth.org_id)
+    result = await session.execute(
+        select(Company)
+        .where(
+            Company.client_id == client_id,
+            Company.is_deleted.is_(False),
+        )
+        .order_by(Company.created_at.desc())
+    )
+    items = list(result.scalars().all())
+    return CompanyListResponse(
+        client_id=client_id,
+        items=[CompanyResponse.model_validate(item) for item in items],
+        total=len(items),
+    )
+
+
+@router.get("/{client_id}/mappings", response_model=ClientGroupMappingsResponse)
 async def list_client_mappings(
     client_id: uuid.UUID,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
-) -> ClientMappingsResponse:
+) -> ClientGroupMappingsResponse:
+    """Confirmed mappings across all companies under this client group."""
     await aset_rls_org_id(session, auth.org_id)
-    await _get_owned_client(session, client_id=client_id, org_id=auth.org_id)
+    await get_owned_client(session, client_id=client_id, org_id=auth.org_id)
     result = await session.execute(
         select(AccountMapping)
+        .join(Company, Company.id == AccountMapping.company_id)
         .where(
-            AccountMapping.client_id == client_id,
+            Company.client_id == client_id,
+            Company.is_deleted.is_(False),
             AccountMapping.is_confirmed.is_(True),
         )
         .order_by(AccountMapping.source_code, AccountMapping.source_name)
     )
     mappings = list(result.scalars().all())
-    return ClientMappingsResponse(
+    return ClientGroupMappingsResponse(
         client_id=client_id,
         mappings=[MappingListItem.model_validate(row) for row in mappings],
     )
@@ -198,23 +222,37 @@ async def list_client_mappings(
 
 @router.delete(
     "/{client_id}/mappings",
-    response_model=BulkDeleteMappingsResponse,
+    response_model=ClientGroupBulkDeleteMappingsResponse,
 )
 async def bulk_delete_client_mappings(
     client_id: uuid.UUID,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
-) -> BulkDeleteMappingsResponse:
-    """Bulk delete all account_mappings for a client (mapping reset)."""
+) -> ClientGroupBulkDeleteMappingsResponse:
+    """Bulk delete all account_mappings for every company under this client."""
     await aset_rls_org_id(session, auth.org_id)
-    await _get_owned_client(session, client_id=client_id, org_id=auth.org_id)
+    await get_owned_client(session, client_id=client_id, org_id=auth.org_id)
+    company_ids = list(
+        (
+            await session.execute(
+                select(Company.id).where(
+                    Company.client_id == client_id,
+                    Company.is_deleted.is_(False),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not company_ids:
+        return ClientGroupBulkDeleteMappingsResponse(client_id=client_id, deleted_count=0)
     result = await session.execute(
         delete(AccountMapping)
-        .where(AccountMapping.client_id == client_id)
+        .where(AccountMapping.company_id.in_(company_ids))
         .returning(AccountMapping.id)
     )
     deleted_ids = result.scalars().all()
-    return BulkDeleteMappingsResponse(
+    return ClientGroupBulkDeleteMappingsResponse(
         client_id=client_id,
         deleted_count=len(deleted_ids),
     )
