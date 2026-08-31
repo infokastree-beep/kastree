@@ -96,3 +96,18 @@ in, with **manual override always available**.
 is no data to benchmark against before a first upload exists — but a real,
 valuable improvement once there is usage data to validate against.
 
+## Financial statements — no currency display (SOPL / SOFP / SOCIE)
+
+Financial statements (SOPL, SOFP, SOCIE) display **no currency symbol or code
+anywhere** — all figures render as plain numbers regardless of the company's
+`functional_currency`. Not a data bug: currency is correctly stored and used for
+the upload form and materiality inputs. This is purely a **display gap** in
+`StatementsDashboard.tsx` and the Excel/PDF export templates.
+
+Only became visible when a non-GBP (EUR) company was tested live for the first
+time — every prior GBP-only walkthrough could not have surfaced this.
+
+**Fix:** show the company's currency code or symbol in the statement header and/or
+prefix amounts, consistently across the browser dashboard and all three export
+formats.
+
