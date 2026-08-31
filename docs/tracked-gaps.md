@@ -79,3 +79,20 @@ through `CreateClientForm`'s two-step flow. Step 2 of create remains the happy
 path for new client + first company; detail-page add company is the recovery
 path for client groups with zero companies.
 
+## Materiality thresholds — static defaults vs benchmark-based suggestion
+
+Materiality thresholds are currently **static, manually entered values** (default
+10% / 1000 absolute) with **no connection to the company's actual financial
+profile**. Real accounting practice bases materiality on a percentage of a
+relevant benchmark — profit before tax, revenue, or total assets, chosen based
+on the company's situation — not a fixed number.
+
+**Worth building:** auto-suggested thresholds derived from the company's own
+first uploaded trial balance (e.g. 5% of profit before tax, falling back to 1% of
+total assets if profit is small or negative), recalculated as new periods come
+in, with **manual override always available**.
+
+**Not urgent.** Static defaults are a reasonable MVP starting point since there
+is no data to benchmark against before a first upload exists — but a real,
+valuable improvement once there is usage data to validate against.
+
