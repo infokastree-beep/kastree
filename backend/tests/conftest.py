@@ -70,6 +70,18 @@ def _patch_request_auth_to_test_hs256(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+@pytest.fixture(autouse=True)
+def _tests_skip_clerk_webhook_signature(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unsigned Clerk webhook fixtures skip verification in development only.
+
+    ``backend/.env`` may set ``CLERK_WEBHOOK_SECRET`` for local deploy testing.
+    When the secret is present, ``/auth/webhook`` requires Svix headers even if
+    ``APP_ENV=development``. Tests POST unsigned JSON fixtures — clear the secret
+    so they exercise provisioning logic, not HMAC wiring (see test_auth.py).
+    """
+    monkeypatch.setattr(settings, "clerk_webhook_secret", None)
+
+
 def make_access_token(
     *,
     clerk_user_id: str,

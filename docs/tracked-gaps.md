@@ -31,6 +31,18 @@ deliveries via `IntegrityError` recovery, but the HTTP idempotency test only
 covers the serialised “org already exists” path — not true parallel delivery.
 See `backend/tests/test_api.py` (`test_duplicate_provision_first_signup_*`).
 
+## Stripe webhook org resolution order (resolved)
+
+`resolve_org_id` previously looked up `stripe_customer_id` before
+`stripe_subscription_id`. The SQL helpers use `LIMIT 1`, so duplicate Stripe
+ids in the database (common in long-lived dev DBs after test runs) caused
+subscription events to update the **wrong** organisation — tier/status looked
+unchanged on the org the test (or user) was watching. **Fix:** when both ids are
+in the payload, resolve each column independently and reconcile (prefer
+subscription id for `customer.subscription.*` / `invoice.*` on mismatch);
+fall back to subscription-only or customer-only lookup. Webhook API tests now use
+per-run unique Stripe ids so they stay isolated on polluted dev databases.
+
 ## Tier 4 OpenAI in sync BackgroundTasks (event-loop blocking)
 
 `run_parse_and_map_job` (`backend/app/services/tb_pipeline.py`) invokes Tier 4

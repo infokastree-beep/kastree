@@ -240,12 +240,15 @@ async def test_subscription_updated_changes_tier_and_status(
     stripe_secret: str,
 ) -> None:
     org_id = provisioned_org["org_id"]
+    suffix = uuid.uuid4().hex[:10]
+    customer_id = f"cus_updated_{suffix}"
+    subscription_id = f"sub_updated_{suffix}"
     with SyncSessionLocal() as session:
         set_rls_org_id(session, org_id)
         org = session.get(Organisation, org_id)
         assert org is not None
-        org.stripe_customer_id = "cus_updated"
-        org.stripe_subscription_id = "sub_updated"
+        org.stripe_customer_id = customer_id
+        org.stripe_subscription_id = subscription_id
         org.subscription_tier = "starter"
         org.subscription_status = "active"
         session.commit()
@@ -255,8 +258,8 @@ async def test_subscription_updated_changes_tier_and_status(
         event_id=event_id,
         event_type="customer.subscription.updated",
         obj={
-            "id": "sub_updated",
-            "customer": "cus_updated",
+            "id": subscription_id,
+            "customer": customer_id,
             "status": "trialing",
             "items": {"data": [{"price": {"id": "price_scale_test"}}]},
         },
@@ -282,12 +285,15 @@ async def test_subscription_deleted_sets_cancelled_without_deleting_org(
     stripe_secret: str,
 ) -> None:
     org_id = provisioned_org["org_id"]
+    suffix = uuid.uuid4().hex[:10]
+    customer_id = f"cus_del_{suffix}"
+    subscription_id = f"sub_del_{suffix}"
     with SyncSessionLocal() as session:
         set_rls_org_id(session, org_id)
         org = session.get(Organisation, org_id)
         assert org is not None
-        org.stripe_customer_id = "cus_del"
-        org.stripe_subscription_id = "sub_del"
+        org.stripe_customer_id = customer_id
+        org.stripe_subscription_id = subscription_id
         org.subscription_tier = "starter"
         org.subscription_status = "active"
         session.commit()
@@ -297,8 +303,8 @@ async def test_subscription_deleted_sets_cancelled_without_deleting_org(
         event_id=event_id,
         event_type="customer.subscription.deleted",
         obj={
-            "id": "sub_del",
-            "customer": "cus_del",
+            "id": subscription_id,
+            "customer": customer_id,
             "status": "canceled",
         },
     )
@@ -325,12 +331,15 @@ async def test_invoice_payment_failed_sets_past_due(
     stripe_secret: str,
 ) -> None:
     org_id = provisioned_org["org_id"]
+    suffix = uuid.uuid4().hex[:10]
+    customer_id = f"cus_fail_{suffix}"
+    subscription_id = f"sub_fail_{suffix}"
     with SyncSessionLocal() as session:
         set_rls_org_id(session, org_id)
         org = session.get(Organisation, org_id)
         assert org is not None
-        org.stripe_customer_id = "cus_fail"
-        org.stripe_subscription_id = "sub_fail"
+        org.stripe_customer_id = customer_id
+        org.stripe_subscription_id = subscription_id
         org.subscription_status = "active"
         session.commit()
 
@@ -340,8 +349,8 @@ async def test_invoice_payment_failed_sets_past_due(
         event_type="invoice.payment_failed",
         obj={
             "id": "in_fail",
-            "customer": "cus_fail",
-            "subscription": "sub_fail",
+            "customer": customer_id,
+            "subscription": subscription_id,
         },
     )
     response = await api_client.post(
@@ -365,11 +374,14 @@ async def test_subscription_created_resolves_org_via_stripe_customer_id(
 ) -> None:
     """No metadata.org_id — lookup via SECURITY DEFINER + organisations.stripe_customer_id."""
     org_id = provisioned_org["org_id"]
+    suffix = uuid.uuid4().hex[:10]
+    customer_id = f"cus_lookup_only_{suffix}"
+    subscription_id = f"sub_lookup_only_{suffix}"
     with SyncSessionLocal() as session:
         set_rls_org_id(session, org_id)
         org = session.get(Organisation, org_id)
         assert org is not None
-        org.stripe_customer_id = "cus_lookup_only"
+        org.stripe_customer_id = customer_id
         session.commit()
 
     event_id = f"evt_lookup_{uuid.uuid4().hex[:12]}"
@@ -377,8 +389,8 @@ async def test_subscription_created_resolves_org_via_stripe_customer_id(
         event_id=event_id,
         event_type="customer.subscription.created",
         obj={
-            "id": "sub_lookup_only",
-            "customer": "cus_lookup_only",
+            "id": subscription_id,
+            "customer": customer_id,
             "status": "active",
             "items": {"data": [{"price": {"id": "price_starter_test"}}]},
         },
@@ -394,4 +406,4 @@ async def test_subscription_created_resolves_org_via_stripe_customer_id(
     assert response.status_code == 200, response.text
     org = _org_row(org_id)
     assert org.subscription_tier == "starter"
-    assert org.stripe_subscription_id == "sub_lookup_only"
+    assert org.stripe_subscription_id == subscription_id

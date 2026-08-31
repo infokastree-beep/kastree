@@ -90,6 +90,24 @@ def extract_subscription_id(
     return None
 
 
+def _lookup_org_by_stripe_subscription(
+    session: Session, subscription_id: str
+) -> uuid.UUID | None:
+    org_id = session.execute(
+        text("SELECT app_find_org_id_for_stripe_subscription(:sid)"),
+        {"sid": subscription_id},
+    ).scalar()
+    return uuid.UUID(str(org_id)) if org_id is not None else None
+
+
+def _lookup_org_by_stripe_customer(session: Session, customer_id: str) -> uuid.UUID | None:
+    org_id = session.execute(
+        text("SELECT app_find_org_id_for_stripe_customer(:cid)"),
+        {"cid": customer_id},
+    ).scalar()
+    return uuid.UUID(str(org_id)) if org_id is not None else None
+
+
 def resolve_org_id(
     session: Session,
     stripe_object: dict[str, Any],
@@ -117,22 +135,36 @@ def resolve_org_id(
             pass
 
     customer_id = extract_customer_id(stripe_object)
-    if customer_id:
-        org_id = session.execute(
-            text("SELECT app_find_org_id_for_stripe_customer(:cid)"),
-            {"cid": customer_id},
-        ).scalar()
-        if org_id is not None:
-            return uuid.UUID(str(org_id))
-
     subscription_id = extract_subscription_id(stripe_object, event_type=event_type)
+
+    # When both ids are present, resolve via each SECURITY DEFINER helper and
+    # reconcile. SQL uses LIMIT 1 per column — stale rows can disagree.
+    if subscription_id and customer_id:
+        sub_org = _lookup_org_by_stripe_subscription(session, subscription_id)
+        cust_org = _lookup_org_by_stripe_customer(session, customer_id)
+        if sub_org is not None and cust_org is not None:
+            if sub_org == cust_org:
+                return sub_org
+            logger.warning(
+                "Stripe org lookup mismatch for %s: customer→%s subscription→%s",
+                event_type,
+                cust_org,
+                sub_org,
+            )
+            if event_type.startswith(("customer.subscription.", "invoice.")):
+                return sub_org
+            return cust_org
+        if sub_org is not None:
+            return sub_org
+        if cust_org is not None:
+            return cust_org
+        return None
+
     if subscription_id:
-        org_id = session.execute(
-            text("SELECT app_find_org_id_for_stripe_subscription(:sid)"),
-            {"sid": subscription_id},
-        ).scalar()
-        if org_id is not None:
-            return uuid.UUID(str(org_id))
+        return _lookup_org_by_stripe_subscription(session, subscription_id)
+
+    if customer_id:
+        return _lookup_org_by_stripe_customer(session, customer_id)
 
     return None
 
