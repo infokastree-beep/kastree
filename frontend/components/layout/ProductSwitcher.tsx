@@ -53,6 +53,14 @@ export function ProductSwitcher({
     return null;
   }
 
+  if (products.length < 2) {
+    return (
+      <span className="text-sm font-semibold tracking-tight text-stone-900">
+        {formatProductLabel(activeProduct)}
+      </span>
+    );
+  }
+
   function handleSelect(product: Product) {
     if (product.id === activeProduct.id) {
       setOpen(false);
