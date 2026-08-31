@@ -303,7 +303,8 @@ async def upload_trial_balance(
         file_type=file_type,
         file_size_bytes=len(content),
         status="pending",
-        currency=currency.upper(),
+        # Company.functional_currency is authoritative — ignore mismatched form values.
+        currency=company.functional_currency.upper(),
     )
     session.add(tb)
     try:

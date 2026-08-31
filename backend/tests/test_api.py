@@ -515,3 +515,124 @@ async def test_list_trial_balances_cross_org_client_404(
             {"oid": str(other_org_id)},
         )
         session.commit()
+
+
+@pytest.mark.asyncio
+async def test_upload_stores_company_functional_currency_ignoring_form_value(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """trial_balances.currency must follow company.functional_currency, not the form field."""
+    headers = auth_headers(provisioned_org["token"])
+    client_id = provisioned_org["client_id"]
+    created = await api_client.post(
+        f"/clients/{client_id}/companies",
+        headers=headers,
+        json={"name": "EUR Upload Co", "functional_currency": "EUR"},
+    )
+    assert created.status_code == 201, created.text
+    company_id = created.json()["id"]
+
+    files = {
+        "file": (
+            "tb.xlsx",
+            balanced_tb_xlsx_bytes(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    }
+    upload = await api_client.post(
+        "/trial-balances/upload",
+        data={
+            "company_id": company_id,
+            "period_end": "2026-08-31",
+            "currency": "GBP",
+        },
+        files=files,
+        headers=headers,
+    )
+    assert upload.status_code == 202, upload.text
+    tb_id = upload.json()["tb_id"]
+
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
+        row = session.execute(
+            text("SELECT currency FROM trial_balances WHERE id = :id"),
+            {"id": tb_id},
+        ).one()
+        assert row.currency == "EUR"
+
+
+@pytest.mark.asyncio
+async def test_get_statements_returns_company_functional_currency(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    headers = auth_headers(provisioned_org["token"])
+    client_id = provisioned_org["client_id"]
+    created = await api_client.post(
+        f"/clients/{client_id}/companies",
+        headers=headers,
+        json={"name": "EUR Statements Co", "functional_currency": "EUR"},
+    )
+    assert created.status_code == 201, created.text
+    company_id = created.json()["id"]
+
+    files = {
+        "file": (
+            "tb.xlsx",
+            balanced_tb_xlsx_bytes(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    }
+    upload = await api_client.post(
+        "/trial-balances/upload",
+        data={
+            "company_id": company_id,
+            "period_end": "2026-09-30",
+            "currency": "EUR",
+        },
+        files=files,
+        headers=headers,
+    )
+    assert upload.status_code == 202, upload.text
+    tb_id = upload.json()["tb_id"]
+
+    for _ in range(40):
+        status_resp = await api_client.get(
+            f"/trial-balances/{tb_id}/status", headers=headers
+        )
+        jobs = {job["job_type"]: job["status"] for job in status_resp.json()["jobs"]}
+        if jobs.get("parse") == "complete" and jobs.get("map") == "complete":
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail("timed out waiting for parse/map")
+
+    confirm = await api_client.post(
+        f"/trial-balances/{tb_id}/mapping/confirm",
+        headers=headers,
+        json={"mappings": None},
+    )
+    assert confirm.status_code == 200, confirm.text
+
+    for _ in range(40):
+        validation = await api_client.get(
+            f"/trial-balances/{tb_id}/validation", headers=headers
+        )
+        if validation.status_code == 200:
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail("timed out waiting for validation")
+
+    gen = await api_client.post(
+        f"/trial-balances/{tb_id}/statements", headers=headers
+    )
+    assert gen.status_code == 200, gen.text
+    assert gen.json()["functional_currency"] == "EUR"
+
+    got = await api_client.get(
+        f"/trial-balances/{tb_id}/statements", headers=headers
+    )
+    assert got.status_code == 200, got.text
+    assert got.json()["functional_currency"] == "EUR"

@@ -1,11 +1,14 @@
 "use client";
 
-import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { CompanyEntityForm } from "@/components/clients/CompanyEntityForm";
+import type { CompanyEntityFormValues } from "@/lib/company-form";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
+import { createCompanyEntity } from "@/lib/companies";
 import {
   ACCEPTED_UPLOAD_EXTENSIONS,
   FUNCTIONAL_CURRENCIES,
@@ -20,10 +23,15 @@ import type {
 } from "@/types";
 
 const NEW_CLIENT_VALUE = "__new_client__";
+const NEW_COMPANY_VALUE = "__new_company__";
 
 function isAcceptedFile(file: File): boolean {
   const lower = file.name.toLowerCase();
   return ACCEPTED_UPLOAD_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+function currencyForCompany(company: ICompany | undefined): string {
+  return company?.functional_currency ?? "GBP";
 }
 
 type UploadFormProps = {
@@ -32,7 +40,10 @@ type UploadFormProps = {
 
 export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { getToken } = useAuth();
+  const deepLinkInitialized = useRef(false);
+
   const [file, setFile] = useState<File | null>(null);
   const [rowCount, setRowCount] = useState<number | null>(null);
   const [periodEnd, setPeriodEnd] = useState(() => {
@@ -43,6 +54,7 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
   const [currency, setCurrency] = useState("GBP");
   const [clientId, setClientId] = useState("");
   const [companyId, setCompanyId] = useState(initialCompanyId);
+  const [showAddCompany, setShowAddCompany] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -81,6 +93,11 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
     [companiesByClientId, clientId],
   );
 
+  const companiesQueryIndex = clientOptions.findIndex((client) => client.id === clientId);
+  const currentCompaniesQuery =
+    companiesQueryIndex >= 0 ? companiesQueries[companiesQueryIndex] : undefined;
+  const companiesLoading = Boolean(clientId) && (currentCompaniesQuery?.isLoading ?? true);
+
   const initialCompanyQuery = useQuery({
     queryKey: ["company", initialCompanyId],
     queryFn: () =>
@@ -88,21 +105,19 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
     enabled: Boolean(initialCompanyId),
   });
 
+  // Deep link: apply once when ?company= resolves — never re-apply on refetch (that
+  // would undo manual company/currency changes after the user switches selection).
   useEffect(() => {
-    if (initialCompanyQuery.data) {
-      setClientId(initialCompanyQuery.data.client_id);
-      setCompanyId(initialCompanyQuery.data.id);
-      setCurrency(initialCompanyQuery.data.functional_currency);
+    if (!initialCompanyId || !initialCompanyQuery.data || deepLinkInitialized.current) {
+      return;
     }
-  }, [initialCompanyQuery.data]);
+    deepLinkInitialized.current = true;
+    setClientId(initialCompanyQuery.data.client_id);
+    setCompanyId(initialCompanyQuery.data.id);
+    setCurrency(initialCompanyQuery.data.functional_currency);
+  }, [initialCompanyId, initialCompanyQuery.data]);
 
-  useEffect(() => {
-    const selected = companyOptions.find((company) => company.id === companyId);
-    if (selected) {
-      setCurrency(selected.functional_currency);
-    }
-  }, [companyId, companyOptions]);
-
+  // Drop company selection when it no longer exists under the chosen client group.
   useEffect(() => {
     if (!clientId) {
       setCompanyId("");
@@ -110,8 +125,21 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
     }
     if (companyId && !companyOptions.some((company) => company.id === companyId)) {
       setCompanyId("");
+      setCurrency("GBP");
     }
   }, [clientId, companyId, companyOptions]);
+
+  const addCompanyMutation = useMutation({
+    mutationFn: (values: CompanyEntityFormValues) =>
+      createCompanyEntity(clientId, values, getToken),
+    onSuccess: (company) => {
+      setShowAddCompany(false);
+      void queryClient.invalidateQueries({ queryKey: ["companies", clientId] });
+      void queryClient.invalidateQueries({ queryKey: ["clients"] });
+      setCompanyId(company.id);
+      setCurrency(company.functional_currency);
+    },
+  });
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
@@ -173,11 +201,29 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
       }
       setClientId(value);
       setCompanyId("");
+      setShowAddCompany(false);
+      setCurrency("GBP");
     },
     [router],
   );
 
-  const companiesLoading = companiesQueries.some((query) => query.isLoading);
+  const onCompanyChange = useCallback(
+    (value: string) => {
+      if (value === NEW_COMPANY_VALUE) {
+        setShowAddCompany(true);
+        setCompanyId("");
+        return;
+      }
+      setShowAddCompany(false);
+      setCompanyId(value);
+      const selected = companyOptions.find((company) => company.id === value);
+      setCurrency(currencyForCompany(selected));
+    },
+    [companyOptions],
+  );
+
+  const addCompanyError =
+    addCompanyMutation.error instanceof Error ? addCompanyMutation.error.message : null;
 
   const errorMessage =
     localError ||
@@ -273,8 +319,8 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
           <span className="mb-1 block text-stone-600">Company</span>
           <select
             className="w-full rounded border border-stone-300 bg-white px-3 py-2"
-            value={companyId}
-            onChange={(e) => setCompanyId(e.target.value)}
+            value={showAddCompany ? NEW_COMPANY_VALUE : companyId}
+            onChange={(e) => onCompanyChange(e.target.value)}
             disabled={!clientId || companiesLoading}
           >
             <option value="">
@@ -283,7 +329,7 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
                 : companiesLoading
                   ? "Loading companies…"
                   : companyOptions.length === 0
-                    ? "No companies — create one first"
+                    ? "No companies yet"
                     : "Select a company"}
             </option>
             {companyOptions.map((company) => (
@@ -291,15 +337,10 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
                 {company.name} ({company.functional_currency})
               </option>
             ))}
+            {clientId && !companiesLoading ? (
+              <option value={NEW_COMPANY_VALUE}>+ New company</option>
+            ) : null}
           </select>
-          {clientId && !companiesLoading && companyOptions.length === 0 ? (
-            <p className="mt-1 text-xs text-stone-500">
-              <Link href={`/clients/${clientId}`} className="underline">
-                Add a company
-              </Link>{" "}
-              to this client group before uploading.
-            </p>
-          ) : null}
         </label>
 
         <label className="block text-sm">
@@ -326,6 +367,27 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
           </select>
         </label>
       </div>
+
+      {showAddCompany && clientId ? (
+        <div className="rounded border border-stone-200 bg-white p-4">
+          <CompanyEntityForm
+            intro={
+              <p className="text-sm text-stone-600">
+                Add a company to this client group. It will be selected automatically
+                when created.
+              </p>
+            }
+            submitLabel="Add company"
+            isPending={addCompanyMutation.isPending}
+            errorMessage={addCompanyError}
+            onSubmit={(values) => addCompanyMutation.mutate(values)}
+            onCancel={() => {
+              setShowAddCompany(false);
+              addCompanyMutation.reset();
+            }}
+          />
+        </div>
+      ) : null}
 
       {clientOptions.length === 0 && !clientsQuery.isLoading ? (
         <p className="text-xs text-stone-500">

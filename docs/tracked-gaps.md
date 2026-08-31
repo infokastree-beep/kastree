@@ -106,3 +106,17 @@ Excel/PDF; CSV statement amounts) now show the company's `functional_currency`
 and format statement amounts per Cursor Rules §10.7 (comma thousands for GBP/USD,
 space for EUR; currency symbol prefix; minus sign for negatives).
 
+## `trial_balances.currency` — redundant with `companies.functional_currency`
+
+Upload now **forces** `trial_balances.currency` from `company.functional_currency`
+(server-side, ignoring the form field). Statements GET/POST and exports already
+read currency from the **company** row (`_get_tb_functional_currency`), not from
+the TB column. The TB field is still referenced in `tb_pipeline.py` for parser
+metadata fallbacks (`tb.currency or "GBP"`).
+
+**Not urgent.** The column duplicates its parent and can drift if company currency
+is edited after upload (pre-upload enforcement prevents new mismatches). A future
+cleanup migration could drop `trial_balances.currency` and route all reads through
+`companies.functional_currency` (with a one-time backfill/consistency check). Until
+then, keeping the column is low-cost denormalization with no user-facing benefit.
+
