@@ -24,10 +24,6 @@ export function ProductSwitcher({
   const activeProduct =
     products.find((product) => product.id === activeProductId) ?? products[0];
 
-  if (!activeProduct) {
-    return null;
-  }
-
   useEffect(() => {
     if (!open) {
       return;
@@ -52,6 +48,10 @@ export function ProductSwitcher({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [open]);
+
+  if (!activeProduct) {
+    return null;
+  }
 
   function handleSelect(product: Product) {
     if (product.id === activeProduct.id) {
