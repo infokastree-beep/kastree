@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { SignInButton } from "@clerk/nextjs";
 import { clerkReady } from "@/components/providers/AppProviders";
 import { WaitlistForm } from "@/components/landing/WaitlistForm";
 import { useAuth } from "@/hooks/useAuth";
-import { APP_NAME, DISCLAIMER_TEXT } from "@/lib/constants";
+import { APP_NAME, DISCLAIMER_TEXT, POST_AUTH_PATH } from "@/lib/constants";
 
 const LIVE_STEPS = [
   {
@@ -54,7 +56,14 @@ const FAQ = [
 ] as const;
 
 export function LandingPage() {
-  const { isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      router.replace(POST_AUTH_PATH);
+    }
+  }, [isLoaded, isSignedIn, router]);
 
   return (
     <div className="min-h-screen bg-stone-50 text-stone-900">
@@ -71,7 +80,7 @@ export function LandingPage() {
                   Go to app
                 </Link>
               ) : (
-                <SignInButton mode="redirect">
+                <SignInButton mode="redirect" forceRedirectUrl={POST_AUTH_PATH}>
                   <button
                     type="button"
                     className="font-medium text-stone-700 underline-offset-2 hover:underline"

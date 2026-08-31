@@ -4,6 +4,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import type { ReactNode } from "react";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { ClerkAuthBridge, MockAuthBridge } from "@/hooks/useAuth";
+import { POST_AUTH_PATH } from "@/lib/constants";
 
 export const clerkReady = process.env.NEXT_PUBLIC_CLERK_READY === "true";
 
@@ -22,7 +23,10 @@ export function AppProviders({ children }: { children: ReactNode }) {
   }
 
   return (
-    <ClerkProvider>
+    <ClerkProvider
+      signInForceRedirectUrl={POST_AUTH_PATH}
+      signUpForceRedirectUrl={POST_AUTH_PATH}
+    >
       <ClerkAuthBridge>{withQuery}</ClerkAuthBridge>
     </ClerkProvider>
   );

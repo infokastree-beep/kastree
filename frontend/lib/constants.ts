@@ -2,6 +2,9 @@
 
 export const APP_NAME = "FinDraft";
 
+/** Where Clerk sends a user after sign-in / sign-up. Must be a dashboard route. */
+export const POST_AUTH_PATH = "/upload";
+
 /** Same disclaimer the exporter stamps on every pack (backend/app/services/exporter.py). */
 export const DISCLAIMER_TEXT =
   "Prepared for internal review and analysis. Not a statutory financial statement and not intended for regulatory filing.";

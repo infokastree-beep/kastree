@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { SignUp } from "@clerk/nextjs";
 import { clerkReady } from "@/components/providers/AppProviders";
+import { POST_AUTH_PATH } from "@/lib/constants";
 
 export default function SignUpPage() {
   if (!clerkReady) {
@@ -22,7 +23,12 @@ export default function SignUpPage() {
   }
   return (
     <main className="flex min-h-screen items-center justify-center px-4">
-      <SignUp routing="path" path="/sign-up" signInUrl="/sign-in" />
+      <SignUp
+        routing="path"
+        path="/sign-up"
+        signInUrl="/sign-in"
+        forceRedirectUrl={POST_AUTH_PATH}
+      />
     </main>
   );
 }
