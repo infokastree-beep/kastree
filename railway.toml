@@ -1,0 +1,28 @@
+# Railway deployment config (https://railway.app)
+#
+# Chosen over render.yaml because the deployment plan's short-term TB upload path
+# is a Railway volume mount (UPLOAD_DIR=/data/uploads). Render works too, but
+# needs a separate render.yaml if you switch hosts.
+#
+# Dashboard setup (one-time):
+#   1. New project from this GitHub repo.
+#   2. Add PostgreSQL (EU region). Link DATABASE_URL to the backend service.
+#   3. Backend service → Settings → attach a volume at /data/uploads.
+#   4. Set env vars from .env.production.example (backend section).
+#   5. Custom domain: api.yourdomain.com
+#   6. Release command (or one-off shell): alembic upgrade head
+#   7. Superuser once per DB: psql $ADMIN_URL -f backend/scripts/bootstrap_stripe_rls_lookup.sql
+#
+# Build context is the repo root (dockerfile COPY backend/...).
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "infra/docker/Dockerfile.backend"
+watchPatterns = ["backend/**", "infra/docker/Dockerfile.backend"]
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 120
+startCommand = "sh -c 'uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}'"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

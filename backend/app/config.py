@@ -24,7 +24,9 @@ class Settings(BaseSettings):
     # Comma-separated list, e.g. "http://127.0.0.1:43123,http://localhost:43123"
     cors_origins: str = "http://127.0.0.1:43123,http://localhost:43123"
 
-    # Local upload storage until S3 wiring for TB files lands with export storage.
+    # Trial balance upload storage (local path). Override with UPLOAD_DIR env var —
+    # e.g. mount a Railway volume at /data/uploads and set UPLOAD_DIR=/data/uploads.
+    # S3 for TB files is a tracked gap; exports already use S3 below.
     upload_dir: str = "/tmp/findraft-uploads"
 
     # Object storage (S3 or R2). 30-day export deletion requires bucket lifecycle

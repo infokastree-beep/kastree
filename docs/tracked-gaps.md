@@ -106,6 +106,18 @@ Excel/PDF; CSV statement amounts) now show the company's `functional_currency`
 and format statement amounts per Cursor Rules §10.7 (comma thousands for GBP/USD,
 space for EUR; currency symbol prefix; minus sign for negatives).
 
+## Trial balance uploads — local disk, not S3
+
+TB files are written to `settings.upload_dir` (env: `UPLOAD_DIR`, default
+`/tmp/findraft-uploads`) via `file://` paths in `trial_balances.file_url`.
+Export files already use S3/R2 (`backend/app/services/exporter.py`).
+
+**Short-term production fix:** mount a persistent volume (e.g. Railway
+`/data/uploads`) and set `UPLOAD_DIR=/data/uploads`. **Proper fix:** upload TB
+files to object storage and stop relying on local disk (same bucket family as
+exports, or a dedicated `uploads/` prefix). Until then, redeploys without a
+volume wipe uploaded files and multi-instance deploys will not share uploads.
+
 ## `trial_balances.currency` — redundant with `companies.functional_currency`
 
 Upload now **forces** `trial_balances.currency` from `company.functional_currency`

@@ -96,6 +96,26 @@ an oversight. (Same note sits above the `GRANT EXECUTE` lines in
 Do **not** reintroduce a permissive `organisations` SELECT policy gated on a
 session GUC (an earlier draft did; it was caught in review and rejected).
 
+## Backend deploy (Railway)
+
+Production backend is configured via **`railway.toml`** at the repo root (Docker
+build from `infra/docker/Dockerfile.backend`, health check `/health`, `$PORT`
+binding). Prefer Railway over Render for the short-term TB upload volume path
+(`UPLOAD_DIR=/data/uploads` on a mounted volume). See `.env.production.example`
+for every env var.
+
+### Migrations
+
+`backend/alembic/env.py` reads **`DATABASE_URL_SYNC`** from the environment and
+falls back to `sqlalchemy.url` in `alembic.ini` for local dev. In production,
+set `DATABASE_URL_SYNC` on the host and run:
+
+```bash
+cd backend && alembic upgrade head
+```
+
+Never rely on the alembic.ini localhost URL in staging/production.
+
 ## Frontend CORS (browser → API)
 
 Browser calls hit FastAPI directly at `NEXT_PUBLIC_API_BASE_URL`. Set backend `CORS_ORIGINS` to the frontend origin(s), comma-separated (default includes `http://127.0.0.1:43123` and `http://localhost:43123`). No wildcards in production (Product Spec §12).
