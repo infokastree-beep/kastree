@@ -4,6 +4,7 @@ import Link from "next/link";
 import { SignInButton } from "@clerk/nextjs";
 import { clerkReady } from "@/components/providers/AppProviders";
 import { WaitlistForm } from "@/components/landing/WaitlistForm";
+import { ProductSwitcher } from "@/components/layout/ProductSwitcher";
 import { useAuth } from "@/hooks/useAuth";
 import { APP_NAME, DISCLAIMER_TEXT, POST_AUTH_PATH } from "@/lib/constants";
 
@@ -59,8 +60,8 @@ export function LandingPage() {
   return (
     <div className="min-h-screen bg-stone-50 text-stone-900">
       <header className="border-b border-stone-200 bg-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-          <span className="text-sm font-semibold tracking-tight">{APP_NAME}</span>
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-6 py-4">
+          <ProductSwitcher />
           {clerkReady ? (
             <div className="flex items-center gap-3 text-sm">
               {isSignedIn ? (
