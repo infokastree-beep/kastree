@@ -130,16 +130,23 @@ files to object storage and stop relying on local disk (same bucket family as
 exports, or a dedicated `uploads/` prefix). Until then, redeploys without a
 volume wipe uploaded files and multi-instance deploys will not share uploads.
 
-## Waitlist signups — no in-app admin view yet
+## Waitlist signups — no authenticated way to view signups
 
 `POST /waitlist` is public (rate-limited per IP, unique email constraint). Rows
 live in `waitlist_signups` with **INSERT-only RLS** for the `findraft` app role
 (`FORCE ROW LEVEL SECURITY` + single `FOR INSERT` policy — no SELECT/UPDATE/DELETE
 policies, so ORM queries cannot read PII).
 
-**There is no authenticated admin endpoint or dashboard to list signups.** To
-review who joined, use a superuser/psql session against production Postgres (or
-add a future internal admin route with a separate SECURITY DEFINER read path).
+**There is no authenticated endpoint or dashboard to list signups.** The only way
+to see who joined today is direct DB access (superuser/psql against production
+Postgres). The app role cannot SELECT these rows by design.
+
+**Missing (low effort):** a simple admin-only `GET /waitlist` to list signups,
+role-gated to **Owner** only (same `require_roles("owner")` pattern as
+`GET /organisations/me/archived-records`). That route will also need a read path
+past INSERT-only RLS (e.g. a `SECURITY DEFINER` function or a dedicated SELECT
+policy scoped to an admin check). Until that exists, the waitlist is not
+practically useful for following up with signups without manual DB access.
 
 ## `trial_balances.currency` — redundant with `companies.functional_currency`
 
