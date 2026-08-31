@@ -44,6 +44,11 @@ export async function apiFetch<T>(
   if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
+  // ngrok free tier serves an HTML interstitial to browser cross-origin requests unless
+  // this header is present (ERR_NGROK_6024). Harmless on non-ngrok backends.
+  if (getApiBaseUrl().includes("ngrok")) {
+    headers.set("ngrok-skip-browser-warning", "true");
+  }
 
   let response: Response;
   try {
