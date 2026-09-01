@@ -2,7 +2,7 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CompanyEntityForm,
 } from "@/components/clients/CompanyEntityForm";
@@ -15,17 +15,28 @@ import type { ClientCreateRequest, IClient } from "@/types";
 type CreateClientFormProps = {
   /** After create, redirect here with `?company=<id>` appended. */
   redirectPath?: string;
+  /** Fires when the wizard advances from client group to first company. */
+  onStepChange?: (step: Step) => void;
 };
 
 type Step = "client" | "company";
 
-export function CreateClientForm({ redirectPath = "/upload" }: CreateClientFormProps) {
+export type { Step as CreateClientStep };
+
+export function CreateClientForm({
+  redirectPath = "/upload",
+  onStepChange,
+}: CreateClientFormProps) {
   const router = useRouter();
   const { getToken } = useAuth();
   const [step, setStep] = useState<Step>("client");
 
   const [clientName, setClientName] = useState("");
   const [createdClient, setCreatedClient] = useState<IClient | null>(null);
+
+  useEffect(() => {
+    onStepChange?.(step);
+  }, [step, onStepChange]);
 
   const createClientMutation = useMutation({
     mutationFn: () => {
