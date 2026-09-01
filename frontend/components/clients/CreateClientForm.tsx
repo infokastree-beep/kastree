@@ -67,13 +67,19 @@ export function CreateClientForm({ redirectPath = "/upload" }: CreateClientFormP
   if (step === "company" && createdClient) {
     return (
       <CompanyEntityForm
-        initialName={clientName.trim()}
+        title={`Now add the first company under ${createdClient.name}`}
         intro={
           <p className="text-sm text-stone-600">
-            Client group{" "}
-            <span className="font-medium text-stone-900">{createdClient.name}</span>{" "}
-            created. Add the first company entity below — you can add more later from the
-            client detail page.
+            This is a separate legal entity under the client group — not the group name
+            itself. You can add more companies later from the client detail page.
+          </p>
+        }
+        namePlaceholder="e.g. MD Trading Ltd"
+        currencyHint={
+          <p className="text-sm text-stone-600">
+            Each company under this client can have its own currency and materiality
+            settings — useful if this client has subsidiaries or entities trading in
+            different currencies.
           </p>
         }
         submitLabel="Create company & continue"

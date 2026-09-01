@@ -13,7 +13,10 @@ export { DEFAULT_MATERIALITY_ABS, DEFAULT_MATERIALITY_PCT } from "@/lib/company-
 
 type CompanyEntityFormProps = {
   initialName?: string;
+  namePlaceholder?: string;
+  title?: string;
   intro?: React.ReactNode;
+  currencyHint?: React.ReactNode;
   submitLabel: string;
   isPending?: boolean;
   errorMessage?: string | null;
@@ -24,7 +27,10 @@ type CompanyEntityFormProps = {
 
 export function CompanyEntityForm({
   initialName = "",
+  namePlaceholder = "Acme Ltd",
+  title,
   intro,
+  currencyHint,
   submitLabel,
   isPending = false,
   errorMessage = null,
@@ -55,6 +61,9 @@ export function CompanyEntityForm({
         });
       }}
     >
+      {title ? (
+        <h2 className="text-lg font-semibold tracking-tight text-stone-900">{title}</h2>
+      ) : null}
       {intro}
 
       <label className="block text-sm">
@@ -65,9 +74,11 @@ export function CompanyEntityForm({
           className="w-full rounded border border-stone-300 px-3 py-2"
           value={name}
           onChange={(event) => setName(event.target.value)}
-          placeholder="Acme Ltd"
+          placeholder={namePlaceholder}
         />
       </label>
+
+      {currencyHint}
 
       <label className="block text-sm">
         <span className="mb-1 block text-stone-600">Functional currency</span>
