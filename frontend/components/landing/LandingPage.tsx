@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { SignInButton } from "@clerk/nextjs";
-import { clerkReady } from "@/components/providers/AppProviders";
+import { SignInNavLink } from "@/components/auth/SignInNavLink";
+import { clerkReady } from "@/lib/clerk";
 import { WaitlistForm } from "@/components/landing/WaitlistForm";
 import { ProductSwitcher } from "@/components/layout/ProductSwitcher";
 import { useAuth } from "@/hooks/useAuth";
@@ -66,20 +66,13 @@ export function LandingPage() {
             <div className="flex items-center gap-3 text-sm">
               {isSignedIn ? (
                 <Link
-                  href="/upload"
+                  href={POST_AUTH_PATH}
                   className="rounded bg-stone-900 px-3 py-1.5 font-medium text-white"
                 >
                   Go to app
                 </Link>
               ) : (
-                <SignInButton mode="redirect" forceRedirectUrl={POST_AUTH_PATH}>
-                  <button
-                    type="button"
-                    className="font-medium text-stone-700 underline-offset-2 hover:underline"
-                  >
-                    Sign in
-                  </button>
-                </SignInButton>
+                <SignInNavLink className="font-medium text-stone-700 underline-offset-2 hover:underline" />
               )}
             </div>
           ) : null}

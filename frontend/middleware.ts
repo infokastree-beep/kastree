@@ -21,7 +21,7 @@ const isDashboardRoute = createRouteMatcher([
  * preview path into the authenticated app. When true: Clerk middleware runs
  * and auth().protect() gates those routes.
  */
-const clerkReady = process.env.NEXT_PUBLIC_CLERK_READY === "true";
+import { clerkReady } from "@/lib/clerk";
 
 const clerkHandler = clerkMiddleware(async (auth, request) => {
   if (isDashboardRoute(request)) {

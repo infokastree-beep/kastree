@@ -33,7 +33,11 @@ path into the authenticated app. Set real Clerk keys and
 |----------|---------|
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk browser SDK |
 | `CLERK_SECRET_KEY` | Clerk middleware / server |
+| `CLERK_TRUST_HOST` | Set `true` on Vercel |
+| `NEXT_PUBLIC_CLERK_READY` | Must be exactly `true` to enable auth |
 | `NEXT_PUBLIC_API_BASE_URL` | FastAPI base URL (no trailing slash) |
+
+The header **Sign in** link is a plain `/sign-in` route (SSR-visible). The Clerk widget on that page only loads when the deployed site origin is listed in your Clerk application's **Domains** — otherwise the console shows `Invalid HTTP Origin header`.
 
 Backend must set `CORS_ORIGINS` to include `http://127.0.0.1:43123` (default in `app.config.Settings.cors_origins`).
 

@@ -162,6 +162,26 @@ Browser calls hit FastAPI directly at `NEXT_PUBLIC_API_BASE_URL`. Set backend `C
 
 For Clerk session JWTs, set `CLERK_PUBLISHABLE_KEY` (or `CLERK_JWKS_URL`) on the API so RS256 verification works; local tests continue to use HS256 `AUTH_JWT_SECRET`.
 
+### Clerk browser origin (Sign in / widget)
+
+The Clerk JS SDK only initializes when the page **Origin** matches an allowed domain on your Clerk application. If the script tag loads (`clerk.kastree.ie`) but the header **Sign in** link or `/sign-in` widget never appears, open the browser console — a common error is:
+
+`Invalid HTTP Origin header — The Request HTTP Origin header must be equal to or a subdomain of the requesting URL.`
+
+**Fix:** In the [Clerk Dashboard](https://dashboard.clerk.com) → your production instance → **Domains**, add every frontend origin you deploy to (e.g. `https://frontend-ten-flame-18.vercel.app` for Vercel preview, and `https://kastree.ie` / `https://www.kastree.ie` for production). Redeploy is not required after adding domains; refresh the browser.
+
+Vercel env vars for the frontend (Production):
+
+| Variable | Notes |
+|----------|--------|
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | `pk_live_…` for the same Clerk instance as the backend |
+| `CLERK_SECRET_KEY` | `sk_live_…` — server/middleware only |
+| `NEXT_PUBLIC_CLERK_READY` | Must be exactly `true` |
+| `CLERK_TRUST_HOST` | `true` on Vercel (required for middleware) |
+| `NEXT_PUBLIC_API_BASE_URL` | `https://kastree-production.up.railway.app` |
+
+After changing any `NEXT_PUBLIC_*` variable, trigger a new Vercel deployment so the value is baked into the client bundle.
+
 ## Local / dev backend process
 
 Run **one** uvicorn instance per environment during dev and testing (e.g. `uvicorn app.main:app --reload` on a single port); a second process without `--reload` will serve stale code and write confusing validation or statement results while the reloaded instance has the fix.

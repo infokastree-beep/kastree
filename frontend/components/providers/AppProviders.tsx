@@ -4,9 +4,8 @@ import { ClerkProvider } from "@clerk/nextjs";
 import type { ReactNode } from "react";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { ClerkAuthBridge, MockAuthBridge } from "@/hooks/useAuth";
+import { clerkReady } from "@/lib/clerk";
 import { POST_AUTH_PATH } from "@/lib/constants";
-
-export const clerkReady = process.env.NEXT_PUBLIC_CLERK_READY === "true";
 
 /**
  * When clerkReady is false (env unset or not exactly "true"):

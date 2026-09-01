@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { SignIn } from "@clerk/nextjs";
-import { clerkReady } from "@/components/providers/AppProviders";
-import { POST_AUTH_PATH } from "@/lib/constants";
+import { ClerkSignInPanel } from "@/components/auth/ClerkSignInPanel";
+import { clerkReady } from "@/lib/clerk";
 
 export default function SignInPage() {
   if (!clerkReady) {
@@ -21,14 +20,10 @@ export default function SignInPage() {
       </main>
     );
   }
+
   return (
     <main className="flex min-h-screen items-center justify-center px-4">
-      <SignIn
-        routing="path"
-        path="/sign-in"
-        signUpUrl="/sign-up"
-        forceRedirectUrl={POST_AUTH_PATH}
-      />
+      <ClerkSignInPanel />
     </main>
   );
 }

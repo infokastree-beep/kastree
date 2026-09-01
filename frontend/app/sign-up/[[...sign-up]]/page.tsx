@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { SignUp } from "@clerk/nextjs";
-import { clerkReady } from "@/components/providers/AppProviders";
+import { clerkReady } from "@/lib/clerk";
 import { POST_AUTH_PATH } from "@/lib/constants";
 
 export default function SignUpPage() {

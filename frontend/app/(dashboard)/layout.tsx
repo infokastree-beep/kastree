@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
 import { ProductSwitcher } from "@/components/layout/ProductSwitcher";
-import { clerkReady } from "@/components/providers/AppProviders";
+import { clerkReady } from "@/lib/clerk";
 
 export default function DashboardGroupLayout({
   children,
