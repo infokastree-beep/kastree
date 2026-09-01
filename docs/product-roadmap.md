@@ -25,6 +25,7 @@ on the statements dashboard.
 | Feature | Backend | Frontend gap |
 |---------|---------|--------------|
 | **Variance Analysis** tab | Done and tested | Prior-period upload field + results table |
+| **Materiality auto-suggestion** | Not built | Post-first-upload prompt suggesting benchmark-based thresholds from real statement figures. **Fast-follow alongside or immediately after Variance** — not a separate later task. Directly feeds Variance Analysis's "is this material?" flagging (Product Spec §4.3); a static generic threshold makes variance flagging inconsistently useful across companies of different sizes. Full target design: [`tracked-gaps.md`](tracked-gaps.md) (Materiality thresholds section). |
 | **Risk Flags** tab | Done and tested | Display table |
 | **AI Commentary** | Done and reviewed (no financial data sent to LLM) | UI for drafted text, editable, with reasoning tooltip + thumbs up/down (feedback endpoints exist) |
 | **Business Health** summary | Done | Dashboard placement for the 3-bullet AI summary |
