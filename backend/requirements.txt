@@ -37,7 +37,6 @@ rapidfuzz==3.10.1
 
 # Security / rate limiting
 slowapi==0.1.9
-python-clamd==0.4.0
 
 # Observability
 sentry-sdk[fastapi]==2.19.2

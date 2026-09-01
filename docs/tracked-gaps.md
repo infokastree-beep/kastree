@@ -118,6 +118,28 @@ Excel/PDF; CSV statement amounts) now show the company's `functional_currency`
 and format statement amounts per Cursor Rules §10.7 (comma thousands for GBP/USD,
 space for EUR; currency symbol prefix; minus sign for negatives).
 
+## Trial balance upload — ClamAV virus scanning not implemented
+
+Product Spec §4.1 / §12.2 requires ClamAV scanning on TB upload (reject if
+infected). The upload handler (`POST /trial-balances/upload` in
+`backend/app/routers/trial_balances.py`) currently validates only:
+
+- file extension (`.xlsx` / `.csv` via `_file_extension`)
+- size (50 MB max)
+
+There is **no virus scan** — no `clamd` / `pyclamd` import anywhere in the
+backend. `python-clamd==0.4.0` was listed in `requirements.txt` but that
+package/version does not exist on PyPI (only `0.0.1.dev0` / `0.0.2.dev0` under
+the `python-clamd` name; the `0.4.0` version lives under **`pyclamd`** instead).
+It was removed from `requirements.txt` to unblock the Railway build.
+
+**Follow-up:** wire ClamAV into the upload path before calling this area
+production-ready for untrusted file intake. Likely packages on PyPI:
+`pyclamd==0.4.0`, `clamd==1.0.2`, or `clamdpy==0.2.0` — all require a running
+`clamd` daemon (not bundled). Scan should happen on the saved bytes **before**
+`stored_path.write_bytes(content)` returns 202, rejecting infected files with
+4xx. Add integration tests with EICAR when implemented.
+
 ## Trial balance uploads — local disk, not S3
 
 TB files are written to `settings.upload_dir` (env: `UPLOAD_DIR`, default
