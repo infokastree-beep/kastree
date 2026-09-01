@@ -101,18 +101,58 @@ path for client groups with zero companies.
 
 Materiality thresholds are currently **static, manually entered values** (default
 10% / 1000 absolute) with **no connection to the company's actual financial
-profile**. Real accounting practice bases materiality on a percentage of a
-relevant benchmark — profit before tax, revenue, or total assets, chosen based
-on the company's situation — not a fixed number.
+profile**.
 
-**Worth building:** auto-suggested thresholds derived from the company's own
-first uploaded trial balance (e.g. 5% of profit before tax, falling back to 1% of
-total assets if profit is small or negative), recalculated as new periods come
-in, with **manual override always available**.
+**Important scope note:** auto-suggestion can only run **after** a company's
+first trial balance is uploaded and statements are generated — not at
+company-creation time, since no real financial figures exist yet. The company
+creation form will always need to show generic static defaults (as it does now).
+The smart-suggestion step is a **post-first-upload** prompt — e.g. "here's a
+better materiality threshold based on your real numbers — apply it?" — not
+something requested upfront during setup.
 
-**Not urgent.** Static defaults are a reasonable MVP starting point since there
-is no data to benchmark against before a first upload exists — but a real,
-valuable improvement once there is usage data to validate against.
+### Target design (deferred)
+
+Materiality auto-suggestion should be based on real, established audit-materiality
+benchmarking (ISA 320-derived), used here purely as a **sensible SaaS default
+suggestion** — **not** implying the product performs audit-grade materiality
+judgments, which remain the accountant's own professional responsibility.
+
+**Benchmark selection by company type:**
+
+| Company type | Benchmark |
+|--------------|-----------|
+| Profit-oriented / trading companies | 5–10% of Profit Before Tax (continuing operations) |
+| Startups, charities, low-margin / high-revenue firms | 0.5–3% of Total Revenue / Turnover |
+| Capital-intensive companies or investment funds | 1–3% of Total Assets |
+| Holding companies / balance-sheet-focused entities | 3–10% of Net Assets / Equity |
+
+**Risk-based adjustment within each range:**
+
+- **Lower end** (more conservative) if: weak internal controls, complex
+  business, first-time engagement, publicly traded / external-finance-dependent.
+- **Higher end** if: stable operations, owner-managed with no external finance
+  dependency.
+
+**Additional levels worth eventually supporting** (not just a single threshold):
+
+- **Performance materiality** — a lower working threshold, typically 50–75% of
+  overall materiality, for catching smaller aggregated errors during review.
+- **Trivial threshold** — ignore clearly inconsequential items, typically 3–5%
+  of overall materiality.
+
+**Implementation approach:** default to mid-range percentages; let the user
+(accountant) adjust based on their own judgment of risk / company type. Present
+as a smart, editable starting suggestion — never as an authoritative audit
+determination. Requires the company-type classification already noted (holding
+vs trading) as a prerequisite.
+
+**Still deferred** — no data exists to auto-calculate against until a company's
+first real upload — but this is the actual target design once built, not a vague
+"something better" placeholder.
+
+**Source:** standard audit materiality practice (ISA 320 framework; commonly
+cited ranges from professional audit guidance).
 
 ## Financial statements — currency display (resolved)
 
