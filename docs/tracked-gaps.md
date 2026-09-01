@@ -197,3 +197,36 @@ who holds production secrets.
 
 **Not urgent now.** Track for when FinDraft moves beyond solo early-access.
 
+## No actual paywall — subscription tiers exist in schema only
+
+There is currently **no actual paywall**. Anyone can sign up and gets
+unrestricted access at the `"free"` tier indefinitely — no way to see pricing,
+no way to pay, and **no code anywhere that checks `subscription_tier` to gate
+features**.
+
+**What exists today:**
+
+- Database schema supports tiers (`organisations.subscription_tier`,
+  `subscription_status`).
+- Stripe webhook correctly updates these fields when Stripe sends real events
+  (once the separately-tracked tier-update bug is fixed).
+
+**What's missing — all of it:**
+
+1. **Tier policy** — decide what each tier actually restricts (client count? AI
+   commentary access? export formats?). Revisit the original spec's rough tier
+   table and confirm it is still wanted.
+2. **Backend feature gating** — middleware or dependency layer that reads
+   `subscription_tier` (and `subscription_status`) and blocks/allows accordingly.
+   Never trust the frontend alone for this.
+3. **Pricing page** — a real public or authenticated pricing surface on the
+   frontend.
+4. **Stripe Checkout** — integration so someone can actually pay and land on the
+   correct tier.
+
+This is a genuinely separate, substantial piece of work — **not a quick fix**.
+Treat it as its own focused session.
+
+**Not urgent** for a waitlist-stage product with no real users yet, but **must
+be resolved before onboarding any real, unvetted signups**.
+
