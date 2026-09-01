@@ -32,8 +32,15 @@ on the statements dashboard.
 
 ### Medium — new work, grounded in existing data
 
+**Sequence after Close** — Variance / Risk / Commentary / Export UI first (lower
+effort, higher priority). Medium items below assume those screens exist.
+
 - **Data visualization dashboard** — charts and graphs (trend lines, variance
   waterfalls, expense breakdowns) on top of existing statement / variance data.
+- **Materiality auto-suggestion** — post-first-upload prompt suggesting
+  benchmark-based thresholds from real statement figures (ISA 320-derived ranges;
+  editable, never authoritative). Company creation keeps static defaults until
+  then. Full target design: [`tracked-gaps.md` — Materiality thresholds](tracked-gaps.md#materiality-thresholds--static-defaults-vs-benchmark-based-suggestion).
 - **Multi-period trend views** — revenue / profit progression once multiple
   trial balances exist per company.
 
@@ -73,7 +80,9 @@ Requires its own legal / ToS review before build, not just before launch.
 
 ## Sequencing note
 
-**Product 1’s “Close” items are the actual next build priority.**
+**Product 1’s “Close” items are the actual next build priority.** Medium-tier
+items (data viz, materiality auto-suggestion, multi-period trends) come after
+Close is shipped.
 
 Products 2 and 3 are intentionally deferred until Product 1 has real customer
 signal. **Do not begin building Product 2 or 3 items without revisiting this
