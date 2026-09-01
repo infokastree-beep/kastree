@@ -164,17 +164,29 @@ For Clerk session JWTs, set `CLERK_PUBLISHABLE_KEY` (or `CLERK_JWKS_URL`) on the
 
 ### Clerk browser origin (Sign in / widget)
 
-The Clerk JS SDK only initializes when the page **Origin** matches an allowed domain on your Clerk application. If the script tag loads (`clerk.kastree.ie`) but the header **Sign in** link or `/sign-in` widget never appears, open the browser console — a common error is:
+Production Clerk instances (`pk_live_` / `sk_live_`) are **locked to the root domain configured in the Clerk Dashboard** (Configure → Domains). The Frontend API accepts requests only from that domain and its subdomains — not from unrelated hosts like `*.vercel.app`. This is by design; there is no self-service “Allowed Origins” list for normal web apps (that setting exists only for browser extensions, Electron, and Capacitor via the Backend API `allowedOrigins` field).
 
-`Invalid HTTP Origin header — The Request HTTP Origin header must be equal to or a subdomain of the requesting URL.`
+Clerk’s [Deploy to production](https://clerk.com/docs/guides/development/deployment/production) and [Vercel deployment](https://clerk.com/docs/guides/development/deployment/vercel) guides both state that you **cannot use a `*.vercel.app` URL with production Clerk keys** — you need a domain you own.
 
-**Fix:** In the [Clerk Dashboard](https://dashboard.clerk.com) → your production instance → **Domains**, add every frontend origin you deploy to (e.g. `https://frontend-ten-flame-18.vercel.app` for Vercel preview, and `https://kastree.ie` / `https://www.kastree.ie` for production). Redeploy is not required after adding domains; refresh the browser.
+If the script tag loads (`clerk.kastree.ie`) but `/sign-in` never hydrates, the browser console typically shows:
+
+`Invalid HTTP Origin header — The Request HTTP Origin header must be equal to or a subdomain of the requesting URL.` (`origin_invalid`)
+
+**Fix:** Serve the app from your production domain (e.g. `https://kastree.ie`), not the temporary Vercel URL:
+
+1. Vercel project → **Settings → Domains** → Add `kastree.ie` (and `www.kastree.ie` if needed).
+2. At your DNS registrar, add the records Vercel shows (usually `A`/`CNAME` for apex and `www`).
+3. Wait for Vercel to verify and issue TLS.
+4. Open `https://kastree.ie/sign-in` and confirm Clerk initializes (no `origin_invalid` in Network tab for `clerk.kastree.ie/v1/client`).
+5. Update Railway `CORS_ORIGINS` to include `https://kastree.ie`.
+
+For **Vercel preview** deployments (`*.vercel.app`), use **development** Clerk keys (`pk_test_` / `sk_test_`) per Clerk’s [preview environment guide](https://clerk.com/docs/guides/development/deployment/vercel) — or use a subdomain of your production domain. To auth across a completely different domain (not a subdomain), Clerk requires [satellite domains](https://clerk.com/docs/guides/dashboard/dns-domains/satellite-domains) — overkill for this setup.
 
 Vercel env vars for the frontend (Production):
 
 | Variable | Notes |
 |----------|--------|
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | `pk_live_…` for the same Clerk instance as the backend |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | `pk_live_…` — decodes to `clerk.kastree.ie` |
 | `CLERK_SECRET_KEY` | `sk_live_…` — server/middleware only |
 | `NEXT_PUBLIC_CLERK_READY` | Must be exactly `true` |
 | `CLERK_TRUST_HOST` | `true` on Vercel (required for middleware) |
