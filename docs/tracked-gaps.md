@@ -184,3 +184,16 @@ cleanup migration could drop `trial_balances.currency` and route all reads throu
 `companies.functional_currency` (with a one-time backfill/consistency check). Until
 then, keeping the column is low-cost denormalization with no user-facing benefit.
 
+## Infrastructure account ownership — personal email, not business entity
+
+All infrastructure accounts (GitHub, Vercel, Railway, Clerk, Blacknight) are
+currently owned by a **personal email**, not a dedicated business entity.
+
+**Fine to defer for now.** Before any serious fundraising, hiring, or acquisition
+conversation, these should be transferred to a business-owned account (and
+eventually a properly incorporated company). Investors and acquirers routinely
+check this in due diligence — org ownership, billing, domain registrar, and
+who holds production secrets.
+
+**Not urgent now.** Track for when FinDraft moves beyond solo early-access.
+
