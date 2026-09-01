@@ -97,6 +97,10 @@ the canonical set. If expanded, scope the downstream changes: Statement Builder
 line placement, validator rules, frontend dropdown/constants, and LLM tie-breaker
 prompts must stay aligned.
 
+**Proposed expansion (6 new lines + migration note for `accruals`):**
+[`canonical-lines-expansion.md`](canonical-lines-expansion.md). Sequenced on the
+[product roadmap](product-roadmap.md) as fast-follow after Variance / materiality.
+
 ## CreateClientForm step-1-only recovery (misleading empty state)
 
 `CreateClientForm` is a two-step flow: step 1 creates the client group (`POST
