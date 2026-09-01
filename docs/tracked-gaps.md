@@ -3,6 +3,9 @@
 Known implementation gaps that are **accepted for now** but should not be forgotten.
 Review this list before claiming a feature area is complete.
 
+For product-level sequencing (three-product roadmap, what to build next vs defer),
+see [`product-roadmap.md`](product-roadmap.md).
+
 ## Archival write paths
 
 Only **clients** soft-delete currently writes to `archived_records`. See

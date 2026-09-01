@@ -2,6 +2,8 @@
 
 Minimum Next.js 14 UI for the core loop: **upload → mapping review → statements dashboard**.
 
+Product-level roadmap (three-product structure, build sequencing): [`../docs/product-roadmap.md`](../docs/product-roadmap.md). Granular technical gaps: [`../docs/tracked-gaps.md`](../docs/tracked-gaps.md).
+
 ## Prerequisites
 
 - Node 20+
