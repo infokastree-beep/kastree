@@ -116,6 +116,46 @@ cd backend && alembic upgrade head
 
 Never rely on the alembic.ini localhost URL in staging/production.
 
+### Application database role (`findraft`) — required before deploy
+
+The running API **must not** use Railway's default `postgres` superuser
+connection. Superuser sessions bypass RLS unconditionally, which silently
+disables every org-isolation policy.
+
+Run **once per environment**, as the database superuser, **after**
+`alembic upgrade head` (tables must exist for `GRANT ALL ON ALL TABLES`):
+
+```bash
+# Railway shell: DATABASE_URL_SYNC is the linked Postgres superuser URL.
+export DATABASE_URL_SYNC='postgresql://postgres:...@host:port/railway'
+./backend/scripts/provision_and_verify_findraft_role.sh
+```
+
+The role name **must** be `findraft` — `bootstrap_stripe_rls_lookup.sql`
+already grants `EXECUTE` on Stripe org-lookup functions to that role.
+
+Then set the **backend service** env vars (not the Postgres plugin) to the
+script's `findraft` URLs:
+
+- `DATABASE_URL` — `postgresql+asyncpg://findraft:…`
+- `DATABASE_URL_SYNC` — `postgresql://findraft:…`
+
+Keep the original `postgres` superuser URL in a separate secret (e.g.
+`DATABASE_SUPERUSER_URL`) for one-off admin only: Stripe RLS bootstrap,
+Alembic migrations, and re-running this provision script. **Never** point the
+running app at the superuser connection.
+
+**Verify RLS before deploy** (script runs this automatically; re-run manually
+any time):
+
+```bash
+psql "$FINDRAFT_DATABASE_URL_SYNC" -f backend/scripts/verify_findraft_rls.sql
+```
+
+With `app.current_org_id` set to a fake UUID, `SELECT count(*) FROM clients`
+must return **0**. A superuser connection would return all rows — that means
+RLS is not enforced and the app must not go live.
+
 ## Frontend CORS (browser → API)
 
 Browser calls hit FastAPI directly at `NEXT_PUBLIC_API_BASE_URL`. Set backend `CORS_ORIGINS` to the frontend origin(s), comma-separated (default includes `http://127.0.0.1:43123` and `http://localhost:43123`). No wildcards in production (Product Spec §12).
