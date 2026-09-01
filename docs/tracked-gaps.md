@@ -233,3 +233,20 @@ Treat it as its own focused session.
 **Not urgent** for a waitlist-stage product with no real users yet, but **must
 be resolved before onboarding any real, unvetted signups**.
 
+## No uptime or error monitoring
+
+Nothing alerts if `kastree.ie` or the Railway backend goes down, or if the app
+throws real errors in production. Right now the only detection path is someone
+manually checking.
+
+**Worth adding:**
+
+- **Sentry** (error tracking) — `SENTRY_DSN` is already listed as a supported
+  env var in `.env.production.example` but has never been configured.
+- **Railway / Vercel built-in uptime alerts** — simpler, no new service; just
+  enable in each platform's dashboard.
+
+Low effort, genuinely useful once there are real users. **Not urgent** for a
+waitlist-stage product with no signups yet, but should be set up **before
+actively promoting the site or onboarding real pilot users**.
+
