@@ -67,6 +67,30 @@ categories. Manual testing flagged likely gaps — **prepayments**, **accrued
 income**, **deferred/unearned revenue**, and **provisions** — none of which
 cleanly fit any existing canonical line today.
 
+**Confirmed via live testing (complex 74-account TB, no `OPENAI_API_KEY`):** 31
+accounts fell to unmapped — correctly, since Tier 4 fails safely without a key.
+Among those 31, seven are the **known canonical-gap types** above plus related
+control / equity lines that have no clean Appendix A home even with a working
+LLM:
+
+- Prepayments
+- Accrued Income
+- Deferred Revenue
+- Provisions — Warranty
+- VAT Control Account
+- PAYE/NI Control Account
+- Revaluation Reserve
+
+The mapping UI currently treats these the same as ordinary accounts (e.g. Cash,
+Trade Debtors, Share Capital) that would likely resolve once Tier 4 actually
+runs. There is no way to tell **"this just needs Tier 4 to execute"** apart from
+**"this will genuinely never have a good match, no matter what."**
+
+**Consider for a future session:** distinguish the two cases in the mapping UI
+— e.g. a small hint or tag on rows where even Tier 4 (if it ran) has no
+confident canonical match available, versus rows simply waiting on Tier 4.
+**Not urgent** — capture the confirmed real-world finding so it is not lost.
+
 **Not a bug — a scope question for a future session.** Review against real
 client trial balances (not synthetic test data) before deciding whether to expand
 the canonical set. If expanded, scope the downstream changes: Statement Builder
