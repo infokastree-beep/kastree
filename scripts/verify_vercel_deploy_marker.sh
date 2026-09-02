@@ -16,7 +16,7 @@
 set -euo pipefail
 
 MARKER="${1:-}"
-SITE="${VERCEL_SITE_URL:-https://kastree.ie}"
+SITE="${VERCEL_SITE_URL:-https://www.kastree.ie}"
 SITE="${SITE%/}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FRONTEND="$ROOT/frontend"
@@ -31,6 +31,32 @@ fi
 
 find_local_chunk() {
   rg -l --fixed-strings "$MARKER" "$FRONTEND/.next/static/chunks" -g '*.js' 2>/dev/null | head -1
+}
+
+find_manifest_chunks_with_marker() {
+  python3 - "$FRONTEND" "$MARKER" <<'PY'
+import json, pathlib, sys
+frontend, marker = pathlib.Path(sys.argv[1]), sys.argv[2]
+manifest_path = frontend / ".next/app-build-manifest.json"
+if not manifest_path.exists():
+    sys.exit(0)
+manifest = json.loads(manifest_path.read_text())
+chunks: set[str] = set()
+for files in manifest.get("pages", {}).values():
+    for f in files:
+        if f.startswith("static/chunks/"):
+            chunks.add(f.removeprefix("static/"))
+for root, _, files in (frontend / ".next/static/chunks").walk():
+    for name in files:
+        if not name.endswith(".js"):
+            continue
+        path = (root / name).relative_to(frontend / ".next/static")
+        try:
+            if marker in (root / name).read_text(encoding="utf-8", errors="replace"):
+                print(str(path).replace("\\", "/"))
+        except OSError:
+            pass
+PY
 }
 
 ensure_build() {
@@ -54,9 +80,8 @@ chunk_url() {
 verify_chunk_at_url() {
   local url="$1"
   local label="$2"
-  local status body
-  status="$(curl -sS -o /tmp/vercel_chunk_body.txt -w '%{http_code}' "$url" || true)"
-  body="$(cat /tmp/vercel_chunk_body.txt 2>/dev/null || true)"
+  local status
+  status="$(curl -sSL -o /tmp/vercel_chunk_body.txt -w '%{http_code}' "$url" 2>/dev/null || true)"
   if [[ "$status" == "200" ]] && grep -qF "$MARKER" /tmp/vercel_chunk_body.txt; then
     echo "OK: live CDN chunk contains '$MARKER'"
     echo "  $label"
@@ -68,6 +93,60 @@ verify_chunk_at_url() {
   echo "  url: $url" >&2
   echo "  HTTP: $status" >&2
   return 1
+}
+
+scan_cdn_for_marker() {
+  echo "Fallback: scanning discoverable Vercel CDN chunks for '$MARKER' ..."
+  python3 - "$SITE" "$MARKER" <<'PY'
+import re, sys, urllib.request
+from collections import deque
+
+site, marker = sys.argv[1], sys.argv[2]
+
+def fetch(path: str) -> str:
+    url = site + path if path.startswith("/") else site + "/" + path
+    with urllib.request.urlopen(url, timeout=20) as resp:
+        return resp.read().decode("utf-8", "replace")
+
+pages = ["/", "/sign-in"]
+queue: deque[str] = deque()
+seen: set[str] = set()
+for page in pages:
+    try:
+        html = fetch(page)
+    except Exception:
+        continue
+    for path in re.findall(r"/_next/static/chunks/[^\"']+?\\.js", html):
+        if path not in seen:
+            seen.add(path)
+            queue.append(path)
+
+found = None
+while queue:
+    path = queue.popleft()
+    try:
+        body = fetch(path)
+    except Exception:
+        continue
+    if marker in body:
+        found = path
+        break
+    for ref in re.findall(r"/_next/static/chunks/[^\"']+?\\.js", body):
+        if ref not in seen:
+            seen.add(ref)
+            queue.append(ref)
+    for ref in re.findall(r"\"static/chunks/([^\"']+?\\.js)\"", body):
+        full = f"/_next/static/chunks/{ref}"
+        if full not in seen:
+            seen.add(full)
+            queue.append(full)
+
+if found:
+    print(f"OK: found marker in {found} (scanned {len(seen)} chunks)")
+    sys.exit(0)
+print(f"FAIL: marker not found in {len(seen)} discoverable CDN chunks", file=sys.stderr)
+sys.exit(1)
+PY
 }
 
 main() {
@@ -83,18 +162,36 @@ main() {
   fi
 
   ensure_build
-  local_chunk="$(find_local_chunk || true)"
-  if [[ -z "$local_chunk" ]]; then
-    echo "FAIL: marker '$MARKER' not found in local frontend build output" >&2
-    echo "Run: cd frontend && npm run build" >&2
-    exit 1
+  local tried=0
+  while IFS= read -r rel; do
+    [[ -z "$rel" ]] && continue
+    url="$(chunk_url "$rel")"
+    echo "Checking Vercel CDN for marker '$MARKER' ..."
+    echo "  local chunk: $rel"
+    tried=1
+    if verify_chunk_at_url "$url" "chunk: $rel"; then
+      return 0
+    fi
+    echo ""
+  done < <(find_manifest_chunks_with_marker)
+
+  if [[ "$tried" == "0" ]]; then
+    local_chunk="$(find_local_chunk || true)"
+    if [[ -z "$local_chunk" ]]; then
+      echo "FAIL: marker '$MARKER' not found in local frontend build output" >&2
+      exit 1
+    fi
+    rel="${local_chunk#"$FRONTEND/.next/static/"}"
+    url="$(chunk_url "$rel")"
+    echo "Checking Vercel CDN for marker '$MARKER' ..."
+    echo "  local chunk: $rel"
+    if verify_chunk_at_url "$url" "chunk: $rel"; then
+      return 0
+    fi
+    echo ""
   fi
 
-  rel="${local_chunk#"$FRONTEND/.next/static/"}"
-  url="$(chunk_url "$rel")"
-  echo "Checking Vercel CDN for marker '$MARKER' ..."
-  echo "  local chunk: $rel"
-  verify_chunk_at_url "$url" "chunk: $rel"
+  scan_cdn_for_marker
 }
 
 main
