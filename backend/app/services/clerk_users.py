@@ -42,7 +42,11 @@ def primary_email_from_clerk_user(user: Any) -> str | None:
 
 
 def fetch_clerk_user_primary_email(clerk_user_id: str) -> str | None:
-    """Look up a Clerk user's primary email via the Backend API."""
+    """Look up a Clerk user's primary email via the Backend API.
+
+    Fail-soft: returns None on any error so provisioning can fall back to a
+    placeholder email — signup must never be blocked by Clerk API issues.
+    """
     client = _clerk_client()
     if client is None:
         logger.warning("clerk_secret_key unset; cannot fetch user email for %s", clerk_user_id)
