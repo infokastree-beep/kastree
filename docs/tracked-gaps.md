@@ -101,6 +101,27 @@ prompts must stay aligned.
 [`canonical-lines-expansion.md`](canonical-lines-expansion.md). Sequenced on the
 [product roadmap](product-roadmap.md) as fast-follow after Variance / materiality.
 
+## Equity total — duplicated inline formulas (structural drift risk)
+
+Total-equity calculation has now needed the **same class of fix four separate
+times** during this build — `net_assets`, `balance_sheet_balance`, `build_sofp`,
+and `build_socie` (`_compute_socie_rollforward`). Each time a new equity concept
+was correctly added to one formula but missed in another (most recently
+`share_premium` and `revaluation_reserve` on SOFP but not SOCIE).
+
+This is a **structural risk**, not a one-off oversight: four independent inline
+formulas that must stay aligned will drift again the next time equity logic
+changes.
+
+**Worth considering a genuine refactor:** a single shared
+`compute_total_equity(accounts)` (or equivalent) that every call site uses,
+rather than four separate sums that can diverge silently until a reconciliation
+check fires.
+
+**Not urgent** — each instance has been caught correctly so far — but the pattern
+itself is worth fixing at the source **next time equity logic is touched**, rather
+than relying on manually catching a fifth instance.
+
 ## CreateClientForm step-1-only recovery (misleading empty state)
 
 `CreateClientForm` is a two-step flow: step 1 creates the client group (`POST
