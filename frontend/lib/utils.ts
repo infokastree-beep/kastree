@@ -1,5 +1,37 @@
 /** Small formatting helpers. */
 
+/** Conjunctions / articles kept lowercase mid-label (Title Case otherwise). */
+const CANONICAL_LABEL_SMALL_WORDS = new Set([
+  "and",
+  "or",
+  "of",
+  "the",
+  "for",
+  "a",
+  "an",
+]);
+
+/**
+ * Display-only label for a canonical_line / line_item_code slug.
+ * `share_capital` → `Share Capital`; `taxation_and_social_security` →
+ * `Taxation and Social Security`. Does not change the stored API value.
+ */
+export function formatCanonicalLineLabel(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  return trimmed
+    .split("_")
+    .filter((part) => part.length > 0)
+    .map((part, index) => {
+      const lower = part.toLowerCase();
+      if (index > 0 && CANONICAL_LABEL_SMALL_WORDS.has(lower)) {
+        return lower;
+      }
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(" ");
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;

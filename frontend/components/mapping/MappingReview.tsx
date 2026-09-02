@@ -7,7 +7,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
 import { CANONICAL_LINES } from "@/lib/constants";
-import { confidenceBadgeClass, formatConfidence } from "@/lib/utils";
+import {
+  confidenceBadgeClass,
+  formatCanonicalLineLabel,
+  formatConfidence,
+} from "@/lib/utils";
 import type {
   MappingConfirmItem,
   MappingConfirmResponse,
@@ -274,7 +278,7 @@ export function MappingReview({ tbId }: { tbId: string }) {
                   >
                     {CANONICAL_LINES.map((line) => (
                       <option key={line} value={line}>
-                        {line}
+                        {formatCanonicalLineLabel(line)}
                       </option>
                     ))}
                   </select>
