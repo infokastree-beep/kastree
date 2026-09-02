@@ -318,3 +318,18 @@ Low effort, genuinely useful once there are real users. **Not urgent** for a
 waitlist-stage product with no signups yet, but should be set up **before
 actively promoting the site or onboarding real pilot users**.
 
+## Statements dashboard — no stale-mapping indicator
+
+There is **no visual indicator** when confirmed mappings have changed since
+statements were last generated. A user could correct a mapping, forget to click
+**Regenerate Statements**, and unknowingly view stale figures.
+
+**Worth adding:** a small banner or prompt on the statements dashboard — e.g.
+*"Mappings have changed since these statements were generated — regenerate?"* —
+by comparing `account_mappings.updated_at` against
+`financial_statements.generated_at` for the same trial balance.
+
+Low effort, real usability improvement. Not a new calculation engine — just a
+staleness indicator on top of the existing, correct regenerate-from-scratch
+behavior.
+
