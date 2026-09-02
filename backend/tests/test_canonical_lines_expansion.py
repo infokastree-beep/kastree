@@ -22,9 +22,8 @@ from app.services.statements import (
 )
 from app.services.validator import ASSET_LINES, EQUITY_LINES_SOFP, LIABILITY_LINES
 
-# Nine net-new mappable concepts since expansion started (accruals restored +
-# deferred_income/prepayments/accrued_income/taxes/social splits + original adds).
-NEW_CANONICAL_LINES: tuple[str, ...] = (
+# Balance-sheet / equity expansion lines (excludes amortisation — that is P&L).
+NEW_BALANCE_SHEET_LINES: tuple[str, ...] = (
     "investments",
     "prepayments",
     "accrued_income",
@@ -35,6 +34,8 @@ NEW_CANONICAL_LINES: tuple[str, ...] = (
     "share_premium",
     "revaluation_reserve",
 )
+
+NEW_CANONICAL_LINES: tuple[str, ...] = NEW_BALANCE_SHEET_LINES + ("amortisation",)
 
 WITHDRAWN_COMBINED_LINES: tuple[str, ...] = (
     "prepayments_and_accrued_income",
@@ -63,7 +64,7 @@ def test_new_canonical_lines_in_llm_allowlist(line: str) -> None:
     assert line in MAPPING_TIE_BREAKER_CANONICAL_LINES
 
 
-@pytest.mark.parametrize("line", NEW_CANONICAL_LINES)
+@pytest.mark.parametrize("line", NEW_BALANCE_SHEET_LINES)
 def test_new_canonical_lines_not_in_profit_and_loss_lines(line: str) -> None:
     assert line not in PROFIT_AND_LOSS_LINES
 
@@ -191,6 +192,69 @@ def test_compute_net_profit_unchanged_by_new_balance_sheet_lines() -> None:
         _acct("2260", net_balance="-25.00", canonical_line="social_security_payable"),
     ]
     assert compute_net_profit(accounts) == Decimal("600.00")
+
+
+def test_amortisation_in_profit_and_loss_and_not_balance_sheet_sets() -> None:
+    assert "amortisation" in PROFIT_AND_LOSS_LINES
+    assert "amortisation" not in ASSET_LINES
+    assert "amortisation" not in LIABILITY_LINES
+    assert "amortisation" not in EQUITY_LINES_SOFP
+
+
+def test_amortisation_migration_remaps_named_rows_without_touching_depreciation(
+    provisioned_org: dict,
+) -> None:
+    """Data migration SQL: depreciation rows whose source_name mentions amort*."""
+    amort_id = uuid.uuid4()
+    dep_id = uuid.uuid4()
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
+        session.add(
+            AccountMapping(
+                id=amort_id,
+                company_id=provisioned_org["company_id"],
+                source_code="7100",
+                source_name="Amortisation - Software",
+                canonical_line="depreciation",
+                method="manual",
+                is_confirmed=True,
+            )
+        )
+        session.add(
+            AccountMapping(
+                id=dep_id,
+                company_id=provisioned_org["company_id"],
+                source_code="7000",
+                source_name="Depreciation - Buildings",
+                canonical_line="depreciation",
+                method="manual",
+                is_confirmed=True,
+            )
+        )
+        session.commit()
+
+        session.execute(
+            text(
+                """
+                UPDATE account_mappings
+                SET canonical_line = 'amortisation'
+                WHERE canonical_line = 'depreciation'
+                  AND source_name ILIKE '%amort%'
+                """
+            )
+        )
+        session.commit()
+
+        amort = session.execute(
+            select(AccountMapping).where(AccountMapping.id == amort_id)
+        ).scalar_one()
+        dep = session.execute(
+            select(AccountMapping).where(AccountMapping.id == dep_id)
+        ).scalar_one()
+        assert amort.canonical_line == "amortisation"
+        assert amort.source_name == "Amortisation - Software"
+        assert dep.canonical_line == "depreciation"
+        assert dep.source_name == "Depreciation - Buildings"
 
 
 def test_option_a_migration_restores_accruals_without_data_loss(

@@ -48,7 +48,7 @@ def test_sopl_groups_accounts_computes_subtotals_and_provenance() -> None:
     opex_a = _acct("6000", net_balance="1500.00", canonical_line="operating_expenses")
     opex_b = _acct("6100", net_balance="500.00", canonical_line="operating_expenses")
     dep_a = _acct("7000", net_balance="200.00", canonical_line="depreciation")
-    dep_b = _acct("7100", net_balance="100.00", canonical_line="depreciation")
+    amort_a = _acct("7100", net_balance="100.00", canonical_line="amortisation")
     int_inc_a = _acct("8000", net_balance="-50.00", canonical_line="interest_income")
     int_inc_b = _acct("8010", net_balance="-25.00", canonical_line="interest_income")
     int_exp_a = _acct("8100", net_balance="40.00", canonical_line="interest_expense")
@@ -65,7 +65,7 @@ def test_sopl_groups_accounts_computes_subtotals_and_provenance() -> None:
             opex_a,
             opex_b,
             dep_a,
-            dep_b,
+            amort_a,
             int_inc_a,
             int_inc_b,
             int_exp_a,
@@ -81,6 +81,7 @@ def test_sopl_groups_accounts_computes_subtotals_and_provenance() -> None:
         "gross_profit",
         "operating_expenses",
         "depreciation",
+        "amortisation",
         "operating_profit",
         "interest_income",
         "interest_expense",
@@ -88,7 +89,7 @@ def test_sopl_groups_accounts_computes_subtotals_and_provenance() -> None:
         "tax",
         "net_profit",
     ]
-    assert [line.display_order for line in lines] == list(range(1, 12))
+    assert [line.display_order for line in lines] == list(range(1, 13))
 
     revenue = _by_code(lines, "revenue")
     assert revenue.amount == Decimal("10000.00")
@@ -113,14 +114,19 @@ def test_sopl_groups_accounts_computes_subtotals_and_provenance() -> None:
     assert operating_expenses.amount == Decimal("2000.00")
 
     depreciation = _by_code(lines, "depreciation")
-    assert depreciation.amount == Decimal("300.00")
+    assert depreciation.amount == Decimal("200.00")
     assert depreciation.is_subtotal is False
-    assert set(depreciation.source_account_ids) == {dep_a.id, dep_b.id}
+    assert set(depreciation.source_account_ids) == {dep_a.id}
+
+    amortisation = _by_code(lines, "amortisation")
+    assert amortisation.amount == Decimal("100.00")
+    assert amortisation.is_subtotal is False
+    assert set(amortisation.source_account_ids) == {amort_a.id}
 
     operating_profit = _by_code(lines, "operating_profit")
-    # 6000 - 2000 opex - 300 depreciation
+    # 6000 - 2000 opex - 200 depreciation - 100 amortisation
     assert operating_profit.amount == Decimal("3700.00")
-    assert set(operating_profit.source_account_ids) >= {dep_a.id, dep_b.id}
+    assert set(operating_profit.source_account_ids) >= {dep_a.id, amort_a.id}
 
     interest_income = _by_code(lines, "interest_income")
     assert interest_income.amount == Decimal("75.00")
@@ -149,7 +155,8 @@ def test_sopl_depreciation_is_visible_face_line_and_reduces_operating_profit() -
 
     codes = [line.line_item_code for line in lines]
     assert codes.index("depreciation") == codes.index("operating_expenses") + 1
-    assert codes.index("operating_profit") == codes.index("depreciation") + 1
+    assert codes.index("amortisation") == codes.index("depreciation") + 1
+    assert codes.index("operating_profit") == codes.index("amortisation") + 1
 
     depreciation = _by_code(lines, "depreciation")
     assert depreciation.amount == Decimal("500.00")
@@ -157,16 +164,45 @@ def test_sopl_depreciation_is_visible_face_line_and_reduces_operating_profit() -
     assert depreciation.source_account_ids == [dep.id]
     assert depreciation.line_item_name == "Depreciation"
 
+    amortisation = _by_code(lines, "amortisation")
+    assert amortisation.amount == Decimal("0.00")
+    assert amortisation.line_item_name == "Amortisation"
+
     gross_profit = _by_code(lines, "gross_profit")
     operating_expenses = _by_code(lines, "operating_expenses")
     operating_profit = _by_code(lines, "operating_profit")
     assert gross_profit.amount == Decimal("6000.00")
     assert operating_expenses.amount == Decimal("2000.00")
     assert operating_profit.amount == (
-        gross_profit.amount - operating_expenses.amount - depreciation.amount
+        gross_profit.amount
+        - operating_expenses.amount
+        - depreciation.amount
+        - amortisation.amount
     )
     assert operating_profit.amount == Decimal("3500.00")
     assert dep.id in operating_profit.source_account_ids
+
+
+def test_sopl_amortisation_is_visible_face_line_and_reduces_operating_profit() -> None:
+    """Amortisation is separate from depreciation on the SOPL face (Option A)."""
+    rev = _acct("4000", net_balance="-10000.00", canonical_line="revenue")
+    cos = _acct("5000", net_balance="4000.00", canonical_line="cost_of_sales")
+    opex = _acct("6000", net_balance="2000.00", canonical_line="operating_expenses")
+    dep = _acct("7000", net_balance="300.00", canonical_line="depreciation")
+    amort = _acct("7100", net_balance="200.00", canonical_line="amortisation")
+
+    lines = build_sopl([rev, cos, opex, dep, amort])
+
+    amortisation = _by_code(lines, "amortisation")
+    assert amortisation.amount == Decimal("200.00")
+    assert amortisation.is_subtotal is False
+    assert amortisation.source_account_ids == [amort.id]
+    assert amortisation.line_item_name == "Amortisation"
+
+    operating_profit = _by_code(lines, "operating_profit")
+    assert operating_profit.amount == Decimal("3500.00")  # 6000 - 2000 - 300 - 200
+    assert amort.id in operating_profit.source_account_ids
+    assert compute_net_profit([rev, cos, opex, dep, amort]) == Decimal("3500.00")
 
 
 def test_sofp_groups_accounts_computes_subtotals_and_provenance() -> None:

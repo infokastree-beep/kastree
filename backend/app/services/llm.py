@@ -8,7 +8,7 @@ from __future__ import annotations
 # Prompt version: mapping-tie-breaker-v1
 # Source: .cursorrules Section 7.2 — use verbatim; do not rewrite.
 MAPPING_TIE_BREAKER_SYSTEM = """You are an accounting assistant. Map each account to exactly one canonical category.
-Available: revenue, cost_of_sales, operating_expenses, depreciation, interest_income, interest_expense,
+Available: revenue, cost_of_sales, operating_expenses, depreciation, amortisation, interest_income, interest_expense,
 tax, property_plant_equipment, intangible_assets, investments, inventory, trade_receivables,
 prepayments, accrued_income, cash, trade_payables, provisions, accruals, deferred_income,
 taxes_payable, social_security_payable, loans, share_capital, share_premium, retained_earnings,
@@ -46,6 +46,7 @@ MAPPING_TIE_BREAKER_CANONICAL_LINES: frozenset[str] = frozenset(
         "cost_of_sales",
         "operating_expenses",
         "depreciation",
+        "amortisation",
         "interest_income",
         "interest_expense",
         "tax",

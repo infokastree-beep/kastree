@@ -70,6 +70,7 @@ LINE_ITEM_NAMES: dict[str, str] = {
     "gross_profit": "Gross profit",
     "operating_expenses": "Operating expenses",
     "depreciation": "Depreciation",
+    "amortisation": "Amortisation",
     "operating_profit": "Operating profit",
     "interest_income": "Interest income",
     "interest_expense": "Interest expense",
@@ -111,6 +112,7 @@ _DEBIT_NORMAL_LINES: frozenset[str] = frozenset(
         "cost_of_sales",
         "operating_expenses",
         "depreciation",
+        "amortisation",
         "interest_expense",
         "tax",
         "property_plant_equipment",
@@ -133,6 +135,7 @@ PROFIT_AND_LOSS_LINES: frozenset[str] = frozenset(
         "cost_of_sales",
         "operating_expenses",
         "depreciation",
+        "amortisation",
         "interest_income",
         "interest_expense",
         "tax",
@@ -151,7 +154,7 @@ def compute_net_profit(accounts: Sequence[NetProfitAccount]) -> Decimal:
     """SOPL net profit from mapped P&L accounts (Decimal only).
 
     Equivalent to:
-    revenue − cost_of_sales − operating_expenses − depreciation
+    revenue − cost_of_sales − operating_expenses − depreciation − amortisation
     + interest_income − interest_expense − tax.
 
     Sign convention: credit-normal lines contribute ``-net_balance``;
@@ -239,13 +242,21 @@ def build_sopl(accounts: Sequence[StatementAccount]) -> list[StatementLineItemRe
     order += 1
     lines.append(depreciation)
 
+    amortisation = _leaf_line("amortisation", grouped, order)
+    order += 1
+    lines.append(amortisation)
+
     operating_profit_amount = (
-        gross_profit_amount - operating_expenses.amount - depreciation.amount
+        gross_profit_amount
+        - operating_expenses.amount
+        - depreciation.amount
+        - amortisation.amount
     )
     operating_profit_ids = _merge_ids(
         gross_profit_ids,
         operating_expenses.source_account_ids,
         depreciation.source_account_ids,
+        amortisation.source_account_ids,
     )
     lines.append(
         _subtotal_line(

@@ -51,6 +51,7 @@ as its own line again and new `deferred_income`).
 
 | Canonical line | Statement role | Absorbs (examples from live testing) |
 |----------------|----------------|--------------------------------------|
+| `amortisation` | P&L expense | Amortisation of intangibles — distinct from `depreciation` (Option A) |
 | `investments` | Fixed asset | Long-term investments — distinct from `property_plant_equipment` and `intangible_assets` |
 | `prepayments` | Current asset | Prepayments |
 | `accrued_income` | Current asset | Accrued income |
@@ -83,17 +84,23 @@ rename+split restored it as a first-class line alongside new `deferred_income`.)
 
 ---
 
-## Deliberate choice: amortisation stays on `depreciation`
+## Deliberate choice reversed: amortisation is its own line
 
-**Amortisation** was tested and currently maps to `depreciation` via the
-existing **7000–7999** code-range rule in Tier 3 (`mapper.py`). This is a
-**reasonable simplification** for a management-accounts tool — not a genuine gap
-like the additions above.
+**Earlier draft** kept amortisation on `depreciation` via the shared **7000–7999**
+code-range rule. That was revisited under the same Option A standard as the
+balance-sheet splits: economically distinct concepts stay separate on the face
+of the SOPL.
 
-Both are non-cash charges that behave identically on the SOPL. **Decision:**
-leave combined with `depreciation` for now. Revisit only if real customer
-feedback specifically asks for separation. This is a **deliberate choice, not an
-oversight**.
+**Final design:** `amortisation` is a mappable P&L canonical line, shown on the
+SOPL immediately after `depreciation` and included in `compute_net_profit` /
+operating profit. Tier 3 code-range **7000–7999 still maps to `depreciation`**
+for now (no separate range); amortisation-named accounts are remapped by data
+migration and by Tier 4 / manual review going forward.
+
+Migration `i9j0k1l2m3n4` remaps `account_mappings` where
+`canonical_line = 'depreciation'` and `source_name ILIKE '%amort%'` (P&L
+Amortisation - Software / Goodwill rows). Accumulated amortisation contra-asset
+rows on `intangible_assets` are unchanged.
 
 ---
 
@@ -137,6 +144,7 @@ Also update: export templates and tests that assert canonical line sets.
 |----------|--------|
 | `g7h8i9j0k1l2` | Historical: `accruals` → `accruals_and_deferred_income` (superseded by Option A) |
 | `h8i9j0k1l2m3` | Option A: `accruals_and_deferred_income` → `accruals` (restores JIE JIE LTD `2100`) |
+| `i9j0k1l2m3n4` | Option A: amortisation-named P&L rows `depreciation` → `amortisation` |
 
 ---
 

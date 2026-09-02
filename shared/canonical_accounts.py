@@ -6,6 +6,7 @@ CANONICAL_LINES: list[str] = [
     "gross_profit",
     "operating_expenses",
     "depreciation",
+    "amortisation",
     "operating_profit",
     "interest_income",
     "interest_expense",
