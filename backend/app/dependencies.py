@@ -263,8 +263,12 @@ def platform_admin_email_allowlist() -> frozenset[str]:
     )
 
 
-def is_platform_admin_email(email: str) -> bool:
-    return email.strip().lower() in platform_admin_email_allowlist()
+def is_platform_admin(auth: AuthContext) -> bool:
+    """True when auth email or Clerk user id is in PLATFORM_ADMIN_EMAILS."""
+    allowlist = platform_admin_email_allowlist()
+    if auth.email.strip().lower() in allowlist:
+        return True
+    return auth.clerk_user_id in allowlist
 
 
 def require_roles(*allowed_roles: str):
@@ -294,7 +298,7 @@ def require_platform_admin():
     async def _dependency(
         auth: Annotated[AuthContext, Depends(require_roles("owner"))],
     ) -> AuthContext:
-        if not is_platform_admin_email(auth.email):
+        if not is_platform_admin(auth):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have permission to access this resource.",
