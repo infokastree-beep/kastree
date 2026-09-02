@@ -13,7 +13,10 @@ from app.config import settings
 from app.db import SyncSessionLocal
 from app.models.waitlist_signup import WaitlistSignup
 from app.schemas.waitlist import WaitlistSignupRequest, WaitlistSignupResponse
-from app.services.email import send_waitlist_confirmation
+from app.services.email import (
+    notify_founder_waitlist_signup,
+    send_waitlist_confirmation,
+)
 from app.services.rate_limit import enforce_rate_limit
 
 logger = structlog.get_logger(__name__)
@@ -64,13 +67,27 @@ async def create_waitlist_signup(
             ) from exc
 
     # After commit so a Resend outage never rolls back the signup.
-    # send_waitlist_confirmation is itself fail-soft; catch here as belt-and-braces.
+    # Email helpers are fail-soft; catch here as belt-and-braces.
     try:
         send_waitlist_confirmation(to_email=email, name=name)
     except Exception:
         logger.exception(
             "waitlist_email_unexpected_error",
             to_email=email,
+            signup_id=str(signup_id),
+        )
+    try:
+        notify_founder_waitlist_signup(
+            name=name,
+            email=email,
+            firm=signup.firm,
+            role=signup.role,
+            signed_up_at=signup.created_at,
+        )
+    except Exception:
+        logger.exception(
+            "founder_notification_unexpected_error",
+            notification_type="waitlist_signup",
             signup_id=str(signup_id),
         )
 

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
+import { AdminNavLink } from "@/components/layout/AdminNavLink";
 import { ProductSwitcher } from "@/components/layout/ProductSwitcher";
 import { clerkReady } from "@/lib/clerk";
 
@@ -23,6 +24,7 @@ export default function DashboardGroupLayout({
               <Link href="/upload" className="hover:text-stone-900">
                 Upload
               </Link>
+              <AdminNavLink />
             </nav>
           </div>
           {clerkReady ? <UserButton afterSignOutUrl="/" /> : null}

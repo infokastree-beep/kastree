@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.logging_config import configure_logging
 from app.routers import (
+    admin,
     archived_records,
     auth,
     clients,
@@ -18,6 +19,7 @@ from app.routers import (
     organisations,
     risk,
     trial_balances,
+    users,
     variance,
     waitlist,
     webhooks,
@@ -41,6 +43,8 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(admin.router)
+app.include_router(users.router)
 app.include_router(clients.router)
 app.include_router(companies.router)
 app.include_router(organisations.router)

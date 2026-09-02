@@ -51,6 +51,16 @@ async def aset_rls_org_id(session: AsyncSession, org_id: uuid.UUID) -> None:
     )
 
 
+async def aset_platform_admin(session: AsyncSession) -> None:
+    """SET LOCAL app.platform_admin for cross-tenant Owner admin reads (async).
+
+    Requires app.current_org_id to already be set in this transaction (via
+    get_auth_context). Setting platform_admin alone can error on
+    organisations_self_isolation's UUID cast if current_org_id is missing.
+    """
+    await session.execute(text("SELECT set_config('app.platform_admin', 'true', true)"))
+
+
 def get_sync_session() -> Generator[Session, None, None]:
     session = SyncSessionLocal()
     try:

@@ -21,6 +21,7 @@ from app.config import settings
 from app.db import SyncSessionLocal, set_rls_org_id
 from app.models.organisation import Organisation
 from app.models.user import User
+from app.services.email import notify_founder_new_user_signup
 from app.services.org_provisioning import (
     organisation_id_for_clerk_org,
     provision_first_signup,
@@ -207,6 +208,19 @@ def _handle_organization_created(
             user_id=str(provisioned.user.id),
             outcome=outcome,
         )
+        if provisioned.created:
+            try:
+                notify_founder_new_user_signup(
+                    org_name=org_name,
+                    owner_email=email,
+                    signed_up_at=provisioned.organisation.created_at,
+                )
+            except Exception:
+                log.exception(
+                    "founder_notification_unexpected_error",
+                    notification_type="user_signup",
+                    clerk_org_id=clerk_org_id,
+                )
         return ClerkWebhookResponse(
             status=outcome,
             organisation_id=str(provisioned.organisation.id),
