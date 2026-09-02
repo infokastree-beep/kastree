@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     # Founder inbox for new waitlist / signup alerts (optional; skip if unset).
     founder_notification_email: str | None = None
 
+    # Platform admin allowlist — comma-separated emails permitted to access /admin
+    # in addition to require_roles("owner"). Example: mark@example.com,other@example.com
+    platform_admin_emails: str = ""
+
     class Config:
         env_file = ".env"
 

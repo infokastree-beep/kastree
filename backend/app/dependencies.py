@@ -255,6 +255,18 @@ async def get_auth_context(
     )
 
 
+def platform_admin_email_allowlist() -> frozenset[str]:
+    """Parsed PLATFORM_ADMIN_EMAILS — lowercase, trimmed, empty entries dropped."""
+    raw = settings.platform_admin_emails or ""
+    return frozenset(
+        part.strip().lower() for part in raw.split(",") if part.strip()
+    )
+
+
+def is_platform_admin_email(email: str) -> bool:
+    return email.strip().lower() in platform_admin_email_allowlist()
+
+
 def require_roles(*allowed_roles: str):
     """FastAPI dependency factory: 403 unless auth.role is in allowed_roles (§8.2).
 
@@ -267,6 +279,22 @@ def require_roles(*allowed_roles: str):
         auth: Annotated[AuthContext, Depends(get_auth_context)],
     ) -> AuthContext:
         if auth.role not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to access this resource.",
+            )
+        return auth
+
+    return _dependency
+
+
+def require_platform_admin():
+    """Owner role plus PLATFORM_ADMIN_EMAILS allowlist — not every org owner."""
+
+    async def _dependency(
+        auth: Annotated[AuthContext, Depends(require_roles("owner"))],
+    ) -> AuthContext:
+        if not is_platform_admin_email(auth.email):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have permission to access this resource.",

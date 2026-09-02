@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_platform_admin
-from app.dependencies import AuthContext, get_db_session, require_roles
+from app.dependencies import AuthContext, get_db_session, require_platform_admin
 from app.models.organisation import Organisation
 from app.models.user import User
 from app.models.waitlist_signup import WaitlistSignup
@@ -20,10 +20,10 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 @router.get("/overview", response_model=AdminOverviewResponse)
 async def get_admin_overview(
-    auth: Annotated[AuthContext, Depends(require_roles("owner"))],
+    auth: Annotated[AuthContext, Depends(require_platform_admin())],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> AdminOverviewResponse:
-    """Platform-wide signups for Owners — requires platform_admin RLS read path."""
+    """Platform-wide signups for platform admins — owner role + PLATFORM_ADMIN_EMAILS."""
     _ = auth
     # get_auth_context (via require_roles) always SET LOCAL app.current_org_id first;
     # do not call aset_platform_admin before that or organisations_self_isolation

@@ -21,6 +21,10 @@ from app.config import settings
 from app.db import SyncSessionLocal, set_rls_org_id
 from app.models.organisation import Organisation
 from app.models.user import User
+from app.services.clerk_users import (
+    fetch_clerk_user_primary_email,
+    primary_email_from_webhook_user_payload,
+)
 from app.services.email import notify_founder_new_user_signup
 from app.services.org_provisioning import (
     organisation_id_for_clerk_org,
@@ -84,7 +88,8 @@ def _verify_webhook_signature(
         )
 
 
-def _owner_email(data: dict[str, Any]) -> str:
+def _owner_email(data: dict[str, Any], *, clerk_user_id: str | None = None) -> str:
+    """Resolve owner email from webhook payload, then Clerk Users API if needed."""
     email = data.get("email") or data.get("email_address")
     if isinstance(email, str) and email:
         return email
@@ -93,7 +98,15 @@ def _owner_email(data: dict[str, Any]) -> str:
         value = addresses[0].get("email_address")
         if value:
             return str(value)
-    created_by = data.get("created_by") or "unknown"
+    webhook_email = primary_email_from_webhook_user_payload(data)
+    if webhook_email:
+        return webhook_email
+    lookup_id = clerk_user_id or data.get("created_by") or data.get("user_id")
+    if lookup_id:
+        api_email = fetch_clerk_user_primary_email(str(lookup_id))
+        if api_email:
+            return api_email
+    created_by = data.get("created_by") or lookup_id or "unknown"
     return f"{created_by}@users.clerk.pending"
 
 
@@ -132,12 +145,8 @@ async def clerk_webhook(
         _log_webhook_processed(log, response)
         return response
     if event_type == "user.updated":
-        response = ClerkWebhookResponse(status="ignored", detail="user.updated deferred")
-        log.info(
-            "clerk_webhook_ignored",
-            status=response.status,
-            detail=response.detail,
-        )
+        response = _handle_user_updated(data, log=log)
+        _log_webhook_processed(log, response)
         return response
 
     response = ClerkWebhookResponse(
@@ -178,7 +187,7 @@ def _handle_organization_created(
             status_code=400,
             detail="organization.created requires data.created_by for first-user provisioning",
         )
-    email = _owner_email(data)
+    email = _owner_email(data, clerk_user_id=str(created_by))
     clerk_user_id = str(created_by)
     log = log.bind(clerk_org_id=clerk_org_id, clerk_user_id=clerk_user_id)
 
@@ -241,7 +250,7 @@ def _handle_membership(
     if not clerk_org_id or not clerk_user_id:
         raise HTTPException(status_code=400, detail="membership payload missing org/user ids")
 
-    email = _owner_email({**public_user, **data})
+    email = _owner_email({**public_user, **data}, clerk_user_id=clerk_user_id)
     role_raw = str(data.get("role") or "org:member")
     role = "member"
     if "owner" in role_raw:
@@ -306,5 +315,69 @@ def _handle_membership(
         return ClerkWebhookResponse(
             status="created",
             organisation_id=str(org_id),
+            user_id=str(user.id),
+        )
+
+
+def _handle_user_updated(
+    data: dict[str, Any],
+    *,
+    log: structlog.stdlib.BoundLogger,
+) -> ClerkWebhookResponse:
+    """Backfill or refresh user.email when Clerk sends user.updated."""
+    clerk_user_id = str(data.get("id") or "")
+    if not clerk_user_id:
+        raise HTTPException(status_code=400, detail="user.updated requires data.id")
+
+    email = primary_email_from_webhook_user_payload(data)
+    if not email:
+        email = fetch_clerk_user_primary_email(clerk_user_id)
+    if not email or email.endswith("@users.clerk.pending"):
+        response = ClerkWebhookResponse(
+            status="skipped",
+            detail="user.updated has no resolvable email",
+        )
+        log.info("clerk_webhook_user_updated_skipped", clerk_user_id=clerk_user_id)
+        return response
+
+    with SyncSessionLocal() as session:
+        user = session.scalar(select(User).where(User.clerk_user_id == clerk_user_id))
+        if user is None:
+            response = ClerkWebhookResponse(
+                status="skipped",
+                detail="User not provisioned yet",
+            )
+            log.info(
+                "clerk_webhook_user_updated_skipped",
+                clerk_user_id=clerk_user_id,
+                detail=response.detail,
+            )
+            return response
+
+        if user.email == email:
+            response = ClerkWebhookResponse(
+                status="exists",
+                organisation_id=str(user.org_id),
+                user_id=str(user.id),
+            )
+            log.info(
+                "clerk_webhook_user_updated_unchanged",
+                clerk_user_id=clerk_user_id,
+                user_id=str(user.id),
+            )
+            return response
+
+        set_rls_org_id(session, user.org_id)
+        user.email = email
+        session.commit()
+        log.info(
+            "clerk_webhook_user_updated",
+            clerk_user_id=clerk_user_id,
+            user_id=str(user.id),
+            org_id=str(user.org_id),
+        )
+        return ClerkWebhookResponse(
+            status="updated",
+            organisation_id=str(user.org_id),
             user_id=str(user.id),
         )

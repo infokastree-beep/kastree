@@ -244,45 +244,40 @@ files to object storage and stop relying on local disk (same bucket family as
 exports, or a dedicated `uploads/` prefix). Until then, redeploys without a
 volume wipe uploaded files and multi-instance deploys will not share uploads.
 
-## Waitlist signups — no authenticated way to view signups
+## Waitlist signups — no authenticated way to view signups (resolved)
 
 `POST /waitlist` is public (rate-limited per IP, unique email constraint). Rows
-live in `waitlist_signups` with **INSERT-only RLS** for the `findraft` app role
-(`FORCE ROW LEVEL SECURITY` + single `FOR INSERT` policy — no SELECT/UPDATE/DELETE
-policies, so ORM queries cannot read PII).
+live in `waitlist_signups` with **INSERT-only RLS** for the `findraft` app role.
 
-**There is no authenticated endpoint or dashboard to list signups.** The only way
-to see who joined today is direct DB access (superuser/psql against production
-Postgres). The app role cannot SELECT these rows by design.
+**Resolved:** `GET /admin/overview` (platform-admin allowlist + owner role) lists
+waitlist signups cross-tenant via `app.platform_admin=true` RLS policies. See
+`backend/app/routers/admin.py` and migration `j0k1l2m3n4o5_platform_admin_select_policies.py`.
 
-**Missing (low effort):** a simple admin-only `GET /waitlist` to list signups,
-role-gated to **Owner** only (same `require_roles("owner")` pattern as
-`GET /organisations/me/archived-records`). That route will also need a read path
-past INSERT-only RLS (e.g. a `SECURITY DEFINER` function or a dedicated SELECT
-policy scoped to an admin check). Until that exists, the waitlist is not
-practically useful for following up with signups without manual DB access.
+## Admin visibility into organisations, users, and customers (resolved)
 
-## No admin visibility into organisations, users, or customers
+**Resolved:** `/admin` frontend page + `GET /admin/overview` backend endpoint
+list organisations, users (with org name), and waitlist signups platform-wide.
 
-There is **no Owner-only admin UI** (and no authenticated list endpoints) for:
+**Security note (resolved):** access requires **both** `require_roles("owner")`
+and an explicit `PLATFORM_ADMIN_EMAILS` allowlist — not every org owner.
+See `require_platform_admin()` in `backend/app/dependencies.py`.
 
-- **organisations** — name, tier, status, `created_at`
-- **users** per organisation — email, role, last login
-- **waitlist_signups** — already tracked above as INSERT-only / no read path
-- **(eventually) paying customers** — Stripe-linked orgs, subscription status
+## Production users table — placeholder Clerk emails
 
-Everything currently requires a **direct production database query** (superuser /
-agent / Railway SSH). The founder has no in-product way to see who signed up,
-who is active, or who is waiting — including after real signups already exist.
+Some production `users.email` rows still show `@users.clerk.pending` placeholders
+instead of real addresses. **Root cause:** Clerk's `organization.created` webhook
+payload does not include email fields — only `created_by` (Clerk user id). The
+handler previously fell back to a placeholder when email was absent; it now
+fetches the real address from the Clerk Users API and `user.updated` can refresh
+stale rows.
 
-**Needed:** a real Owner-only admin view (minimum: one page listing organisations
-with tier/status/`created_at`, users under each org, and waitlist signups).
-Backend should be role-gated the same way as archived-records (`require_roles(
-"owner")`), with an explicit read path for waitlist past INSERT-only RLS.
+**Low priority** for product behaviour (auth uses Clerk ids, not our email column),
+but **do not rely on the admin user list for outreach** until placeholders are
+backfilled. Run `backend/scripts/backfill_user_emails_from_clerk.py` against
+production, or wait for `user.updated` webhooks after enabling them in Clerk.
 
-**Priority: higher than previously implied.** Low-to-medium effort; genuinely
-needed now that real signups exist. Higher priority than treating waitlist-only
-admin as a nice-to-have.
+**Not Google OAuth-specific** — affects all sign-up paths when email is missing
+from the org webhook payload.
 
 ## `trial_balances.currency` — redundant with `companies.functional_currency`
 

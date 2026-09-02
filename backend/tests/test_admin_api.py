@@ -6,17 +6,36 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 
+from app.config import settings
 from app.db import SyncSessionLocal
+from app.models.user import User
 from app.models.waitlist_signup import WaitlistSignup
 from tests.conftest import auth_headers
 from tests.test_organisations_api import _add_org_user
+
+
+@pytest.fixture
+def platform_admin_allowlist(
+    monkeypatch: pytest.MonkeyPatch,
+    provisioned_org: dict,
+) -> str:
+    """Allow the provisioned org owner as a platform admin for positive admin tests."""
+    with SyncSessionLocal() as session:
+        email = session.scalar(
+            select(User.email).where(User.id == provisioned_org["user_id"])
+        )
+    assert email
+    monkeypatch.setattr(settings, "platform_admin_emails", email)
+    return email
 
 
 @pytest.mark.asyncio
 async def test_admin_overview_owner_sees_platform_data(
     api_client: AsyncClient,
     provisioned_org: dict,
+    platform_admin_allowlist: str,
 ) -> None:
     waitlist_email = f"admin-waitlist-{uuid.uuid4().hex[:8]}@example.com"
     with SyncSessionLocal() as session:
@@ -43,9 +62,23 @@ async def test_admin_overview_owner_sees_platform_data(
 
 
 @pytest.mark.asyncio
+async def test_admin_overview_non_platform_owner_forbidden(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Any org owner can reach /admin today without PLATFORM_ADMIN_EMAILS — must 403."""
+    monkeypatch.setattr(settings, "platform_admin_emails", "founder-only@example.com")
+    headers = auth_headers(provisioned_org["token"])
+    response = await api_client.get("/admin/overview", headers=headers)
+    assert response.status_code == 403, response.text
+
+
+@pytest.mark.asyncio
 async def test_admin_overview_member_forbidden(
     api_client: AsyncClient,
     provisioned_org: dict,
+    platform_admin_allowlist: str,
 ) -> None:
     _, _, member_token = _add_org_user(
         org_id=provisioned_org["org_id"],
