@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     # Public POST /waitlist — per-IP cap (in-memory, process-local).
     waitlist_rate_limit_per_ip_per_hour: int = 10
 
+    # Resend — waitlist confirmation emails (optional; signup still succeeds if unset).
+    resend_api_key: str | None = None
+    # Verified sender in Resend (e.g. "Kastree <hello@kastree.ie>").
+    # Defaults to Resend's onboarding address until your domain is verified.
+    resend_from_email: str = "Kastree <onboarding@resend.dev>"
+
     class Config:
         env_file = ".env"
 
