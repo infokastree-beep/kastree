@@ -275,6 +275,8 @@ stale rows.
 but **do not rely on the admin user list for outreach** until placeholders are
 backfilled. Run `backend/scripts/backfill_user_emails_from_clerk.py` against
 production, or wait for `user.updated` webhooks after enabling them in Clerk.
+**2026-09-02:** all three production users were backfilled from Clerk
+(`hanjie987@gmail.com`, `markdooling25@gmail.com`, `infokastree@gmail.com`).
 
 **Not Google OAuth-specific** — affects all sign-up paths when email is missing
 from the org webhook payload.
