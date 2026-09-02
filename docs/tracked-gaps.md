@@ -281,6 +281,21 @@ production, or wait for `user.updated` webhooks after enabling them in Clerk.
 **Not Google OAuth-specific** — affects all sign-up paths when email is missing
 from the org webhook payload.
 
+## Clerk Users API lookup — implicit httpx timeout
+
+`fetch_clerk_user_primary_email()` (`backend/app/services/clerk_users.py`) calls
+the Clerk Backend API via the `clerk-backend-api` SDK with `timeout_ms` unset,
+so it relies on **httpx's default timeout** (~5s) rather than an explicit value.
+
+**Worth setting `timeout_ms` explicitly** on the SDK call for predictable,
+faster-failing behaviour under a slow Clerk API response — e.g. a short connect
++ read budget so provisioning webhooks don't sit blocked on library defaults.
+
+**Low priority** — not a correctness fix. Fail-soft behaviour already handles
+lookup failures (placeholder email + `user.updated` / backfill path), and Clerk's
+own webhook retry mechanism covers transient stalls. This is a
+**latency/predictability** improvement only.
+
 ## `trial_balances.currency` — redundant with `companies.functional_currency`
 
 Upload now **forces** `trial_balances.currency` from `company.functional_currency`
