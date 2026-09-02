@@ -11,7 +11,7 @@ export const DISCLAIMER_TEXT =
 
 /**
  * Appendix A mappable canonical lines (+ unmapped) — matches
- * MAPPING_TIE_BREAKER_CANONICAL_LINES in backend/app/services/llm.py (25 lines).
+ * MAPPING_TIE_BREAKER_CANONICAL_LINES in backend/app/services/llm.py (28 lines).
  */
 export const CANONICAL_LINES: readonly string[] = [
   "revenue",
@@ -26,12 +26,15 @@ export const CANONICAL_LINES: readonly string[] = [
   "investments",
   "inventory",
   "trade_receivables",
-  "prepayments_and_accrued_income",
+  "prepayments",
+  "accrued_income",
   "cash",
   "trade_payables",
   "provisions",
-  "accruals_and_deferred_income",
-  "taxation_and_social_security",
+  "accruals",
+  "deferred_income",
+  "taxes_payable",
+  "social_security_payable",
   "loans",
   "share_capital",
   "share_premium",

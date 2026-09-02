@@ -13,8 +13,8 @@ const CANONICAL_LABEL_SMALL_WORDS = new Set([
 
 /**
  * Display-only label for a canonical_line / line_item_code slug.
- * `share_capital` → `Share Capital`; `taxation_and_social_security` →
- * `Taxation and Social Security`. Does not change the stored API value.
+ * `share_capital` → `Share Capital`; `social_security_payable` →
+ * `Social Security Payable`. Does not change the stored API value.
  */
 export function formatCanonicalLineLabel(value: string): string {
   const trimmed = value.trim();

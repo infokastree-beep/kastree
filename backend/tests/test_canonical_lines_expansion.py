@@ -1,4 +1,4 @@
-"""Canonical lines expansion — six new lines + accruals rename migration."""
+"""Canonical lines expansion — granular Option A lines + accruals restore migration."""
 
 from __future__ import annotations
 
@@ -22,13 +22,24 @@ from app.services.statements import (
 )
 from app.services.validator import ASSET_LINES, EQUITY_LINES_SOFP, LIABILITY_LINES
 
+# Nine net-new mappable concepts since expansion started (accruals restored +
+# deferred_income/prepayments/accrued_income/taxes/social splits + original adds).
 NEW_CANONICAL_LINES: tuple[str, ...] = (
     "investments",
-    "prepayments_and_accrued_income",
+    "prepayments",
+    "accrued_income",
     "provisions",
-    "taxation_and_social_security",
+    "deferred_income",
+    "taxes_payable",
+    "social_security_payable",
     "share_premium",
     "revaluation_reserve",
+)
+
+WITHDRAWN_COMBINED_LINES: tuple[str, ...] = (
+    "prepayments_and_accrued_income",
+    "accruals_and_deferred_income",
+    "taxation_and_social_security",
 )
 
 
@@ -57,42 +68,57 @@ def test_new_canonical_lines_not_in_profit_and_loss_lines(line: str) -> None:
     assert line not in PROFIT_AND_LOSS_LINES
 
 
-def test_accruals_renamed_in_llm_allowlist() -> None:
-    assert "accruals_and_deferred_income" in MAPPING_TIE_BREAKER_CANONICAL_LINES
-    assert "accruals" not in MAPPING_TIE_BREAKER_CANONICAL_LINES
+@pytest.mark.parametrize("line", WITHDRAWN_COMBINED_LINES)
+def test_withdrawn_combined_lines_not_in_llm_allowlist(line: str) -> None:
+    assert line not in MAPPING_TIE_BREAKER_CANONICAL_LINES
 
 
-def test_sofp_display_order_includes_new_lines() -> None:
+def test_accruals_restored_and_deferred_income_separate() -> None:
+    assert "accruals" in MAPPING_TIE_BREAKER_CANONICAL_LINES
+    assert "deferred_income" in MAPPING_TIE_BREAKER_CANONICAL_LINES
+    assert "accruals_and_deferred_income" not in MAPPING_TIE_BREAKER_CANONICAL_LINES
+
+
+def test_sofp_display_order_includes_split_lines() -> None:
     assert SOFP_ASSET_ORDER == (
         "property_plant_equipment",
         "intangible_assets",
         "investments",
         "inventory",
         "trade_receivables",
-        "prepayments_and_accrued_income",
+        "prepayments",
+        "accrued_income",
         "cash",
     )
     assert SOFP_LIABILITY_ORDER == (
         "trade_payables",
         "provisions",
-        "accruals_and_deferred_income",
-        "taxation_and_social_security",
+        "accruals",
+        "deferred_income",
+        "taxes_payable",
+        "social_security_payable",
         "loans",
     )
 
 
-def test_validator_line_sets_include_new_balance_sheet_lines() -> None:
+def test_validator_line_sets_include_split_balance_sheet_lines() -> None:
     assert "investments" in ASSET_LINES
-    assert "prepayments_and_accrued_income" in ASSET_LINES
+    assert "prepayments" in ASSET_LINES
+    assert "accrued_income" in ASSET_LINES
     assert "provisions" in LIABILITY_LINES
-    assert "taxation_and_social_security" in LIABILITY_LINES
-    assert "accruals_and_deferred_income" in LIABILITY_LINES
+    assert "accruals" in LIABILITY_LINES
+    assert "deferred_income" in LIABILITY_LINES
+    assert "taxes_payable" in LIABILITY_LINES
+    assert "social_security_payable" in LIABILITY_LINES
     assert "share_premium" in EQUITY_LINES_SOFP
     assert "revaluation_reserve" in EQUITY_LINES_SOFP
+    for withdrawn in WITHDRAWN_COMBINED_LINES:
+        assert withdrawn not in ASSET_LINES
+        assert withdrawn not in LIABILITY_LINES
 
 
-@pytest.mark.parametrize("line", NEW_CANONICAL_LINES)
-def test_mapper_parse_llm_mappings_accepts_new_canonical_lines(line: str) -> None:
+@pytest.mark.parametrize("line", NEW_CANONICAL_LINES + ("accruals",))
+def test_mapper_parse_llm_mappings_accepts_granular_canonical_lines(line: str) -> None:
     unmapped = [
         MappingResult(
             source_code="9999",
@@ -110,7 +136,7 @@ def test_mapper_parse_llm_mappings_accepts_new_canonical_lines(line: str) -> Non
     assert results[0].method == "llm"
 
 
-def test_sofp_places_new_lines_in_expected_positions() -> None:
+def test_sofp_places_split_lines_in_expected_positions() -> None:
     re_id = uuid.uuid4()
     accounts = [
         _acct("1100", net_balance="1000.00", canonical_line="property_plant_equipment"),
@@ -118,12 +144,15 @@ def test_sofp_places_new_lines_in_expected_positions() -> None:
         _acct("1250", net_balance="800.00", canonical_line="investments"),
         _acct("1300", net_balance="200.00", canonical_line="inventory"),
         _acct("1400", net_balance="300.00", canonical_line="trade_receivables"),
-        _acct("1450", net_balance="150.00", canonical_line="prepayments_and_accrued_income"),
+        _acct("1450", net_balance="100.00", canonical_line="prepayments"),
+        _acct("1460", net_balance="50.00", canonical_line="accrued_income"),
         _acct("1500", net_balance="250.00", canonical_line="cash"),
         _acct("2100", net_balance="-400.00", canonical_line="trade_payables"),
         _acct("2150", net_balance="-100.00", canonical_line="provisions"),
-        _acct("2200", net_balance="-50.00", canonical_line="accruals_and_deferred_income"),
-        _acct("2250", net_balance="-75.00", canonical_line="taxation_and_social_security"),
+        _acct("2200", net_balance="-40.00", canonical_line="accruals"),
+        _acct("2210", net_balance="-10.00", canonical_line="deferred_income"),
+        _acct("2250", net_balance="-50.00", canonical_line="taxes_payable"),
+        _acct("2260", net_balance="-25.00", canonical_line="social_security_payable"),
         _acct("2300", net_balance="-500.00", canonical_line="loans"),
         _acct("3000", net_balance="-1000.00", canonical_line="share_capital"),
         _acct("3050", net_balance="-200.00", canonical_line="share_premium"),
@@ -139,11 +168,12 @@ def test_sofp_places_new_lines_in_expected_positions() -> None:
 
     codes = [line.line_item_code for line in lines]
     assert codes.index("investments") < codes.index("inventory")
-    assert codes.index("prepayments_and_accrued_income") > codes.index("trade_receivables")
+    assert codes.index("prepayments") > codes.index("trade_receivables")
+    assert codes.index("accrued_income") > codes.index("prepayments")
     assert codes.index("provisions") > codes.index("trade_payables")
-    assert codes.index("taxation_and_social_security") > codes.index(
-        "accruals_and_deferred_income"
-    )
+    assert codes.index("deferred_income") > codes.index("accruals")
+    assert codes.index("taxes_payable") > codes.index("deferred_income")
+    assert codes.index("social_security_payable") > codes.index("taxes_payable")
     assert codes.index("share_premium") > codes.index("share_capital")
     assert codes.index("revaluation_reserve") > codes.index("retained_earnings")
 
@@ -157,14 +187,16 @@ def test_compute_net_profit_unchanged_by_new_balance_sheet_lines() -> None:
         _acct("5000", net_balance="400.00", canonical_line="cost_of_sales"),
         _acct("1250", net_balance="800.00", canonical_line="investments"),
         _acct("3050", net_balance="-200.00", canonical_line="share_premium"),
+        _acct("1450", net_balance="50.00", canonical_line="prepayments"),
+        _acct("2260", net_balance="-25.00", canonical_line="social_security_payable"),
     ]
     assert compute_net_profit(accounts) == Decimal("600.00")
 
 
-def test_accruals_migration_renames_existing_rows_without_data_loss(
+def test_option_a_migration_restores_accruals_without_data_loss(
     provisioned_org: dict,
 ) -> None:
-    """Data migration SQL: accruals -> accruals_and_deferred_income."""
+    """Data migration SQL: accruals_and_deferred_income -> accruals."""
     row_id = uuid.uuid4()
     with SyncSessionLocal() as session:
         set_rls_org_id(session, provisioned_org["org_id"])
@@ -174,7 +206,7 @@ def test_accruals_migration_renames_existing_rows_without_data_loss(
                 company_id=provisioned_org["company_id"],
                 source_code="2100",
                 source_name="Accruals",
-                canonical_line="accruals",
+                canonical_line="accruals_and_deferred_income",
                 method="manual",
                 is_confirmed=True,
             )
@@ -184,14 +216,14 @@ def test_accruals_migration_renames_existing_rows_without_data_loss(
         before = session.execute(
             select(AccountMapping).where(AccountMapping.id == row_id)
         ).scalar_one()
-        assert before.canonical_line == "accruals"
+        assert before.canonical_line == "accruals_and_deferred_income"
 
         session.execute(
             text(
                 """
                 UPDATE account_mappings
-                SET canonical_line = 'accruals_and_deferred_income'
-                WHERE canonical_line = 'accruals'
+                SET canonical_line = 'accruals'
+                WHERE canonical_line = 'accruals_and_deferred_income'
                 """
             )
         )
@@ -200,7 +232,7 @@ def test_accruals_migration_renames_existing_rows_without_data_loss(
         after = session.execute(
             select(AccountMapping).where(AccountMapping.id == row_id)
         ).scalar_one()
-        assert after.canonical_line == "accruals_and_deferred_income"
+        assert after.canonical_line == "accruals"
         assert after.source_code == "2100"
         assert after.source_name == "Accruals"
         assert after.method == "manual"

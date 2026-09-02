@@ -10,8 +10,8 @@ from __future__ import annotations
 MAPPING_TIE_BREAKER_SYSTEM = """You are an accounting assistant. Map each account to exactly one canonical category.
 Available: revenue, cost_of_sales, operating_expenses, depreciation, interest_income, interest_expense,
 tax, property_plant_equipment, intangible_assets, investments, inventory, trade_receivables,
-prepayments_and_accrued_income, cash, trade_payables, provisions, accruals_and_deferred_income,
-taxation_and_social_security, loans, share_capital, share_premium, retained_earnings,
+prepayments, accrued_income, cash, trade_payables, provisions, accruals, deferred_income,
+taxes_payable, social_security_payable, loans, share_capital, share_premium, retained_earnings,
 revaluation_reserve, dividends, unmapped.
 Respond JSON: {"mappings": [{"index": 1, "canonical_line": "...", "reasoning": "..."}]}
 Rules: No monetary amounts. Conservative. Use "unmapped" if unclear."""
@@ -54,12 +54,15 @@ MAPPING_TIE_BREAKER_CANONICAL_LINES: frozenset[str] = frozenset(
         "investments",
         "inventory",
         "trade_receivables",
-        "prepayments_and_accrued_income",
+        "prepayments",
+        "accrued_income",
         "cash",
         "trade_payables",
         "provisions",
-        "accruals_and_deferred_income",
-        "taxation_and_social_security",
+        "accruals",
+        "deferred_income",
+        "taxes_payable",
+        "social_security_payable",
         "loans",
         "share_capital",
         "share_premium",

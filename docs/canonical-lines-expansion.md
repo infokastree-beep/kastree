@@ -8,40 +8,69 @@ testing with a complex 74-account trial balance (see
 auto-suggestion on the [product roadmap](product-roadmap.md). Unmapped accounts
 on real TBs directly affect statement accuracy — not a separate later concern.
 
-**Status:** implemented in code — pending review and deploy. See migration
-`g7h8i9j0k1l2_rename_accruals_canonical_line.py` for the `accruals` rename.
+**Status:** implemented. Final design is Option A (granular, regime-neutral
+lines) after a mid-build course correction — see below.
 
 ---
 
-## Future consideration (not this round)
+## Final design — Option A (confirmed)
 
-Broader financial-statement line-item review flagged two additional **SME-relevant**
-gaps for a later expansion — not part of the six-line build above:
+**Decision:** keep the platform genuinely general-purpose. Do **not** bake in a
+single jurisdiction's statutory presentation by combining economically distinct
+accounts into FRS 102 Section 1A-style composite lines.
 
-- **`due_from_to_related_parties`** — director loan accounts; very common on real
-  Irish/UK SME trial balances.
-- **`right_of_use_assets` / `lease_liabilities`** — increasingly required under
-  FRS 102 lease accounting changes.
+Three combined lines that appeared in the first expansion draft were **split
+into granular, regime-neutral lines**:
 
-**Deliberately out of scope** for the current target market (reviewed, not
-oversights): broader enterprise / public-company concepts such as non-controlling
-interest, EPS, discontinued operations, equity-method investments, treasury
-stock, and similar items.
+| Combined (withdrawn) | Split into |
+|----------------------|------------|
+| `taxation_and_social_security` | `taxes_payable`, `social_security_payable` |
+| `prepayments_and_accrued_income` | `prepayments`, `accrued_income` |
+| `accruals_and_deferred_income` | `accruals`, `deferred_income` |
+
+**Reasoning:** a general-purpose mapping layer should not assume UK/Irish small-
+company statutory bundling. VAT, PAYE/NI, corporation tax, prepayments, accrued
+income, accruals, and deferred revenue are distinct economic concepts; users in
+other regimes (and many UK/IE management packs) keep them separate. Granular
+lines can always be presented together later in a jurisdiction-specific export —
+the reverse is harder once data is fused.
+
+**Course correction note:** this was **not** the original expansion plan. The
+first implementation shipped combined names (and renamed `accruals` →
+`accruals_and_deferred_income` via migration `g7h8i9j0k1l2`). Option A reverts
+that bundling mid-build. Migration `h8i9j0k1l2m3` restores the production
+`JIE JIE LTD` / `2100` Accruals row to `accruals`.
+
+Net since session start: **9 new mappable lines** (original six concepts, with
+three of those concepts expanded into two lines each, plus restored `accruals`
+as its own line again and new `deferred_income`).
 
 ---
 
-## New canonical lines to add (6)
-
-Matched to real FRS 102 / Irish–UK statutory terminology:
+## New canonical lines (final set)
 
 | Canonical line | Statement role | Absorbs (examples from live testing) |
 |----------------|----------------|--------------------------------------|
 | `investments` | Fixed asset | Long-term investments — distinct from `property_plant_equipment` and `intangible_assets` |
-| `prepayments_and_accrued_income` | Current asset | Prepayments + Accrued Income (standard statutory presentation combines these) |
+| `prepayments` | Current asset | Prepayments |
+| `accrued_income` | Current asset | Accrued income |
 | `provisions` | Liability | Warranty provisions, etc. — distinct from `trade_payables` / `loans` |
-| `taxation_and_social_security` | Liability | VAT Control + PAYE/NI Control + Corporation Tax Payable (standard small-company FRS 102 Section 1A presentation) |
+| `accruals` | Liability | Accrued expenses (restored; was briefly renamed then split) |
+| `deferred_income` | Liability | Deferred / unearned revenue |
+| `taxes_payable` | Liability | VAT Control, corporation tax payable, and similar tax liabilities |
+| `social_security_payable` | Liability | PAYE/NI and similar employment-tax control accounts |
 | `share_premium` | Equity | Share premium — distinct from `share_capital` |
 | `revaluation_reserve` | Equity | Revaluation reserve — distinct equity reserve |
+
+(`accruals` existed before this expansion; it is listed because the mid-build
+rename+split restored it as a first-class line alongside new `deferred_income`.)
+
+### SOFP display order (new lines)
+
+**Assets** (after receivables, before cash): `prepayments`, then `accrued_income`.
+
+**Liabilities** (after provisions, before loans): `accruals`, `deferred_income`,
+`taxes_payable`, `social_security_payable`.
 
 ---
 
@@ -59,7 +88,7 @@ Matched to real FRS 102 / Irish–UK statutory terminology:
 **Amortisation** was tested and currently maps to `depreciation` via the
 existing **7000–7999** code-range rule in Tier 3 (`mapper.py`). This is a
 **reasonable simplification** for a management-accounts tool — not a genuine gap
-like the six additions above.
+like the additions above.
 
 Both are non-cash charges that behave identically on the SOPL. **Decision:**
 leave combined with `depreciation` for now. Revisit only if real customer
@@ -68,26 +97,26 @@ oversight**.
 
 ---
 
-## Flagged design decision — requires migration (separate review)
+## Future consideration (not this round)
 
-Consider renaming / redefining **`accruals`** → **`accruals_and_deferred_income`**
-to properly absorb **Deferred Revenue** per standard statutory presentation.
+Broader financial-statement line-item review flagged two additional **SME-relevant**
+gaps for a later expansion:
 
-**Implemented:** code + Alembic data migration `g7h8i9j0k1l2`. Production had one
-row (`JIE JIE LTD` / account `2100` / client `JIE HAN`) at time of build.
+- **`due_from_to_related_parties`** — director loan accounts; very common on real
+  Irish/UK SME trial balances.
+- **`right_of_use_assets` / `lease_liabilities`** — increasingly required under
+  FRS 102 lease accounting changes.
 
-This changes an **existing** canonical line, not just adds a new one. Requires a
-**data migration** for any `account_mappings` rows already using `accruals` — not
-only updating the allowed-values list.
-
-Needs its own careful review before implementing, **separate from** the six
-straightforward additions above.
+**Deliberately out of scope** for the current target market (reviewed, not
+oversights): broader enterprise / public-company concepts such as non-controlling
+interest, EPS, discontinued operations, equity-method investments, treasury
+stock, and similar items.
 
 ---
 
-## Implementation touchpoints (six additions)
+## Implementation touchpoints
 
-When implementing, keep these in sync:
+When changing the mappable set, keep these in sync:
 
 | Area | Location |
 |------|----------|
@@ -96,11 +125,18 @@ When implementing, keep these in sync:
 | LLM Tier 4 allowlist + prompt | `backend/app/services/llm.py` — `MAPPING_TIE_BREAKER_CANONICAL_LINES` and `MAPPING_TIE_BREAKER_SYSTEM` |
 | Shared constant (if used) | `shared/canonical_accounts.py` |
 | API validation | `backend/app/routers/trial_balances.py` (confirm mapping against allowlist) |
-| Statement Builder SOFP order | `backend/app/services/statements.py` — assign each new line a specific position in the existing structure |
-| Tier 3 code-range table (optional) | `backend/app/services/mapper.py` — only if any new line should get code-range auto-mapping; **not required initially** — can launch as always-manual / Tier-4-only lines |
+| Statement Builder SOFP order | `backend/app/services/statements.py` — assign each line a specific position |
+| Validator sets | `backend/app/services/validator.py` — `ASSET_LINES` / `LIABILITY_LINES` / `EQUITY_LINES_SOFP` |
+| Tier 3 code-range table (optional) | `backend/app/services/mapper.py` — only if a line should get code-range auto-mapping; **not required** for these lines (Tier-4 / manual) |
 
-Also update: validator rules, export templates, and tests that assert canonical
-line sets.
+Also update: export templates and tests that assert canonical line sets.
+
+### Migrations
+
+| Revision | Effect |
+|----------|--------|
+| `g7h8i9j0k1l2` | Historical: `accruals` → `accruals_and_deferred_income` (superseded by Option A) |
+| `h8i9j0k1l2m3` | Option A: `accruals_and_deferred_income` → `accruals` (restores JIE JIE LTD `2100`) |
 
 ---
 
@@ -110,3 +146,5 @@ line sets.
   exists" — see [`tracked-gaps.md`](tracked-gaps.md).
 - Materiality / variance work should ship first — see
   [`product-roadmap.md`](product-roadmap.md) Close tier.
+- Equity-total formula drift risk across call sites — see
+  [`tracked-gaps.md`](tracked-gaps.md).

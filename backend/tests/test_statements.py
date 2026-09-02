@@ -182,8 +182,8 @@ def test_sofp_groups_accounts_computes_subtotals_and_provenance() -> None:
     cash_b = _acct("1610", net_balance="300.00", canonical_line="cash")
     pay_a = _acct("2100", net_balance="-1200.00", canonical_line="trade_payables")
     pay_b = _acct("2110", net_balance="-300.00", canonical_line="trade_payables")
-    acc_a = _acct("2200", net_balance="-400.00", canonical_line="accruals_and_deferred_income")
-    acc_b = _acct("2210", net_balance="-100.00", canonical_line="accruals_and_deferred_income")
+    acc_a = _acct("2200", net_balance="-400.00", canonical_line="accruals")
+    acc_b = _acct("2210", net_balance="-100.00", canonical_line="accruals")
     loan_a = _acct("2300", net_balance="-2000.00", canonical_line="loans")
     loan_b = _acct("2310", net_balance="-500.00", canonical_line="loans")
     sc_a = _acct("3000", net_balance="-3000.00", canonical_line="share_capital")
@@ -230,13 +230,16 @@ def test_sofp_groups_accounts_computes_subtotals_and_provenance() -> None:
         "investments",
         "inventory",
         "trade_receivables",
-        "prepayments_and_accrued_income",
+        "prepayments",
+        "accrued_income",
         "cash",
         "total_assets",
         "trade_payables",
         "provisions",
-        "accruals_and_deferred_income",
-        "taxation_and_social_security",
+        "accruals",
+        "deferred_income",
+        "taxes_payable",
+        "social_security_payable",
         "loans",
         "total_liabilities",
         "share_capital",
