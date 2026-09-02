@@ -15,7 +15,7 @@ const LIVE_STEPS = [
   },
   {
     title: "Map",
-    body: "FinDraft suggests account → line mappings. You review, override anything odd, and confirm — nothing generates until you sign off.",
+    body: "Kastree suggests account → line mappings. You review, override anything odd, and confirm — nothing generates until you sign off.",
   },
   {
     title: "Validate",
@@ -123,7 +123,7 @@ export function LandingPage() {
                 ten similar clients with comparable charts.
               </p>
               <p>
-                FinDraft doesn&apos;t replace your judgement. It removes the mechanical
+                Kastree doesn&apos;t replace your judgement. It removes the mechanical
                 steps between <strong className="font-medium text-stone-800">trial balance</strong>{" "}
                 and <strong className="font-medium text-stone-800">reviewable statements</strong>,
                 so you spend time on mapping edge cases and client questions — not
@@ -244,7 +244,7 @@ export function LandingPage() {
           <div className="mx-auto max-w-5xl px-6 py-14">
             <h2 className="text-2xl font-semibold tracking-tight">Get early access</h2>
             <p className="mt-3 max-w-2xl text-stone-600">
-              We&apos;re opening FinDraft to a handful of practices for structured
+              We&apos;re opening Kastree to a handful of practices for structured
               feedback — not a public launch. Tell us who you are and we&apos;ll reach out
               when there&apos;s a slot.
             </p>

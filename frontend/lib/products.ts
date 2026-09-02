@@ -12,7 +12,7 @@ export type Product = {
 export const PRODUCTS: readonly Product[] = [
   {
     id: "findraft",
-    name: "FinDraft",
+    name: "Kastree",
     tagline: "Financial Intelligence Platform",
     route: "/upload",
   },

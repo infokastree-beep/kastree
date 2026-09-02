@@ -221,7 +221,7 @@ export function ClientDetail({ clientId }: { clientId: string }) {
           <p className="font-medium">Delete {client.name}?</p>
           <p className="mt-1">
             This removes the client from your list. Their data is archived and no
-            longer appears in FinDraft.
+            longer appears in Kastree.
           </p>
           {deleteMutation.error ? (
             <p className="mt-2 text-red-800">

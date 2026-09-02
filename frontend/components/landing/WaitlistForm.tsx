@@ -169,7 +169,7 @@ export function WaitlistForm() {
         {status === "submitting" ? "Joining…" : "Join waitlist"}
       </button>
       <p className="text-xs text-stone-500">
-        We&apos;ll only use this to contact you about FinDraft early access.
+        We&apos;ll only use this to contact you about Kastree early access.
       </p>
     </form>
   );

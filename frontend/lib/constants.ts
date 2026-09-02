@@ -1,6 +1,6 @@
 /** Application constants shared by the core-loop UI. */
 
-export const APP_NAME = "FinDraft";
+export const APP_NAME = "Kastree";
 
 /** Where Clerk sends a user after sign-in / sign-up. Must be a dashboard route. */
 export const POST_AUTH_PATH = "/upload";

@@ -3,7 +3,7 @@ import { AppProviders } from "@/components/providers/AppProviders";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "FinDraft",
+  title: "Kastree",
   description: "Financial intelligence for accounting practices",
 };
 
