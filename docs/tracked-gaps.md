@@ -262,6 +262,28 @@ past INSERT-only RLS (e.g. a `SECURITY DEFINER` function or a dedicated SELECT
 policy scoped to an admin check). Until that exists, the waitlist is not
 practically useful for following up with signups without manual DB access.
 
+## No admin visibility into organisations, users, or customers
+
+There is **no Owner-only admin UI** (and no authenticated list endpoints) for:
+
+- **organisations** — name, tier, status, `created_at`
+- **users** per organisation — email, role, last login
+- **waitlist_signups** — already tracked above as INSERT-only / no read path
+- **(eventually) paying customers** — Stripe-linked orgs, subscription status
+
+Everything currently requires a **direct production database query** (superuser /
+agent / Railway SSH). The founder has no in-product way to see who signed up,
+who is active, or who is waiting — including after real signups already exist.
+
+**Needed:** a real Owner-only admin view (minimum: one page listing organisations
+with tier/status/`created_at`, users under each org, and waitlist signups).
+Backend should be role-gated the same way as archived-records (`require_roles(
+"owner")`), with an explicit read path for waitlist past INSERT-only RLS.
+
+**Priority: higher than previously implied.** Low-to-medium effort; genuinely
+needed now that real signups exist. Higher priority than treating waitlist-only
+admin as a nice-to-have.
+
 ## `trial_balances.currency` — redundant with `companies.functional_currency`
 
 Upload now **forces** `trial_balances.currency` from `company.functional_currency`
