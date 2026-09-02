@@ -1192,10 +1192,12 @@ CANONICAL_LINES = [
   "operating_expenses", "depreciation", "operating_profit",  # calculated
   "interest_income", "interest_expense", "profit_before_tax",  # calculated
   "tax", "net_profit",  # calculated
-  "property_plant_equipment", "intangible_assets", "inventory",
-  "trade_receivables", "cash", "total_assets",  # calculated
-  "trade_payables", "accruals", "loans", "total_liabilities",  # calculated
-  "share_capital", "retained_earnings", "dividends", "total_equity",  # calculated
+  "property_plant_equipment", "intangible_assets", "investments", "inventory",
+  "trade_receivables", "prepayments_and_accrued_income", "cash", "total_assets",  # calculated
+  "trade_payables", "provisions", "accruals_and_deferred_income",
+  "taxation_and_social_security", "loans", "total_liabilities",  # calculated
+  "share_capital", "share_premium", "retained_earnings", "revaluation_reserve",
+  "dividends", "total_equity",  # calculated
   "unmapped",
 ]
 ```

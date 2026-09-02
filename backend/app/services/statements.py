@@ -78,16 +78,22 @@ LINE_ITEM_NAMES: dict[str, str] = {
     "net_profit": "Net profit",
     "property_plant_equipment": "Property, plant and equipment",
     "intangible_assets": "Intangible assets",
+    "investments": "Investments",
     "inventory": "Inventory",
     "trade_receivables": "Trade receivables",
+    "prepayments_and_accrued_income": "Prepayments and accrued income",
     "cash": "Cash",
     "total_assets": "Total assets",
     "trade_payables": "Trade payables",
-    "accruals": "Accruals",
+    "provisions": "Provisions",
+    "accruals_and_deferred_income": "Accruals and deferred income",
+    "taxation_and_social_security": "Taxation and social security",
     "loans": "Loans",
     "total_liabilities": "Total liabilities",
     "share_capital": "Share capital",
+    "share_premium": "Share premium",
     "retained_earnings": "Retained earnings",
+    "revaluation_reserve": "Revaluation reserve",
     "dividends": "Dividends",
     "total_equity": "Total equity",
     "retained_earnings_opening": "Retained earnings (opening)",
@@ -106,8 +112,10 @@ _DEBIT_NORMAL_LINES: frozenset[str] = frozenset(
         "tax",
         "property_plant_equipment",
         "intangible_assets",
+        "investments",
         "inventory",
         "trade_receivables",
+        "prepayments_and_accrued_income",
         "cash",
         "dividends",
     }
@@ -169,22 +177,28 @@ def pnl_source_account_ids(accounts: Sequence[StatementAccount]) -> list[uuid.UU
 SOFP_ASSET_ORDER: tuple[str, ...] = (
     "property_plant_equipment",
     "intangible_assets",
+    "investments",
     "inventory",
     "trade_receivables",
+    "prepayments_and_accrued_income",
     "cash",
 )
 
 SOFP_LIABILITY_ORDER: tuple[str, ...] = (
     "trade_payables",
-    "accruals",
+    "provisions",
+    "accruals_and_deferred_income",
+    "taxation_and_social_security",
     "loans",
 )
 
-# total_equity = share_capital + retained_earnings only (excludes dividends).
+# total_equity = share_capital + share_premium + retained_earnings + revaluation_reserve.
 SOFP_EQUITY_TOTAL_LINES: frozenset[str] = frozenset(
     {
         "share_capital",
+        "share_premium",
         "retained_earnings",
+        "revaluation_reserve",
     }
 )
 
@@ -319,6 +333,10 @@ def build_sofp(
     order += 1
     lines.append(share_capital)
 
+    share_premium = _leaf_line("share_premium", grouped, order)
+    order += 1
+    lines.append(share_premium)
+
     re_ids = list(retained_earnings_source_ids)
     retained_earnings = StatementLineItemRecord(
         line_item_code="retained_earnings",
@@ -331,15 +349,26 @@ def build_sofp(
     order += 1
     lines.append(retained_earnings)
 
+    revaluation_reserve = _leaf_line("revaluation_reserve", grouped, order)
+    order += 1
+    lines.append(revaluation_reserve)
+
     dividends = _leaf_line("dividends", grouped, order)
     order += 1
     lines.append(dividends)
 
-    # Must match validator.py net_assets / EQUITY_LINES_SOFP: SC + RE only.
-    total_equity_amount = share_capital.amount + retained_earnings.amount
+    # Must match validator.py net_assets / EQUITY_LINES_SOFP: SC + SP + RE + RR.
+    total_equity_amount = (
+        share_capital.amount
+        + share_premium.amount
+        + retained_earnings.amount
+        + revaluation_reserve.amount
+    )
     total_equity_ids = _merge_ids(
         share_capital.source_account_ids,
+        share_premium.source_account_ids,
         retained_earnings.source_account_ids,
+        revaluation_reserve.source_account_ids,
     )
     lines.append(
         _subtotal_line("total_equity", total_equity_amount, order, total_equity_ids)
@@ -536,18 +565,28 @@ def _compute_socie_rollforward(
     profit_ids = pnl_source_account_ids(accounts)
     dividends_amount, dividends_ids = _sum_line("dividends", grouped)
     share_capital_amount, share_capital_ids = _sum_line("share_capital", grouped)
+    share_premium_amount, share_premium_ids = _sum_line("share_premium", grouped)
+    revaluation_reserve_amount, revaluation_reserve_ids = _sum_line(
+        "revaluation_reserve", grouped
+    )
 
     retained_earnings_closing_amount = (
         opening_amount + profit_amount - dividends_amount
     )
     retained_earnings_closing_ids = _merge_ids(opening_ids, profit_ids, dividends_ids)
 
+    # Must match build_sofp total_equity: SC + SP + closing RE + RR (excludes dividends).
     total_equity_closing_amount = (
-        share_capital_amount + retained_earnings_closing_amount
+        share_capital_amount
+        + share_premium_amount
+        + retained_earnings_closing_amount
+        + revaluation_reserve_amount
     )
     total_equity_closing_ids = _merge_ids(
         share_capital_ids,
+        share_premium_ids,
         retained_earnings_closing_ids,
+        revaluation_reserve_ids,
     )
 
     return _SocieRollforward(

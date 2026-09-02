@@ -8,8 +8,25 @@ testing with a complex 74-account trial balance (see
 auto-suggestion on the [product roadmap](product-roadmap.md). Unmapped accounts
 on real TBs directly affect statement accuracy — not a separate later concern.
 
-**Status:** design only — proper next-session build item, not urgent for a single
-evening's work.
+**Status:** implemented in code — pending review and deploy. See migration
+`g7h8i9j0k1l2_rename_accruals_canonical_line.py` for the `accruals` rename.
+
+---
+
+## Future consideration (not this round)
+
+Broader financial-statement line-item review flagged two additional **SME-relevant**
+gaps for a later expansion — not part of the six-line build above:
+
+- **`due_from_to_related_parties`** — director loan accounts; very common on real
+  Irish/UK SME trial balances.
+- **`right_of_use_assets` / `lease_liabilities`** — increasingly required under
+  FRS 102 lease accounting changes.
+
+**Deliberately out of scope** for the current target market (reviewed, not
+oversights): broader enterprise / public-company concepts such as non-controlling
+interest, EPS, discontinued operations, equity-method investments, treasury
+stock, and similar items.
 
 ---
 
@@ -55,6 +72,9 @@ oversight**.
 
 Consider renaming / redefining **`accruals`** → **`accruals_and_deferred_income`**
 to properly absorb **Deferred Revenue** per standard statutory presentation.
+
+**Implemented:** code + Alembic data migration `g7h8i9j0k1l2`. Production had one
+row (`JIE JIE LTD` / account `2100` / client `JIE HAN`) at time of build.
 
 This changes an **existing** canonical line, not just adds a new one. Requires a
 **data migration** for any `account_mappings` rows already using `accruals` — not

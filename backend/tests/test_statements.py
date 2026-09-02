@@ -182,8 +182,8 @@ def test_sofp_groups_accounts_computes_subtotals_and_provenance() -> None:
     cash_b = _acct("1610", net_balance="300.00", canonical_line="cash")
     pay_a = _acct("2100", net_balance="-1200.00", canonical_line="trade_payables")
     pay_b = _acct("2110", net_balance="-300.00", canonical_line="trade_payables")
-    acc_a = _acct("2200", net_balance="-400.00", canonical_line="accruals")
-    acc_b = _acct("2210", net_balance="-100.00", canonical_line="accruals")
+    acc_a = _acct("2200", net_balance="-400.00", canonical_line="accruals_and_deferred_income")
+    acc_b = _acct("2210", net_balance="-100.00", canonical_line="accruals_and_deferred_income")
     loan_a = _acct("2300", net_balance="-2000.00", canonical_line="loans")
     loan_b = _acct("2310", net_balance="-500.00", canonical_line="loans")
     sc_a = _acct("3000", net_balance="-3000.00", canonical_line="share_capital")
@@ -227,16 +227,22 @@ def test_sofp_groups_accounts_computes_subtotals_and_provenance() -> None:
     assert [line.line_item_code for line in lines] == [
         "property_plant_equipment",
         "intangible_assets",
+        "investments",
         "inventory",
         "trade_receivables",
+        "prepayments_and_accrued_income",
         "cash",
         "total_assets",
         "trade_payables",
-        "accruals",
+        "provisions",
+        "accruals_and_deferred_income",
+        "taxation_and_social_security",
         "loans",
         "total_liabilities",
         "share_capital",
+        "share_premium",
         "retained_earnings",
+        "revaluation_reserve",
         "dividends",
         "total_equity",
     ]
@@ -269,7 +275,7 @@ def test_sofp_groups_accounts_computes_subtotals_and_provenance() -> None:
     assert total_equity.amount == Decimal("6800.00")
     assert total_equity.is_subtotal is True
     # Closing RE provenance includes dividend accounts (they reduced closing RE);
-    # total_equity amount is still SC + closing RE only (dividends not double-counted).
+    # total_equity is SC + closing RE only here (no share_premium / revaluation_reserve).
     assert set(total_equity.source_account_ids) == set(rollforward.total_equity_closing_ids)
 
 
@@ -364,6 +370,33 @@ def test_socie_reconciles_with_sofp_on_dividends_fixture() -> None:
     total_equity_closing = _by_code(socie_lines, "total_equity_closing")
     assert total_equity_closing.amount == Decimal("7000.00")
     assert total_equity_closing.is_subtotal is True
+    assert total_equity_closing.amount == _by_code(sofp_lines, "total_equity").amount
+
+
+def test_socie_reconciles_with_sofp_when_share_premium_and_revaluation_reserve_present() -> None:
+    """SOCIE total_equity_closing must include share_premium and revaluation_reserve.
+
+    Regression: a two-component SC + closing RE formula would disagree with SOFP
+    total_equity (SC + SP + closing RE + RR) and raise SocieSofpEquityMismatchError
+    on otherwise correct data.
+    """
+    accounts = [
+        _acct("1000", net_balance="10000.00", canonical_line="cash"),
+        _acct("2000", net_balance="-3000.00", canonical_line="trade_payables"),
+        _acct("3000", net_balance="-4000.00", canonical_line="share_capital"),
+        _acct("3050", net_balance="-1000.00", canonical_line="share_premium"),
+        _acct("3100", net_balance="-1500.00", canonical_line="retained_earnings"),
+        _acct("3150", net_balance="-500.00", canonical_line="revaluation_reserve"),
+    ]
+
+    sopl_lines, sofp_lines, socie_lines = build_statements(accounts)
+
+    assert _by_code(sofp_lines, "share_premium").amount == Decimal("1000.00")
+    assert _by_code(sofp_lines, "revaluation_reserve").amount == Decimal("500.00")
+    assert _by_code(sofp_lines, "total_equity").amount == Decimal("7000.00")
+
+    total_equity_closing = _by_code(socie_lines, "total_equity_closing")
+    assert total_equity_closing.amount == Decimal("7000.00")
     assert total_equity_closing.amount == _by_code(sofp_lines, "total_equity").amount
 
 

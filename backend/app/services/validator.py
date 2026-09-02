@@ -19,15 +19,19 @@ ASSET_LINES: frozenset[str] = frozenset(
     {
         "property_plant_equipment",
         "intangible_assets",
+        "investments",
         "inventory",
         "trade_receivables",
+        "prepayments_and_accrued_income",
         "cash",
     }
 )
 LIABILITY_LINES: frozenset[str] = frozenset(
     {
         "trade_payables",
-        "accruals",
+        "provisions",
+        "accruals_and_deferred_income",
+        "taxation_and_social_security",
         "loans",
     }
 )
@@ -38,7 +42,9 @@ LIABILITY_LINES: frozenset[str] = frozenset(
 EQUITY_LINES_SOFP: frozenset[str] = frozenset(
     {
         "share_capital",
+        "share_premium",
         "retained_earnings",
+        "revaluation_reserve",
     }
 )
 
