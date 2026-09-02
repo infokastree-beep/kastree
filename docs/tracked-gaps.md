@@ -262,6 +262,56 @@ list organisations, users (with org name), and waitlist signups platform-wide.
 and an explicit `PLATFORM_ADMIN_EMAILS` allowlist — not every org owner.
 See `require_platform_admin()` in `backend/app/dependencies.py`.
 
+## Incident: /admin cross-tenant data exposure (resolved 2026-09-02)
+
+**Severity:** High — any org owner could read all waitlist signups, organisations,
+and users platform-wide via `GET /admin/overview`.
+
+**Affected data:** Waitlist PII (name, email, firm), all organisation names/tiers,
+all user emails and roles. **No trial balances, clients, companies, or financial
+data** were exposed via this endpoint.
+
+**Who could access it:** Any user with `role=owner` in any provisioned organisation.
+
+**Who actually had accounts during the window:** Only three test organisations
+created during this build session — all controlled by the founder, not external
+customers:
+
+| Account | Email | Organisation |
+|---------|-------|--------------|
+| Mark | `markdooling25@gmail.com` | Mark's Organization |
+| Jie | `hanjie987@gmail.com` | Jie's Organization |
+| kastree | `infokastree@gmail.com` | kastree's Organization |
+
+**Waitlist rows during window (4 total):** all founder/test entries — Mark's own
+email, `prod-waitlist-*@example.com`, and `markdooling25+*@gmail.com` test aliases.
+No third-party customer waitlist signups existed.
+
+**Timeline (all UTC, 2026-09-02):**
+
+| Time | Event |
+|------|-------|
+| 22:37:32 | Commit `74fdcfc` ships `/admin` + `GET /admin/overview` gated only by `require_roles("owner")` — no platform-admin allowlist. |
+| 22:37:34 | Railway deployment `fe32cb0f` goes live with ungated admin. **Exposure starts.** |
+| 23:33:53 | Fix committed (`f6cb675` — `require_platform_admin()` + `PLATFORM_ADMIN_EMAILS`). |
+| 23:33:54 | Railway redeploy `ce142529` triggered by setting `PLATFORM_ADMIN_EMAILS` env var — **still running `74fdcfc` code** because fix was pushed only to Cursor `origin`, not GitHub. Env var alone had no effect. |
+| ~23:44 | **Discovered** — `infokastree@gmail.com` (kastree org owner) saw full platform admin data; should have received 403. |
+| 23:44:24 | Fix pushed to `github/main`; Railway deployment `458660e0` goes live with `require_platform_admin()`. **Exposure ends.** |
+
+**Exposure window:** ~**67 minutes** (22:37:34 → 23:44:24 UTC).
+
+**Root cause:** Two-part failure. (1) Initial `/admin` shipped without platform-admin
+allowlist. (2) Fix was committed and pushed to Cursor `origin` but **not** to
+`github` (Railway's deploy source); setting Railway env vars redeployed stale code.
+
+**Verification after fix:** Live production HTTP tests confirmed `infokastree@gmail.com`
+and `hanjie987@gmail.com` → **403**, `markdooling25@gmail.com` → **200**.
+
+**Structural safeguard added:** `scripts/verify_remotes_in_sync.sh`,
+`scripts/verify_railway_deploy_marker.sh`, and `scripts/verify_security_deploy.sh`
+— mandatory after security-relevant changes. See `docs/runbooks/deployment.md`
+§ "Release verification (security changes)".
+
 ## Production users table — placeholder Clerk emails
 
 Some production `users.email` rows still show `@users.clerk.pending` placeholders

@@ -194,6 +194,41 @@ Vercel env vars for the frontend (Production):
 
 After changing any `NEXT_PUBLIC_*` variable, trigger a new Vercel deployment so the value is baked into the client bundle.
 
+## Release verification (security changes)
+
+Railway deploys from **GitHub** (`markdooling25-commits/kastree`), not the Cursor
+Cloud Agent `origin` remote. A commit pushed only to `origin` is **not** live in
+production even if Railway env vars change and trigger a redeploy.
+
+**After every security-relevant change**, run this checklist before claiming a
+fix is deployed:
+
+```bash
+# 1. Push to GitHub (Railway's deploy source)
+git push github main
+
+# 2. Confirm origin and github point at the same commit
+./scripts/verify_remotes_in_sync.sh
+
+# 3. Wait for Railway deploy to succeed, then confirm live code (example)
+./scripts/verify_railway_deploy_marker.sh require_platform_admin
+
+# Or combine steps 2–3:
+./scripts/verify_security_deploy.sh --marker require_platform_admin
+```
+
+**Standard post-change check** (even for non-security work):
+
+```bash
+git fetch origin main github main
+git log github/main -1 --oneline   # must match the commit you intend to be live
+```
+
+If `origin/main` and `github/main` diverge, `verify_remotes_in_sync.sh` exits
+non-zero with the SHAs and tells you to `git push github main`.
+
+See also: `docs/tracked-gaps.md` — incident record for 2026-09-02 admin exposure.
+
 ## Local / dev backend process
 
 Run **one** uvicorn instance per environment during dev and testing (e.g. `uvicorn app.main:app --reload` on a single port); a second process without `--reload` will serve stale code and write confusing validation or statement results while the reloaded instance has the fix.

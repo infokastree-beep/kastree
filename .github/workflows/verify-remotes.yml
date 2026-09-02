@@ -1,0 +1,21 @@
+# Remind contributors that Railway deploys from GitHub, not Cursor origin.
+# Full two-remote sync check (origin vs github) runs in scripts/verify_remotes_in_sync.sh
+# locally or in Cloud Agent sessions where both remotes exist.
+name: Deploy source reminder
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  deploy-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Railway deploys this commit SHA
+        run: |
+          echo "GitHub main SHA: ${{ github.sha }}"
+          echo "Railway (markdooling25-commits/kastree) auto-deploys from this push."
+          echo "Cloud Agent sessions must also run: git push github main"
+          echo "Then verify: ./scripts/verify_remotes_in_sync.sh"
