@@ -210,11 +210,14 @@ git push github main
 # 2. Confirm origin and github point at the same commit
 ./scripts/verify_remotes_in_sync.sh
 
-# 3. Wait for Railway deploy to succeed, then confirm live code (example)
+# 3. Wait for Railway deploy to succeed, then confirm live backend code (example)
 ./scripts/verify_railway_deploy_marker.sh require_platform_admin
 
-# Or combine steps 2–3:
-./scripts/verify_security_deploy.sh --marker require_platform_admin
+# 4. Wait for Vercel deploy, then confirm live frontend CDN chunk (example)
+./scripts/verify_vercel_deploy_marker.sh is_platform_admin
+
+# Or combine steps 2–4 (backend + frontend):
+./scripts/verify_security_deploy.sh --marker is_platform_admin --railway-marker require_platform_admin
 ```
 
 **Standard post-change check** (even for non-security work):
@@ -226,6 +229,11 @@ git log github/main -1 --oneline   # must match the commit you intend to be live
 
 If `origin/main` and `github/main` diverge, `verify_remotes_in_sync.sh` exits
 non-zero with the SHAs and tells you to `git push github main`.
+
+**Vercel** auto-deploys from the same `github/main` push. A green Vercel deploy is
+not sufficient — run `verify_vercel_deploy_marker.sh` to confirm the production
+CDN chunk for the current commit actually contains the expected marker (e.g.
+`is_platform_admin` in the dashboard layout bundle).
 
 See also: `docs/tracked-gaps.md` — incident record for 2026-09-02 admin exposure.
 
