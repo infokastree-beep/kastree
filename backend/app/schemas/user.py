@@ -14,3 +14,4 @@ class UserMeResponse(BaseModel):
     org_id: str
     email: str
     role: Literal["owner", "admin", "member", "viewer"]
+    is_platform_admin: bool

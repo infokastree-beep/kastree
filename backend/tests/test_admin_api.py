@@ -98,13 +98,17 @@ async def test_admin_overview_member_forbidden(
 async def test_users_me_returns_db_role(
     api_client: AsyncClient,
     provisioned_org: dict,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(settings, "platform_admin_emails", "founder-only@example.com")
     owner = await api_client.get(
         "/users/me",
         headers=auth_headers(provisioned_org["token"]),
     )
     assert owner.status_code == 200, owner.text
-    assert owner.json()["role"] == "owner"
+    body = owner.json()
+    assert body["role"] == "owner"
+    assert body["is_platform_admin"] is False
 
     _, _, member_token = _add_org_user(
         org_id=provisioned_org["org_id"],
@@ -118,6 +122,23 @@ async def test_users_me_returns_db_role(
     )
     assert member.status_code == 200, member.text
     assert member.json()["role"] == "member"
+    assert member.json()["is_platform_admin"] is False
+
+
+@pytest.mark.asyncio
+async def test_users_me_platform_admin_flag(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+    platform_admin_allowlist: str,
+) -> None:
+    response = await api_client.get(
+        "/users/me",
+        headers=auth_headers(provisioned_org["token"]),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["role"] == "owner"
+    assert body["is_platform_admin"] is True
 
 
 @pytest.mark.asyncio

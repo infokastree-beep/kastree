@@ -7,6 +7,7 @@ import { apiFetch } from "@/lib/api";
 
 type UserMe = {
   role: string;
+  is_platform_admin: boolean;
 };
 
 export function AdminNavLink() {
@@ -22,7 +23,7 @@ export function AdminNavLink() {
     apiFetch<UserMe>("/users/me", { getToken })
       .then((me) => {
         if (!cancelled) {
-          setShow(me.role === "owner");
+          setShow(me.is_platform_admin);
         }
       })
       .catch(() => {

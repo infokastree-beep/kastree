@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from app.dependencies import AuthContext, get_auth_context
+from app.dependencies import AuthContext, get_auth_context, is_platform_admin
 from app.schemas.user import UserMeResponse
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -22,4 +22,5 @@ async def get_current_user(
         org_id=str(auth.org_id),
         email=auth.email,
         role=auth.role,
+        is_platform_admin=is_platform_admin(auth),
     )
