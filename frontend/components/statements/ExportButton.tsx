@@ -7,9 +7,10 @@
  *   1. User picks a format (Excel / PDF / CSV) from the dropdown.
  *   2. POST /trial-balances/{tbId}/export → 202 { export_id }.
  *   3. Poll GET /exports/{export_id} every 1.5 s until status = "complete" | "failed".
- *   4. On complete: render a download link that hits GET /exports/{id}/download
- *      (302 → S3 presigned URL). Opened via window.open so the browser handles
- *      the redirect without CORS issues on the S3 bucket.
+ *   4. On complete: GET /exports/{id} for the presigned file_url, then
+ *      trigger a real <a href={file_url}> navigation (not fetch + blob).
+ *      Cross-origin fetch of the R2 302 is blocked by CORS; top-level
+ *      navigation is not.
  *
  * Tier-gated watermarking is fully server-side — this component never passes
  * subscription_tier or watermark flags in the request body.
@@ -17,7 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { ApiError, apiFetch, getApiBaseUrl } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 import type { ExportAcceptedResponse, ExportFormat, ExportStatusResponse } from "@/types";
 
 const FORMAT_LABELS: Record<ExportFormat, string> = {
@@ -132,35 +133,37 @@ export function ExportButton({ tbId }: { tbId: string }) {
 
   const handleDownload = useCallback(
     async (exportId: string) => {
-      // GET /exports/{id}/download → 302 → S3 presigned URL.
-      // We fetch the redirect ourselves so we can follow it in the same tab/window.
+      // Presigned file_url comes from GET /exports/{id} (Railway, CORS-ok).
+      // Navigate to it with a real <a href> — never fetch() the R2 URL or the
+      // /download 302, which the browser blocks as a cross-origin JS request.
       try {
-        const token = await getToken();
-        const url = `${getApiBaseUrl()}/exports/${exportId}/download`;
-        // Use fetch with redirect: "follow" to get the final S3 URL, then open it.
-        const res = await fetch(url, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          redirect: "follow",
+        const data = await apiFetch<ExportStatusResponse>(`/exports/${exportId}`, {
+          getToken,
         });
-        if (!res.ok) {
-          setState({ phase: "failed", message: `Download failed (HTTP ${res.status}).` });
+        if (!data.file_url) {
+          setState({
+            phase: "failed",
+            message: "Export is complete but no download URL was returned.",
+          });
           return;
         }
-        // The response body is the file. Create a blob URL and trigger download.
-        const blob = await res.blob();
-        const blobUrl = URL.createObjectURL(blob);
+        const format = data.format;
         const a = document.createElement("a");
-        a.href = blobUrl;
-        a.download = `statements-${exportId.slice(0, 8)}.${state.phase === "ready" ? (state as PhaseReady).format : "bin"}`;
+        a.href = data.file_url;
+        a.download = `statements-${exportId.slice(0, 8)}.${format}`;
+        a.rel = "noopener";
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000);
-      } catch {
-        setState({ phase: "failed", message: "Download failed. Please try again." });
+      } catch (err) {
+        setState({
+          phase: "failed",
+          message:
+            err instanceof ApiError ? err.message : "Download failed. Please try again.",
+        });
       }
     },
-    [getToken, state],
+    [getToken],
   );
 
   const reset = () => {
