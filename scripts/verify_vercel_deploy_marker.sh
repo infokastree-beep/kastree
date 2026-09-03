@@ -116,7 +116,7 @@ for page in pages:
         html = fetch(page)
     except Exception:
         continue
-    for path in re.findall(r"/_next/static/chunks/[^\"']+?\\.js", html):
+    for path in re.findall(r"/_next/static/chunks/[^\"']+?\.js", html):
         if path not in seen:
             seen.add(path)
             queue.append(path)
@@ -131,11 +131,11 @@ while queue:
     if marker in body:
         found = path
         break
-    for ref in re.findall(r"/_next/static/chunks/[^\"']+?\\.js", body):
+    for ref in re.findall(r"/_next/static/chunks/[^\"']+?\.js", body):
         if ref not in seen:
             seen.add(ref)
             queue.append(ref)
-    for ref in re.findall(r"\"static/chunks/([^\"']+?\\.js)\"", body):
+    for ref in re.findall(r"\"static/chunks/([^\"']+?\.js)\"", body):
         full = f"/_next/static/chunks/{ref}"
         if full not in seen:
             seen.add(full)

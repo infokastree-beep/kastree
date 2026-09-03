@@ -216,6 +216,11 @@ git push github main
 # 4. Wait for Vercel deploy, then confirm live frontend CDN chunk (example)
 ./scripts/verify_vercel_deploy_marker.sh is_platform_admin
 
+# If Vercel production is stale (marker 404), trigger a redeploy:
+#   export VERCEL_DEPLOY_HOOK_URL='...'   # Vercel → Settings → Git → Deploy Hooks
+#   ./scripts/trigger_vercel_deploy.sh
+# Or: Vercel dashboard → Deployments → latest → Redeploy → clear build cache.
+
 # Or combine steps 2–4 (backend + frontend):
 ./scripts/verify_security_deploy.sh --marker is_platform_admin --railway-marker require_platform_admin
 ```

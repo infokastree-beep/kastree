@@ -1,0 +1,21 @@
+# Optional: trigger a Vercel production redeploy on every push to main.
+# Add repository secret VERCEL_DEPLOY_HOOK_URL (Vercel → Settings → Git → Deploy Hooks).
+name: Vercel production deploy hook
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  trigger-vercel:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.VERCEL_DEPLOY_HOOK_URL != '' }}
+    steps:
+      - name: POST Vercel deploy hook
+        run: |
+          status=$(curl -sSL -o /tmp/hook.json -w '%{http_code}' -X POST "$VERCEL_DEPLOY_HOOK_URL")
+          echo "HTTP $status"
+          cat /tmp/hook.json
+          [[ "$status" =~ ^2 ]]
+        env:
+          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
