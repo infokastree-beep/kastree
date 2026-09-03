@@ -168,6 +168,32 @@ sys.exit(1)
 PY
 }
 
+discover_live_layout_chunks() {
+  python3 - "$SITE" <<'PY'
+import re, sys, urllib.request
+
+site = sys.argv[1].rstrip("/")
+req = urllib.request.Request(site + "/", headers={"Cache-Control": "no-cache", "Pragma": "no-cache"})
+html = urllib.request.urlopen(req, timeout=20).read().decode("utf-8", "replace")
+
+seen: set[str] = set()
+
+# Script tags on the page often include the current root app layout chunk.
+for path in re.findall(r"/_next/static/chunks/app/layout-[a-f0-9]+\.js", html):
+    rel = path.removeprefix("/_next/static/")
+    if rel not in seen:
+        seen.add(rel)
+        print(rel)
+
+# App Router flight data can also contain escaped static/chunks references.
+for rel in re.findall(r"static/chunks/app/layout-[a-f0-9]+\.js", html):
+    normalized = rel.removeprefix("static/")
+    if normalized not in seen:
+        seen.add(normalized)
+        print(normalized)
+PY
+}
+
 main() {
   local rel local_chunk url
 
@@ -177,6 +203,24 @@ main() {
     url="$(chunk_url "$rel")"
     echo "Checking Vercel CDN (VERCEL_VERIFY_CHUNK) for marker '$MARKER' ..."
     verify_chunk_at_url "$url" "chunk: $rel"
+    return
+  fi
+
+  local live_tried=0
+  while IFS= read -r rel; do
+    [[ -z "$rel" ]] && continue
+    url="$(chunk_url "$rel")"
+    echo "Checking Vercel CDN using live HTML-resolved layout chunk ..."
+    echo "  live chunk: $rel"
+    live_tried=1
+    if verify_chunk_at_url "$url" "chunk: $rel"; then
+      return 0
+    fi
+    echo ""
+  done < <(discover_live_layout_chunks)
+
+  if [[ "$live_tried" == "1" ]]; then
+    scan_cdn_for_marker
     return
   fi
 
