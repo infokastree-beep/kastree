@@ -29,8 +29,25 @@ if [[ -z "$MARKER" ]]; then
   exit 2
 fi
 
+is_production_build() {
+  python3 - "$FRONTEND" <<'PY'
+import json, pathlib, re, sys
+frontend = pathlib.Path(sys.argv[1])
+manifest_path = frontend / ".next/app-build-manifest.json"
+if not manifest_path.exists():
+    sys.exit(1)
+manifest = json.loads(manifest_path.read_text())
+hashed = re.compile(r"-[a-f0-9]{8,}\.js$")
+for files in manifest.get("pages", {}).values():
+    for f in files:
+        if f.startswith("static/chunks/") and hashed.search(f):
+            sys.exit(0)
+sys.exit(1)
+PY
+}
+
 find_local_chunk() {
-  rg -l --fixed-strings "$MARKER" "$FRONTEND/.next/static/chunks" -g '*.js' 2>/dev/null | head -1
+  rg -l --fixed-strings "$MARKER" "$FRONTEND/.next/static/chunks" -g '*-*.js' 2>/dev/null | head -1
 }
 
 find_manifest_chunks_with_marker() {
@@ -48,7 +65,7 @@ for files in manifest.get("pages", {}).values():
             chunks.add(f.removeprefix("static/"))
 for root, _, files in (frontend / ".next/static/chunks").walk():
     for name in files:
-        if not name.endswith(".js"):
+        if not name.endswith(".js") or "-" not in name.rsplit("/", 1)[-1]:
             continue
         path = (root / name).relative_to(frontend / ".next/static")
         try:
@@ -61,10 +78,12 @@ PY
 
 ensure_build() {
   local existing
-  existing="$(find_local_chunk || true)"
-  if [[ "$SKIP_BUILD" == "1" && -n "$existing" ]]; then
-    echo "Using existing frontend build ($existing)"
-    return 0
+  if [[ "$SKIP_BUILD" == "1" ]] && is_production_build; then
+    existing="$(find_local_chunk || true)"
+    if [[ -n "$existing" ]]; then
+      echo "Using existing frontend build ($existing)"
+      return 0
+    fi
   fi
   echo "Building frontend to resolve CDN chunk path for marker '$MARKER' ..."
   (cd "$FRONTEND" && npm run build --silent)
