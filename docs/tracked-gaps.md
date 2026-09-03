@@ -312,6 +312,37 @@ and `hanjie987@gmail.com` → **403**, `markdooling25@gmail.com` → **200**.
 — mandatory after security-relevant changes. See `docs/runbooks/deployment.md`
 § "Release verification (security changes)".
 
+## Admin nav link — stale Vercel CDN (cosmetic only, deferred)
+
+**Not a security gap.** The backend fix is live: `GET /admin/overview` requires
+`require_platform_admin()` and returns **403** for non-founder org owners
+(`infokastree@gmail.com`, `hanjie987@gmail.com`). Verified in production.
+
+**Cosmetic frontend gap:** the **Admin** nav link can still appear for non-founder
+org owners because production Vercel CDN is serving a **stale frontend bundle**
+that gates the link on `me.role === "owner"` instead of `me.is_platform_admin`.
+
+The corrected code is on `github/main` (commit `3686d9a` and later): `/users/me`
+exposes `is_platform_admin`, and `AdminNavLink` uses that flag. Local production
+builds include the expected dashboard layout chunk
+(`layout-225113b4a668b925.js` with `is_platform_admin`). `scripts/verify_vercel_deploy_marker.sh`
+confirms the marker is **404 / absent** on `https://www.kastree.ie` as of
+2026-09-03.
+
+**Vercel deploy status (2026-09-03):** multiple redeploy attempts and cache clears
+tonight did **not** get the new chunk onto the production CDN — worth investigating
+fresh in a future session (possible Vercel-side caching, root-directory, or build
+configuration issue). **Do not keep forcing redeploys in the same session.**
+
+**Longer-term deploy plumbing added:** `scripts/trigger_vercel_deploy.sh` (POST
+to `VERCEL_DEPLOY_HOOK_URL`) and `.github/workflows/vercel-deploy-hook.yml`
+(optional GitHub secret `VERCEL_DEPLOY_HOOK_URL`). Use these once a deploy hook
+is configured, then re-run `scripts/verify_security_deploy.sh` until the Vercel
+CDN step passes.
+
+**Until the CDN updates:** treat as UI-only — unauthorized users who click Admin
+see a blocked API, not cross-tenant data.
+
 ## Production users table — placeholder Clerk emails
 
 Some production `users.email` rows still show `@users.clerk.pending` placeholders
