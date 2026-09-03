@@ -400,3 +400,32 @@ def test_regenerate_when_object_missing() -> None:
     assert url == "https://example.com/exports/new.xlsx"
     assert export.status == "complete"
     assert storage.put_export.called
+
+
+def test_s3_put_export_omits_tagging_for_r2(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R2 rejects x-amz-tagging on PutObject — must not send Tagging=."""
+    from datetime import datetime, timezone
+
+    from app.config import settings
+    from app.services.exporter import S3ObjectStorage
+
+    monkeypatch.setattr(
+        settings,
+        "s3_endpoint_url",
+        "https://account.r2.cloudflarestorage.com",
+    )
+    captured: dict[str, object] = {}
+
+    class FakeClient:
+        def put_object(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    storage = S3ObjectStorage(client=FakeClient())
+    storage.put_export(
+        key="exports/test-id.xlsx",
+        body=b"data",
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        expires_at=datetime.now(timezone.utc),
+    )
+    assert "Tagging" not in captured
+    assert captured["Key"] == "exports/test-id.xlsx"

@@ -38,9 +38,20 @@ RETENTION_TAG_KEY = "retention"
 RETENTION_TAG_VALUE = "export-30d"
 
 
-def build_export_lifecycle_rule(*, days: int | None = None) -> dict[str, Any]:
-    """Lifecycle rule: expire objects under exports/ tagged retention=export-30d."""
+def build_export_lifecycle_rule(*, days: int | None = None, r2: bool = False) -> dict[str, Any]:
+    """Lifecycle rule: expire objects under exports/.
+
+    AWS S3: prefix + retention tag (objects uploaded with Tagging=).
+    Cloudflare R2: prefix only — R2 does not support object tagging on PutObject.
+    """
     ttl = days if days is not None else settings.export_file_ttl_days
+    if r2:
+        return {
+            "ID": RULE_ID,
+            "Status": "Enabled",
+            "Filter": {"Prefix": EXPORT_PREFIX},
+            "Expiration": {"Days": ttl},
+        }
     return {
         "ID": RULE_ID,
         "Status": "Enabled",
@@ -91,7 +102,10 @@ def configure_export_lifecycle(
     Returns the configuration that was applied (Rules list).
     """
     target = bucket or settings.s3_bucket
-    export_rule = build_export_lifecycle_rule(days=days)
+    r2 = bool(
+        settings.s3_endpoint_url and "r2.cloudflarestorage.com" in settings.s3_endpoint_url
+    )
+    export_rule = build_export_lifecycle_rule(days=days, r2=r2)
     existing = get_existing_rules(client, target)
     rules = merge_lifecycle_rules(existing, export_rule)
     configuration = {"Rules": rules}
