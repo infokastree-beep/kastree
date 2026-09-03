@@ -255,6 +255,25 @@ The error message surfaced to the UI when credentials are absent now reads
 *"Object storage credentials are not configured…"* (improved from the generic
 `"Export job failed unexpectedly"` — commit `030b8fc`+).
 
+## R2 API token rotation — `kastree-exports-backend` (expires September 2027)
+
+The Cloudflare R2 Account API token **`kastree-exports-backend`** (mapped to
+`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` on Railway) expires **one year
+from creation — September 2027**. Set a **calendar reminder to rotate it before
+then** (e.g. August 2027).
+
+**Rotation (simple):**
+
+1. In Cloudflare → R2 → Manage R2 API Tokens, create a new Account API Token
+   with the **same permissions** as `kastree-exports-backend`.
+2. Update `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` on Railway with the
+   new token values.
+3. Redeploy (or let Railway pick up the env change).
+
+**If the token lapses:** exports fail with the clear *"Object storage credentials
+are not configured…"* error surfaced to the UI (not a silent failure). Fix by
+rotating the token and redeploying.
+
 ## Trial balance uploads — local disk, not S3
 
 TB files are written to `settings.upload_dir` (env: `UPLOAD_DIR`, default
