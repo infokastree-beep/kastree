@@ -196,7 +196,7 @@ After changing any `NEXT_PUBLIC_*` variable, trigger a new Vercel deployment so 
 
 ## Release verification (security changes)
 
-Railway deploys from **GitHub** (`markdooling25-commits/kastree`), not the Cursor
+Railway deploys from **GitHub** (`infokastree-beep/kastree`), not the Cursor
 Cloud Agent `origin` remote. A commit pushed only to `origin` is **not** live in
 production even if Railway env vars change and trigger a redeploy.
 
