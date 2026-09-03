@@ -102,10 +102,8 @@ def configure_export_lifecycle(
     Returns the configuration that was applied (Rules list).
     """
     target = bucket or settings.s3_bucket
-    r2 = bool(
-        settings.normalized_s3_endpoint_url()
-        and "r2.cloudflarestorage.com" in settings.normalized_s3_endpoint_url()
-    )
+    endpoint = settings.normalized_s3_endpoint_url() or ""
+    r2 = "r2.cloudflarestorage.com" in endpoint
     export_rule = build_export_lifecycle_rule(days=days, r2=r2)
     existing = get_existing_rules(client, target)
     rules = merge_lifecycle_rules(existing, export_rule)
@@ -160,7 +158,11 @@ def main(argv: list[str] | None = None) -> int:
 
     client = _build_s3_client()
     target = args.bucket or settings.s3_bucket
-    export_rule = build_export_lifecycle_rule(days=args.days)
+    # Detect R2 the same way configure_export_lifecycle() does — prefix-only
+    # filter (R2 rejects object-tag lifecycle filters / PutObject tagging).
+    endpoint = settings.normalized_s3_endpoint_url() or ""
+    r2 = "r2.cloudflarestorage.com" in endpoint
+    export_rule = build_export_lifecycle_rule(days=args.days, r2=r2)
     existing = get_existing_rules(client, target)
     rules = merge_lifecycle_rules(existing, export_rule)
     configuration = {"Rules": rules}
@@ -170,15 +172,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\nDry run — would put_bucket_lifecycle_configuration on {target!r}")
         return 0
 
-    client.put_bucket_lifecycle_configuration(
-        Bucket=target,
-        LifecycleConfiguration=configuration,
-    )
+    applied = configure_export_lifecycle(client, bucket=target, days=args.days)
     print(f"\nApplied lifecycle configuration on bucket {target!r} (rule id={RULE_ID})")
+    # Re-read from the provider so we show the real applied config, not just the
+    # request payload (also confirms Admin permission succeeded).
+    live = get_existing_rules(client, target)
+    print("Live get_bucket_lifecycle_configuration Rules:")
+    print(json.dumps(live, indent=2, default=str))
     print(
         "Verify: aws s3api get-bucket-lifecycle-configuration "
         f"--bucket {target}"
     )
+    _ = applied
     return 0
 
 

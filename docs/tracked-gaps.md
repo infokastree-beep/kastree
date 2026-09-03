@@ -286,10 +286,49 @@ in the Railway environment. When any export job runs, `boto3` raises
    - `S3_ENDPOINT_URL` (R2 only: `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`)
 3. Run once against the bucket to configure 30-day auto-deletion lifecycle:
    `cd backend && python scripts/configure_s3_lifecycle.py`
+   (see **R2 lifecycle Admin token** below — still open as of 3 Sep 2026).
 
 The error message surfaced to the UI when credentials are absent now reads
 *"Object storage credentials are not configured…"* (improved from the generic
 `"Export job failed unexpectedly"` — commit `030b8fc`+).
+
+> **Note (3 Sep 2026):** Object R/W credentials and the `kastree-exports` bucket
+> are live; exports work. The remaining gap is **bucket lifecycle** (next
+> section), not missing app credentials.
+
+## R2 lifecycle Admin token — `exports/` 30-day expiry not applied yet
+
+**Status (3 Sep 2026, deferred to next session):** Attempted to apply the
+Product Spec §12.2 / §12.6 lifecycle policy via
+`backend/scripts/configure_s3_lifecycle.py`. Blocked on creating an
+**Admin-level** R2 API token.
+
+- Live `GetBucketLifecycleConfiguration` /
+  `PutBucketLifecycleConfiguration` with the Railway Object R/W token
+  (`kastree-exports-backend`) returns **AccessDenied** — confirmed Object
+  Read & Write only; cannot manage lifecycle.
+- Creating a new Admin token (Cloudflare dashboard / wrangler OAuth) did not
+  complete cleanly in this environment — same late-session auth /
+  session-fatigue pattern as other Cloudflare/Vercel device-login issues
+  tonight.
+- **No urgent risk leaving this open a few more days:** export volume is
+  currently minimal (test files only). `db-backups/` is outside `exports/`
+  and is unaffected once the prefix-scoped rule is applied.
+
+**Next session:**
+
+1. In Cloudflare → R2 → Manage R2 API Tokens, create
+   **`kastree-exports-lifecycle-admin`** with **Admin Read & Write**, scoped
+   to `kastree-exports` if the UI allows. Do **not** replace the Object R/W
+   app token used by Railway.
+2. Run with those Admin keys (env or one-shot), not the app Object R/W keys:
+   `cd backend && python scripts/configure_s3_lifecycle.py`
+3. Verify the **live** rule (API and/or Cloudflare dashboard Object
+   lifecycle):
+   - targets **`exports/`** only
+   - **Expiration Days = 30**
+   - does **not** affect **`db-backups/`** (no whole-bucket / empty-prefix
+     rule; no `db-backups/` prefix rule)
 
 ## R2 API token rotation — `kastree-exports-backend` (expires September 2027)
 
