@@ -251,6 +251,42 @@ def test_unusual_variance_extreme_outlier_uses_history_only_baseline() -> None:
     )
 
 
+def test_unusual_variance_four_monthly_observations_uses_50pct_bar() -> None:
+    """3–11 bucket: typical MoM 20% is not unusual; 60% MoM is."""
+    history = [Decimal("4.2"), Decimal("6.1"), Decimal("-2.0"), Decimal("8.5")]
+    twenty = _variance_item("revenue", name="Revenue", variance_pct="20.00")
+    sixty = _variance_item("revenue", name="Revenue", variance_pct="60.00")
+    assert evaluate_unusual_variance(twenty, history) is None
+    flagged = evaluate_unusual_variance(sixty, history)
+    assert flagged is not None
+    assert "4 months" in flagged.description
+
+
+def test_unusual_variance_twelve_quiet_monthly_observations_flags_15pct_mom() -> None:
+    """12+ bucket on a quiet MoM series: 15% exceeds 3σ; 8% does not."""
+    history = [
+        Decimal("4.2"),
+        Decimal("6.1"),
+        Decimal("-2.0"),
+        Decimal("8.5"),
+        Decimal("3.0"),
+        Decimal("5.5"),
+        Decimal("1.2"),
+        Decimal("7.0"),
+        Decimal("-1.5"),
+        Decimal("4.8"),
+        Decimal("6.3"),
+        Decimal("2.9"),
+    ]
+    assert len(history) == 12
+    fifteen = _variance_item("revenue", name="Revenue", variance_pct="15.00")
+    eight = _variance_item("revenue", name="Revenue", variance_pct="8.00")
+    flagged = evaluate_unusual_variance(fifteen, history)
+    assert flagged is not None
+    assert "12 months" in flagged.description
+    assert evaluate_unusual_variance(eight, history) is None
+
+
 def test_unusual_variance_skips_when_variance_pct_is_none() -> None:
     item = _variance_item("interest_income", variance_pct=None)
     history = [Decimal("10.00")] * 3

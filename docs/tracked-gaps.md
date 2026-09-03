@@ -203,6 +203,42 @@ first real upload — but this is the actual target design once built, not a vag
 **Source:** standard audit materiality practice (ISA 320 framework; commonly
 cited ranges from professional audit guidance).
 
+**Monthly cadence (confirmed 2026-09-03):** variance auto-detect and
+month-over-month arithmetic already work with monthly `period_end` dates
+(June then July upload through the real API — see
+`test_monthly_cadence_upload_auto_detects_prior_variance`). The static
+threshold (**>10% OR >1,000**) was **not** designed with monthly movements in
+mind: a 60% month-on-month revenue swing is material under the same rule as a
+60% year-on-year swing. When the benchmark-based auto-suggestion above is
+built, it should consider **reporting frequency** (monthly vs quarterly vs
+annual) as well as company type — not only the ISA 320 company-type table.
+
+## Unusual variance history buckets vs monthly cadence
+
+Risk Rule 2 (`unusual_variance`) tiers on **observation count**, not calendar
+span: skip if history length &lt; 3; **3–11** flag when `abs(variance_pct) > 50`;
+**12+** flag when `|current − mean| > 3 × sample stdev` over the last 12
+percentages. Copy always says “N months of historical data.”
+
+**Live API today:** `POST /trial-balances/{id}/risk` always passes an empty
+history map (`_MVP_HISTORICAL_VARIANCE_PCTS`). Rule 2 therefore **never fires
+in production**, monthly or annual, until history is loaded from prior
+`variance_analyses` rows. That is documented MVP behaviour in `risk.py`, not a
+monthly-specific bug.
+
+**Engine check with monthly-scale % series** (unit tests, history passed in
+directly — 2026-09-03):
+
+- 4 prior MoM observations: 20% does **not** flag; 60% **does** (50% bar).
+  Sensible for monthly.
+- 12 quiet MoM observations (mean ≈ 3.8%, stdev ≈ 3.3%): **15% MoM flags**
+  (z ≈ 3.4); 8% does not. Once history is wired, a normal busy month can trip
+  the 12+ bucket because MoM noise is tighter than typical YoY swings. Worth a
+  real product pass before monthly is a marketed use case — do not retune
+  speculatively until history is actually supplied.
+
+Low priority. No production gap beyond the existing empty-history MVP skip.
+
 ## Financial statements — currency display (resolved)
 
 Browser dashboard (`StatementsDashboard.tsx`) and export templates (`exporter.py`
