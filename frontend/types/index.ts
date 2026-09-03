@@ -143,3 +143,22 @@ export interface StatementsResponse {
   functional_currency: string;
   statements: StatementBlock[];
 }
+
+export type ExportFormat = "xlsx" | "csv" | "pdf";
+export type ExportStatus = "pending" | "processing" | "complete" | "failed";
+
+export interface ExportAcceptedResponse {
+  export_id: string;
+  tb_id: string;
+  status: "pending";
+  message: string;
+}
+
+export interface ExportStatusResponse {
+  id: string;
+  tb_id: string;
+  format: ExportFormat;
+  status: ExportStatus;
+  file_url: string | null;
+  error_message: string | null;
+}

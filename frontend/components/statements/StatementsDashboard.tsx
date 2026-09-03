@@ -7,6 +7,7 @@ import { ApiError, apiFetch } from "@/lib/api";
 import { formatCurrency, formatCurrencyCode } from "@/lib/currency";
 import { DISCLAIMER_TEXT } from "@/lib/constants";
 import type { StatementBlock, StatementsResponse } from "@/types";
+import { ExportButton } from "./ExportButton";
 
 type Tab = "SOPL" | "SOFP" | "SOCIE";
 
@@ -168,7 +169,8 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
                 </button>
               ))}
             </div>
-            <div className="flex flex-col items-end gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <ExportButton tbId={tbId} />
               {generateMutation.error ? (
                 <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
                   {generateMutation.error instanceof Error
