@@ -26,6 +26,10 @@ const LIVE_STEPS = [
     body: "SOPL, SOFP, and SOCIE generate in minutes. View them in the app, tab by tab.",
   },
   {
+    title: "Export",
+    body: "Download Excel, PDF, or CSV packs with the statements — currency formatting and tier-aware watermarking included.",
+  },
+  {
     title: "Clients",
     body: "Organise work by client group and company (GBP / EUR / USD functional currency per company).",
   },
@@ -107,6 +111,22 @@ export function LandingPage() {
           </div>
         </section>
 
+        <section className="border-b border-stone-200 bg-stone-100/80">
+          <div className="mx-auto max-w-5xl px-6 py-10 sm:py-12">
+            <img
+              src="/images/statements-dashboard.png"
+              alt="Kastree statements dashboard showing SOPL, SOFP, and SOCIE tabs with a Statement of Financial Position in EUR"
+              className="w-full border border-stone-200 bg-white shadow-sm"
+              width={1280}
+              height={900}
+            />
+            <p className="mt-3 text-sm text-stone-600">
+              The statements dashboard — switch between SOPL, SOFP, and SOCIE, then
+              export Excel, PDF, or CSV when you&apos;re ready.
+            </p>
+          </div>
+        </section>
+
         <section className="border-b border-stone-200">
           <div className="mx-auto max-w-5xl px-6 py-14">
             <h2 className="text-2xl font-semibold tracking-tight">The problem</h2>
@@ -161,12 +181,10 @@ export function LandingPage() {
                   AI-drafted commentary on material movements — suggested wording only;
                   you review and edit before anything goes to a client
                 </li>
-                <li>Export packs (Excel / PDF) including statements and variance notes</li>
               </ul>
               <p className="mt-3 text-amber-900/80">
-                The core loop — upload, map, statements — is what we&apos;re validating
-                with practices first. Commentary and exports are wired on the backend;
-                the in-app review flow is what pilot users are helping us finish.
+                Upload, map, statements, and export are live. Variance commentary UI is
+                what pilot users are helping us finish.
               </p>
             </div>
             <h3 className="mt-8 text-sm font-semibold uppercase tracking-wide text-stone-500">
