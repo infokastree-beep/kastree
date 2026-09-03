@@ -55,7 +55,7 @@ export function ProductSwitcher({
 
   if (products.length < 2) {
     return (
-      <span className="text-sm font-semibold tracking-tight text-stone-900">
+      <span className="font-display text-base font-semibold tracking-tight text-accent sm:text-lg">
         {formatProductLabel(activeProduct)}
       </span>
     );
@@ -78,14 +78,14 @@ export function ProductSwitcher({
         aria-expanded={open}
         aria-controls={listboxId}
         onClick={() => setOpen((value) => !value)}
-        className="flex items-center gap-1.5 rounded border border-stone-200 bg-white px-2.5 py-1.5 text-left text-sm font-semibold tracking-tight text-stone-900 hover:bg-stone-50"
+        className="flex items-center gap-1.5 rounded-md border border-line bg-surface-elevated px-2.5 py-1.5 text-left text-sm font-semibold tracking-tight text-accent hover:bg-accent-muted"
       >
         <span>{formatProductLabel(activeProduct)}</span>
         <svg
           aria-hidden
           viewBox="0 0 20 20"
           fill="currentColor"
-          className={`h-4 w-4 shrink-0 text-stone-500 transition-transform ${open ? "rotate-180" : ""}`}
+          className={`h-4 w-4 shrink-0 text-soft transition-transform ${open ? "rotate-180" : ""}`}
         >
           <path
             fillRule="evenodd"
@@ -100,7 +100,7 @@ export function ProductSwitcher({
           id={listboxId}
           role="listbox"
           aria-label="Products"
-          className="absolute left-0 top-full z-20 mt-1 min-w-full rounded border border-stone-200 bg-white py-1 shadow-sm"
+          className="absolute left-0 top-full z-20 mt-1 min-w-full rounded-md border border-line bg-surface-elevated py-1 shadow-sm"
         >
           {products.map((product) => {
             const isActive = product.id === activeProduct.id;
@@ -112,13 +112,13 @@ export function ProductSwitcher({
                   onClick={() => handleSelect(product)}
                   className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm ${
                     isActive
-                      ? "cursor-default bg-stone-50 font-semibold text-stone-900"
-                      : "text-stone-700 hover:bg-stone-50 hover:text-stone-900"
+                      ? "cursor-default bg-accent-muted font-semibold text-accent"
+                      : "text-ink-secondary hover:bg-accent-muted/60 hover:text-accent"
                   }`}
                 >
                   <span>{formatProductLabel(product)}</span>
                   {isActive ? (
-                    <span className="text-xs font-normal text-stone-500">Active</span>
+                    <span className="text-xs font-normal text-soft">Active</span>
                   ) : null}
                 </button>
               </li>

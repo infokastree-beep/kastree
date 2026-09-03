@@ -40,7 +40,7 @@ export function formatBytes(bytes: number): string {
 
 export function confidenceBadgeClass(confidence: number | null): string {
   if (confidence === null) return "bg-stone-200 text-stone-700";
-  if (confidence >= 0.85) return "bg-green-100 text-green-800";
+  if (confidence >= 0.85) return "bg-accent-muted text-accent";
   if (confidence >= 0.6) return "bg-amber-100 text-amber-900";
   return "bg-red-100 text-red-800";
 }

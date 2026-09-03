@@ -2,6 +2,66 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Accent — forest teal: trustworthy, financial, distinct from default blue/gray */
+  --accent: #0f5c4c;
+  --accent-hover: #0a463a;
+  --accent-muted: #e4f0ec;
+  --accent-foreground: #ffffff;
+
+  --ink: #14201c;
+  --ink-secondary: #3d4f48;
+  --muted: #5c6b65;
+  --surface: #f4f6f4;
+  --surface-elevated: #ffffff;
+  --border: #d5ded9;
+  --border-strong: #b8c5be;
+}
+
 body {
-  @apply bg-stone-50 text-stone-900 antialiased;
+  @apply bg-[var(--surface)] text-[var(--ink)] antialiased;
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+.font-display {
+  font-family: var(--font-display), ui-serif, Georgia, serif;
+}
+
+/* Motion without opacity — content stays readable on first paint */
+@keyframes landing-fade-up {
+  from {
+    transform: translateY(10px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes landing-fade-in {
+  from {
+    transform: translateY(8px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.landing-fade-up {
+  animation: landing-fade-up 0.65s ease-out both;
+}
+
+.landing-fade-up-delay {
+  animation: landing-fade-up 0.65s ease-out 0.08s both;
+}
+
+.landing-fade-in {
+  animation: landing-fade-in 0.75s ease-out 0.12s both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-fade-up,
+  .landing-fade-up-delay,
+  .landing-fade-in {
+    animation: none;
+  }
 }

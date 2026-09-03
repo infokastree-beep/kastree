@@ -62,21 +62,21 @@ export function LandingPage() {
   const { isSignedIn } = useAuth();
 
   return (
-    <div className="min-h-screen bg-stone-50 text-stone-900">
-      <header className="border-b border-stone-200 bg-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-6 py-4">
+    <div className="min-h-screen bg-surface text-ink">
+      <header className="border-b border-line/80 bg-surface-elevated/90 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-content items-center justify-between gap-4 px-6 py-5 sm:px-8">
           <ProductSwitcher />
           {clerkReady ? (
-            <div className="flex items-center gap-3 text-sm">
+            <div className="flex items-center gap-4 text-sm">
               {isSignedIn ? (
                 <Link
                   href={POST_AUTH_PATH}
-                  className="rounded bg-stone-900 px-3 py-1.5 font-medium text-white"
+                  className="rounded-md bg-accent px-4 py-2 font-medium text-accent-foreground transition-colors hover:bg-accent-hover"
                 >
                   Go to app
                 </Link>
               ) : (
-                <SignInNavLink className="font-medium text-stone-700 underline-offset-2 hover:underline" />
+                <SignInNavLink className="font-medium text-ink-secondary underline-offset-4 transition-colors hover:text-accent hover:underline" />
               )}
             </div>
           ) : null}
@@ -84,53 +84,71 @@ export function LandingPage() {
       </header>
 
       <main>
-        <section className="border-b border-stone-200 bg-white">
-          <div className="mx-auto max-w-5xl px-6 py-16 sm:py-20">
-            <p className="text-sm font-medium uppercase tracking-wide text-stone-500">
+        {/* Hero — brand, headline, support, CTA, then dominant product image */}
+        <section className="relative overflow-hidden border-b border-line bg-surface-elevated">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--accent-muted)_0%,_transparent_55%),linear-gradient(180deg,_#ffffff_0%,_var(--surface)_100%)]"
+          />
+          <div className="relative mx-auto max-w-content px-6 pb-6 pt-16 sm:px-8 sm:pb-8 sm:pt-24">
+            <p className="landing-fade-up font-display text-3xl font-medium tracking-tight text-accent sm:text-4xl">
+              {APP_NAME}
+            </p>
+            <p className="landing-fade-up mt-3 text-sm font-medium uppercase tracking-[0.14em] text-soft">
               For accounting practices &amp; fractional CFOs
             </p>
-            <h1 className="mt-3 max-w-3xl text-4xl font-semibold tracking-tight sm:text-5xl">
+            <h1 className="landing-fade-up-delay font-display mt-6 max-w-3xl text-display-lg text-ink sm:text-display-xl">
               Trial balance in. SOPL, SOFP, and SOCIE out — without rebuilding the
               same spreadsheet every month.
             </h1>
-            <p className="mt-5 max-w-2xl text-lg text-stone-600">
-              Upload <code className="text-base">.xlsx</code> or{" "}
-              <code className="text-base">.csv</code>, confirm how accounts map to
-              standard lines, and review the three statements in the browser.
+            <p className="landing-fade-up-delay mt-6 max-w-2xl text-lg leading-relaxed text-ink-secondary sm:text-xl">
+              Upload <code className="rounded bg-accent-muted/70 px-1.5 py-0.5 text-base text-accent">.xlsx</code>{" "}
+              or{" "}
+              <code className="rounded bg-accent-muted/70 px-1.5 py-0.5 text-base text-accent">.csv</code>
+              , confirm how accounts map to standard lines, and review the three
+              statements in the browser.
             </p>
-            <p className="mt-4 text-sm text-stone-500">
+            <p className="landing-fade-up-delay mt-4 text-sm text-soft">
               Early access — we&apos;re onboarding a small number of practices for
               live feedback.
             </p>
-            <a
-              href="#waitlist"
-              className="mt-8 inline-block rounded bg-stone-900 px-5 py-2.5 text-sm font-medium text-white"
-            >
-              Join the waitlist
-            </a>
+            <div className="landing-fade-up-delay mt-10 flex flex-wrap items-center gap-4">
+              <a
+                href="#waitlist"
+                className="inline-flex rounded-md bg-accent px-6 py-3 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
+              >
+                Join the waitlist
+              </a>
+              <a
+                href="#what-you-get"
+                className="text-sm font-medium text-ink-secondary underline-offset-4 transition-colors hover:text-accent hover:underline"
+              >
+                See what&apos;s live
+              </a>
+            </div>
           </div>
-        </section>
 
-        <section className="border-b border-stone-200 bg-stone-100/80">
-          <div className="mx-auto max-w-5xl px-6 py-10 sm:py-12">
+          <div className="landing-fade-in relative mx-auto max-w-content px-6 pb-16 sm:px-8 sm:pb-24">
             <img
               src="/images/statements-dashboard.png"
               alt="Kastree statements dashboard showing SOPL, SOFP, and SOCIE tabs with a Statement of Financial Position in EUR"
-              className="w-full border border-stone-200 bg-white shadow-sm"
+              className="w-full border border-line bg-surface-elevated shadow-[0_24px_60px_-28px_rgba(20,32,28,0.35)]"
               width={1280}
               height={900}
             />
-            <p className="mt-3 text-sm text-stone-600">
+            <p className="mt-4 text-sm text-soft">
               The statements dashboard — switch between SOPL, SOFP, and SOCIE, then
               export Excel, PDF, or CSV when you&apos;re ready.
             </p>
           </div>
         </section>
 
-        <section className="border-b border-stone-200">
-          <div className="mx-auto max-w-5xl px-6 py-14">
-            <h2 className="text-2xl font-semibold tracking-tight">The problem</h2>
-            <div className="mt-4 max-w-3xl space-y-4 text-stone-600">
+        <section className="border-b border-line">
+          <div className="mx-auto max-w-content px-6 py-section-sm sm:px-8 sm:py-section">
+            <h2 className="font-display text-heading-lg text-ink sm:text-[2.25rem]">
+              The problem
+            </h2>
+            <div className="mt-8 max-w-2xl space-y-6 text-lg leading-relaxed text-ink-secondary">
               <p>
                 Most month-end work isn&apos;t the thinking — it&apos;s the repetition:
                 reformatting the same trial balance export, manually grouping accounts
@@ -144,8 +162,9 @@ export function LandingPage() {
               </p>
               <p>
                 Kastree doesn&apos;t replace your judgement. It removes the mechanical
-                steps between <strong className="font-medium text-stone-800">trial balance</strong>{" "}
-                and <strong className="font-medium text-stone-800">reviewable statements</strong>,
+                steps between{" "}
+                <strong className="font-semibold text-ink">trial balance</strong> and{" "}
+                <strong className="font-semibold text-ink">reviewable statements</strong>,
                 so you spend time on mapping edge cases and client questions — not
                 copy-paste.
               </p>
@@ -153,26 +172,34 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section className="border-b border-stone-200 bg-white">
-          <div className="mx-auto max-w-5xl px-6 py-14">
-            <h2 className="text-2xl font-semibold tracking-tight">What you get</h2>
-            <h3 className="mt-8 text-sm font-semibold uppercase tracking-wide text-stone-500">
+        <section
+          id="what-you-get"
+          className="border-b border-line bg-surface-elevated"
+        >
+          <div className="mx-auto max-w-content px-6 py-section-sm sm:px-8 sm:py-section">
+            <h2 className="font-display text-heading-lg text-ink sm:text-[2.25rem]">
+              What you get
+            </h2>
+
+            <h3 className="mt-14 text-xs font-semibold uppercase tracking-[0.16em] text-accent">
               Live now
             </h3>
-            <ul className="mt-4 grid gap-4 sm:grid-cols-2">
+            <ul className="mt-8 grid gap-x-12 gap-y-10 sm:grid-cols-2">
               {LIVE_STEPS.map((step) => (
-                <li
-                  key={step.title}
-                  className="rounded-lg border border-stone-200 bg-stone-50 p-4"
-                >
-                  <p className="font-medium text-stone-900">{step.title}</p>
-                  <p className="mt-1 text-sm text-stone-600">{step.body}</p>
+                <li key={step.title} className="border-t border-line pt-5">
+                  <p className="font-display text-heading-md text-ink">{step.title}</p>
+                  <p className="mt-2 text-[0.95rem] leading-relaxed text-ink-secondary">
+                    {step.body}
+                  </p>
                 </li>
               ))}
             </ul>
-            <div className="mt-8 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-              <p className="font-medium">In pilot / rolling out to early users</p>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-amber-900/90">
+
+            <div className="mt-16 border-l-4 border-amber-500 bg-amber-50/80 px-6 py-5 text-sm text-amber-950">
+              <p className="font-semibold tracking-tight">
+                In pilot / rolling out to early users
+              </p>
+              <ul className="mt-3 list-disc space-y-2 pl-5 text-amber-950/85">
                 <li>
                   Period-on-period variance when a prior trial balance exists for the
                   same company
@@ -182,104 +209,110 @@ export function LandingPage() {
                   you review and edit before anything goes to a client
                 </li>
               </ul>
-              <p className="mt-3 text-amber-900/80">
+              <p className="mt-4 text-amber-900/75">
                 Upload, map, statements, and export are live. Variance commentary UI is
                 what pilot users are helping us finish.
               </p>
             </div>
-            <h3 className="mt-8 text-sm font-semibold uppercase tracking-wide text-stone-500">
+
+            <h3 className="mt-16 text-xs font-semibold uppercase tracking-[0.16em] text-soft">
               What it is not
             </h3>
-            <ul className="mt-3 list-disc space-y-1 pl-5 text-stone-600">
+            <ul className="mt-5 max-w-2xl list-disc space-y-2 pl-5 text-ink-secondary">
               <li>Not statutory accounts or a filing tool</li>
-              <li>Not “push button, send to client” — every mapping is confirmed by a person</li>
+              <li>
+                Not “push button, send to client” — every mapping is confirmed by a
+                person
+              </li>
               <li>Not a general ledger — you still work from the client&apos;s TB export</li>
             </ul>
           </div>
         </section>
 
-        <section className="border-b border-stone-200">
-          <div className="mx-auto max-w-5xl px-6 py-14">
-            <h2 className="text-2xl font-semibold tracking-tight">How it works</h2>
-            <ol className="mt-6 space-y-4">
-              <li className="flex gap-4">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-stone-900 text-sm font-medium text-white">
-                  1
-                </span>
-                <div>
-                  <p className="font-medium">Upload the trial balance</p>
-                  <p className="text-sm text-stone-600">
-                    Same file you&apos;d normally drop into a template.
-                  </p>
-                </div>
-              </li>
-              <li className="flex gap-4">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-stone-900 text-sm font-medium text-white">
-                  2
-                </span>
-                <div>
-                  <p className="font-medium">Confirm mappings</p>
-                  <p className="text-sm text-stone-600">
-                    Fix anything the suggestions got wrong — unusual accounts, one-offs,
-                    reclasses.
-                  </p>
-                </div>
-              </li>
-              <li className="flex gap-4">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-stone-900 text-sm font-medium text-white">
-                  3
-                </span>
-                <div>
-                  <p className="font-medium">Generate and review</p>
-                  <p className="text-sm text-stone-600">
-                    SOPL, SOFP, SOCIE in the dashboard. Typical first run: mapping review
-                    is where you spend time; regenerate is one click once mappings are
-                    right.
-                  </p>
-                </div>
-              </li>
+        <section className="border-b border-line">
+          <div className="mx-auto max-w-content px-6 py-section-sm sm:px-8 sm:py-section">
+            <h2 className="font-display text-heading-lg text-ink sm:text-[2.25rem]">
+              How it works
+            </h2>
+            <ol className="mt-12 max-w-2xl space-y-10">
+              {[
+                {
+                  n: "1",
+                  title: "Upload the trial balance",
+                  body: "Same file you'd normally drop into a template.",
+                },
+                {
+                  n: "2",
+                  title: "Confirm mappings",
+                  body: "Fix anything the suggestions got wrong — unusual accounts, one-offs, reclasses.",
+                },
+                {
+                  n: "3",
+                  title: "Generate and review",
+                  body: "SOPL, SOFP, SOCIE in the dashboard. Typical first run: mapping review is where you spend time; regenerate is one click once mappings are right.",
+                },
+              ].map((step) => (
+                <li key={step.n} className="flex gap-5">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-semibold text-accent-foreground">
+                    {step.n}
+                  </span>
+                  <div className="pt-0.5">
+                    <p className="font-display text-heading-md text-ink">{step.title}</p>
+                    <p className="mt-1.5 leading-relaxed text-ink-secondary">{step.body}</p>
+                  </div>
+                </li>
+              ))}
             </ol>
           </div>
         </section>
 
-        <section className="border-b border-stone-200 bg-white">
-          <div className="mx-auto max-w-5xl px-6 py-14">
-            <h2 className="text-2xl font-semibold tracking-tight">Who it&apos;s for</h2>
-            <ul className="mt-4 list-disc space-y-2 pl-5 text-stone-600">
-              <li>Small and mid-size accounting practices doing regular management accounts</li>
+        <section className="border-b border-line bg-surface-elevated">
+          <div className="mx-auto max-w-content px-6 py-section-sm sm:px-8 sm:py-section">
+            <h2 className="font-display text-heading-lg text-ink sm:text-[2.25rem]">
+              Who it&apos;s for
+            </h2>
+            <ul className="mt-8 max-w-2xl list-disc space-y-3 pl-5 text-lg text-ink-secondary">
+              <li>
+                Small and mid-size accounting practices doing regular management
+                accounts
+              </li>
               <li>Fractional CFOs with several similar clients on comparable charts</li>
               <li>Teams tired of maintaining one master spreadsheet per client</li>
             </ul>
-            <p className="mt-4 text-sm text-stone-600">
+            <p className="mt-8 max-w-2xl leading-relaxed text-ink-secondary">
               Best fit: clients where a standard chart maps cleanly to management lines.
-              Messy or highly bespoke charts of accounts still work — you&apos;ll just spend
-              longer on mapping review.
+              Messy or highly bespoke charts of accounts still work — you&apos;ll just
+              spend longer on mapping review.
             </p>
           </div>
         </section>
 
-        <section id="waitlist" className="border-b border-stone-200">
-          <div className="mx-auto max-w-5xl px-6 py-14">
-            <h2 className="text-2xl font-semibold tracking-tight">Get early access</h2>
-            <p className="mt-3 max-w-2xl text-stone-600">
+        <section id="waitlist" className="border-b border-line">
+          <div className="mx-auto max-w-content px-6 py-section-sm sm:px-8 sm:py-section">
+            <h2 className="font-display text-heading-lg text-ink sm:text-[2.25rem]">
+              Get early access
+            </h2>
+            <p className="mt-5 max-w-2xl text-lg leading-relaxed text-ink-secondary">
               We&apos;re opening Kastree to a handful of practices for structured
-              feedback — not a public launch. Tell us who you are and we&apos;ll reach out
-              when there&apos;s a slot.
+              feedback — not a public launch. Tell us who you are and we&apos;ll reach
+              out when there&apos;s a slot.
             </p>
-            <div className="mt-8 max-w-xl">
+            <div className="mt-12 max-w-xl">
               <WaitlistForm />
             </div>
           </div>
         </section>
 
-        <section className="bg-white">
-          <div className="mx-auto max-w-5xl px-6 py-14">
-            <h2 className="text-2xl font-semibold tracking-tight">FAQ</h2>
-            <dl className="mt-6 space-y-6">
+        <section className="bg-surface-elevated">
+          <div className="mx-auto max-w-content px-6 py-section-sm sm:px-8 sm:py-section">
+            <h2 className="font-display text-heading-lg text-ink sm:text-[2.25rem]">
+              FAQ
+            </h2>
+            <dl className="mt-12 max-w-2xl space-y-10">
               {FAQ.map((item) => (
-                <div key={item.q}>
-                  <dt className="font-medium text-stone-900">{item.q}</dt>
-                  <dd className="mt-1 text-sm text-stone-600">{item.a}</dd>
+                <div key={item.q} className="border-t border-line pt-6">
+                  <dt className="font-display text-heading-md text-ink">{item.q}</dt>
+                  <dd className="mt-2 leading-relaxed text-ink-secondary">{item.a}</dd>
                 </div>
               ))}
             </dl>
@@ -287,10 +320,12 @@ export function LandingPage() {
         </section>
       </main>
 
-      <footer className="border-t border-stone-200 bg-stone-100">
-        <div className="mx-auto max-w-5xl px-6 py-8 text-xs text-stone-500">
-          <p>{DISCLAIMER_TEXT}</p>
-          <p className="mt-2">© {new Date().getFullYear()} {APP_NAME}</p>
+      <footer className="border-t border-line bg-[var(--ink)] text-[var(--accent-muted)]">
+        <div className="mx-auto max-w-content px-6 py-10 text-xs leading-relaxed sm:px-8">
+          <p className="opacity-80">{DISCLAIMER_TEXT}</p>
+          <p className="mt-4 font-medium text-white/90">
+            © {new Date().getFullYear()} {APP_NAME}
+          </p>
         </div>
       </footer>
     </div>

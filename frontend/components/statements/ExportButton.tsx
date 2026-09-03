@@ -177,8 +177,8 @@ export function ExportButton({ tbId }: { tbId: string }) {
     <div className="flex items-center gap-2">
       {/* Status / result area */}
       {state.phase === "polling" || state.phase === "submitting" ? (
-        <span className="flex items-center gap-1.5 text-sm text-stone-500">
-          <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-stone-300 border-t-stone-600" />
+        <span className="flex items-center gap-1.5 text-sm text-soft">
+          <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-line border-t-accent" />
           {state.phase === "submitting"
             ? `Starting ${FORMAT_LABELS[state.format]} export…`
             : `Building ${FORMAT_LABELS[(state as PhasePolling).format]}…`}
@@ -187,20 +187,20 @@ export function ExportButton({ tbId }: { tbId: string }) {
 
       {state.phase === "ready" ? (
         <span className="flex items-center gap-2 text-sm">
-          <span className="text-stone-600">
+          <span className="text-ink-secondary">
             {FORMAT_LABELS[(state as PhaseReady).format]} ready
           </span>
           <button
             type="button"
             onClick={() => handleDownload((state as PhaseReady).exportId)}
-            className="rounded bg-stone-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-700"
+            className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
           >
             Download
           </button>
           <button
             type="button"
             onClick={reset}
-            className="text-xs text-stone-400 hover:text-stone-700"
+            className="text-xs text-soft hover:text-ink"
           >
             ✕
           </button>
@@ -209,13 +209,13 @@ export function ExportButton({ tbId }: { tbId: string }) {
 
       {state.phase === "failed" ? (
         <span className="flex items-center gap-2">
-          <span className="rounded border border-red-200 bg-red-50 px-2 py-1 text-sm text-red-800">
+          <span className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-sm text-red-800">
             {(state as PhaseFailed).message}
           </span>
           <button
             type="button"
             onClick={reset}
-            className="text-xs text-stone-400 hover:text-stone-700"
+            className="text-xs text-soft hover:text-ink"
           >
             ✕
           </button>
@@ -229,7 +229,7 @@ export function ExportButton({ tbId }: { tbId: string }) {
             type="button"
             disabled={isBusy}
             onClick={() => setOpen((o) => !o)}
-            className="flex items-center gap-1.5 rounded border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-900 hover:bg-stone-50 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-md border border-line bg-surface-elevated px-3 py-1.5 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
           >
             Export
             <svg
@@ -246,14 +246,14 @@ export function ExportButton({ tbId }: { tbId: string }) {
           </button>
 
           {open ? (
-            <div className="absolute right-0 z-20 mt-1 w-44 rounded border border-stone-200 bg-white py-1 shadow-lg">
+            <div className="absolute right-0 z-20 mt-1 w-44 rounded-md border border-line bg-surface-elevated py-1 shadow-sm">
               {(Object.entries(FORMAT_LABELS) as [ExportFormat, string][]).map(
                 ([fmt, label]) => (
                   <button
                     key={fmt}
                     type="button"
                     onClick={() => startExport(fmt)}
-                    className="block w-full px-4 py-2 text-left text-sm text-stone-700 hover:bg-stone-50"
+                    className="block w-full px-4 py-2 text-left text-sm text-ink-secondary transition-colors hover:bg-accent-muted hover:text-accent"
                   >
                     {label}
                   </button>

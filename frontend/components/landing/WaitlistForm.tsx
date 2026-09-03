@@ -164,11 +164,11 @@ export function WaitlistForm() {
       <button
         type="submit"
         disabled={status === "submitting"}
-        className="rounded bg-stone-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60"
+        className="rounded-md bg-accent px-6 py-3 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-60"
       >
         {status === "submitting" ? "Joining…" : "Join waitlist"}
       </button>
-      <p className="text-xs text-stone-500">
+      <p className="text-xs text-soft">
         We&apos;ll only use this to contact you about Kastree early access.
       </p>
     </form>

@@ -41,7 +41,10 @@ export function AdminNavLink() {
   }
 
   return (
-    <Link href="/admin" className="hover:text-stone-900">
+    <Link
+      href="/admin"
+      className="transition-colors hover:text-accent"
+    >
       Admin
     </Link>
   );
