@@ -500,16 +500,53 @@ then, keeping the column is low-cost denormalization with no user-facing benefit
 
 ## Infrastructure account ownership — personal email, not business entity
 
-All infrastructure accounts (GitHub, Vercel, Railway, Clerk, Blacknight) are
-currently owned by a **personal email**, not a dedicated business entity.
+All infrastructure accounts started under a **personal email**, not a dedicated
+business entity. **As of 3 Sep 2026 overnight cutover**, most ownership and
+security work is done. What remains outstanding is the short list below — not a
+general “everything is still on personal email” fog.
 
-**Fine to defer for now.** Before any serious fundraising, hiring, or acquisition
-conversation, these should be transferred to a business-owned account (and
-eventually a properly incorporated company). Investors and acquirers routinely
-check this in due diligence — org ownership, billing, domain registrar, and
-who holds production secrets.
+**Resolved and verified tonight (do not re-open without new evidence):**
 
-**Not urgent now.** Track for when FinDraft moves beyond solo early-access.
+- **GitHub** — repo at `infokastree-beep/kastree`; origin + github remotes in sync.
+- **Clerk** — production instance live (`clerk.kastree.ie`); business email has
+  Owner access (original owner cannot be removed yet — see section below; safe).
+- **Railway (live stack)** — NEW project **overflowing-creation** under
+  `infokastree@gmail.com` serves production behind www.kastree.ie; DB migrated;
+  RLS re-proven; OLD delightful-purpose left as fallback only.
+- **R2 lifecycle** — `exports/` 30-day expiry applied via Admin token (see
+  resolved R2 lifecycle section above).
+- **Security / cutover** — live API URL, health, soft-delete cleanup, privacy
+  policy, Vercel Web Analytics wired and receiving data.
+
+**Genuinely outstanding (complete final list from tonight):**
+
+1. **Vercel project transfer** — still blocked by Vercel’s free **Hobby**-tier
+   single-member limit, confirmed multiple times tonight against real docs/UI.
+   Completing a transfer to the business account requires upgrading to **Pro**
+   (about **$20/month**, at least temporarily) so a shared team can hold both
+   members before the transfer finishes. **Not urgent** — production
+   (www.kastree.ie) is fully live and working regardless of which account owns
+   the Vercel project today (`markdooling25-commits` / kastree team).
+
+2. **Blacknight domain transfer** — `kastree.ie` registration remains under the
+   original personal account. Deliberately deferred because .ie registrant
+   changes involve ID/passport verification. **Low priority, no functional
+   impact** — the domain resolves and serves identically regardless of which
+   registrant account holds it.
+
+3. **Railway billing** — the NEW Railway account (`infokastree@gmail.com`,
+   project **overflowing-creation**) is on **free trial credit** (earlier
+   tonight: on the order of **~$0.11** total usage). **No payment method is on
+   file.** When trial credit is exhausted, Railway **pauses** the service (does
+   not immediately delete it — data retained ~30 days per Railway’s policy)
+   until a card is added. **Action needed:** add a real payment method on that
+   NEW account before trial credit runs out, and check remaining balance on
+   Railway’s dashboard billing page. This is the only item with a real
+   interruption risk if ignored.
+
+Longer-term (not tonight’s cutover leftovers): before fundraising, hiring, or
+acquisition diligence, fold remaining personal-named ownership into a proper
+business entity. That is separate from the three items above.
 
 ## Clerk workspace — cannot remove original owner after adding business email
 
