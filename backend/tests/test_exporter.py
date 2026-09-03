@@ -429,3 +429,18 @@ def test_s3_put_export_omits_tagging_for_r2(monkeypatch: pytest.MonkeyPatch) -> 
     )
     assert "Tagging" not in captured
     assert captured["Key"] == "exports/test-id.xlsx"
+
+
+def test_s3_client_region_uses_auto_for_r2(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config import settings
+    from app.services.exporter import _s3_client_region
+
+    monkeypatch.setattr(settings, "s3_region", "eu-west-1")
+    monkeypatch.setattr(
+        settings,
+        "s3_endpoint_url",
+        "https://account.r2.cloudflarestorage.com",
+    )
+    assert _s3_client_region() == "auto"
+    monkeypatch.setattr(settings, "s3_region", "weur")
+    assert _s3_client_region() == "weur"

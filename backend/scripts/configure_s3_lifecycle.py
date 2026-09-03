@@ -120,7 +120,9 @@ def configure_export_lifecycle(
 def _build_s3_client() -> Any:
     import boto3
 
-    kwargs: dict[str, Any] = {"region_name": settings.s3_region}
+    from app.services.exporter import _s3_client_region
+
+    kwargs: dict[str, Any] = {"region_name": _s3_client_region()}
     endpoint = settings.normalized_s3_endpoint_url()
     if endpoint:
         kwargs["endpoint_url"] = endpoint

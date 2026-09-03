@@ -136,6 +136,10 @@ def verify_r2_object(export_id: str, fmt: str) -> dict:
     if endpoint and endpoint.rstrip("/").endswith(f"/{bucket}"):
         endpoint = endpoint.rstrip("/")[: -(len(bucket) + 1)]
     region = os.environ.get("S3_REGION", "auto")
+    if endpoint and "r2.cloudflarestorage.com" in endpoint:
+        r2_ok = {"wnam", "enam", "weur", "eeur", "apac", "oc", "auto"}
+        if region not in r2_ok:
+            region = "auto"
     key = f"exports/{export_id}.{fmt}"
     kwargs: dict = {"region_name": region}
     if endpoint:
