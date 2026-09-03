@@ -39,6 +39,21 @@ class Settings(BaseSettings):
     export_file_ttl_days: int = 30
     export_signed_url_ttl_seconds: int = 3600
 
+    def normalized_s3_endpoint_url(self) -> str | None:
+        """Account-level R2/S3 endpoint URL (no bucket path).
+
+        Railway/dashboard setups sometimes append ``/{bucket}`` to S3_ENDPOINT_URL;
+        boto3 expects the account endpoint only and takes the bucket separately.
+        """
+        url = self.s3_endpoint_url
+        if not url:
+            return None
+        base = url.rstrip("/")
+        bucket_suffix = f"/{self.s3_bucket}"
+        if base.endswith(bucket_suffix):
+            return base[: -len(bucket_suffix)]
+        return base
+
     # Stripe billing (§4.5). Webhook signature verification uses stripe_webhook_secret.
     stripe_secret_key: str | None = None
     stripe_webhook_secret: str | None = None

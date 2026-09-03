@@ -133,6 +133,8 @@ def verify_r2_object(export_id: str, fmt: str) -> dict:
 
     bucket = os.environ["S3_BUCKET"]
     endpoint = os.environ.get("S3_ENDPOINT_URL")
+    if endpoint and endpoint.rstrip("/").endswith(f"/{bucket}"):
+        endpoint = endpoint.rstrip("/")[: -(len(bucket) + 1)]
     region = os.environ.get("S3_REGION", "auto")
     key = f"exports/{export_id}.{fmt}"
     kwargs: dict = {"region_name": region}

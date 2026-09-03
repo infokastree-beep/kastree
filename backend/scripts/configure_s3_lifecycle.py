@@ -103,7 +103,8 @@ def configure_export_lifecycle(
     """
     target = bucket or settings.s3_bucket
     r2 = bool(
-        settings.s3_endpoint_url and "r2.cloudflarestorage.com" in settings.s3_endpoint_url
+        settings.normalized_s3_endpoint_url()
+        and "r2.cloudflarestorage.com" in settings.normalized_s3_endpoint_url()
     )
     export_rule = build_export_lifecycle_rule(days=days, r2=r2)
     existing = get_existing_rules(client, target)
@@ -120,8 +121,9 @@ def _build_s3_client() -> Any:
     import boto3
 
     kwargs: dict[str, Any] = {"region_name": settings.s3_region}
-    if settings.s3_endpoint_url:
-        kwargs["endpoint_url"] = settings.s3_endpoint_url
+    endpoint = settings.normalized_s3_endpoint_url()
+    if endpoint:
+        kwargs["endpoint_url"] = endpoint
     if settings.aws_access_key_id and settings.aws_secret_access_key:
         kwargs["aws_access_key_id"] = settings.aws_access_key_id
         kwargs["aws_secret_access_key"] = settings.aws_secret_access_key

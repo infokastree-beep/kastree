@@ -45,7 +45,7 @@ EXPORT_PREFIX = "exports/"
 
 def _storage_is_r2() -> bool:
     """Cloudflare R2 does not implement S3 object tagging on PutObject."""
-    url = settings.s3_endpoint_url or ""
+    url = settings.normalized_s3_endpoint_url() or ""
     return "r2.cloudflarestorage.com" in url
 
 _HEADER_FILL = PatternFill("solid", fgColor="1F4E79")
@@ -533,8 +533,9 @@ class S3ObjectStorage:
             import boto3
 
             kwargs: dict[str, object] = {"region_name": settings.s3_region}
-            if settings.s3_endpoint_url:
-                kwargs["endpoint_url"] = settings.s3_endpoint_url
+            endpoint = settings.normalized_s3_endpoint_url()
+            if endpoint:
+                kwargs["endpoint_url"] = endpoint
             if settings.aws_access_key_id and settings.aws_secret_access_key:
                 kwargs["aws_access_key_id"] = settings.aws_access_key_id
                 kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
