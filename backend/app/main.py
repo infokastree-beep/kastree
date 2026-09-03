@@ -64,4 +64,5 @@ app.include_router(archived_records.records_router)
 
 @app.get("/health")
 async def health_check() -> dict[str, str]:
+    """Liveness probe. Git deploy source: infokastree-beep/kastree."""
     return {"status": "ok"}
