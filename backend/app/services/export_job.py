@@ -68,15 +68,26 @@ def run_export_job_task(
                 export_id=export.id,
             )
             session.commit()
-        except Exception:
+        except Exception as exc:
             session.rollback()
             logger.exception("Export background job failed for %s", export_id)
+            # Produce an operator-readable error message. NoCredentialsError means
+            # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY are not set in Railway.
+            error_type = type(exc).__name__
+            if error_type in {"NoCredentialsError", "CredentialRetrievalError"}:
+                user_msg = (
+                    "Object storage credentials are not configured. "
+                    "Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY (or R2 equivalents) "
+                    "in the Railway environment."
+                )
+            else:
+                user_msg = f"Export job failed: {exc}" if str(exc) else "Export job failed unexpectedly"
             with SyncSessionLocal() as err_session:
                 set_rls_org_id(err_session, org_id)
                 failed = err_session.get(Export, export_id)
                 if failed is not None:
                     failed.status = "failed"
-                    failed.error_message = "Export job failed unexpectedly"
+                    failed.error_message = user_msg
                     err_session.commit()
 
 

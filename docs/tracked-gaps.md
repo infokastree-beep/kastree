@@ -232,11 +232,35 @@ production-ready for untrusted file intake. Likely packages on PyPI:
 `stored_path.write_bytes(content)` returns 202, rejecting infected files with
 4xx. Add integration tests with EICAR when implemented.
 
+## Object storage (S3/R2) — not configured in production; exports will fail
+
+**Exports are non-functional in production until this is resolved.**
+
+`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `S3_BUCKET` are listed as
+`[REQUIRED for exports]` in `.env.production.example` but have never been set
+in the Railway environment. When any export job runs, `boto3` raises
+`NoCredentialsError` on the first `put_object` call. The export record lands in
+`status="failed"` and the UI shows the error message.
+
+**Fix (three steps, one-time):**
+
+1. Create an S3 bucket (AWS `eu-west-1`) or Cloudflare R2 bucket.
+2. Set in Railway service environment:
+   - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET`
+   - `S3_ENDPOINT_URL` (R2 only: `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`)
+3. Run once against the bucket to configure 30-day auto-deletion lifecycle:
+   `cd backend && python scripts/configure_s3_lifecycle.py`
+
+The error message surfaced to the UI when credentials are absent now reads
+*"Object storage credentials are not configured…"* (improved from the generic
+`"Export job failed unexpectedly"` — commit `030b8fc`+).
+
 ## Trial balance uploads — local disk, not S3
 
 TB files are written to `settings.upload_dir` (env: `UPLOAD_DIR`, default
 `/tmp/findraft-uploads`) via `file://` paths in `trial_balances.file_url`.
-Export files already use S3/R2 (`backend/app/services/exporter.py`).
+Export files use S3/R2 (`backend/app/services/exporter.py`) once credentials
+are configured (see section above).
 
 **Short-term production fix:** mount a persistent volume (e.g. Railway
 `/data/uploads`) and set `UPLOAD_DIR=/data/uploads`. **Proper fix:** upload TB
