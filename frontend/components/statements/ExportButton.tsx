@@ -21,11 +21,15 @@ import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
 import type { ExportAcceptedResponse, ExportFormat, ExportStatusResponse } from "@/types";
 
-const FORMAT_LABELS: Record<ExportFormat, string> = {
-  xlsx: "Excel (.xlsx)",
-  pdf: "PDF",
-  csv: "CSV",
-};
+const FORMAT_OPTIONS: readonly { format: ExportFormat; label: string }[] = [
+  { format: "xlsx", label: "Excel (.xlsx)" },
+  { format: "pdf", label: "PDF" },
+  { format: "csv", label: "CSV" },
+];
+
+function formatLabel(fmt: ExportFormat): string {
+  return FORMAT_OPTIONS.find((option) => option.format === fmt)?.label ?? fmt;
+}
 
 const POLL_INTERVAL_MS = 1500;
 const MAX_POLLS = 60; // 90 s ceiling before giving up
@@ -180,15 +184,15 @@ export function ExportButton({ tbId }: { tbId: string }) {
         <span className="flex items-center gap-1.5 text-sm text-soft">
           <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-line border-t-accent" />
           {state.phase === "submitting"
-            ? `Starting ${FORMAT_LABELS[state.format]} export…`
-            : `Building ${FORMAT_LABELS[(state as PhasePolling).format]}…`}
+            ? `Starting ${formatLabel(state.format)} export…`
+            : `Building ${formatLabel((state as PhasePolling).format)}…`}
         </span>
       ) : null}
 
       {state.phase === "ready" ? (
         <span className="flex items-center gap-2 text-sm">
           <span className="text-ink-secondary">
-            {FORMAT_LABELS[(state as PhaseReady).format]} ready
+            {formatLabel((state as PhaseReady).format)} ready
           </span>
           <button
             type="button"
@@ -246,9 +250,8 @@ export function ExportButton({ tbId }: { tbId: string }) {
           </button>
 
           {open ? (
-            <div className="absolute right-0 z-20 mt-1 w-44 rounded-md border border-line bg-surface-elevated py-1 shadow-sm">
-              {(Object.entries(FORMAT_LABELS) as [ExportFormat, string][]).map(
-                ([fmt, label]) => (
+            <div className="absolute right-0 z-50 mt-1 min-w-[12rem] rounded-md border border-line bg-surface-elevated py-1 shadow-sm">
+              {FORMAT_OPTIONS.map(({ format: fmt, label }) => (
                   <button
                     key={fmt}
                     type="button"
@@ -257,8 +260,7 @@ export function ExportButton({ tbId }: { tbId: string }) {
                   >
                     {label}
                   </button>
-                ),
-              )}
+                ))}
             </div>
           ) : null}
         </div>

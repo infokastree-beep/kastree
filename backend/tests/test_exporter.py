@@ -341,6 +341,15 @@ def test_excel_cells_receive_decimal_instances_before_save() -> None:
     assert amount_cell.number_format == "#,##0.00"
 
 
+def test_pdf_cover_organisation_label_is_strong() -> None:
+    html = render_pdf_html(_branding(), _package(), organisation=_Org("starter"))
+    assert "<p><strong>Organisation:</strong> Acme Advisory</p>" in html
+    assert "<p><strong>Client:</strong> Acme Ltd</p>" in html
+    assert "<p><strong>Period end:</strong> 2026-03-31</p>" in html
+    assert "<p><strong>Currency:</strong> GBP</p>" in html
+    assert "<p>Organisation: Acme Advisory</p>" not in html
+
+
 def test_pdf_watermark_only_for_free_tier() -> None:
     branding = _branding()
     package = _package()

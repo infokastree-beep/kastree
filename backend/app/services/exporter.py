@@ -380,7 +380,7 @@ def render_pdf_html(
     )
 
     org_line = (
-        f"<p>Organisation: {_html_escape(branding.organisation_name)}</p>"
+        f"<p><strong>Organisation:</strong> {_html_escape(branding.organisation_name)}</p>"
         if branding.organisation_name
         else ""
     )
