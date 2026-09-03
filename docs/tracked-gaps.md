@@ -483,6 +483,20 @@ who holds production secrets.
 
 **Not urgent now.** Track for when FinDraft moves beyond solo early-access.
 
+## Clerk workspace — cannot remove original owner after adding business email
+
+Attempted to remove `markdooling25@gmail.com`'s access from the Clerk workspace
+after adding `infokastree@gmail.com` as Owner. Clerk blocked this ("won't allow
+leaving workspace").
+
+**Likely causes:** `infokastree@gmail.com` may need to fully complete account
+setup/verification first, or Clerk may simply require more than one confirmed
+owner as a safety measure before allowing the original account to leave.
+
+**Not urgent.** Both accounts currently have Owner access, which is a safe,
+working state. Revisit only if genuinely necessary; no risk in leaving both as
+members indefinitely.
+
 ## No actual paywall — subscription tiers exist in schema only
 
 There is currently **no actual paywall**. Anyone can sign up and gets
