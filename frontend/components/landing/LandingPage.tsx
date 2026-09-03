@@ -323,8 +323,14 @@ export function LandingPage() {
       <footer className="border-t border-line bg-[var(--ink)] text-[var(--accent-muted)]">
         <div className="mx-auto max-w-content px-6 py-10 text-xs leading-relaxed sm:px-8">
           <p className="opacity-80">{DISCLAIMER_TEXT}</p>
-          <p className="mt-4 font-medium text-white/90">
-            © {new Date().getFullYear()} {APP_NAME}
+          <p className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 font-medium text-white/90">
+            <span>© {new Date().getFullYear()} {APP_NAME}</span>
+            <Link
+              href="/privacy"
+              className="text-white/70 underline-offset-4 hover:text-white hover:underline"
+            >
+              Privacy
+            </Link>
           </p>
         </div>
       </footer>
