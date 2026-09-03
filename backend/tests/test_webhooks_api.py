@@ -367,6 +367,242 @@ async def test_invoice_payment_failed_sets_past_due(
 
 
 @pytest.mark.asyncio
+async def test_checkout_without_metadata_tier_does_not_silently_leave_org_on_free(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+    stripe_secret: str,
+) -> None:
+    """checkout.session.completed with no metadata.subscription_tier and no
+    expanded line_items (the real Stripe default) must NOT silently leave the org
+    on 'free'. The event must still be processed (status→active, IDs recorded) and
+    the handler must NOT raise.  Tier will stay 'free' here — that is expected when
+    no price signal is present — but the paired customer.subscription.created event
+    (tested separately) is what carries the tier update.
+
+    This test documents the contract: checkout is reliable for status + IDs,
+    NOT for tier when metadata is absent. Tier comes from subscription.created.
+    """
+    org_id = provisioned_org["org_id"]
+    suffix = uuid.uuid4().hex[:10]
+    cust_id = f"cus_nometa_{suffix}"
+    sub_id = f"sub_nometa_{suffix}"
+
+    # Seed customer id so resolve_org_id can find this org without metadata.org_id.
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        org = session.get(Organisation, org_id)
+        assert org is not None
+        org.stripe_customer_id = cust_id
+        session.commit()
+
+    event_id = f"evt_checkout_nometa_{uuid.uuid4().hex[:12]}"
+    payload = _event_payload(
+        event_id=event_id,
+        event_type="checkout.session.completed",
+        obj={
+            "id": "cs_nometa",
+            "object": "checkout.session",
+            "customer": cust_id,
+            "subscription": sub_id,
+            # No metadata.subscription_tier, no expanded line_items
+            "metadata": {},
+        },
+    )
+    response = await api_client.post(
+        "/webhooks/stripe",
+        content=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Stripe-Signature": _sign_payload(payload, secret=stripe_secret),
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["status"] == "processed"
+
+    org = _org_row(org_id)
+    # IDs must be recorded even without a tier signal.
+    assert org.stripe_customer_id == cust_id
+    assert org.stripe_subscription_id == sub_id
+    assert org.subscription_status == "active"
+    # Tier stays 'free' — this is intentional when no price signal is present.
+    # Tier is updated by the paired customer.subscription.created event.
+    assert org.subscription_tier == "free"
+
+
+@pytest.mark.asyncio
+async def test_subscription_created_after_checkout_applies_tier(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+    stripe_secret: str,
+) -> None:
+    """The customer.subscription.created event (always paired with checkout) carries
+    items.data[0].price.id and IS the reliable tier-update event. This test confirms
+    that when subscription.created arrives (possibly after checkout.session.completed),
+    tier is correctly applied from the price id — not from checkout metadata.
+    """
+    org_id = provisioned_org["org_id"]
+    suffix = uuid.uuid4().hex[:10]
+    sub_id = f"sub_created_{suffix}"
+    cust_id = f"cus_created_{suffix}"
+
+    # Simulate checkout having already run: org has IDs but tier is still 'free'.
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        org = session.get(Organisation, org_id)
+        assert org is not None
+        org.stripe_customer_id = cust_id
+        org.subscription_tier = "free"
+        org.subscription_status = "active"
+        session.commit()
+
+    event_id = f"evt_sub_created_{uuid.uuid4().hex[:12]}"
+    payload = _event_payload(
+        event_id=event_id,
+        event_type="customer.subscription.created",
+        obj={
+            "id": sub_id,
+            "customer": cust_id,
+            "status": "active",
+            # items.data[0].price.id is always present on real subscription objects.
+            "items": {"data": [{"price": {"id": "price_pro_test"}}]},
+        },
+    )
+    response = await api_client.post(
+        "/webhooks/stripe",
+        content=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Stripe-Signature": _sign_payload(payload, secret=stripe_secret),
+        },
+    )
+    assert response.status_code == 200, response.text
+    org = _org_row(org_id)
+    assert org.subscription_tier == "pro"
+    assert org.subscription_status == "active"
+    assert org.stripe_subscription_id == sub_id
+
+
+@pytest.mark.asyncio
+async def test_subscription_updated_with_unknown_price_id_logs_warning_does_not_corrupt_tier(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+    stripe_secret: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """When subscription.updated carries a price_id that doesn't match any configured
+    STRIPE_PRICE_ID_* env var, the tier must NOT be silently corrupted — it should
+    stay on its current value. A warning must be emitted so operators know the mapping
+    is missing. Status must still be updated correctly.
+    """
+    org_id = provisioned_org["org_id"]
+    suffix = uuid.uuid4().hex[:10]
+    cust_id = f"cus_unknown_price_{suffix}"
+    sub_id = f"sub_unknown_price_{suffix}"
+
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        org = session.get(Organisation, org_id)
+        assert org is not None
+        org.stripe_customer_id = cust_id
+        org.stripe_subscription_id = sub_id
+        org.subscription_tier = "starter"
+        org.subscription_status = "active"
+        session.commit()
+
+    event_id = f"evt_unknown_price_{uuid.uuid4().hex[:12]}"
+    payload = _event_payload(
+        event_id=event_id,
+        event_type="customer.subscription.updated",
+        obj={
+            "id": sub_id,
+            "customer": cust_id,
+            "status": "active",
+            # price_id not in STRIPE_PRICE_ID_* — simulates unconfigured env or new price.
+            "items": {"data": [{"price": {"id": "price_unconfigured_real_stripe_id"}}]},
+        },
+    )
+    import logging
+    with caplog.at_level(logging.WARNING, logger="app.services.stripe_service"):
+        response = await api_client.post(
+            "/webhooks/stripe",
+            content=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Stripe-Signature": _sign_payload(payload, secret=stripe_secret),
+            },
+        )
+    assert response.status_code == 200, response.text
+
+    org = _org_row(org_id)
+    # Tier must be preserved — unknown price_id must not zero out the tier.
+    assert org.subscription_tier == "starter"
+    # Status must still update correctly.
+    assert org.subscription_status == "active"
+    # Warning must have been emitted so operators know the mapping is missing.
+    assert any(
+        "price" in r.message.lower() and "unmapped" in r.message.lower()
+        for r in caplog.records
+    ), f"Expected unmapped price warning, got: {[r.message for r in caplog.records]}"
+
+
+@pytest.mark.asyncio
+async def test_subscription_updated_with_unknown_stripe_status_preserves_current_status(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+    stripe_secret: str,
+) -> None:
+    """If Stripe sends an unrecognised subscription status value,
+    _map_stripe_subscription_status must NOT silently default to 'active' —
+    it must preserve the organisation's current status unchanged and log a warning.
+    """
+    org_id = provisioned_org["org_id"]
+    suffix = uuid.uuid4().hex[:10]
+    cust_id = f"cus_unk_status_{suffix}"
+    sub_id = f"sub_unk_status_{suffix}"
+
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        org = session.get(Organisation, org_id)
+        assert org is not None
+        org.stripe_customer_id = cust_id
+        org.stripe_subscription_id = sub_id
+        org.subscription_tier = "starter"
+        org.subscription_status = "past_due"
+        session.commit()
+
+    event_id = f"evt_unk_status_{uuid.uuid4().hex[:12]}"
+    payload = _event_payload(
+        event_id=event_id,
+        event_type="customer.subscription.updated",
+        obj={
+            "id": sub_id,
+            "customer": cust_id,
+            # Hypothetical future Stripe status not in the current mapping.
+            "status": "some_future_stripe_status",
+            "items": {"data": [{"price": {"id": "price_starter_test"}}]},
+        },
+    )
+    response = await api_client.post(
+        "/webhooks/stripe",
+        content=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Stripe-Signature": _sign_payload(payload, secret=stripe_secret),
+        },
+    )
+    assert response.status_code == 200, response.text
+
+    org = _org_row(org_id)
+    # Must NOT have silently become 'active' — must stay on 'past_due'.
+    assert org.subscription_status == "past_due", (
+        f"Unknown Stripe status silently became 'active': got {org.subscription_status!r}"
+    )
+    # Tier was in the price map, so it should have updated correctly.
+    assert org.subscription_tier == "starter"
+
+
+@pytest.mark.asyncio
 async def test_subscription_created_resolves_org_via_stripe_customer_id(
     api_client: AsyncClient,
     provisioned_org: dict,

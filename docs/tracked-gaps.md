@@ -415,8 +415,14 @@ features**.
 
 - Database schema supports tiers (`organisations.subscription_tier`,
   `subscription_status`).
-- Stripe webhook correctly updates these fields when Stripe sends real events
-  (once the separately-tracked tier-update bug is fixed).
+- Stripe webhook correctly updates these fields when Stripe sends real events.
+  Two bugs were found and fixed (2026-09-03): (1) `_map_stripe_subscription_status`
+  silently defaulted unknown Stripe status values to `"active"` instead of
+  preserving the current status and logging a warning; (2) `apply_organisation_billing_update`
+  did not warn when a `price_id` arrived that had no matching `STRIPE_PRICE_ID_*`
+  env var, so tier changes were silently dropped without any operator-visible signal.
+  Both are now fixed — unknown status preserves current value + warns; unmapped
+  price_id preserves current tier + warns. Four new tests cover these cases.
 
 **What's missing — all of it:**
 

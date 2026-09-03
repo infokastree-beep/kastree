@@ -247,6 +247,15 @@ def apply_organisation_billing_update(
             organisation.stripe_subscription_id = subscription_id
         if tier:
             organisation.subscription_tier = tier
+        elif price_id:
+            # price_id present but not in STRIPE_PRICE_ID_* mapping — operator action needed.
+            logger.warning(
+                "Unmapped price_id %r on %s for org %s — STRIPE_PRICE_ID_* may not be configured. "
+                "Tier not updated; configure the env var to enable automatic tier mapping.",
+                price_id,
+                event_type,
+                org_id,
+            )
         organisation.subscription_status = "active"
 
     elif event_type == "customer.subscription.updated":
@@ -256,8 +265,19 @@ def apply_organisation_billing_update(
             organisation.stripe_subscription_id = subscription_id
         if tier:
             organisation.subscription_tier = tier
-        stripe_status = str(stripe_object.get("status") or "")
-        organisation.subscription_status = _map_stripe_subscription_status(stripe_status)
+        elif price_id:
+            logger.warning(
+                "Unmapped price_id %r on %s for org %s — STRIPE_PRICE_ID_* may not be configured. "
+                "Tier not updated; configure the env var to enable automatic tier mapping.",
+                price_id,
+                event_type,
+                org_id,
+            )
+        raw_stripe_status = str(stripe_object.get("status") or "")
+        new_status = _map_stripe_subscription_status(raw_stripe_status, org_id=org_id)
+        if new_status is not None:
+            organisation.subscription_status = new_status
+        # If new_status is None (unknown status), existing status is preserved.
 
     elif event_type == "customer.subscription.deleted":
         # §13.2 Immediate downgrades — status change only; do NOT delete org data.
@@ -279,8 +299,17 @@ def mark_event_processed(event_row: SubscriptionEvent) -> None:
     event_row.processed_at = datetime.now(timezone.utc)
 
 
-def _map_stripe_subscription_status(stripe_status: str) -> str:
-    """Map Stripe subscription.status onto organisations.subscription_status CHECK."""
+def _map_stripe_subscription_status(
+    stripe_status: str,
+    *,
+    org_id: uuid.UUID | None = None,
+) -> str | None:
+    """Map Stripe subscription.status onto organisations.subscription_status CHECK.
+
+    Returns None for unrecognised status values so the caller can preserve the
+    current DB value rather than silently overwriting it with a wrong default.
+    A warning is always logged for unknown statuses.
+    """
     mapping = {
         "active": "active",
         "trialing": "trialing",
@@ -291,4 +320,12 @@ def _map_stripe_subscription_status(stripe_status: str) -> str:
         "incomplete_expired": "cancelled",
         "paused": "past_due",
     }
-    return mapping.get(stripe_status, "active")
+    result = mapping.get(stripe_status)
+    if result is None:
+        logger.warning(
+            "Unknown Stripe subscription status %r for org %s — "
+            "existing subscription_status preserved. Add to mapping if this is a new Stripe status.",
+            stripe_status,
+            org_id,
+        )
+    return result
