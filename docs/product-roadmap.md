@@ -42,6 +42,21 @@ Medium items below assume those are shipped.
 - **Multi-period trend views** — revenue / profit progression once multiple
   trial balances exist per company.
 
+### Conversational statement query ("Copilot")
+
+Inspired by reviewing real reference screenshots (LucaNet's "Copilot"/"Message
+Luca" chat interface). A natural-language chat panel letting a user ask
+questions like "summarize expense changes this quarter" or "what changed in
+gross margin over the last 2 years", answered from already-computed statement
+and variance data via the existing evidence graph -- NOT a new calculation
+engine, a query/answer layer sitting on top of data already proven correct.
+Natural extension once the Commentary display and Variance tab (both already
+planned, backend done) exist in the UI. Genuinely well-matched to the existing
+architecture (deterministic engine + evidence graph + AI narration-only
+principle already established). Sequence: after Commentary/Variance UI ships,
+not before -- there's nothing to query conversationally until those exist as
+real, viewable data.
+
 ---
 
 ## Product 2 — Working Paper / Audit Evidence (future)

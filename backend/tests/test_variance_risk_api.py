@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import time
 import uuid
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
 
+import openpyxl
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
@@ -531,3 +534,173 @@ async def test_risk_rule2_skipped_with_empty_history_not_fabricated(
     assert body["unusual_variance_history_months"] == 0
     rule_names = {flag["rule_name"] for flag in body["flags"]}
     assert "unusual_variance" not in rule_names
+
+
+def _monthly_balanced_xlsx(*, cash: str, sales: str, opex: str) -> bytes:
+    """Closed TB: cash + opex = share_capital(4000) + RE(6000) + sales."""
+    workbook = openpyxl.Workbook()
+    ws = workbook.active
+    ws.append(["Account Code", "Account Name", "Debit", "Credit"])
+    ws.append(["1100", "Cash at bank", cash, "0.00"])
+    ws.append(["3100", "Retained earnings", "0.00", "6000.00"])
+    ws.append(["3000", "Share capital", "0.00", "4000.00"])
+    ws.append(["4100", "Sales - Online", "0.00", sales])
+    ws.append(["6100", "Operating expenses", opex, "0.00"])
+    buffer = BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
+async def _upload_map_and_statements(
+    api_client: AsyncClient,
+    *,
+    headers: dict[str, str],
+    company_id: uuid.UUID,
+    period_end: str,
+    file_bytes: bytes,
+) -> str:
+    upload = await api_client.post(
+        "/trial-balances/upload",
+        data={
+            "company_id": str(company_id),
+            "period_end": period_end,
+            "currency": "GBP",
+        },
+        files={
+            "file": (
+                f"tb-{period_end}.xlsx",
+                file_bytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        headers=headers,
+    )
+    assert upload.status_code == 202, upload.text
+    tb_id = upload.json()["tb_id"]
+
+    status_body = None
+    for _ in range(40):
+        status_resp = await api_client.get(
+            f"/trial-balances/{tb_id}/status", headers=headers
+        )
+        assert status_resp.status_code == 200
+        status_body = status_resp.json()
+        jobs = {job["job_type"]: job["status"] for job in status_body["jobs"]}
+        if jobs.get("parse") == "complete" and jobs.get("map") == "complete":
+            break
+        if status_body["status"] == "failed":
+            pytest.fail(f"processing failed: {status_body}")
+        time.sleep(0.05)
+    else:
+        pytest.fail(f"timed out waiting for parse/map: {status_body}")
+
+    mapping_resp = await api_client.get(
+        f"/trial-balances/{tb_id}/mapping", headers=headers
+    )
+    assert mapping_resp.status_code == 200, mapping_resp.text
+    confirm_items = []
+    for item in mapping_resp.json()["mappings"]:
+        code = item["source_code"]
+        if code == "1100":
+            canonical = "cash"
+        elif code == "4100":
+            canonical = "revenue"
+        elif code == "6100":
+            canonical = "operating_expenses"
+        elif code == "3000":
+            canonical = "share_capital"
+        elif code == "3100":
+            canonical = "retained_earnings"
+        else:
+            canonical = item["suggested_canonical_line"]
+        confirm_items.append(
+            {
+                "id": item["id"],
+                "canonical_line": canonical,
+                "is_confirmed": True,
+                "is_ignored": False,
+            }
+        )
+    confirm = await api_client.post(
+        f"/trial-balances/{tb_id}/mapping/confirm",
+        json={"mappings": confirm_items},
+        headers=headers,
+    )
+    assert confirm.status_code == 200, confirm.text
+
+    for _ in range(40):
+        validation = await api_client.get(
+            f"/trial-balances/{tb_id}/validation", headers=headers
+        )
+        if validation.status_code == 200:
+            assert validation.json()["can_generate_statements"] is True
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail("timed out waiting for validation")
+
+    gen = await api_client.post(
+        f"/trial-balances/{tb_id}/statements", headers=headers
+    )
+    assert gen.status_code == 200, gen.text
+    return str(tb_id)
+
+
+@pytest.mark.asyncio
+async def test_monthly_cadence_upload_auto_detects_prior_variance(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """June then July uploads: auto-detect prior and month-over-month variance."""
+    headers = auth_headers(provisioned_org["token"])
+    company_id = provisioned_org["company_id"]
+
+    june_id = await _upload_map_and_statements(
+        api_client,
+        headers=headers,
+        company_id=company_id,
+        period_end="2026-06-30",
+        file_bytes=_monthly_balanced_xlsx(cash="10000.00", sales="5000.00", opex="5000.00"),
+    )
+    july_id = await _upload_map_and_statements(
+        api_client,
+        headers=headers,
+        company_id=company_id,
+        period_end="2026-07-31",
+        file_bytes=_monthly_balanced_xlsx(cash="13000.00", sales="8000.00", opex="5000.00"),
+    )
+
+    generated = await api_client.post(
+        f"/trial-balances/{july_id}/variance",
+        headers=headers,
+        json={},
+    )
+    assert generated.status_code == 200, generated.text
+    body = generated.json()
+    assert body["variance_available"] is True
+    assert body["tb_id"] == july_id
+    assert body["prior_tb_id"] == june_id
+
+    revenue = next(item for item in body["items"] if item["line_item_code"] == "revenue")
+    assert revenue["current_amount"] == "8000.00"
+    assert revenue["prior_amount"] == "5000.00"
+    assert revenue["variance_amount"] == "3000.00"
+    assert revenue["variance_pct"] == "60.00"
+    assert revenue["direction"] == "increase"
+    assert revenue["is_material"] is True
+
+    opex = next(
+        item for item in body["items"] if item["line_item_code"] == "operating_expenses"
+    )
+    assert opex["current_amount"] == "5000.00"
+    assert opex["prior_amount"] == "5000.00"
+    assert opex["variance_amount"] == "0.00"
+    assert opex["direction"] == "increase"
+    assert opex["is_material"] is False
+
+    got = await api_client.get(
+        f"/trial-balances/{july_id}/variance", headers=headers
+    )
+    assert got.status_code == 200, got.text
+    assert got.json()["prior_tb_id"] == june_id
+    assert got.json()["items"] == body["items"]
