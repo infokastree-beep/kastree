@@ -416,13 +416,28 @@ features**.
 - Database schema supports tiers (`organisations.subscription_tier`,
   `subscription_status`).
 - Stripe webhook correctly updates these fields when Stripe sends real events.
-  Two bugs were found and fixed (2026-09-03): (1) `_map_stripe_subscription_status`
-  silently defaulted unknown Stripe status values to `"active"` instead of
-  preserving the current status and logging a warning; (2) `apply_organisation_billing_update`
-  did not warn when a `price_id` arrived that had no matching `STRIPE_PRICE_ID_*`
-  env var, so tier changes were silently dropped without any operator-visible signal.
-  Both are now fixed — unknown status preserves current value + warns; unmapped
-  price_id preserves current tier + warns. Four new tests cover these cases.
+
+**Stripe tier-update bugs — resolved (2026-09-03):** Two bugs caused tier/status
+changes to be silently dropped with no log output:
+
+1. **Unknown Stripe status silently became `"active"`** — `_map_stripe_subscription_status`
+   used `mapping.get(stripe_status, "active")` as a fallback. Any unrecognised status
+   value (including a future Stripe status or a missing `status` field) overwrote the
+   org's real status with `"active"`. An org that was `past_due` could become `"active"`
+   without any payment having succeeded. **Fix:** returns `None` for unknown statuses;
+   `apply_organisation_billing_update` preserves the existing DB value and logs a
+   `WARNING` with the unrecognised status string.
+
+2. **Unmapped `price_id` silently dropped the tier change** — when
+   `price_id_to_tier(price_id)` returned `None` (because `STRIPE_PRICE_ID_STARTER/PRO/SCALE`
+   env vars are not configured), the tier update was skipped with no log output. A real
+   Stripe payment would complete, the org's status would go `active`, but its tier
+   would stay on `"free"` forever. **Fix:** logs a `WARNING` with the unmapped
+   `price_id` so operators can see exactly which price needs a corresponding env var.
+
+Both fixes are in `backend/app/services/stripe_service.py` (commit `54ec7fe`).
+Four new tests in `backend/tests/test_webhooks_api.py` cover both cases and would
+have caught these bugs at review time.
 
 **What's missing — all of it:**
 
