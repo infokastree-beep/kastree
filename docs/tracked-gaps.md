@@ -621,11 +621,18 @@ general “everything is still on personal email” fog.
    and is **fine to keep using** in the meantime — this is a cosmetic /
    professionalism upgrade, **not** a security fix, and **not urgent**.
 
-   **Requires:** Google Workspace subscription (~$6–7/month); domain
-   verification via a Blacknight DNS record; then the same careful transfer
-   process already proven for GitHub/Clerk (confirm old email loses access, new
-   email gains it, real evidence at each step — including HTTP proof that the
-   old address loses `/admin` and the new one gains it when
+   **Deliberately deferred until the business name/brand is fully finalized** —
+   trademark search completed, and a decision made on whether to add a **`.ai`**
+   domain (currently only `kastree.ie` is owned). Note: `.ai` domains typically
+   cost **$70–100+/year**, notably more than the `.ie` domain already secured —
+   factor cost into the decision, not just aesthetic appeal. **Revisit Workspace
+   and domain decisions together once naming is truly settled, not before.**
+
+   **Requires (when naming is settled):** Google Workspace subscription
+   (~$6–7/month); domain verification via a Blacknight DNS record; then the same
+   careful transfer process already proven for GitHub/Clerk (confirm old email
+   loses access, new email gains it, real evidence at each step — including HTTP
+   proof that the old address loses `/admin` and the new one gains it when
    `PLATFORM_ADMIN_EMAILS` changes). **Do as its own focused task when ready**,
    not squeezed into another session’s work.
 
