@@ -546,6 +546,10 @@ general “everything is still on personal email” fog.
 **Resolved and verified tonight (do not re-open without new evidence):**
 
 - **GitHub** — repo at `infokastree-beep/kastree`; origin + github remotes in sync.
+- **Vercel Git source** — reconnected to `infokastree-beep/kastree` after it
+  silently stayed on `markdooling25-commits/kastree` post-transfer (see
+  outstanding list item 2 / resolved note below). Verify source after any
+  future GitHub-side change.
 - **Clerk** — production instance live (`clerk.kastree.ie`); business email has
   Owner access (original owner cannot be removed yet — see section below; safe).
 - **Railway (live stack)** — NEW project **overflowing-creation** under
@@ -572,15 +576,25 @@ general “everything is still on personal email” fog.
    (www.kastree.ie) is fully live and working regardless of which account owns
    the Vercel project today (`markdooling25-commits` / kastree team).
 
-2. **Vercel auto-deploy lag (RESOLVED 2026-09-04 via deploy hook)** — Backend
-   Railway had shipped `f38f1b1` (failed-upload 409 body shape + currency
-   harden + TB nav) while www.kastree.ie stayed on a **2h-old** frontend build
-   (`frontend-rdb82gdcv`, 2026-09-03 23:27). That stale bundle still treated
-   object-shaped FastAPI `detail` as bare `API 409`. Triggered Production
-   deploy hook → `frontend-rjwgr0exq` on sha `f38f1b1`, aliased to
-   www.kastree.ie. Live Playwright then showed the real message + “Open the
-   existing trial balance” link. Prefer the deploy hook (or confirm Git
-   webhook) after frontend-affecting pushes until auto-deploy is reliable.
+2. **Vercel Git source after GitHub transfer (RESOLVED 2026-09-04)** — After the
+   GitHub ownership transfer earlier tonight
+   (`markdooling25-commits/kastree` → `infokastree-beep/kastree`), Vercel’s
+   connected source repo **silently stayed on (or never updated from)
+   `markdooling25-commits/kastree`**. Live testing found a genuine
+   **“fix deployed to backend, frontend stuck on stale build”** gap: Railway
+   was on `f38f1b1` while www.kastree.ie served a **2h-old** frontend
+   (`frontend-rdb82gdcv`, 2026-09-03 23:27) that still rendered object-shaped
+   FastAPI `detail` as bare `API 409`. Confirmed reconnected to
+   **`infokastree-beep/kastree`** and redeployed (Production deploy hook →
+   `frontend-rjwgr0exq` / `ac3bed1` on that org; live Playwright then showed
+   the real 409 message + “Open the existing trial balance” link).
+
+   **This is the second distinct time tonight Vercel’s deploy source needed
+   manual reconnection.** After any future GitHub-side change (transfer,
+   rename, mirror, org move), check Vercel project Settings → Git explicitly
+   (the UI/`vercel` equivalent of `git remote -v`) — do **not** assume the
+   connected repo followed the GitHub change automatically. Redeploy (or fire
+   the Production deploy hook) once the source is confirmed.
 
 3. **Blacknight domain transfer** — `kastree.ie` registration remains under the
    original personal account. Deliberately deferred because .ie registrant
@@ -590,7 +604,7 @@ general “everything is still on personal email” fog.
 
 Longer-term (not tonight’s cutover leftovers): before fundraising, hiring, or
 acquisition diligence, fold remaining personal-named ownership into a proper
-business entity. That is separate from the two items above.
+business entity. That is separate from the items above.
 
 ## Clerk workspace — cannot remove original owner after adding business email
 
