@@ -280,7 +280,12 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
           </div>
 
           {tab === "Variance" ? (
-            <VariancePanel tbId={tbId} currencyCode={currencyCode} />
+            <VariancePanel
+              tbId={tbId}
+              currencyCode={currencyCode}
+              companyId={statementsData.company_id}
+              periodEnd={statementsData.period_end}
+            />
           ) : null}
           {tab === "Risk" ? <RiskFlagsPanel tbId={tbId} /> : null}
           {isStatementTab ? (

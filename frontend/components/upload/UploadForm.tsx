@@ -14,17 +14,25 @@ import {
   FUNCTIONAL_CURRENCIES,
   MAX_UPLOAD_BYTES,
 } from "@/lib/constants";
-import { estimateCsvRowCount, formatBytes } from "@/lib/utils";
+import {
+  filterPriorTbOptions,
+  readPreferredPriorTbId,
+  writePreferredPriorTbId,
+} from "@/lib/prior-period";
+import { estimateCsvRowCount, formatBytes, formatDate } from "@/lib/utils";
 import type {
   ClientListResponse,
   CompanyListResponse,
   ICompany,
   PriorPeriodPreview,
+  TrialBalanceListResponse,
   UploadAcceptedResponse,
 } from "@/types";
 
 const NEW_CLIENT_VALUE = "__new_client__";
 const NEW_COMPANY_VALUE = "__new_company__";
+/** Sentinel: follow auto-detected prior (most recent period before period end). */
+const PRIOR_AUTO_VALUE = "__auto__";
 
 function isAcceptedFile(file: File): boolean {
   const lower = file.name.toLowerCase();
@@ -77,6 +85,8 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
   const [showAddCompany, setShowAddCompany] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  /** Manual prior override; empty string means follow auto until the user picks. */
+  const [priorOverrideTbId, setPriorOverrideTbId] = useState("");
 
   const clientsQuery = useQuery({
     queryKey: ["clients"],
@@ -134,6 +144,50 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
       ),
     enabled: Boolean(companyId && periodEnd),
   });
+
+  const priorListQuery = useQuery({
+    queryKey: ["trial-balances", "upload-priors", companyId],
+    queryFn: () =>
+      apiFetch<TrialBalanceListResponse>(
+        `/trial-balances?company_id=${encodeURIComponent(companyId)}&limit=100`,
+        { getToken },
+      ),
+    enabled: Boolean(companyId),
+  });
+
+  const priorOptions = useMemo(
+    () => filterPriorTbOptions(priorListQuery.data?.items ?? [], periodEnd),
+    [priorListQuery.data?.items, periodEnd],
+  );
+
+  // Restore upload preference when company or period changes.
+  useEffect(() => {
+    if (!companyId || !periodEnd) {
+      setPriorOverrideTbId("");
+      return;
+    }
+    const preferred = readPreferredPriorTbId(companyId, periodEnd);
+    if (preferred && priorOptions.some((tb) => tb.id === preferred)) {
+      setPriorOverrideTbId(preferred);
+      return;
+    }
+    setPriorOverrideTbId("");
+  }, [companyId, periodEnd, priorOptions]);
+
+  const effectivePriorTbId =
+    priorOverrideTbId ||
+    priorPreviewQuery.data?.prior_tb_id ||
+    priorOptions[0]?.id ||
+    null;
+
+  const effectivePriorPeriodEnd =
+    priorOptions.find((tb) => tb.id === effectivePriorTbId)?.period_end ??
+    priorPreviewQuery.data?.prior_period_end ??
+    null;
+
+  const isManualPrior =
+    Boolean(priorOverrideTbId) &&
+    priorOverrideTbId !== (priorPreviewQuery.data?.prior_tb_id ?? "");
 
   // Deep link: apply once when ?company= resolves — never re-apply on refetch (that
   // would undo manual company/currency changes after the user switches selection).
@@ -229,6 +283,10 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
       });
     },
     onSuccess: (data) => {
+      // Persist prior choice so Variance tab boots to the same comparison.
+      if (companyId && periodEnd && effectivePriorTbId) {
+        writePreferredPriorTbId(companyId, periodEnd, effectivePriorTbId);
+      }
       router.push(`/mapping/${data.tb_id}`);
     },
   });
@@ -292,6 +350,20 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
       setCurrency(currencyForCompany(selected));
     },
     [companyOptions],
+  );
+
+  const onPriorOverrideChange = useCallback(
+    (value: string) => {
+      if (!companyId || !periodEnd) return;
+      if (value === PRIOR_AUTO_VALUE) {
+        setPriorOverrideTbId("");
+        writePreferredPriorTbId(companyId, periodEnd, null);
+        return;
+      }
+      setPriorOverrideTbId(value);
+      writePreferredPriorTbId(companyId, periodEnd, value);
+    },
+    [companyId, periodEnd],
   );
 
   const addCompanyError =
@@ -452,7 +524,63 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
         </label>
       </div>
 
-      {priorPreviewQuery.data?.prior_period_end ? (
+      {companyId && periodEnd && priorOptions.length > 0 ? (
+        <div
+          className="space-y-3 rounded border border-teal-200 bg-teal-50/80 px-3 py-3"
+          data-testid="prior-period-indicator"
+        >
+          <p className="text-sm text-teal-950">
+            {effectivePriorPeriodEnd ? (
+              <>
+                This will be compared against{" "}
+                <span className="font-medium">
+                  {formatPeriodEndLabel(effectivePriorPeriodEnd)}
+                </span>
+                {priorPreviewQuery.data?.company_name ? (
+                  <>
+                    {" "}
+                    for{" "}
+                    <span className="font-medium">
+                      {priorPreviewQuery.data.company_name}
+                    </span>
+                  </>
+                ) : null}
+                {isManualPrior ? " (manual override)." : " (auto-detected)."}{" "}
+                Variance uses this after statements are generated.
+              </>
+            ) : (
+              "Select a prior period to compare against once statements are generated."
+            )}
+          </p>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-teal-900">
+              Compare against
+            </span>
+            <select
+              data-testid="upload-prior-select"
+              className="w-full max-w-md rounded border border-teal-300 bg-white px-3 py-2 text-teal-950"
+              value={priorOverrideTbId || PRIOR_AUTO_VALUE}
+              onChange={(e) => onPriorOverrideChange(e.target.value)}
+              disabled={priorListQuery.isLoading}
+            >
+              <option value={PRIOR_AUTO_VALUE}>
+                Auto
+                {priorPreviewQuery.data?.prior_period_end
+                  ? ` — ${formatPeriodEndLabel(priorPreviewQuery.data.prior_period_end)}`
+                  : priorOptions[0]
+                    ? ` — ${formatDate(priorOptions[0].period_end)}`
+                    : ""}
+              </option>
+              {priorOptions.map((tb) => (
+                <option key={tb.id} value={tb.id}>
+                  {formatPeriodEndLabel(tb.period_end)}
+                  {tb.id === priorPreviewQuery.data?.prior_tb_id ? " (auto)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      ) : priorPreviewQuery.data?.prior_period_end ? (
         <p
           className="rounded border border-teal-200 bg-teal-50/80 px-3 py-2 text-sm text-teal-950"
           data-testid="prior-period-indicator"

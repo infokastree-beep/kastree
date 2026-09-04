@@ -5,6 +5,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
 import { formatCurrency } from "@/lib/currency";
+import {
+  filterPriorTbOptions,
+  readPreferredPriorTbId,
+  writePreferredPriorTbId,
+} from "@/lib/prior-period";
 import { formatCanonicalLineLabel, formatDate } from "@/lib/utils";
 import type {
   TrialBalanceListResponse,
@@ -54,19 +59,49 @@ function amountClass(amount: string): string {
   return Number.isFinite(numeric) && numeric < 0 ? "text-red-800" : "";
 }
 
+async function fetchVariance(
+  tbId: string,
+  priorTbId: string | null,
+  getToken: () => Promise<string | null>,
+): Promise<VarianceResponse> {
+  return apiFetch<VarianceResponse>(`/trial-balances/${tbId}/variance`, {
+    method: "POST",
+    getToken,
+    body: JSON.stringify(priorTbId ? { prior_tb_id: priorTbId } : {}),
+  });
+}
+
+function responseMatchesPrior(
+  response: VarianceResponse | null | undefined,
+  selectedPriorTbId: string,
+): boolean {
+  if (!response) return false;
+  // Auto mode (empty selection): any response is acceptable until a prior is chosen.
+  if (!selectedPriorTbId) return true;
+  return response.prior_tb_id === selectedPriorTbId;
+}
+
 export function VariancePanel({
   tbId,
   currencyCode,
+  companyId: companyIdProp = null,
+  periodEnd: periodEndProp = null,
 }: {
   tbId: string;
   currencyCode: string;
+  /** From statements payload — lets prior options load before variance exists. */
+  companyId?: string | null;
+  periodEnd?: string | null;
 }) {
   const { getToken } = useAuth();
   const queryClient = useQueryClient();
+  /** Empty until bootstrap (GET / upload preference) resolves a prior id. */
   const [selectedPriorTbId, setSelectedPriorTbId] = useState<string>("");
+  const [bootstrapDone, setBootstrapDone] = useState(false);
 
-  const varianceQuery = useQuery({
-    queryKey: ["tb-variance", tbId],
+  // Stored analysis — used only to seed company/period/default prior.
+  const storedQuery = useQuery({
+    queryKey: ["tb-variance-stored", tbId],
     queryFn: async (): Promise<VarianceResponse | null> => {
       try {
         return await apiFetch<VarianceResponse>(
@@ -82,27 +117,10 @@ export function VariancePanel({
     },
   });
 
-  const generateMutation = useMutation({
-    mutationFn: (priorTbId: string | null) =>
-      apiFetch<VarianceResponse>(`/trial-balances/${tbId}/variance`, {
-        method: "POST",
-        getToken,
-        body: JSON.stringify(
-          priorTbId ? { prior_tb_id: priorTbId } : {},
-        ),
-      }),
-    onSuccess: (data) => {
-      queryClient.setQueryData(["tb-variance", tbId], data);
-      if (data.prior_tb_id) {
-        setSelectedPriorTbId(data.prior_tb_id);
-      }
-    },
-  });
-
-  const data = generateMutation.data ?? varianceQuery.data;
-  const needsGenerate = varianceQuery.data === null && !generateMutation.data;
-  const companyId = data?.company_id ?? null;
-  const periodEnd = data?.period_end ?? null;
+  const companyId =
+    companyIdProp ?? storedQuery.data?.company_id ?? null;
+  const periodEnd =
+    periodEndProp ?? storedQuery.data?.period_end ?? null;
 
   const priorsQuery = useQuery({
     queryKey: ["tb-prior-options", companyId, periodEnd],
@@ -115,28 +133,132 @@ export function VariancePanel({
   });
 
   const priorOptions = useMemo(() => {
-    const items = priorsQuery.data?.items ?? [];
     if (!periodEnd) return [];
-    return items
-      .filter((tb) => tb.id !== tbId && tb.period_end < periodEnd)
-      .sort((a, b) => (a.period_end < b.period_end ? 1 : -1));
+    return filterPriorTbOptions(
+      priorsQuery.data?.items ?? [],
+      periodEnd,
+      tbId,
+    );
   }, [priorsQuery.data?.items, periodEnd, tbId]);
 
+  // Seed selected prior: upload preference → stored analysis → auto (newest prior).
   useEffect(() => {
-    if (data?.prior_tb_id && selectedPriorTbId === "") {
-      setSelectedPriorTbId(data.prior_tb_id);
+    if (bootstrapDone || storedQuery.isLoading) return;
+    if (!companyId || !periodEnd) {
+      // Still waiting on company/period from a successful stored GET, or no analysis yet.
+      if (storedQuery.data === null && !storedQuery.isFetching) {
+        // No stored variance and no company_id yet — need a generate pass without prior.
+        setBootstrapDone(true);
+      }
+      return;
     }
-  }, [data?.prior_tb_id, selectedPriorTbId]);
+    if (priorsQuery.isLoading) return;
 
-  if (varianceQuery.isLoading) {
+    const preferred = readPreferredPriorTbId(companyId, periodEnd);
+    const preferredValid =
+      preferred && priorOptions.some((tb) => tb.id === preferred)
+        ? preferred
+        : null;
+    const storedPrior = storedQuery.data?.prior_tb_id ?? null;
+    const storedValid =
+      storedPrior && priorOptions.some((tb) => tb.id === storedPrior)
+        ? storedPrior
+        : null;
+    const autoPrior = priorOptions[0]?.id ?? "";
+    const next = preferredValid || storedValid || autoPrior;
+    setSelectedPriorTbId(next);
+    setBootstrapDone(true);
+  }, [
+    bootstrapDone,
+    storedQuery.isLoading,
+    storedQuery.isFetching,
+    storedQuery.data,
+    companyId,
+    periodEnd,
+    priorsQuery.isLoading,
+    priorOptions,
+  ]);
+
+  // Active variance: keyed by prior so a dropdown change is a distinct query.
+  const varianceQuery = useQuery({
+    queryKey: ["tb-variance", tbId, selectedPriorTbId || "auto"],
+    enabled: bootstrapDone,
+    queryFn: () =>
+      fetchVariance(tbId, selectedPriorTbId || null, getToken),
+    staleTime: 0,
+  });
+
+  const generateMutation = useMutation({
+    mutationFn: (priorTbId: string | null) =>
+      fetchVariance(tbId, priorTbId, getToken),
+    onSuccess: (data, priorTbId) => {
+      const keyPrior = data.prior_tb_id ?? priorTbId ?? "auto";
+      queryClient.setQueryData(["tb-variance", tbId, keyPrior], data);
+      queryClient.setQueryData(["tb-variance-stored", tbId], data);
+      // Only sync selection from this response when it matches the request —
+      // avoids a slow older mutation overwriting a newer dropdown choice.
+      if (
+        data.prior_tb_id &&
+        (priorTbId === null || data.prior_tb_id === priorTbId)
+      ) {
+        setSelectedPriorTbId((current) =>
+          current === "" || current === priorTbId || current === data.prior_tb_id
+            ? data.prior_tb_id!
+            : current,
+        );
+      }
+      if (companyId && periodEnd && data.prior_tb_id) {
+        writePreferredPriorTbId(companyId, periodEnd, data.prior_tb_id);
+      }
+    },
+  });
+
+  // CRITICAL: never fall back across priors. Old bug was
+  // `generateMutation.data ?? varianceQuery.data` with queryKey missing
+  // prior_tb_id — dropdown POSTed correctly but UI kept showing the previous
+  // prior's amounts until (or unless) cache lined up.
+  const data =
+    (responseMatchesPrior(varianceQuery.data, selectedPriorTbId)
+      ? varianceQuery.data
+      : undefined) ??
+    (generateMutation.variables === (selectedPriorTbId || null) &&
+    responseMatchesPrior(generateMutation.data, selectedPriorTbId)
+      ? generateMutation.data
+      : undefined) ??
+    (responseMatchesPrior(storedQuery.data, selectedPriorTbId)
+      ? storedQuery.data
+      : undefined);
+  const isRefreshing =
+    varianceQuery.isFetching ||
+    (generateMutation.isPending &&
+      generateMutation.variables === (selectedPriorTbId || null));
+  const needsGenerate =
+    bootstrapDone &&
+    storedQuery.data === null &&
+    !data &&
+    !varianceQuery.isFetching &&
+    !generateMutation.isPending &&
+    priorOptions.length === 0;
+
+  const onPriorChange = (next: string) => {
+    setSelectedPriorTbId(next);
+    if (companyId && periodEnd) {
+      writePreferredPriorTbId(companyId, periodEnd, next || null);
+    }
+    // Query key change triggers varianceQuery; also POST immediately so network
+    // evidence is obvious and we don't wait on background refetch timing.
+    generateMutation.mutate(next || null);
+  };
+
+  if (storedQuery.isLoading && !bootstrapDone) {
     return <p className="text-sm text-soft">Loading variance analysis…</p>;
   }
 
-  if (varianceQuery.error && !generateMutation.data) {
+  if (storedQuery.error && !data) {
     return (
       <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-        {varianceQuery.error instanceof Error
-          ? varianceQuery.error.message
+        {storedQuery.error instanceof Error
+          ? storedQuery.error.message
           : "Failed to load variance analysis"}
       </p>
     );
@@ -171,6 +293,43 @@ export function VariancePanel({
   }
 
   if (!data) {
+    if (isRefreshing || !bootstrapDone) {
+      // Keep the prior selector visible while a new prior's POST is in flight —
+      // otherwise the dropdown vanishes and it looks like nothing happened.
+      if (bootstrapDone && priorOptions.length > 0) {
+        return (
+          <div className="space-y-4">
+            <div className="flex min-w-[16rem] flex-col gap-1.5">
+              <label
+                htmlFor="variance-prior-tb"
+                className="text-xs font-semibold uppercase tracking-[0.12em] text-soft"
+              >
+                Compare against
+              </label>
+              <select
+                id="variance-prior-tb"
+                data-testid="variance-prior-select"
+                value={selectedPriorTbId}
+                disabled={isRefreshing}
+                onChange={(event) => onPriorChange(event.target.value)}
+                className="rounded-md border border-line bg-surface-elevated px-3 py-2 text-sm text-ink shadow-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+              >
+                {priorOptions.map((tb, index) => (
+                  <option key={tb.id} value={tb.id}>
+                    {formatDate(tb.period_end)}
+                    {index === 0 ? " (auto)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <p className="text-sm text-soft" role="status">
+              Loading variance for selected prior…
+            </p>
+          </div>
+        );
+      }
+      return <p className="text-sm text-soft">Loading variance analysis…</p>;
+    }
     return null;
   }
 
@@ -202,13 +361,10 @@ export function VariancePanel({
           </label>
           <select
             id="variance-prior-tb"
+            data-testid="variance-prior-select"
             value={selectedPriorTbId}
-            disabled={generateMutation.isPending || priorOptions.length === 0}
-            onChange={(event) => {
-              const next = event.target.value;
-              setSelectedPriorTbId(next);
-              generateMutation.mutate(next || null);
-            }}
+            disabled={isRefreshing || priorOptions.length === 0}
+            onChange={(event) => onPriorChange(event.target.value)}
             className="rounded-md border border-line bg-surface-elevated px-3 py-2 text-sm text-ink shadow-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
           >
             {priorOptions.length === 0 ? (
@@ -222,7 +378,7 @@ export function VariancePanel({
               ))
             )}
           </select>
-          <p className="text-xs text-soft">
+          <p className="text-xs text-soft" data-testid="variance-prior-hint">
             {selectedPrior
               ? isAutoSelection
                 ? `Auto-detected most recent prior (${formatDate(selectedPrior.period_end)}).`
@@ -230,6 +386,11 @@ export function VariancePanel({
               : companyId
                 ? "Select a prior trial balance to compare."
                 : "Run or refresh variance to load prior-period options."}
+            {data.prior_tb_id ? (
+              <span className="ml-1 font-mono text-[10px] text-soft/80">
+                prior={data.prior_tb_id.slice(0, 8)}
+              </span>
+            ) : null}
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
@@ -247,29 +408,35 @@ export function VariancePanel({
           </p>
           <button
             type="button"
-            disabled={generateMutation.isPending}
-            onClick={() =>
-              generateMutation.mutate(selectedPriorTbId || null)
-            }
+            disabled={isRefreshing}
+            onClick={() => generateMutation.mutate(selectedPriorTbId || null)}
             className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
           >
-            {generateMutation.isPending ? "Refreshing…" : "Refresh variance"}
+            {isRefreshing ? "Refreshing…" : "Refresh variance"}
           </button>
         </div>
       </div>
 
-      {generateMutation.error ? (
+      {generateMutation.error || varianceQuery.error ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-          {generateMutation.error instanceof Error
-            ? generateMutation.error.message
+          {(generateMutation.error ?? varianceQuery.error) instanceof Error
+            ? (generateMutation.error ?? varianceQuery.error)!.message
             : "Refresh failed"}
         </p>
+      ) : null}
+
+      {isRefreshing && !data.items.length ? (
+        <p className="text-sm text-soft">Refreshing variance…</p>
       ) : null}
 
       {data.items.length === 0 ? (
         <p className="text-sm text-soft">No variance lines returned.</p>
       ) : (
-        <div className="overflow-x-auto rounded-md border border-line bg-surface-elevated">
+        <div
+          className="overflow-x-auto rounded-md border border-line bg-surface-elevated"
+          data-testid="variance-table"
+          data-prior-tb-id={data.prior_tb_id ?? ""}
+        >
           <table className="min-w-full text-left text-sm">
             <thead className="border-b border-line bg-accent-muted/50 text-xs uppercase tracking-[0.12em] text-soft">
               <tr>
@@ -305,6 +472,11 @@ export function VariancePanel({
                     className={`px-4 py-2.5 text-right tabular-nums text-ink ${amountClass(
                       item.prior_amount,
                     )}`}
+                    data-testid={
+                      item.line_item_code === "revenue"
+                        ? "variance-revenue-prior"
+                        : undefined
+                    }
                   >
                     {formatCurrency(item.prior_amount, currencyCode)}
                   </td>
@@ -312,6 +484,11 @@ export function VariancePanel({
                     className={`px-4 py-2.5 text-right tabular-nums font-medium text-ink ${amountClass(
                       item.variance_amount,
                     )}`}
+                    data-testid={
+                      item.line_item_code === "revenue"
+                        ? "variance-revenue-var"
+                        : undefined
+                    }
                   >
                     {formatCurrency(item.variance_amount, currencyCode)}
                   </td>
