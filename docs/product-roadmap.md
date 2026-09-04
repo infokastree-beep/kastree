@@ -85,9 +85,38 @@ Requires its own legal / ToS review before build, not just before launch.
 - **Multi-entity true consolidation** — intercompany eliminations, ownership
   %, currency translation. Explicitly excluded from current MVP scope; real
   engineering reasons documented in [`tracked-gaps.md`](tracked-gaps.md).
-- **Cash Flow Statement** — needs prior-period data (available); requires
-  resolving the PPE cost / depreciation netting decision made in Statement
-  Builder, since gross capex cannot be derived from a netted PPE figure today.
+- **Cash Flow Statement** — *historical* statement (IAS 7 / FRS 102 style),
+  not forecasting. Needs prior-period data (available); requires resolving the
+  PPE cost / depreciation netting decision made in Statement Builder, since
+  gross capex cannot be derived from a netted PPE figure today. Forward-looking
+  cash-flow work is a separate capability — see **Future considerations** below.
+
+---
+
+## Future considerations (not sequenced — demand-gated)
+
+Items below are **not** on the Product 1 Close/Medium build path and are **not**
+implied by Product 3’s historical Cash Flow Statement. Capture them here so they
+are not confused with nearer work. **Do not build without real customer demand**
+— the same caution already applied to ERP / direct accounting-system integration
+(Xero, QuickBooks, Sage, etc.).
+
+### Scenario analysis, cash flow forecasting, and predictive modelling
+
+A **distinct future capability**: forward-looking what-if scenarios, cash-flow
+forecasts, and predictive models on top of (or beside) proven historical
+statements. Separate from Product 3’s **Cash Flow Statement**, which is a
+historical period statement derived from trial-balance / statement data.
+Forecasting is a bigger, later undertaking (assumptions, drivers, model
+governance, and liability surface differ from “rebuild last month’s CFS”).
+
+### General data export / BI connectivity
+
+Possible future add-on: connectors or export paths for BI tools (e.g. **Power
+BI**) so firms can pull Kastree statement / variance outputs into their own
+reporting stacks. **Genuinely uncertain priority** — useful for some practices,
+irrelevant for others. Same rule as ERP integration: wait for clear customer
+demand before designing APIs, schemas, or sync jobs.
 
 ---
 
@@ -101,7 +130,8 @@ Medium items (data viz, multi-period trends) come after Close is shipped.
 
 Products 2 and 3 are intentionally deferred until Product 1 has real customer
 signal. **Do not begin building Product 2 or 3 items without revisiting this
-document’s sequencing first.**
+document’s sequencing first.** Future considerations above are likewise
+deferred until demand is concrete.
 
 For granular technical debt, smaller fixes, and infrastructure gaps not captured
 at product level, see [`tracked-gaps.md`](tracked-gaps.md).
