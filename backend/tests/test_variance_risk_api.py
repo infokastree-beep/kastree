@@ -704,3 +704,55 @@ async def test_monthly_cadence_upload_auto_detects_prior_variance(
     assert got.status_code == 200, got.text
     assert got.json()["prior_tb_id"] == june_id
     assert got.json()["items"] == body["items"]
+
+
+@pytest.mark.asyncio
+async def test_prior_period_preview_matches_auto_detect(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """Upload preview uses the same §6.2 rule as variance auto-detect."""
+    org_id = provisioned_org["org_id"]
+    company_id = provisioned_org["company_id"]
+    headers = auth_headers(provisioned_org["token"])
+
+    oldest_id = _seed_tb(
+        org_id=org_id,
+        company_id=company_id,
+        period_end=date(2026, 4, 30),
+        lines=[("revenue", "Revenue", "100.00", False)],
+    )
+    recent_prior_id = _seed_tb(
+        org_id=org_id,
+        company_id=company_id,
+        period_end=date(2026, 5, 31),
+        lines=[("revenue", "Revenue", "200.00", False)],
+    )
+    del oldest_id  # unused — ensures oldest is not chosen
+
+    preview = await api_client.get(
+        "/trial-balances/prior-period-preview",
+        headers=headers,
+        params={
+            "company_id": str(company_id),
+            "period_end": "2026-06-30",
+        },
+    )
+    assert preview.status_code == 200, preview.text
+    body = preview.json()
+    assert body["prior_tb_id"] == str(recent_prior_id)
+    assert body["prior_period_end"] == "2026-05-31"
+    assert body["company_id"] == str(company_id)
+    assert isinstance(body["company_name"], str) and body["company_name"]
+
+    empty = await api_client.get(
+        "/trial-balances/prior-period-preview",
+        headers=headers,
+        params={
+            "company_id": str(company_id),
+            "period_end": "2026-01-31",
+        },
+    )
+    assert empty.status_code == 200, empty.text
+    assert empty.json()["prior_tb_id"] is None
+    assert empty.json()["prior_period_end"] is None

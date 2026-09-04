@@ -44,6 +44,7 @@ from app.services.statements import (
 )
 from app.services.ownership import get_owned_company
 from app.services.llm import MAPPING_TIE_BREAKER_CANONICAL_LINES
+from app.services.prior_period import find_prior_trial_balance
 from app.services.tb_pipeline import parsed_rows_from_tb, run_parse_and_map_job
 from app.services.validator import SimpleMappedAccount, validate_trial_balance
 
@@ -193,6 +194,19 @@ class TrialBalanceListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class PriorPeriodPreviewResponse(BaseModel):
+    """Read-only preview of which prior TB variance auto-detection would pick."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    company_id: uuid.UUID
+    company_name: str
+    period_end: date
+    prior_tb_id: uuid.UUID | None = None
+    prior_period_end: date | None = None
+    prior_status: str | None = None
 
 
 _DEFAULT_TB_PAGE = 20
@@ -445,6 +459,44 @@ async def list_trial_balances(
         total=int(total or 0),
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get("/prior-period-preview", response_model=PriorPeriodPreviewResponse)
+async def preview_prior_period(
+    company_id: Annotated[uuid.UUID, Query()],
+    period_end: Annotated[date, Query()],
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> PriorPeriodPreviewResponse:
+    """Lightweight check: which prior TB would auto-detection use for this upload?
+
+    Same rule as variance auto-detect (§6.2): most recent same-company TB with
+    period_end strictly before the candidate period_end. Read-only — does not
+    create or link anything.
+    """
+    await aset_rls_org_id(session, auth.org_id)
+    company = await get_owned_company(
+        session, company_id=company_id, org_id=auth.org_id
+    )
+    prior = await find_prior_trial_balance(
+        session,
+        company_id=company.id,
+        before_period_end=period_end,
+    )
+    if prior is None:
+        return PriorPeriodPreviewResponse(
+            company_id=company.id,
+            company_name=company.name,
+            period_end=period_end,
+        )
+    return PriorPeriodPreviewResponse(
+        company_id=company.id,
+        company_name=company.name,
+        period_end=period_end,
+        prior_tb_id=prior.id,
+        prior_period_end=prior.period_end,
+        prior_status=prior.status,
     )
 
 

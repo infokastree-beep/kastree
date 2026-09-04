@@ -76,6 +76,16 @@ export interface UploadAcceptedResponse {
   message: string;
 }
 
+/** Read-only preview of which prior TB variance auto-detection would pick. */
+export interface PriorPeriodPreview {
+  company_id: string;
+  company_name: string;
+  period_end: string;
+  prior_tb_id: string | null;
+  prior_period_end: string | null;
+  prior_status: string | null;
+}
+
 export interface StatusResponse {
   tb_id: string;
   status: string;

@@ -19,6 +19,7 @@ import type {
   ClientListResponse,
   CompanyListResponse,
   ICompany,
+  PriorPeriodPreview,
   UploadAcceptedResponse,
 } from "@/types";
 
@@ -32,6 +33,22 @@ function isAcceptedFile(file: File): boolean {
 
 function currencyForCompany(company: ICompany | undefined): string {
   return company?.functional_currency ?? "GBP";
+}
+
+/** Format YYYY-MM-DD for the prior-period indicator (readable, locale-stable). */
+function formatPeriodEndLabel(isoDate: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
+  if (!match) return isoDate;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
 }
 
 type UploadFormProps = {
@@ -103,6 +120,16 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
     queryFn: () =>
       apiFetch<ICompany>(`/companies/${initialCompanyId}`, { getToken }),
     enabled: Boolean(initialCompanyId),
+  });
+
+  const priorPreviewQuery = useQuery({
+    queryKey: ["prior-period-preview", companyId, periodEnd],
+    queryFn: () =>
+      apiFetch<PriorPeriodPreview>(
+        `/trial-balances/prior-period-preview?company_id=${encodeURIComponent(companyId)}&period_end=${encodeURIComponent(periodEnd)}`,
+        { getToken },
+      ),
+    enabled: Boolean(companyId && periodEnd),
   });
 
   // Deep link: apply once when ?company= resolves — never re-apply on refetch (that
@@ -379,6 +406,21 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
           </select>
         </label>
       </div>
+
+      {priorPreviewQuery.data?.prior_period_end ? (
+        <p
+          className="rounded border border-teal-200 bg-teal-50/80 px-3 py-2 text-sm text-teal-950"
+          data-testid="prior-period-indicator"
+        >
+          This will be compared against your{" "}
+          <span className="font-medium">
+            {formatPeriodEndLabel(priorPreviewQuery.data.prior_period_end)}
+          </span>{" "}
+          upload for{" "}
+          <span className="font-medium">{priorPreviewQuery.data.company_name}</span>{" "}
+          once statements are generated.
+        </p>
+      ) : null}
 
       {showAddCompany && clientId ? (
         <div className="rounded border border-stone-200 bg-white p-4">

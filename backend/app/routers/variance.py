@@ -29,6 +29,7 @@ from app.schemas.variance import (
     VarianceItemResponse,
     VarianceResponse,
 )
+from app.services.prior_period import find_prior_trial_balance
 from app.services.variance import compute_variance
 
 router = APIRouter(prefix="/trial-balances", tags=["variance"])
@@ -49,7 +50,7 @@ async def _resolve_prior_tb(
     current: TrialBalance,
     prior_tb_id: uuid.UUID | None,
 ) -> TrialBalance | None:
-    """Explicit prior_tb_id, or most recent same-client TB with period_end < current (§6.2)."""
+    """Explicit prior_tb_id, or most recent same-company TB with period_end < current (§6.2)."""
     if prior_tb_id is not None:
         if prior_tb_id == current.id:
             raise HTTPException(status_code=400, detail="prior_tb_id must differ from current TB")
@@ -64,16 +65,11 @@ async def _resolve_prior_tb(
             raise HTTPException(status_code=404, detail="Prior trial balance not found")
         return prior
 
-    result = await session.execute(
-        select(TrialBalance)
-        .where(
-            TrialBalance.company_id == current.company_id,
-            TrialBalance.period_end < current.period_end,
-        )
-        .order_by(TrialBalance.period_end.desc())
-        .limit(1)
+    return await find_prior_trial_balance(
+        session,
+        company_id=current.company_id,
+        before_period_end=current.period_end,
     )
-    return result.scalar_one_or_none()
 
 
 async def _tb_has_sopl_sofp_statements(
