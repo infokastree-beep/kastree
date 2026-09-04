@@ -145,16 +145,21 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
   }, [initialCompanyId, initialCompanyQuery.data]);
 
   // Drop company selection when it no longer exists under the chosen client group.
+  // Wait until companies have loaded — otherwise an empty options list during fetch
+  // falsely clears a valid deep-linked / just-selected companyId.
   useEffect(() => {
     if (!clientId) {
       setCompanyId("");
+      return;
+    }
+    if (companiesLoading) {
       return;
     }
     if (companyId && !companyOptions.some((company) => company.id === companyId)) {
       setCompanyId("");
       setCurrency("GBP");
     }
-  }, [clientId, companyId, companyOptions]);
+  }, [clientId, companyId, companyOptions, companiesLoading]);
 
   const addCompanyMutation = useMutation({
     mutationFn: (values: CompanyEntityFormValues) =>
