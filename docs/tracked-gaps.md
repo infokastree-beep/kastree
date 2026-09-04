@@ -541,6 +541,12 @@ general “everything is still on personal email” fog.
   resolved R2 lifecycle section above).
 - **Security / cutover** — live API URL, health, soft-delete cleanup, privacy
   policy, Vercel Web Analytics wired and receiving data.
+- **Railway billing (RESOLVED 2026-09-04)** — Subscribed to Railway Hobby plan
+  ($5/month, includes $5 usage credit) on `infokastree@gmail.com` /
+  **overflowing-creation**. Confirmed via live API: `isTrialing=false`,
+  `state=ACTIVE`, subscription `sub_1UBkkRCJoPsRzQsdpzT2fyU7` active. Confirmed
+  zero service disruption — no restart/redeploy around the billing transition,
+  `GET /health` continuously 200 throughout. No more trial-credit exhaustion risk.
 
 **Genuinely outstanding (complete final list from tonight):**
 
@@ -558,19 +564,9 @@ general “everything is still on personal email” fog.
    impact** — the domain resolves and serves identically regardless of which
    registrant account holds it.
 
-3. **Railway billing** — the NEW Railway account (`infokastree@gmail.com`,
-   project **overflowing-creation**) is on **free trial credit** (earlier
-   tonight: on the order of **~$0.11** total usage). **No payment method is on
-   file.** When trial credit is exhausted, Railway **pauses** the service (does
-   not immediately delete it — data retained ~30 days per Railway’s policy)
-   until a card is added. **Action needed:** add a real payment method on that
-   NEW account before trial credit runs out, and check remaining balance on
-   Railway’s dashboard billing page. This is the only item with a real
-   interruption risk if ignored.
-
 Longer-term (not tonight’s cutover leftovers): before fundraising, hiring, or
 acquisition diligence, fold remaining personal-named ownership into a proper
-business entity. That is separate from the three items above.
+business entity. That is separate from the two items above.
 
 ## Clerk workspace — cannot remove original owner after adding business email
 
