@@ -133,7 +133,8 @@ def _load_export_context(
     mappings = _load_mappings(session, tb.company_id) if include_mapping else []
 
     branding = ExportBranding(
-        client_name=company.name,
+        company_name=company.name,
+        client_name=client.name,
         period_end=tb.period_end,
         generated_at=datetime.now(timezone.utc),
         functional_currency=company.functional_currency,

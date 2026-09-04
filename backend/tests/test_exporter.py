@@ -65,7 +65,8 @@ def _line(
 
 def _branding() -> ExportBranding:
     return ExportBranding(
-        client_name="Acme Ltd",
+        company_name="Acme Ltd",
+        client_name="Acme Group",
         period_end=date(2026, 3, 31),
         generated_at=datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc),
         organisation_name="Acme Advisory",
@@ -160,7 +161,8 @@ def test_exports_keep_thousands_separators_after_nil_face_filter() -> None:
         ("USD", "$30,000.00"),
     ):
         branding = ExportBranding(
-            client_name="Sep Co",
+            company_name="Sep Co",
+            client_name="Sep Group",
             period_end=date(2026, 3, 31),
             generated_at=datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc),
             functional_currency=currency,
@@ -194,7 +196,8 @@ def test_exports_keep_thousands_separators_after_nil_face_filter() -> None:
 
 def test_excel_statement_sheet_shows_currency_in_branding() -> None:
     branding = ExportBranding(
-        client_name="Euro Co",
+        company_name="Euro Co",
+        client_name="Euro Group",
         period_end=date(2026, 3, 31),
         generated_at=datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc),
         functional_currency="EUR",
@@ -212,7 +215,8 @@ def test_excel_statement_sheet_shows_currency_in_branding() -> None:
 
 def test_pdf_statement_sections_include_currency_label() -> None:
     branding = ExportBranding(
-        client_name="Euro Co",
+        company_name="Euro Co",
+        client_name="Euro Group",
         period_end=date(2026, 3, 31),
         generated_at=datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc),
         functional_currency="EUR",
@@ -239,7 +243,8 @@ def test_eur_excel_amounts_render_with_comma_thousands_via_libreoffice() -> None
         pytest.skip("libreoffice not installed")
 
     branding = ExportBranding(
-        client_name="Euro Co",
+        company_name="Euro Co",
+        client_name="Euro Group",
         period_end=date(2026, 3, 31),
         generated_at=datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc),
         functional_currency="EUR",
@@ -397,7 +402,9 @@ def test_excel_cells_receive_decimal_instances_before_save() -> None:
 def test_pdf_cover_organisation_label_is_strong() -> None:
     html = render_pdf_html(_branding(), _package(), organisation=_Org("starter"))
     assert "<p><strong>Organisation:</strong> Acme Advisory</p>" in html
-    assert "<p><strong>Client:</strong> Acme Ltd</p>" in html
+    assert "<p><strong>Company:</strong> Acme Ltd</p>" in html
+    assert "<p><strong>Client group:</strong> Acme Group</p>" in html
+    assert "<p><strong>Client:</strong> Acme Ltd</p>" not in html
     assert "<p><strong>Period end:</strong> 2026-03-31</p>" in html
     assert "<p><strong>Currency:</strong> GBP</p>" in html
     assert "<p>Organisation: Acme Advisory</p>" not in html

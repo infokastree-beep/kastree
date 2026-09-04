@@ -107,6 +107,14 @@ class OrganisationTier(Protocol):
 
 @dataclass(frozen=True)
 class ExportBranding:
+    """Cover / header identity for an export pack.
+
+    Hierarchy: Organisation (practice) → Client group → Company (legal entity).
+    ``company_name`` is the entity the trial balance belongs to; ``client_name``
+    is the parent client group.
+    """
+
+    company_name: str
     client_name: str
     period_end: date
     generated_at: datetime
@@ -218,7 +226,8 @@ def build_csv(branding: ExportBranding, package: ExportPackage) -> bytes:
     buffer = io.StringIO()
     buffer.write(f"# DISCLAIMER: {DISCLAIMER_TEXT}\n")
     buffer.write(
-        f"# Client: {branding.client_name} | Period end: {branding.period_end.isoformat()} "
+        f"# Company: {branding.company_name} | Client group: {branding.client_name} "
+        f"| Period end: {branding.period_end.isoformat()} "
         f"| Generated: {branding.generated_at.date().isoformat()} "
         f"| Currency: {branding.functional_currency.upper()}\n"
     )
@@ -231,6 +240,7 @@ def build_csv(branding: ExportBranding, package: ExportPackage) -> bytes:
             "amount",
             "is_subtotal",
             "display_order",
+            "company_name",
             "client_name",
             "period_end",
             "generated_at",
@@ -250,6 +260,7 @@ def build_csv(branding: ExportBranding, package: ExportPackage) -> bytes:
                     format_currency(line.amount, branding.functional_currency),
                     "true" if line.is_subtotal else "false",
                     line.display_order,
+                    branding.company_name,
                     branding.client_name,
                     branding.period_end.isoformat(),
                     branding.generated_at.isoformat(),
@@ -397,7 +408,8 @@ def render_pdf_html(
 {watermark_div}
 <section class="cover">
   <h1>Kastree Management Accounts Pack</h1>
-  <p><strong>Client:</strong> {_html_escape(branding.client_name)}</p>
+  <p><strong>Company:</strong> {_html_escape(branding.company_name)}</p>
+  <p><strong>Client group:</strong> {_html_escape(branding.client_name)}</p>
   {org_line}
   <p><strong>Period end:</strong> {branding.period_end.isoformat()}</p>
   <p><strong>Currency:</strong> {branding.functional_currency.upper()}</p>
@@ -600,23 +612,23 @@ def _write_branding(
     watermark: bool,
     start_row: int = 1,
 ) -> int:
-    ws.cell(start_row, 1, branding.client_name).font = _BRAND_FONT
-    ws.cell(start_row + 1, 1, f"Period end: {branding.period_end.isoformat()}")
+    ws.cell(start_row, 1, branding.company_name).font = _BRAND_FONT
+    ws.cell(start_row + 1, 1, f"Client group: {branding.client_name}")
+    ws.cell(start_row + 2, 1, f"Period end: {branding.period_end.isoformat()}")
     ws.cell(
-        start_row + 2,
+        start_row + 3,
         1,
         f"All amounts in {branding.functional_currency.upper()}",
     )
     ws.cell(
-        start_row + 3,
+        start_row + 4,
         1,
         f"Generated: {branding.generated_at.strftime('%Y-%m-%d %H:%M UTC')}",
     )
+    next_row = start_row + 5
     if branding.organisation_name:
-        ws.cell(start_row + 4, 1, f"Organisation: {branding.organisation_name}")
-        next_row = start_row + 5
-    else:
-        next_row = start_row + 4
+        ws.cell(next_row, 1, f"Organisation: {branding.organisation_name}")
+        next_row += 1
     if watermark:
         cell = ws.cell(next_row, 1, WATERMARK_TEXT)
         cell.font = _WATERMARK_FONT
@@ -782,7 +794,7 @@ def _autosize(ws: Worksheet, columns: int) -> None:
 def _filename(branding: ExportBranding, extension: str) -> str:
     safe = "".join(
         ch if ch.isalnum() or ch in ("-", "_") else "_"
-        for ch in branding.client_name.strip()
+        for ch in branding.company_name.strip()
     ) or "export"
     return f"{safe}_{branding.period_end.isoformat()}.{extension}"
 
