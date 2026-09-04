@@ -14,3 +14,4 @@ dist/
 build/
 *.tsbuildinfo
 backups/*.dump
+.vercel

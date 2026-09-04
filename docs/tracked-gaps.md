@@ -572,7 +572,17 @@ general “everything is still on personal email” fog.
    (www.kastree.ie) is fully live and working regardless of which account owns
    the Vercel project today (`markdooling25-commits` / kastree team).
 
-2. **Blacknight domain transfer** — `kastree.ie` registration remains under the
+2. **Vercel auto-deploy lag (RESOLVED 2026-09-04 via deploy hook)** — Backend
+   Railway had shipped `f38f1b1` (failed-upload 409 body shape + currency
+   harden + TB nav) while www.kastree.ie stayed on a **2h-old** frontend build
+   (`frontend-rdb82gdcv`, 2026-09-03 23:27). That stale bundle still treated
+   object-shaped FastAPI `detail` as bare `API 409`. Triggered Production
+   deploy hook → `frontend-rjwgr0exq` on sha `f38f1b1`, aliased to
+   www.kastree.ie. Live Playwright then showed the real message + “Open the
+   existing trial balance” link. Prefer the deploy hook (or confirm Git
+   webhook) after frontend-affecting pushes until auto-deploy is reliable.
+
+3. **Blacknight domain transfer** — `kastree.ie` registration remains under the
    original personal account. Deliberately deferred because .ie registrant
    changes involve ID/passport verification. **Low priority, no functional
    impact** — the domain resolves and serves identically regardless of which
