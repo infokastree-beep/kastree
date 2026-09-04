@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -69,6 +70,8 @@ class VarianceResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tb_id: uuid.UUID
+    company_id: uuid.UUID | None = None
+    period_end: date | None = None
     prior_tb_id: uuid.UUID | None = None
     variance_available: bool
     message: str | None = None

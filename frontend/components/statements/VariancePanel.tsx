@@ -1,11 +1,16 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
 import { formatCurrency } from "@/lib/currency";
-import { formatCanonicalLineLabel } from "@/lib/utils";
-import type { VarianceDirection, VarianceResponse } from "@/types";
+import { formatCanonicalLineLabel, formatDate } from "@/lib/utils";
+import type {
+  TrialBalanceListResponse,
+  VarianceDirection,
+  VarianceResponse,
+} from "@/types";
 
 function formatPct(value: string | null): string {
   if (value === null || value === "") return "—";
@@ -58,6 +63,7 @@ export function VariancePanel({
 }) {
   const { getToken } = useAuth();
   const queryClient = useQueryClient();
+  const [selectedPriorTbId, setSelectedPriorTbId] = useState<string>("");
 
   const varianceQuery = useQuery({
     queryKey: ["tb-variance", tbId],
@@ -77,18 +83,50 @@ export function VariancePanel({
   });
 
   const generateMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (priorTbId: string | null) =>
       apiFetch<VarianceResponse>(`/trial-balances/${tbId}/variance`, {
         method: "POST",
         getToken,
+        body: JSON.stringify(
+          priorTbId ? { prior_tb_id: priorTbId } : {},
+        ),
       }),
     onSuccess: (data) => {
       queryClient.setQueryData(["tb-variance", tbId], data);
+      if (data.prior_tb_id) {
+        setSelectedPriorTbId(data.prior_tb_id);
+      }
     },
   });
 
   const data = generateMutation.data ?? varianceQuery.data;
   const needsGenerate = varianceQuery.data === null && !generateMutation.data;
+  const companyId = data?.company_id ?? null;
+  const periodEnd = data?.period_end ?? null;
+
+  const priorsQuery = useQuery({
+    queryKey: ["tb-prior-options", companyId, periodEnd],
+    enabled: Boolean(companyId && periodEnd),
+    queryFn: () =>
+      apiFetch<TrialBalanceListResponse>(
+        `/trial-balances?company_id=${encodeURIComponent(companyId!)}&limit=100`,
+        { getToken },
+      ),
+  });
+
+  const priorOptions = useMemo(() => {
+    const items = priorsQuery.data?.items ?? [];
+    if (!periodEnd) return [];
+    return items
+      .filter((tb) => tb.id !== tbId && tb.period_end < periodEnd)
+      .sort((a, b) => (a.period_end < b.period_end ? 1 : -1));
+  }, [priorsQuery.data?.items, periodEnd, tbId]);
+
+  useEffect(() => {
+    if (data?.prior_tb_id && selectedPriorTbId === "") {
+      setSelectedPriorTbId(data.prior_tb_id);
+    }
+  }, [data?.prior_tb_id, selectedPriorTbId]);
 
   if (varianceQuery.isLoading) {
     return <p className="text-sm text-soft">Loading variance analysis…</p>;
@@ -121,7 +159,7 @@ export function VariancePanel({
         <button
           type="button"
           disabled={generateMutation.isPending}
-          onClick={() => generateMutation.mutate()}
+          onClick={() => generateMutation.mutate(null)}
           className="rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-50"
         >
           {generateMutation.isPending
@@ -147,29 +185,77 @@ export function VariancePanel({
     );
   }
 
+  const selectedPrior = priorOptions.find((tb) => tb.id === selectedPriorTbId);
+  const autoPriorId = priorOptions[0]?.id ?? null;
+  const isAutoSelection =
+    Boolean(autoPriorId) && selectedPriorTbId === autoPriorId;
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-ink-secondary">
-          Material when ≥{" "}
-          <span className="font-mono font-medium text-ink">
-            {data.materiality_threshold_pct ?? "—"}%
-          </span>{" "}
-          or{" "}
-          <span className="font-mono font-medium text-ink">
-            {data.materiality_threshold_abs
-              ? formatCurrency(data.materiality_threshold_abs, currencyCode)
-              : "—"}
-          </span>
-        </p>
-        <button
-          type="button"
-          disabled={generateMutation.isPending}
-          onClick={() => generateMutation.mutate()}
-          className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
-        >
-          {generateMutation.isPending ? "Refreshing…" : "Refresh variance"}
-        </button>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex min-w-[16rem] flex-1 flex-col gap-1.5">
+          <label
+            htmlFor="variance-prior-tb"
+            className="text-xs font-semibold uppercase tracking-[0.12em] text-soft"
+          >
+            Compare against
+          </label>
+          <select
+            id="variance-prior-tb"
+            value={selectedPriorTbId}
+            disabled={generateMutation.isPending || priorOptions.length === 0}
+            onChange={(event) => {
+              const next = event.target.value;
+              setSelectedPriorTbId(next);
+              generateMutation.mutate(next || null);
+            }}
+            className="rounded-md border border-line bg-surface-elevated px-3 py-2 text-sm text-ink shadow-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+          >
+            {priorOptions.length === 0 ? (
+              <option value="">No prior periods available</option>
+            ) : (
+              priorOptions.map((tb, index) => (
+                <option key={tb.id} value={tb.id}>
+                  {formatDate(tb.period_end)}
+                  {index === 0 ? " (auto)" : ""}
+                </option>
+              ))
+            )}
+          </select>
+          <p className="text-xs text-soft">
+            {selectedPrior
+              ? isAutoSelection
+                ? `Auto-detected most recent prior (${formatDate(selectedPrior.period_end)}).`
+                : `Comparing to ${formatDate(selectedPrior.period_end)}.`
+              : companyId
+                ? "Select a prior trial balance to compare."
+                : "Run or refresh variance to load prior-period options."}
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-2">
+          <p className="text-sm text-ink-secondary">
+            Material when ≥{" "}
+            <span className="font-mono font-medium text-ink">
+              {data.materiality_threshold_pct ?? "—"}%
+            </span>{" "}
+            or{" "}
+            <span className="font-mono font-medium text-ink">
+              {data.materiality_threshold_abs
+                ? formatCurrency(data.materiality_threshold_abs, currencyCode)
+                : "—"}
+            </span>
+          </p>
+          <button
+            type="button"
+            disabled={generateMutation.isPending}
+            onClick={() =>
+              generateMutation.mutate(selectedPriorTbId || null)
+            }
+            className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+          >
+            {generateMutation.isPending ? "Refreshing…" : "Refresh variance"}
+          </button>
+        </div>
       </div>
 
       {generateMutation.error ? (

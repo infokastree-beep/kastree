@@ -110,6 +110,16 @@ historical period statement derived from trial-balance / statement data.
 Forecasting is a bigger, later undertaking (assumptions, drivers, model
 governance, and liability surface differ from “rebuild last month’s CFS”).
 
+### Dual-period upload for first-time variance onboarding
+
+**Distinct from** the Variance tab’s prior-period selector (which lets companies
+that already have multiple uploaded periods choose which prior to compare
+against). This is about **first-time setup**: allow uploading the current and
+prior period trial balances **together in one flow**, so a new company with no
+upload history can get variance analysis without two separate upload trips.
+Capture only — do not build until Close variance UX is settled and demand is
+clear.
+
 ### General data export / BI connectivity
 
 Possible future add-on: connectors or export paths for BI tools (e.g. **Power

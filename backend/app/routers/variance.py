@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from decimal import Decimal
 from typing import Annotated
 
@@ -123,11 +124,15 @@ async def _load_sopl_sofp_lines(
 def _unavailable_response(
     tb_id: uuid.UUID,
     *,
+    company_id: uuid.UUID | None = None,
+    period_end: date | None = None,
     message: str = MISSING_PRIOR_PERIOD_MESSAGE,
     prior_tb_id: uuid.UUID | None = None,
 ) -> VarianceResponse:
     return VarianceResponse(
         tb_id=tb_id,
+        company_id=company_id,
+        period_end=period_end,
         prior_tb_id=prior_tb_id,
         variance_available=False,
         message=message,
@@ -168,6 +173,8 @@ def _items_with_commentary(
 def _analysis_response(
     *,
     tb_id: uuid.UUID,
+    company_id: uuid.UUID,
+    period_end: date,
     prior_tb_id: uuid.UUID,
     company: Company,
     row: VarianceAnalysis,
@@ -175,6 +182,8 @@ def _analysis_response(
     analysis = VarianceAnalysisResult.model_validate(row.items)
     return VarianceResponse(
         tb_id=tb_id,
+        company_id=company_id,
+        period_end=period_end,
         prior_tb_id=prior_tb_id,
         variance_available=True,
         message=None,
@@ -203,7 +212,9 @@ async def generate_variance(
     request = body or VarianceGenerateRequest()
     prior = await _resolve_prior_tb(session, current=tb, prior_tb_id=request.prior_tb_id)
     if prior is None:
-        return _unavailable_response(tb.id)
+        return _unavailable_response(
+            tb.id, company_id=tb.company_id, period_end=tb.period_end
+        )
 
     current_lines = await _load_sopl_sofp_lines(session, tb.id)
     if current_lines is None:
@@ -216,6 +227,8 @@ async def generate_variance(
         # Prior TB exists but statements never built — same unavailable shape as no-prior (§7).
         return _unavailable_response(
             tb.id,
+            company_id=tb.company_id,
+            period_end=tb.period_end,
             message=PRIOR_STATEMENTS_MISSING_MESSAGE,
             prior_tb_id=prior.id,
         )
@@ -249,6 +262,8 @@ async def generate_variance(
 
     return _analysis_response(
         tb_id=tb.id,
+        company_id=tb.company_id,
+        period_end=tb.period_end,
         prior_tb_id=prior.id,
         company=company,
         row=row,
@@ -281,14 +296,20 @@ async def get_variance(
         # No stored analysis — check whether a prior period exists for a clear banner.
         prior = await _resolve_prior_tb(session, current=tb, prior_tb_id=None)
         if prior is None:
-            return _unavailable_response(tb.id)
+            return _unavailable_response(
+                tb.id, company_id=tb.company_id, period_end=tb.period_end
+            )
         raise HTTPException(status_code=404, detail="Variance analysis not generated yet")
 
     if row.prior_tb_id is None:
-        return _unavailable_response(tb.id)
+        return _unavailable_response(
+            tb.id, company_id=tb.company_id, period_end=tb.period_end
+        )
 
     return _analysis_response(
         tb_id=tb.id,
+        company_id=tb.company_id,
+        period_end=tb.period_end,
         prior_tb_id=row.prior_tb_id,
         company=company,
         row=row,

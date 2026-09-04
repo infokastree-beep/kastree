@@ -150,6 +150,8 @@ export interface StatementBlock {
 
 export interface StatementsResponse {
   tb_id: string;
+  company_id: string;
+  period_end: string;
   functional_currency: string;
   statements: StatementBlock[];
 }
@@ -177,6 +179,8 @@ export interface VarianceItem {
 
 export interface VarianceResponse {
   tb_id: string;
+  company_id?: string | null;
+  period_end?: string | null;
   prior_tb_id: string | null;
   variance_available: boolean;
   message: string | null;

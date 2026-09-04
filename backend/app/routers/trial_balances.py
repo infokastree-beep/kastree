@@ -164,6 +164,8 @@ class StatementsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tb_id: uuid.UUID
+    company_id: uuid.UUID
+    period_end: date
     functional_currency: str
     statements: list[StatementBlockResponse]
 
@@ -172,6 +174,8 @@ class StatementsGenerateResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tb_id: uuid.UUID
+    company_id: uuid.UUID
+    period_end: date
     status: str
     functional_currency: str
     statements: list[StatementBlockResponse]
@@ -825,6 +829,8 @@ async def generate_statements(
 
     return StatementsGenerateResponse(
         tb_id=tb.id,
+        company_id=tb.company_id,
+        period_end=tb.period_end,
         status="complete",
         functional_currency=await _get_tb_functional_currency(session, tb=tb),
         statements=payload,
@@ -997,6 +1003,8 @@ async def get_statements(
         )
     return StatementsResponse(
         tb_id=tb.id,
+        company_id=tb.company_id,
+        period_end=tb.period_end,
         functional_currency=await _get_tb_functional_currency(session, tb=tb),
         statements=blocks,
     )
