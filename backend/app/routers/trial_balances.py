@@ -297,26 +297,82 @@ async def upload_trial_balance(
     stored_name = f"{uuid.uuid4()}.{file_type}"
     stored_path = upload_root / stored_name
     stored_path.write_bytes(content)
+    file_url = f"file://{stored_path}"
+    currency_code = company.functional_currency.upper()
 
-    tb = TrialBalance(
-        company_id=company.id,
-        period_end=period_end,
-        file_url=f"file://{stored_path}",
-        file_type=file_type,
-        file_size_bytes=len(content),
-        status="pending",
-        # Company.functional_currency is authoritative — ignore mismatched form values.
-        currency=company.functional_currency.upper(),
-    )
-    session.add(tb)
-    try:
-        await session.flush()
-    except IntegrityError as exc:
-        await session.rollback()
+    # UNIQUE(company_id, period_end) must not permanently block retry after a
+    # failed parse: replace the failed row in place. Non-failed rows still 409.
+    existing = (
+        await session.execute(
+            select(TrialBalance).where(
+                TrialBalance.company_id == company.id,
+                TrialBalance.period_end == period_end,
+            )
+        )
+    ).scalar_one_or_none()
+
+    if existing is not None and existing.status != "failed":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="A trial balance already exists for this company and period_end",
-        ) from exc
+            detail={
+                "message": (
+                    "A trial balance already exists for this company and period_end"
+                ),
+                "existing_tb_id": str(existing.id),
+                "existing_status": existing.status,
+            },
+        )
+
+    if existing is not None and existing.status == "failed":
+        tb = existing
+        # Drop prior jobs / derived rows (CASCADE on tb_id FKs) before reuse.
+        for child in (
+            await session.execute(
+                select(ProcessingJob).where(ProcessingJob.tb_id == tb.id)
+            )
+        ).scalars().all():
+            await session.delete(child)
+        for child in (
+            await session.execute(
+                select(FinancialStatement).where(FinancialStatement.tb_id == tb.id)
+            )
+        ).scalars().all():
+            await session.delete(child)
+        await session.flush()
+        tb.file_url = file_url
+        tb.file_type = file_type
+        tb.file_size_bytes = len(content)
+        tb.file_hash = None
+        tb.raw_data = None
+        tb.parsed_data = None
+        tb.validation_results = None
+        tb.error_message = None
+        tb.status = "pending"
+        tb.currency = currency_code
+    else:
+        tb = TrialBalance(
+            company_id=company.id,
+            period_end=period_end,
+            file_url=file_url,
+            file_type=file_type,
+            file_size_bytes=len(content),
+            status="pending",
+            # Company.functional_currency is authoritative — ignore mismatched form values.
+            currency=currency_code,
+        )
+        session.add(tb)
+        try:
+            await session.flush()
+        except IntegrityError as exc:
+            await session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "message": (
+                        "A trial balance already exists for this company and period_end"
+                    ),
+                },
+            ) from exc
 
     parse_job = ProcessingJob(
         tb_id=tb.id,

@@ -11,6 +11,20 @@ function currencySymbol(code: string): string {
 }
 
 /**
+ * Group an integer digit string with the §10.7 thousands separator:
+ * comma for GBP/USD, space for EUR. Locale-independent (does not rely on Intl
+ * grouping, which can vary by ICU data).
+ */
+function groupThousands(wholeDigits: string, separator: "," | " "): string {
+  const digits = wholeDigits.replace(/^0+(?=\d)/, "") || "0";
+  const parts: string[] = [];
+  for (let i = digits.length; i > 0; i -= 3) {
+    parts.unshift(digits.slice(Math.max(0, i - 3), i));
+  }
+  return parts.join(separator);
+}
+
+/**
  * Format a monetary amount with the correct thousands separator for the currency:
  * comma for GBP/USD, space for EUR (§10.7). Always two decimal places; minus sign
  * for negatives (caller applies red styling).
@@ -22,13 +36,11 @@ export function formatCurrency(amount: string | number, currencyCode: string): s
   }
 
   const upper = currencyCode.toUpperCase();
-  const absFormatted = new Intl.NumberFormat("en-GB", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Math.abs(value));
-
-  const numberPart =
-    upper === "EUR" ? absFormatted.replace(/,/g, " ") : absFormatted;
+  const separator: "," | " " = upper === "EUR" ? " " : ",";
+  const abs = Math.abs(value);
+  const fixed = abs.toFixed(2);
+  const [whole, frac] = fixed.split(".");
+  const numberPart = `${groupThousands(whole ?? "0", separator)}.${frac ?? "00"}`;
 
   const sign = value < 0 ? "-" : "";
   return `${sign}${currencySymbol(upper)}${numberPart}`;

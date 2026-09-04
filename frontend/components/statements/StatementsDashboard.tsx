@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
@@ -184,11 +185,26 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
             Statements have not been generated yet for this trial balance.
           </p>
           {generateMutation.error ? (
-            <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-              {generateMutation.error instanceof Error
-                ? generateMutation.error.message
-                : "Generate failed"}
-            </p>
+            <div className="space-y-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              <p>
+                {generateMutation.error instanceof Error
+                  ? generateMutation.error.message
+                  : "Generate failed"}
+              </p>
+              {generateMutation.error instanceof ApiError &&
+              generateMutation.error.message
+                .toLowerCase()
+                .includes("confirm mapping") ? (
+                <p>
+                  <Link
+                    href={`/mapping/${tbId}`}
+                    className="font-medium underline"
+                  >
+                    Go to mapping review
+                  </Link>
+                </p>
+              ) : null}
+            </div>
           ) : null}
           <button
             type="button"

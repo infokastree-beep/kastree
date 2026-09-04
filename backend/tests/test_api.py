@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from datetime import date
 
 import pytest
 from httpx import AsyncClient
@@ -11,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from app.db import SyncSessionLocal, set_rls_org_id
+from app.models.trial_balance import TrialBalance
 from app.services.org_provisioning import (
     organisation_id_for_clerk_org,
     provision_first_signup,
@@ -636,3 +638,119 @@ async def test_get_statements_returns_company_functional_currency(
     )
     assert got.status_code == 200, got.text
     assert got.json()["functional_currency"] == "EUR"
+
+
+@pytest.mark.asyncio
+async def test_failed_upload_can_be_retried_same_company_period(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """A failed TB must not permanently occupy UNIQUE(company_id, period_end)."""
+    headers = auth_headers(provisioned_org["token"])
+    company_id = str(provisioned_org["company_id"])
+    period_end = "2026-01-31"
+
+    # Seed a failed row the same way a bad parse would leave it.
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
+        failed = TrialBalance(
+            company_id=provisioned_org["company_id"],
+            period_end=date(2026, 1, 31),
+            file_url="file:///tmp/findraft-uploads/broken.xlsx",
+            file_type="xlsx",
+            file_size_bytes=16,
+            status="failed",
+            currency="GBP",
+            error_message="File is not a zip file",
+        )
+        session.add(failed)
+        session.flush()
+        failed_id = failed.id
+        session.commit()
+
+    # Re-upload a valid file for the same company + period → 202, same tb id reused.
+    files = {
+        "file": (
+            "tb.xlsx",
+            balanced_tb_xlsx_bytes(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    }
+    retry = await api_client.post(
+        "/trial-balances/upload",
+        data={
+            "company_id": company_id,
+            "period_end": period_end,
+            "currency": "GBP",
+        },
+        files=files,
+        headers=headers,
+    )
+    assert retry.status_code == 202, retry.text
+    body = retry.json()
+    assert body["tb_id"] == str(failed_id)
+    assert body["status"] == "pending"
+
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
+        row = session.get(TrialBalance, failed_id)
+        assert row is not None
+        # BackgroundTasks may already have advanced pending → parsing/mapping.
+        assert row.status != "failed"
+        assert row.error_message is None
+        assert row.period_end == date(2026, 1, 31)
+
+
+@pytest.mark.asyncio
+async def test_duplicate_non_failed_upload_returns_409_with_existing_tb_id(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    headers = auth_headers(provisioned_org["token"])
+    company_id = str(provisioned_org["company_id"])
+    period_end = "2026-02-28"
+    files = {
+        "file": (
+            "tb.xlsx",
+            balanced_tb_xlsx_bytes(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    }
+    first = await api_client.post(
+        "/trial-balances/upload",
+        data={
+            "company_id": company_id,
+            "period_end": period_end,
+            "currency": "GBP",
+        },
+        files=files,
+        headers=headers,
+    )
+    assert first.status_code == 202, first.text
+    tb_id = first.json()["tb_id"]
+
+    second = await api_client.post(
+        "/trial-balances/upload",
+        data={
+            "company_id": company_id,
+            "period_end": period_end,
+            "currency": "GBP",
+        },
+        files=files,
+        headers=headers,
+    )
+    assert second.status_code == 409, second.text
+    detail = second.json()["detail"]
+    assert isinstance(detail, dict)
+    assert detail["existing_tb_id"] == tb_id
+    assert "already exists" in detail["message"].lower()
+    assert detail["existing_status"] in {
+        "pending",
+        "parsing",
+        "mapping",
+        "validating",
+        "generating",
+        "analysing",
+        "complete",
+        "failed",
+    }

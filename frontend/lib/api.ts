@@ -17,6 +17,62 @@ export class ApiError extends Error {
   }
 }
 
+/** Pull a human-readable message from FastAPI `detail` (string or object). */
+function extractErrorDetail(body: unknown, status: number): string {
+  if (typeof body !== "object" || body === null || !("detail" in body)) {
+    return `API ${status}`;
+  }
+  const detail = (body as { detail: unknown }).detail;
+  if (typeof detail === "string") {
+    return detail;
+  }
+  if (
+    typeof detail === "object" &&
+    detail !== null &&
+    "message" in detail &&
+    typeof (detail as { message: unknown }).message === "string"
+  ) {
+    return (detail as { message: string }).message;
+  }
+  return `API ${status}`;
+}
+
+/** Best-effort existing_tb_id from a 409 upload conflict body. */
+export function existingTbIdFromConflict(error: unknown): string | null {
+  if (!(error instanceof ApiError) || error.status !== 409) {
+    return null;
+  }
+  const body = error.body;
+  if (typeof body !== "object" || body === null || !("detail" in body)) {
+    return null;
+  }
+  const detail = (body as { detail: unknown }).detail;
+  if (typeof detail !== "object" || detail === null) {
+    return null;
+  }
+  const id = (detail as { existing_tb_id?: unknown }).existing_tb_id;
+  return typeof id === "string" && id.length > 0 ? id : null;
+}
+
+/** Best-effort existing_status from a 409 upload conflict body. */
+export function existingTbStatusFromConflict(error: unknown): string | null {
+  if (!(error instanceof ApiError) || error.status !== 409) {
+    return null;
+  }
+  const body = error.body;
+  if (typeof body !== "object" || body === null || !("detail" in body)) {
+    return null;
+  }
+  const detail = (body as { detail: unknown }).detail;
+  if (typeof detail !== "object" || detail === null) {
+    return null;
+  }
+  const statusValue = (detail as { existing_status?: unknown }).existing_status;
+  return typeof statusValue === "string" && statusValue.length > 0
+    ? statusValue
+    : null;
+}
+
 export function getApiBaseUrl(): string {
   const base = process.env.NEXT_PUBLIC_API_BASE_URL;
   if (!base) {
@@ -71,13 +127,7 @@ export async function apiFetch<T>(
     } catch {
       body = await response.text().catch(() => null);
     }
-    const detail =
-      typeof body === "object" &&
-      body !== null &&
-      "detail" in body &&
-      typeof (body as { detail: unknown }).detail === "string"
-        ? (body as { detail: string }).detail
-        : `API ${response.status}`;
+    const detail = extractErrorDetail(body, response.status);
     throw new ApiError(detail, response.status, body);
   }
 

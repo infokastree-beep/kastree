@@ -19,6 +19,24 @@ import type {
 
 const TB_PAGE_SIZE = 20;
 
+/**
+ * Route each TB to its current workflow step:
+ * - mapping / failed / still parsing → /mapping/{id}
+ * - validating onward (statements may exist or be generatable) → /dashboard/{id}
+ */
+function trialBalanceHref(tb: { id: string; status: string }): string {
+  const status = tb.status;
+  if (
+    status === "complete" ||
+    status === "validating" ||
+    status === "generating" ||
+    status === "analysing"
+  ) {
+    return `/dashboard/${tb.id}`;
+  }
+  return `/mapping/${tb.id}`;
+}
+
 function CompanyTrialBalances({ company }: { company: ICompany }) {
   const { getToken } = useAuth();
 
@@ -90,7 +108,7 @@ function CompanyTrialBalances({ company }: { company: ICompany }) {
                 <tr key={tb.id} className="border-b border-stone-100">
                   <td colSpan={3} className="p-0">
                     <Link
-                      href={`/dashboard/${tb.id}`}
+                      href={trialBalanceHref(tb)}
                       className="grid grid-cols-3 gap-4 px-3 py-2 hover:bg-stone-50"
                     >
                       <span className="font-medium">{formatDate(tb.period_end)}</span>

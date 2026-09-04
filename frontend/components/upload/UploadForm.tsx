@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } fro
 import { CompanyEntityForm } from "@/components/clients/CompanyEntityForm";
 import type { CompanyEntityFormValues } from "@/lib/company-form";
 import { useAuth } from "@/hooks/useAuth";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, existingTbIdFromConflict, existingTbStatusFromConflict } from "@/lib/api";
 import { createCompanyEntity } from "@/lib/companies";
 import {
   ACCEPTED_UPLOAD_EXTENSIONS,
@@ -225,6 +225,18 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
   const addCompanyError =
     addCompanyMutation.error instanceof Error ? addCompanyMutation.error.message : null;
 
+  const conflictTbId = existingTbIdFromConflict(uploadMutation.error);
+  const conflictTbStatus = existingTbStatusFromConflict(uploadMutation.error);
+  const conflictHref =
+    conflictTbId == null
+      ? null
+      : conflictTbStatus === "complete" ||
+          conflictTbStatus === "validating" ||
+          conflictTbStatus === "generating" ||
+          conflictTbStatus === "analysing"
+        ? `/dashboard/${conflictTbId}`
+        : `/mapping/${conflictTbId}`;
+
   const errorMessage =
     localError ||
     (uploadMutation.error instanceof Error
@@ -400,9 +412,17 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
       ) : null}
 
       {errorMessage ? (
-        <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-          {errorMessage}
-        </p>
+        <div className="space-y-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          <p>{errorMessage}</p>
+          {conflictHref ? (
+            <p>
+              <Link href={conflictHref} className="font-medium underline">
+                Open the existing trial balance
+              </Link>
+              {conflictTbStatus ? ` (status: ${conflictTbStatus})` : null}
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       <button

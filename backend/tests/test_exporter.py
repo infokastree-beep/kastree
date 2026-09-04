@@ -137,6 +137,61 @@ def test_format_currency_follows_section_10_7() -> None:
     assert format_currency(Decimal("1234567.89"), "USD") == "$1,234,567.89"
     assert format_currency(Decimal("1234567.89"), "EUR") == "€1 234 567.89"
     assert format_currency(Decimal("-100.50"), "EUR") == "-€100.50"
+    assert format_currency(Decimal("30000"), "GBP") == "£30,000.00"
+    assert format_currency(Decimal("30000"), "EUR") == "€30 000.00"
+
+
+def test_exports_keep_thousands_separators_after_nil_face_filter() -> None:
+    """Nil-face filtering must not strip §10.7 formatting on CSV/PDF/Excel paths."""
+    from app.services.statements import filter_nil_face_lines
+
+    raw = [
+        _line("revenue", "Revenue", "30000.00", display_order=1),
+        _line("investments", "Investments", "0.00", display_order=2),  # nil leaf
+        _line("gross_profit", "Gross profit", "30000.00", display_order=3, is_subtotal=True),
+    ]
+    filtered = filter_nil_face_lines(raw)
+    assert [line.line_item_code for line in filtered] == ["revenue", "gross_profit"]
+
+    for currency, expected in (
+        ("GBP", "£30,000.00"),
+        ("EUR", "€30 000.00"),
+        ("USD", "$30,000.00"),
+    ):
+        branding = ExportBranding(
+            client_name="Sep Co",
+            period_end=date(2026, 3, 31),
+            generated_at=datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc),
+            functional_currency=currency,
+        )
+        package = ExportPackage(
+            sopl=filtered,
+            sofp=filtered,
+            socie=filtered,
+            variance=None,
+            risk_flags=[],
+            mappings=[],
+        )
+        csv_text = build_csv(branding, package).decode("utf-8")
+        assert expected in csv_text, currency
+
+        html = render_pdf_html(branding, package, organisation=_Org("starter"))
+        assert expected in html, currency
+
+        workbook = load_workbook(io.BytesIO(build_excel(branding, package, organisation=_Org("starter"))))
+        amount_cell = None
+        for row in workbook["SOPL"].iter_rows(min_col=1, max_col=2):
+            if row[0].value == "Revenue":
+                amount_cell = row[1]
+                break
+        assert amount_cell is not None
+        assert amount_cell.value == Decimal("30000.00")
+        if currency == "EUR":
+            assert " " in amount_cell.number_format or "#" in amount_cell.number_format
+        else:
+            assert "#,##0.00" == amount_cell.number_format
+        # Formatted string used by CSV/PDF (and dashboard) for the same amount:
+        assert format_currency(Decimal(str(amount_cell.value)), currency) == expected
 
 
 def test_excel_statement_sheet_shows_currency_in_branding() -> None:
