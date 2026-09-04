@@ -65,10 +65,9 @@ _HEADER_FONT = Font(color="FFFFFF", bold=True)
 _BRAND_FONT = Font(name="Calibri", size=14, bold=True)
 _DISCLAIMER_FONT = Font(name="Calibri", size=9, italic=True, color="666666")
 _WATERMARK_FONT = Font(name="Calibri", size=20, bold=True, color="DDDDDD")
-_MONEY_FORMAT_GBP_USD = "#,##0.00"
-# # ### ##0.00 — space-separated thousands that render correctly in Excel/LibreOffice
-# (# ##0.00 only groups as "1234 567", missing the separator after the first digit group)
-_MONEY_FORMAT_EUR = "# ### ##0.00"
+# Comma thousands for GBP, USD, and EUR (§10.7 — deliberate product consistency;
+# overrides European space-grouping convention).
+_MONEY_FORMAT = "#,##0.00"
 
 _CURRENCY_SYMBOLS: dict[str, str] = {
     "GBP": "£",
@@ -78,7 +77,7 @@ _CURRENCY_SYMBOLS: dict[str, str] = {
 
 
 def format_currency(amount: Decimal, currency_code: str) -> str:
-    """Format monetary amounts per Cursor Rules §10.7 (comma GBP/USD, space EUR)."""
+    """Format monetary amounts per Cursor Rules §10.7 (comma for GBP/USD/EUR)."""
     code = currency_code.upper()
     quantized = amount.quantize(Decimal("0.01"))
     sign = "-" if quantized < 0 else ""
@@ -89,18 +88,15 @@ def format_currency(amount: Decimal, currency_code: str) -> str:
     while digits:
         groups.insert(0, digits[-3:])
         digits = digits[:-3]
-    separator = " " if code == "EUR" else ","
-    int_part = separator.join(groups)
+    int_part = ",".join(groups)
     symbol = _CURRENCY_SYMBOLS.get(code, code)
     return f"{sign}{symbol}{int_part}.{frac}"
 
 
 def _money_number_format(currency_code: str) -> str:
-    return (
-        _MONEY_FORMAT_EUR
-        if currency_code.upper() == "EUR"
-        else _MONEY_FORMAT_GBP_USD
-    )
+    """Excel number format — comma thousands for all supported currencies."""
+    _ = currency_code  # reserved for future per-currency decimal/symbol variants
+    return _MONEY_FORMAT
 
 
 class OrganisationTier(Protocol):

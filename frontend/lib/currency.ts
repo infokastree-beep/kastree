@@ -11,23 +11,24 @@ function currencySymbol(code: string): string {
 }
 
 /**
- * Group an integer digit string with the §10.7 thousands separator:
- * comma for GBP/USD, space for EUR. Locale-independent (does not rely on Intl
- * grouping, which can vary by ICU data).
+ * Group an integer digit string with comma thousands separators (§10.7).
+ * Locale-independent (does not rely on Intl grouping, which can vary by ICU data).
+ * Deliberate: GBP, USD, and EUR all use commas for consistency across the product.
  */
-function groupThousands(wholeDigits: string, separator: "," | " "): string {
+function groupThousands(wholeDigits: string): string {
   const digits = wholeDigits.replace(/^0+(?=\d)/, "") || "0";
   const parts: string[] = [];
   for (let i = digits.length; i > 0; i -= 3) {
     parts.unshift(digits.slice(Math.max(0, i - 3), i));
   }
-  return parts.join(separator);
+  return parts.join(",");
 }
 
 /**
- * Format a monetary amount with the correct thousands separator for the currency:
- * comma for GBP/USD, space for EUR (§10.7). Always two decimal places; minus sign
- * for negatives (caller applies red styling).
+ * Format a monetary amount with comma thousands separators for all currencies
+ * (GBP/USD/EUR — §10.7; deliberate override of European space grouping for product
+ * consistency). Always two decimal places; minus sign for negatives (caller applies
+ * red styling).
  */
 export function formatCurrency(amount: string | number, currencyCode: string): string {
   const value = typeof amount === "string" ? Number.parseFloat(amount) : amount;
@@ -36,11 +37,10 @@ export function formatCurrency(amount: string | number, currencyCode: string): s
   }
 
   const upper = currencyCode.toUpperCase();
-  const separator: "," | " " = upper === "EUR" ? " " : ",";
   const abs = Math.abs(value);
   const fixed = abs.toFixed(2);
   const [whole, frac] = fixed.split(".");
-  const numberPart = `${groupThousands(whole ?? "0", separator)}.${frac ?? "00"}`;
+  const numberPart = `${groupThousands(whole ?? "0")}.${frac ?? "00"}`;
 
   const sign = value < 0 ? "-" : "";
   return `${sign}${currencySymbol(upper)}${numberPart}`;

@@ -281,8 +281,9 @@ Low priority. No production gap beyond the existing empty-history MVP skip.
 
 Browser dashboard (`StatementsDashboard.tsx`) and export templates (`exporter.py`
 Excel/PDF; CSV statement amounts) now show the company's `functional_currency`
-and format statement amounts per Cursor Rules §10.7 (comma thousands for GBP/USD,
-space for EUR; currency symbol prefix; minus sign for negatives).
+and format statement amounts per Cursor Rules §10.7 (comma thousands for GBP/USD/EUR —
+deliberate consistency override of European space grouping; currency symbol prefix;
+minus sign for negatives).
 
 ## Trial balance upload — ClamAV virus scanning not implemented
 

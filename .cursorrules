@@ -563,13 +563,17 @@ Row-Level Security (RLS): PostgreSQL RLS policies on all tables with a path to o
 
 10.7 Currency Display
 
--   Format with Intl.NumberFormat.
+-   Format with a shared product formatter (frontend `formatCurrency`, backend
+    `format_currency`) — not raw locale defaults that diverge by currency.
 
 -   Show currency symbol from client's functional currency.
 
 -   Negative numbers: red text, minus sign (not parentheses, unless user preference).
 
--   Thousands separator: comma for GBP/USD, space for EUR.
+-   Thousands separator: comma for GBP, USD, **and EUR**. This deliberately
+    overrides the European space-grouping convention (and earlier §10.7 text that
+    used space for EUR) so all currencies render consistently for accountants
+    reviewing mixed GBP/EUR portfolios. Decimal separator remains `.` (dot).
 
 10.8 Responsive Design
 

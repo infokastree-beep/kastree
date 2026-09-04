@@ -133,12 +133,13 @@ def _package() -> ExportPackage:
 
 
 def test_format_currency_follows_section_10_7() -> None:
+    """Comma thousands for GBP/USD/EUR — deliberate product consistency (§10.7)."""
     assert format_currency(Decimal("1234567.89"), "GBP") == "£1,234,567.89"
     assert format_currency(Decimal("1234567.89"), "USD") == "$1,234,567.89"
-    assert format_currency(Decimal("1234567.89"), "EUR") == "€1 234 567.89"
+    assert format_currency(Decimal("1234567.89"), "EUR") == "€1,234,567.89"
     assert format_currency(Decimal("-100.50"), "EUR") == "-€100.50"
     assert format_currency(Decimal("30000"), "GBP") == "£30,000.00"
-    assert format_currency(Decimal("30000"), "EUR") == "€30 000.00"
+    assert format_currency(Decimal("30000"), "EUR") == "€30,000.00"
 
 
 def test_exports_keep_thousands_separators_after_nil_face_filter() -> None:
@@ -155,7 +156,7 @@ def test_exports_keep_thousands_separators_after_nil_face_filter() -> None:
 
     for currency, expected in (
         ("GBP", "£30,000.00"),
-        ("EUR", "€30 000.00"),
+        ("EUR", "€30,000.00"),
         ("USD", "$30,000.00"),
     ):
         branding = ExportBranding(
@@ -186,10 +187,7 @@ def test_exports_keep_thousands_separators_after_nil_face_filter() -> None:
                 break
         assert amount_cell is not None
         assert amount_cell.value == Decimal("30000.00")
-        if currency == "EUR":
-            assert " " in amount_cell.number_format or "#" in amount_cell.number_format
-        else:
-            assert "#,##0.00" == amount_cell.number_format
+        assert amount_cell.number_format == "#,##0.00"
         # Formatted string used by CSV/PDF (and dashboard) for the same amount:
         assert format_currency(Decimal(str(amount_cell.value)), currency) == expected
 
@@ -221,11 +219,11 @@ def test_pdf_statement_sections_include_currency_label() -> None:
     )
     html = render_pdf_html(branding, _package(), organisation=_Org("starter"))
     assert "All amounts in <strong>EUR</strong>" in html
-    assert "€10,000.00" not in html
-    assert "€10 000.00" in html
+    assert "€10 000.00" not in html
+    assert "€10,000.00" in html
 
 
-def test_eur_excel_amounts_render_with_space_thousands_via_libreoffice() -> None:
+def test_eur_excel_amounts_render_with_comma_thousands_via_libreoffice() -> None:
     """Open the generated .xlsx in LibreOffice and read rendered cell text.
 
     Excel number formats are locale-sensitive; format strings alone are not enough.
@@ -281,8 +279,8 @@ def test_eur_excel_amounts_render_with_space_thousands_via_libreoffice() -> None
         html,
     )
     assert revenue is not None, html[:500]
-    # # ### ##0.00 — correct space grouping for large EUR amounts
-    assert revenue.group(1).strip() == "1 234 567.89"
+    # #,##0.00 — comma thousands for EUR (same as GBP/USD, §10.7)
+    assert revenue.group(1).strip() == "1,234,567.89"
 
 
 def test_tier_requires_watermark_only_for_free() -> None:
