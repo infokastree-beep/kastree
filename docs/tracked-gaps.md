@@ -83,6 +83,20 @@ test:** make the LLM path properly async (e.g. `asyncio.to_thread` / executor
 at minimum) or move parse/map to a real task queue per the Celery/Redis Month
 3+ plan. See also `backend/app/services/mapper.py` (`apply_llm_tie_breaker`).
 
+## Tier 4 LLM mapping — never tested with a real `OPENAI_API_KEY`
+
+Tier 4 LLM mapping has **never been tested with a real `OPENAI_API_KEY` in this
+environment** — every SOFP-side account on every fresh company falls through to
+manual mapping, correctly but expensively. Real Tier 4 testing (with a genuine
+API key) would confirm whether it actually resolves ambiguous **1000–3999**
+range accounts by name reliably, which is the actual, designed fix for “why do
+I have to map SOFP accounts manually every time.”
+
+This is the **single biggest lever** for reducing manual mapping burden on new
+companies — worth prioritizing getting a real key configured and tested over
+further mapper logic changes. Pair with the event-loop note above before
+enabling a real key in production BackgroundTasks.
+
 ## Appendix A canonical set — real-world coverage (scope question)
 
 The 19-line mappable canonical set in Appendix A (dropdown, mapper Tier 4,
