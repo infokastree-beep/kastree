@@ -9,8 +9,13 @@ import { formatCurrency, formatCurrencyCode } from "@/lib/currency";
 import { DISCLAIMER_TEXT } from "@/lib/constants";
 import type { StatementBlock, StatementLine, StatementsResponse } from "@/types";
 import { ExportButton } from "./ExportButton";
+import { RiskFlagsPanel } from "./RiskFlagsPanel";
+import { VariancePanel } from "./VariancePanel";
 
-type Tab = "SOPL" | "SOFP" | "SOCIE";
+type Tab = "SOPL" | "SOFP" | "SOCIE" | "Variance" | "Risk";
+
+const STATEMENT_TABS: Tab[] = ["SOPL", "SOFP", "SOCIE"];
+const ALL_TABS: Tab[] = ["SOPL", "SOFP", "SOCIE", "Variance", "Risk"];
 
 /** Grand-total face lines — stronger weight than intermediate subtotals. */
 function isGrandTotal(line: StatementLine): boolean {
@@ -145,20 +150,26 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
       }),
     onSuccess: (data) => {
       queryClient.setQueryData(["tb-statements", tbId], data);
+      void queryClient.invalidateQueries({ queryKey: ["tb-variance", tbId] });
+      void queryClient.invalidateQueries({ queryKey: ["tb-risk", tbId] });
     },
   });
 
   const statementsData = statementsQuery.data ?? generateMutation.data ?? null;
   const currencyCode = statementsData?.functional_currency ?? "GBP";
+  const isStatementTab = STATEMENT_TABS.includes(tab);
 
-  const block = statementsData?.statements.find((s) => s.statement_type === tab);
+  const block = isStatementTab
+    ? statementsData?.statements.find((s) => s.statement_type === tab)
+    : undefined;
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="font-display text-heading-lg text-ink">Statements</h1>
         <p className="mt-2 text-sm text-ink-secondary">
-          Review SOPL, SOFP, and SOCIE for this trial balance.
+          Review SOPL, SOFP, SOCIE, variance, and risk flags for this trial
+          balance.
         </p>
       </div>
 
@@ -221,15 +232,17 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
 
       {statementsData ? (
         <>
-          <p className="text-sm text-ink-secondary">
-            All amounts in{" "}
-            <span className="font-mono font-medium text-ink">
-              {formatCurrencyCode(currencyCode)}
-            </span>
-          </p>
+          {isStatementTab ? (
+            <p className="text-sm text-ink-secondary">
+              All amounts in{" "}
+              <span className="font-mono font-medium text-ink">
+                {formatCurrencyCode(currencyCode)}
+              </span>
+            </p>
+          ) : null}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex gap-1 border-b border-line">
-              {(["SOPL", "SOFP", "SOCIE"] as Tab[]).map((name) => (
+            <div className="flex flex-wrap gap-1 border-b border-line">
+              {ALL_TABS.map((name) => (
                 <button
                   key={name}
                   type="button"
@@ -265,11 +278,18 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
               </button>
             </div>
           </div>
-          {block ? (
-            <StatementTable block={block} currencyCode={currencyCode} />
-          ) : (
-            <p className="text-sm text-soft">No {tab} lines returned.</p>
-          )}
+
+          {tab === "Variance" ? (
+            <VariancePanel tbId={tbId} currencyCode={currencyCode} />
+          ) : null}
+          {tab === "Risk" ? <RiskFlagsPanel tbId={tbId} /> : null}
+          {isStatementTab ? (
+            block ? (
+              <StatementTable block={block} currencyCode={currencyCode} />
+            ) : (
+              <p className="text-sm text-soft">No {tab} lines returned.</p>
+            )
+          ) : null}
         </>
       ) : null}
     </div>

@@ -144,6 +144,60 @@ export interface StatementsResponse {
   statements: StatementBlock[];
 }
 
+export type VarianceDirection = "increase" | "decrease" | "new" | "removed";
+
+export interface VarianceCommentary {
+  text: string;
+  reasoning?: string | null;
+  confidence?: "high" | "medium" | "low" | null;
+  is_edited?: boolean;
+}
+
+export interface VarianceItem {
+  line_item_code: string;
+  line_item_name: string;
+  current_amount: string;
+  prior_amount: string;
+  variance_amount: string;
+  variance_pct: string | null;
+  direction: VarianceDirection;
+  is_material: boolean;
+  commentary?: VarianceCommentary | null;
+}
+
+export interface VarianceResponse {
+  tb_id: string;
+  prior_tb_id: string | null;
+  variance_available: boolean;
+  message: string | null;
+  materiality_threshold_pct: number | null;
+  materiality_threshold_abs: string | null;
+  items: VarianceItem[];
+}
+
+export type RiskSeverity = "warning" | "critical";
+
+export interface RiskAffectedAccount {
+  account_code: string;
+  account_name: string;
+  net_balance: string;
+}
+
+export interface RiskFlag {
+  id: string;
+  rule_name: string;
+  severity: RiskSeverity;
+  description: string;
+  affected_accounts: RiskAffectedAccount[] | null;
+  recommended_action: string | null;
+}
+
+export interface RiskFlagsResponse {
+  tb_id: string;
+  flags: RiskFlag[];
+  unusual_variance_history_months: number;
+}
+
 export type ExportFormat = "xlsx" | "csv" | "pdf";
 export type ExportStatus = "pending" | "processing" | "complete" | "failed";
 
