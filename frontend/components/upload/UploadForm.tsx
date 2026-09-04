@@ -70,7 +70,10 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
   });
   const [currency, setCurrency] = useState("GBP");
   const [clientId, setClientId] = useState("");
-  const [companyId, setCompanyId] = useState(initialCompanyId);
+  // Do not seed companyId from the deep-link prop alone — clientId is still empty on
+  // the first paint, and the !clientId effect would immediately clear it. Both are
+  // applied together once initialCompanyQuery resolves.
+  const [companyId, setCompanyId] = useState("");
   const [showAddCompany, setShowAddCompany] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -149,7 +152,11 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
   // falsely clears a valid deep-linked / just-selected companyId.
   useEffect(() => {
     if (!clientId) {
-      setCompanyId("");
+      // Keep company unset while a deep-linked company fetch is still in flight;
+      // clearing here races the deep-link effect that sets client + company together.
+      if (!initialCompanyId || deepLinkInitialized.current) {
+        setCompanyId("");
+      }
       return;
     }
     if (companiesLoading) {
@@ -159,7 +166,13 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
       setCompanyId("");
       setCurrency("GBP");
     }
-  }, [clientId, companyId, companyOptions, companiesLoading]);
+  }, [
+    clientId,
+    companyId,
+    companyOptions,
+    companiesLoading,
+    initialCompanyId,
+  ]);
 
   const addCompanyMutation = useMutation({
     mutationFn: (values: CompanyEntityFormValues) =>
