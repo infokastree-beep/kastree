@@ -242,11 +242,22 @@ If `origin/main` and `github/main` diverge, `verify_remotes_in_sync.sh` exits
 non-zero with the SHAs and tells you to `git push github main`.
 
 **Vercel** auto-deploys from the same `github/main` push. A green Vercel deploy is
-not sufficient — run `verify_vercel_deploy_marker.sh` to confirm the production
-CDN chunk for the current commit actually contains the expected marker (e.g.
-`is_platform_admin` in the dashboard layout bundle).
+not sufficient on its own. Two checks:
 
-See also: `docs/tracked-gaps.md` — incident record for 2026-09-02 admin exposure.
+1. **Automated (every push to main):**
+   `.github/workflows/verify-production-frontend.yml` polls
+   `https://www.kastree.ie` for `<meta name="kastree-git-sha">` and **fails the
+   workflow** if it does not match `github.sha` within ~15 minutes. Set repo
+   secret `VERCEL_DEPLOY_HOOK_URL` so the workflow can kick a Production
+   redeploy before polling. Manual:
+   `./scripts/verify_production_frontend_sha.sh "$(git rev-parse HEAD)"`.
+2. **Marker smoke (optional):** `verify_vercel_deploy_marker.sh` for a specific
+   string in a CDN chunk (e.g. `is_platform_admin`).
+
+After any GitHub-side repo transfer/rename, confirm Vercel Settings → Git still
+points at `infokastree-beep/kastree` (it has silently lagged behind twice).
+
+See also: `docs/tracked-gaps.md` — Vercel Git source / admin exposure notes.
 
 ## Local / dev backend process
 
