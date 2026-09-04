@@ -174,6 +174,29 @@ def test_tier3_code_range_unambiguous_hits() -> None:
     ]
 
 
+def test_tier3_7000_range_routes_amortisation_names_separately() -> None:
+    """7000–7999 defaults to depreciation; amort*-named accounts → amortisation."""
+    accounts = [
+        FakeAccount(account_code="7000", account_name="Depreciation - Buildings"),
+        FakeAccount(account_code="7010", account_name="Depreciation - Plant & Machinery"),
+        FakeAccount(account_code="7100", account_name="Amortisation - Software"),
+        FakeAccount(account_code="7110", account_name="Amortisation - Goodwill"),
+        FakeAccount(account_code="7120", account_name="Amortization of patents"),  # US spelling
+    ]
+
+    results = map_accounts(accounts, prior_confirmed=[])
+
+    assert [r.method for r in results] == ["code_range"] * 5
+    assert [r.confidence for r in results] == [Decimal("0.65")] * 5
+    assert [r.canonical_line for r in results] == [
+        "depreciation",
+        "depreciation",
+        "amortisation",
+        "amortisation",
+        "amortisation",
+    ]
+
+
 def test_ambiguous_and_invalid_codes_fall_through_unmapped() -> None:
     accounts = [
         FakeAccount(account_code="1500", account_name="Cash at bank"),  # assets

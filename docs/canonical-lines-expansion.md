@@ -93,9 +93,11 @@ of the SOPL.
 
 **Final design:** `amortisation` is a mappable P&L canonical line, shown on the
 SOPL immediately after `depreciation` and included in `compute_net_profit` /
-operating profit. Tier 3 code-range **7000–7999 still maps to `depreciation`**
-for now (no separate range); amortisation-named accounts are remapped by data
-migration and by Tier 4 / manual review going forward.
+operating profit. Tier 3 code-range **7000–7999 defaults to `depreciation`**,
+but `_tier3_code_range` specialises names matching `\bamort` (amortisation /
+amortization) to `amortisation` so those rows are not locked to depreciation
+before Tier 4 can run. Accounts without an amort- cue in the name still map to
+`depreciation` at 0.65.
 
 Migration `i9j0k1l2m3n4` remaps `account_mappings` where
 `canonical_line = 'depreciation'` and `source_name ILIKE '%amort%'` (P&L
