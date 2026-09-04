@@ -281,6 +281,12 @@ def test_tier4_successful_batch_mapping_response() -> None:
         "content": MAPPING_TIE_BREAKER_SYSTEM,
     }
     assert '"confidence": 0.0' in MAPPING_TIE_BREAKER_SYSTEM
+    assert "taxes_payable" in MAPPING_TIE_BREAKER_SYSTEM
+    assert "social_security_payable" in MAPPING_TIE_BREAKER_SYSTEM
+    assert "Prefer the most specific matching line" in MAPPING_TIE_BREAKER_SYSTEM
+    assert "VAT control" in MAPPING_TIE_BREAKER_SYSTEM
+    assert "PAYE/NI control" in MAPPING_TIE_BREAKER_SYSTEM
+    assert "not tax or PAYE/NI control accounts" in MAPPING_TIE_BREAKER_SYSTEM
     user_content = call_kwargs["messages"][1]["content"]
     assert "Code: 1500, Name: Cash at bank" in user_content
     assert "Code: 2100, Name: Trade creditors" in user_content
