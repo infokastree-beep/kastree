@@ -148,8 +148,8 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
   }, [initialCompanyId, initialCompanyQuery.data]);
 
   // Drop company selection when it no longer exists under the chosen client group.
-  // Wait until companies have loaded — otherwise an empty options list during fetch
-  // falsely clears a valid deep-linked / just-selected companyId.
+  // Wait until companies have loaded with a non-empty options list — an empty list
+  // during/after fetch must not wipe a deep-linked companyId before options arrive.
   useEffect(() => {
     if (!clientId) {
       // Keep company unset while a deep-linked company fetch is still in flight;
@@ -159,7 +159,7 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
       }
       return;
     }
-    if (companiesLoading) {
+    if (companiesLoading || companyOptions.length === 0) {
       return;
     }
     if (companyId && !companyOptions.some((company) => company.id === companyId)) {
