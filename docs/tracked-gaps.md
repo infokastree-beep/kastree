@@ -612,6 +612,23 @@ general “everything is still on personal email” fog.
    impact** — the domain resolves and serves identically regardless of which
    registrant account holds it.
 
+4. **Google Workspace for `@kastree.ie` (not urgent — professionalism, not
+   security)** — Consider setting up Google Workspace on `kastree.ie` so a real
+   business mailbox (e.g. `admin@kastree.ie`) can eventually replace
+   `infokastree@gmail.com` as the business identity for **GitHub**, **Clerk**,
+   and **`PLATFORM_ADMIN_EMAILS`**. `infokastree@gmail.com` is already a
+   genuine, dedicated business account (correctly separate from personal email)
+   and is **fine to keep using** in the meantime — this is a cosmetic /
+   professionalism upgrade, **not** a security fix, and **not urgent**.
+
+   **Requires:** Google Workspace subscription (~$6–7/month); domain
+   verification via a Blacknight DNS record; then the same careful transfer
+   process already proven for GitHub/Clerk (confirm old email loses access, new
+   email gains it, real evidence at each step — including HTTP proof that the
+   old address loses `/admin` and the new one gains it when
+   `PLATFORM_ADMIN_EMAILS` changes). **Do as its own focused task when ready**,
+   not squeezed into another session’s work.
+
 Longer-term (not tonight’s cutover leftovers): before fundraising, hiring, or
 acquisition diligence, fold remaining personal-named ownership into a proper
 business entity. That is separate from the items above.
