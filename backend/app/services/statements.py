@@ -85,6 +85,8 @@ LINE_ITEM_NAMES: dict[str, str] = {
     "prepayments": "Prepayments",
     "accrued_income": "Accrued income",
     "cash": "Cash",
+    "non_current_assets": "Non-current assets",
+    "current_assets": "Current assets",
     "total_assets": "Total assets",
     "trade_payables": "Trade payables",
     "provisions": "Provisions",
@@ -93,6 +95,8 @@ LINE_ITEM_NAMES: dict[str, str] = {
     "taxes_payable": "Taxes payable",
     "social_security_payable": "Social security payable",
     "loans": "Loans",
+    "non_current_liabilities": "Non-current liabilities",
+    "current_liabilities": "Current liabilities",
     "total_liabilities": "Total liabilities",
     "share_capital": "Share capital",
     "share_premium": "Share premium",
@@ -181,25 +185,40 @@ def pnl_source_account_ids(accounts: Sequence[StatementAccount]) -> list[uuid.UU
     ]
 
 
-SOFP_ASSET_ORDER: tuple[str, ...] = (
+# SOFP current / non-current classification (hardcoded defaults — no schema field).
+#
+# Caveat: ``loans`` defaults to non-current and ``provisions`` to current (most
+# common SME presentation). Mixed-maturity loans or non-current provisions will
+# be mis-classified until a future per-mapping / per-company override exists.
+# ``investments`` defaults to non-current for the same reason.
+SOFP_NON_CURRENT_ASSET_ORDER: tuple[str, ...] = (
     "property_plant_equipment",
     "intangible_assets",
     "investments",
+)
+SOFP_CURRENT_ASSET_ORDER: tuple[str, ...] = (
     "inventory",
     "trade_receivables",
     "prepayments",
     "accrued_income",
     "cash",
 )
-
-SOFP_LIABILITY_ORDER: tuple[str, ...] = (
+SOFP_NON_CURRENT_LIABILITY_ORDER: tuple[str, ...] = ("loans",)
+SOFP_CURRENT_LIABILITY_ORDER: tuple[str, ...] = (
     "trade_payables",
     "provisions",
     "accruals",
     "deferred_income",
     "taxes_payable",
     "social_security_payable",
-    "loans",
+)
+
+# Flat concatenations — face order is NC then current within assets/liabilities.
+SOFP_ASSET_ORDER: tuple[str, ...] = (
+    SOFP_NON_CURRENT_ASSET_ORDER + SOFP_CURRENT_ASSET_ORDER
+)
+SOFP_LIABILITY_ORDER: tuple[str, ...] = (
+    SOFP_NON_CURRENT_LIABILITY_ORDER + SOFP_CURRENT_LIABILITY_ORDER
 )
 
 # total_equity = share_capital + share_premium + retained_earnings + revaluation_reserve.
@@ -307,6 +326,10 @@ def build_sofp(
 ) -> list[StatementLineItemRecord]:
     """Build Statement of Financial Position line items in display order.
 
+    Assets and liabilities are segmented into non-current / current groups with
+    section subtotals, then grand totals (see ``SOFP_NON_CURRENT_*`` /
+    ``SOFP_CURRENT_*`` order tuples and the classification caveat there).
+
     The retained_earnings face line and total_equity always use the supplied
     period-end closing balance (typically from :func:`_compute_socie_rollforward`).
     Callers must pass an explicit closing RE — there is no raw-TB default.
@@ -315,13 +338,33 @@ def build_sofp(
     lines: list[StatementLineItemRecord] = []
     order = 1
 
-    asset_lines: list[StatementLineItemRecord] = []
-    for code in SOFP_ASSET_ORDER:
-        line = _leaf_line(code, grouped, order)
-        order += 1
-        asset_lines.append(line)
-        lines.append(line)
+    non_current_assets, order = _append_sofp_leaf_group(
+        lines, grouped, SOFP_NON_CURRENT_ASSET_ORDER, order
+    )
+    lines.append(
+        _subtotal_line(
+            "non_current_assets",
+            sum((line.amount for line in non_current_assets), Decimal("0")),
+            order,
+            _merge_ids(*(line.source_account_ids for line in non_current_assets)),
+        )
+    )
+    order += 1
 
+    current_assets, order = _append_sofp_leaf_group(
+        lines, grouped, SOFP_CURRENT_ASSET_ORDER, order
+    )
+    lines.append(
+        _subtotal_line(
+            "current_assets",
+            sum((line.amount for line in current_assets), Decimal("0")),
+            order,
+            _merge_ids(*(line.source_account_ids for line in current_assets)),
+        )
+    )
+    order += 1
+
+    asset_lines = non_current_assets + current_assets
     total_assets_amount = sum((line.amount for line in asset_lines), Decimal("0"))
     total_assets_ids = _merge_ids(*(line.source_account_ids for line in asset_lines))
     lines.append(
@@ -329,13 +372,33 @@ def build_sofp(
     )
     order += 1
 
-    liability_lines: list[StatementLineItemRecord] = []
-    for code in SOFP_LIABILITY_ORDER:
-        line = _leaf_line(code, grouped, order)
-        order += 1
-        liability_lines.append(line)
-        lines.append(line)
+    non_current_liabilities, order = _append_sofp_leaf_group(
+        lines, grouped, SOFP_NON_CURRENT_LIABILITY_ORDER, order
+    )
+    lines.append(
+        _subtotal_line(
+            "non_current_liabilities",
+            sum((line.amount for line in non_current_liabilities), Decimal("0")),
+            order,
+            _merge_ids(*(line.source_account_ids for line in non_current_liabilities)),
+        )
+    )
+    order += 1
 
+    current_liabilities, order = _append_sofp_leaf_group(
+        lines, grouped, SOFP_CURRENT_LIABILITY_ORDER, order
+    )
+    lines.append(
+        _subtotal_line(
+            "current_liabilities",
+            sum((line.amount for line in current_liabilities), Decimal("0")),
+            order,
+            _merge_ids(*(line.source_account_ids for line in current_liabilities)),
+        )
+    )
+    order += 1
+
+    liability_lines = non_current_liabilities + current_liabilities
     total_liabilities_amount = sum((line.amount for line in liability_lines), Decimal("0"))
     total_liabilities_ids = _merge_ids(
         *(line.source_account_ids for line in liability_lines)
@@ -621,6 +684,22 @@ def _compute_socie_rollforward(
         total_equity_closing_amount=total_equity_closing_amount,
         total_equity_closing_ids=total_equity_closing_ids,
     )
+
+
+def _append_sofp_leaf_group(
+    lines: list[StatementLineItemRecord],
+    grouped: dict[str, list[StatementAccount]],
+    codes: Sequence[str],
+    order: int,
+) -> tuple[list[StatementLineItemRecord], int]:
+    """Append leaf face lines for ``codes``; return the new leaves and next order."""
+    group: list[StatementLineItemRecord] = []
+    for code in codes:
+        line = _leaf_line(code, grouped, order)
+        order += 1
+        group.append(line)
+        lines.append(line)
+    return group, order
 
 
 def _group_accounts(

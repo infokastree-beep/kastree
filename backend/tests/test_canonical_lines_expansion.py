@@ -92,13 +92,13 @@ def test_sofp_display_order_includes_split_lines() -> None:
         "cash",
     )
     assert SOFP_LIABILITY_ORDER == (
+        "loans",
         "trade_payables",
         "provisions",
         "accruals",
         "deferred_income",
         "taxes_payable",
         "social_security_payable",
-        "loans",
     )
 
 
@@ -171,12 +171,30 @@ def test_sofp_places_split_lines_in_expected_positions() -> None:
     assert codes.index("investments") < codes.index("inventory")
     assert codes.index("prepayments") > codes.index("trade_receivables")
     assert codes.index("accrued_income") > codes.index("prepayments")
+    assert codes.index("non_current_assets") < codes.index("current_assets")
+    assert codes.index("current_assets") < codes.index("total_assets")
+    assert codes.index("loans") < codes.index("trade_payables")
     assert codes.index("provisions") > codes.index("trade_payables")
     assert codes.index("deferred_income") > codes.index("accruals")
     assert codes.index("taxes_payable") > codes.index("deferred_income")
     assert codes.index("social_security_payable") > codes.index("taxes_payable")
+    assert codes.index("non_current_liabilities") < codes.index("current_liabilities")
+    assert codes.index("current_liabilities") < codes.index("total_liabilities")
     assert codes.index("share_premium") > codes.index("share_capital")
     assert codes.index("revaluation_reserve") > codes.index("retained_earnings")
+
+    assert next(line for line in lines if line.line_item_code == "non_current_assets").amount == Decimal(
+        "2300.00"
+    )  # 1000 + 500 + 800
+    assert next(line for line in lines if line.line_item_code == "current_assets").amount == Decimal(
+        "900.00"
+    )  # 200 + 300 + 100 + 50 + 250
+    assert next(
+        line for line in lines if line.line_item_code == "non_current_liabilities"
+    ).amount == Decimal("500.00")  # loans
+    assert next(
+        line for line in lines if line.line_item_code == "current_liabilities"
+    ).amount == Decimal("625.00")  # 400 + 100 + 40 + 10 + 50 + 25
 
     total_equity = next(line for line in lines if line.line_item_code == "total_equity")
     assert total_equity.amount == Decimal("1950.00")  # 1000 + 200 + 600 + 150
@@ -205,10 +223,11 @@ def test_amortisation_migration_remaps_named_rows_without_touching_depreciation(
     provisioned_org: dict,
 ) -> None:
     """Data migration SQL: depreciation rows whose source_name mentions amort*."""
+    org_id = provisioned_org["org_id"]
     amort_id = uuid.uuid4()
     dep_id = uuid.uuid4()
     with SyncSessionLocal() as session:
-        set_rls_org_id(session, provisioned_org["org_id"])
+        set_rls_org_id(session, org_id)
         session.add(
             AccountMapping(
                 id=amort_id,
@@ -232,6 +251,8 @@ def test_amortisation_migration_remaps_named_rows_without_touching_depreciation(
             )
         )
         session.commit()
+        # SET LOCAL is transaction-scoped; re-apply after commit before RLS DML.
+        set_rls_org_id(session, org_id)
 
         session.execute(
             text(
@@ -244,6 +265,9 @@ def test_amortisation_migration_remaps_named_rows_without_touching_depreciation(
             )
         )
         session.commit()
+        set_rls_org_id(session, org_id)
+        # Raw SQL bypasses the ORM; expire so subsequent SELECTs reload from DB.
+        session.expire_all()
 
         amort = session.execute(
             select(AccountMapping).where(AccountMapping.id == amort_id)
@@ -261,9 +285,10 @@ def test_option_a_migration_restores_accruals_without_data_loss(
     provisioned_org: dict,
 ) -> None:
     """Data migration SQL: accruals_and_deferred_income -> accruals."""
+    org_id = provisioned_org["org_id"]
     row_id = uuid.uuid4()
     with SyncSessionLocal() as session:
-        set_rls_org_id(session, provisioned_org["org_id"])
+        set_rls_org_id(session, org_id)
         session.add(
             AccountMapping(
                 id=row_id,
@@ -276,6 +301,8 @@ def test_option_a_migration_restores_accruals_without_data_loss(
             )
         )
         session.commit()
+        # SET LOCAL is transaction-scoped; re-apply after commit before RLS DML/SELECT.
+        set_rls_org_id(session, org_id)
 
         before = session.execute(
             select(AccountMapping).where(AccountMapping.id == row_id)
@@ -292,6 +319,8 @@ def test_option_a_migration_restores_accruals_without_data_loss(
             )
         )
         session.commit()
+        set_rls_org_id(session, org_id)
+        session.expire_all()
 
         after = session.execute(
             select(AccountMapping).where(AccountMapping.id == row_id)

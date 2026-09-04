@@ -264,19 +264,23 @@ def test_sofp_groups_accounts_computes_subtotals_and_provenance() -> None:
         "property_plant_equipment",
         "intangible_assets",
         "investments",
+        "non_current_assets",
         "inventory",
         "trade_receivables",
         "prepayments",
         "accrued_income",
         "cash",
+        "current_assets",
         "total_assets",
+        "loans",
+        "non_current_liabilities",
         "trade_payables",
         "provisions",
         "accruals",
         "deferred_income",
         "taxes_payable",
         "social_security_payable",
-        "loans",
+        "current_liabilities",
         "total_liabilities",
         "share_capital",
         "share_premium",
@@ -292,6 +296,18 @@ def test_sofp_groups_accounts_computes_subtotals_and_provenance() -> None:
         ppe_b.id,
     }
 
+    non_current_assets = _by_code(lines, "non_current_assets")
+    # PPE 5000 + intangibles 700 + investments 0
+    assert non_current_assets.amount == Decimal("5700.00")
+    assert non_current_assets.is_subtotal is True
+    assert non_current_assets.line_item_name == "Non-current assets"
+
+    current_assets = _by_code(lines, "current_assets")
+    # inventory 1000 + receivables 2000 + prepayments 0 + accrued_income 0 + cash 2300
+    assert current_assets.amount == Decimal("5300.00")
+    assert current_assets.is_subtotal is True
+    assert current_assets.line_item_name == "Current assets"
+
     total_assets = _by_code(lines, "total_assets")
     assert total_assets.amount == Decimal("11000.00")
     assert total_assets.is_subtotal is True
@@ -299,8 +315,22 @@ def test_sofp_groups_accounts_computes_subtotals_and_provenance() -> None:
     assert ppe_b.id in total_assets.source_account_ids
 
     assert _by_code(lines, "trade_payables").amount == Decimal("1500.00")
+
+    non_current_liabilities = _by_code(lines, "non_current_liabilities")
+    # loans 2500 (default NC classification)
+    assert non_current_liabilities.amount == Decimal("2500.00")
+    assert non_current_liabilities.is_subtotal is True
+    assert non_current_liabilities.line_item_name == "Non-current liabilities"
+
+    current_liabilities = _by_code(lines, "current_liabilities")
+    # payables 1500 + provisions 0 + accruals 500 + deferred 0 + tax 0 + SS 0
+    assert current_liabilities.amount == Decimal("2000.00")
+    assert current_liabilities.is_subtotal is True
+    assert current_liabilities.line_item_name == "Current liabilities"
+
     total_liabilities = _by_code(lines, "total_liabilities")
     assert total_liabilities.amount == Decimal("4500.00")
+    assert total_liabilities.is_subtotal is True
 
     assert _by_code(lines, "share_capital").amount == Decimal("4000.00")
     # Zero P&L: closing RE = opening 3_000 − dividends 200 = 2_800.
@@ -316,6 +346,126 @@ def test_sofp_groups_accounts_computes_subtotals_and_provenance() -> None:
     # Closing RE provenance includes dividend accounts (they reduced closing RE);
     # total_equity is SC + closing RE only here (no share_premium / revaluation_reserve).
     assert set(total_equity.source_account_ids) == set(rollforward.total_equity_closing_ids)
+
+
+def test_sofp_current_non_current_segmentation_golden_fixture() -> None:
+    """Golden SOFP face order and section maths for NC / current split.
+
+    Classification defaults (documented in statements.py): investments + loans →
+    non-current; provisions → current. Section subtotals use intermediate
+    ``is_subtotal`` styling codes (no ``total_`` prefix); grand totals keep
+    ``total_assets`` / ``total_liabilities``.
+    """
+    ppe = _acct("1100", net_balance="10000.00", canonical_line="property_plant_equipment")
+    intang = _acct("1200", net_balance="2000.00", canonical_line="intangible_assets")
+    investments = _acct("1250", net_balance="1500.00", canonical_line="investments")
+    inventory = _acct("1300", net_balance="800.00", canonical_line="inventory")
+    receivables = _acct("1400", net_balance="1200.00", canonical_line="trade_receivables")
+    prepayments = _acct("1450", net_balance="100.00", canonical_line="prepayments")
+    accrued_income = _acct("1460", net_balance="50.00", canonical_line="accrued_income")
+    cash = _acct("1500", net_balance="3000.00", canonical_line="cash")
+    loans = _acct("2300", net_balance="-5000.00", canonical_line="loans")
+    payables = _acct("2100", net_balance="-900.00", canonical_line="trade_payables")
+    provisions = _acct("2150", net_balance="-300.00", canonical_line="provisions")
+    accruals = _acct("2200", net_balance="-200.00", canonical_line="accruals")
+    deferred = _acct("2210", net_balance="-100.00", canonical_line="deferred_income")
+    tax_pay = _acct("2250", net_balance="-150.00", canonical_line="taxes_payable")
+    ss_pay = _acct("2260", net_balance="-50.00", canonical_line="social_security_payable")
+    sc = _acct("3000", net_balance="-7000.00", canonical_line="share_capital")
+    re = _acct("3100", net_balance="-4950.00", canonical_line="retained_earnings")
+
+    accounts = [
+        ppe,
+        intang,
+        investments,
+        inventory,
+        receivables,
+        prepayments,
+        accrued_income,
+        cash,
+        loans,
+        payables,
+        provisions,
+        accruals,
+        deferred,
+        tax_pay,
+        ss_pay,
+        sc,
+        re,
+    ]
+    lines = build_sofp(
+        accounts,
+        retained_earnings_closing=Decimal("4950.00"),
+        retained_earnings_source_ids=[re.id],
+    )
+
+    assert [line.line_item_code for line in lines] == [
+        "property_plant_equipment",
+        "intangible_assets",
+        "investments",
+        "non_current_assets",
+        "inventory",
+        "trade_receivables",
+        "prepayments",
+        "accrued_income",
+        "cash",
+        "current_assets",
+        "total_assets",
+        "loans",
+        "non_current_liabilities",
+        "trade_payables",
+        "provisions",
+        "accruals",
+        "deferred_income",
+        "taxes_payable",
+        "social_security_payable",
+        "current_liabilities",
+        "total_liabilities",
+        "share_capital",
+        "share_premium",
+        "retained_earnings",
+        "revaluation_reserve",
+        "dividends",
+        "total_equity",
+    ]
+
+    assert _by_code(lines, "non_current_assets").amount == Decimal("13500.00")
+    assert _by_code(lines, "current_assets").amount == Decimal("5150.00")
+    assert _by_code(lines, "total_assets").amount == Decimal("18650.00")
+    assert _by_code(lines, "non_current_liabilities").amount == Decimal("5000.00")
+    assert _by_code(lines, "current_liabilities").amount == Decimal("1700.00")
+    assert _by_code(lines, "total_liabilities").amount == Decimal("6700.00")
+    assert _by_code(lines, "total_equity").amount == Decimal("11950.00")  # 7000 + 4950
+
+    for code in (
+        "non_current_assets",
+        "current_assets",
+        "total_assets",
+        "non_current_liabilities",
+        "current_liabilities",
+        "total_liabilities",
+        "total_equity",
+    ):
+        assert _by_code(lines, code).is_subtotal is True
+
+    # Section maths reconcile to grands.
+    assert (
+        _by_code(lines, "non_current_assets").amount
+        + _by_code(lines, "current_assets").amount
+        == _by_code(lines, "total_assets").amount
+    )
+    assert (
+        _by_code(lines, "non_current_liabilities").amount
+        + _by_code(lines, "current_liabilities").amount
+        == _by_code(lines, "total_liabilities").amount
+    )
+
+    # Default classification: loans before current liability leaves; provisions
+    # sit in the current block (after loans section subtotal).
+    codes = [line.line_item_code for line in lines]
+    assert codes.index("loans") < codes.index("non_current_liabilities")
+    assert codes.index("non_current_liabilities") < codes.index("provisions")
+    assert codes.index("provisions") < codes.index("current_liabilities")
 
 
 def test_sofp_total_equity_excludes_dividends_matching_validator_fixture() -> None:

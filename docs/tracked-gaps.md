@@ -46,6 +46,30 @@ subscription id for `customer.subscription.*` / `invoice.*` on mismatch);
 fall back to subscription-only or customer-only lookup. Webhook API tests now use
 per-run unique Stripe ids so they stay isolated on polluted dev databases.
 
+## SET LOCAL cleared by `commit()` — migration test anti-pattern (resolved)
+
+`set_rls_org_id` / `aset_rls_org_id` use `set_config(..., is_local=true)` (Postgres
+`SET LOCAL`), so `app.current_org_id` is cleared when the transaction ends.
+Two data-migration tests (`test_amortisation_migration_*`,
+`test_option_a_migration_*`) called `session.commit()` then continued
+`account_mappings` DML/SELECT without re-setting RLS. Policies evaluate
+`current_setting('app.current_org_id')::UUID`; after commit that GUC is `''`,
+which raised `invalid input syntax for type uuid: ""` (not a silent empty
+result set).
+
+**Confirmed:** test-only anti-pattern. Full production audit of every
+`set_rls_org_id` / `aset_rls_org_id` call site found **zero** application paths
+that commit mid-session and continue RLS-protected work without re-setting
+(background jobs already re-set after each commit; request handlers that
+mid-commit only schedule BackgroundTasks and return). Even if the pattern
+appeared in production, the failure mode is **loud and safe** (exception /
+500 from the UUID cast), not fail-open cross-tenant leakage.
+
+**Fix:** re-call `set_rls_org_id(session, org_id)` after each `commit()` before
+further `account_mappings` access in those two tests. Also `session.expire_all()`
+after raw SQL UPDATEs so ORM re-reads are not stale (`SyncSessionLocal` uses
+`expire_on_commit=False`).
+
 ## Tier 4 OpenAI in sync BackgroundTasks (event-loop blocking)
 
 `run_parse_and_map_job` (`backend/app/services/tb_pipeline.py`) invokes Tier 4
