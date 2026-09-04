@@ -147,6 +147,33 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
     setCurrency(initialCompanyQuery.data.functional_currency);
   }, [initialCompanyId, initialCompanyQuery.data]);
 
+  // Re-assert deep-linked company once that client's options have loaded. A controlled
+  // <select> can drop a value that was set before its <option> existed; without this,
+  // ?company= leaves client+currency set but company blank. Only repairs an empty
+  // companyId — never overrides a deliberate manual company change.
+  useEffect(() => {
+    if (!deepLinkInitialized.current || !initialCompanyQuery.data) {
+      return;
+    }
+    if (companiesLoading || companyOptions.length === 0 || companyId) {
+      return;
+    }
+    const target = initialCompanyQuery.data;
+    if (clientId !== target.client_id) {
+      return;
+    }
+    if (companyOptions.some((company) => company.id === target.id)) {
+      setCompanyId(target.id);
+      setCurrency(target.functional_currency);
+    }
+  }, [
+    clientId,
+    companyId,
+    companyOptions,
+    companiesLoading,
+    initialCompanyQuery.data,
+  ]);
+
   // Drop company selection when it no longer exists under the chosen client group.
   // Wait until companies have loaded with a non-empty options list — an empty list
   // during/after fetch must not wipe a deep-linked companyId before options arrive.
