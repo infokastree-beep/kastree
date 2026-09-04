@@ -40,6 +40,7 @@ from app.services.statements import (
     MappedStatementAccount,
     StatementLineItemRecord,
     build_statements,
+    iter_nil_filtered_face_lines,
 )
 from app.services.ownership import get_owned_company
 from app.services.llm import MAPPING_TIE_BREAKER_CANONICAL_LINES
@@ -861,6 +862,7 @@ async def get_statements(
             .order_by(StatementLineItem.display_order)
         )
         lines = list(lines_result.scalars().all())
+        lines = iter_nil_filtered_face_lines(lines)
         blocks.append(
             StatementBlockResponse(
                 statement_type=fs.statement_type,  # type: ignore[arg-type]
@@ -872,10 +874,10 @@ async def get_statements(
                         line_item_name=line.line_item_name,
                         amount=str(line.amount),
                         is_subtotal=line.is_subtotal,
-                        display_order=line.display_order,
+                        display_order=index,
                         source_account_ids=list(line.source_account_ids or []),
                     )
-                    for line in lines
+                    for index, line in enumerate(lines, start=1)
                 ],
             )
         )

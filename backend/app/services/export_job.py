@@ -31,7 +31,7 @@ from app.services.exporter import (
     run_export_job,
 )
 from app.services.mapper import MappingResult
-from app.services.statements import StatementLineItemRecord
+from app.services.statements import StatementLineItemRecord, filter_nil_face_lines
 
 logger = logging.getLogger(__name__)
 
@@ -170,17 +170,19 @@ def _load_statement_lines(
             .order_by(StatementLineItem.display_order)
         ).all()
     )
-    return [
-        StatementLineItemRecord(
-            line_item_code=line.line_item_code,
-            line_item_name=line.line_item_name,
-            amount=Decimal(line.amount),
-            is_subtotal=line.is_subtotal,
-            display_order=line.display_order,
-            source_account_ids=list(line.source_account_ids or []),
-        )
-        for line in lines
-    ]
+    return filter_nil_face_lines(
+        [
+            StatementLineItemRecord(
+                line_item_code=line.line_item_code,
+                line_item_name=line.line_item_name,
+                amount=Decimal(line.amount),
+                is_subtotal=line.is_subtotal,
+                display_order=line.display_order,
+                source_account_ids=list(line.source_account_ids or []),
+            )
+            for line in lines
+        ]
+    )
 
 
 def _load_variance(

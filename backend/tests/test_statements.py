@@ -664,3 +664,79 @@ def test_socie_opening_re_from_current_tb_not_prior_period() -> None:
     assert _by_code(socie_lines, "total_equity_closing").amount == _by_code(
         sofp_lines, "total_equity"
     ).amount
+
+
+def test_nil_face_lines_omitted_and_empty_sofp_section_subtotal_hidden() -> None:
+    """Display filter hides nil leaves / empty SOFP sections; builders stay full."""
+    from app.services.statements import filter_nil_face_lines
+
+    accounts = [
+        _acct("1500", net_balance="1000.00", canonical_line="cash"),
+        _acct("2100", net_balance="-200.00", canonical_line="trade_payables"),
+        _acct("3000", net_balance="-500.00", canonical_line="share_capital"),
+        _acct("3100", net_balance="-300.00", canonical_line="retained_earnings"),
+        _acct("4000", net_balance="-800.00", canonical_line="revenue"),
+        _acct("5000", net_balance="200.00", canonical_line="cost_of_sales"),
+    ]
+    sopl_full, sofp_full, socie_full = build_statements(accounts)
+
+    # Builders still emit the full skeleton (including zeros) for persistence.
+    assert "amortisation" in [line.line_item_code for line in sopl_full]
+    assert _by_code(sopl_full, "amortisation").amount == Decimal("0.00")
+    assert "investments" in [line.line_item_code for line in sofp_full]
+    assert _by_code(sofp_full, "investments").amount == Decimal("0.00")
+    assert "non_current_liabilities" in [line.line_item_code for line in sofp_full]
+    assert "profit_for_period" in [line.line_item_code for line in socie_full]
+
+    sopl = filter_nil_face_lines(sopl_full)
+    sofp = filter_nil_face_lines(sofp_full)
+    socie = filter_nil_face_lines(socie_full)
+
+    sopl_codes = [line.line_item_code for line in sopl]
+    assert sopl_codes == [
+        "revenue",
+        "cost_of_sales",
+        "gross_profit",
+        "operating_profit",
+        "profit_before_tax",
+        "net_profit",
+    ]
+    assert "operating_expenses" not in sopl_codes
+    assert "depreciation" not in sopl_codes
+    assert "amortisation" not in sopl_codes
+    assert "interest_income" not in sopl_codes
+    assert "tax" not in sopl_codes
+    assert _by_code(sopl, "net_profit").amount == Decimal("600.00")
+
+    sofp_codes = [line.line_item_code for line in sofp]
+    assert sofp_codes == [
+        "cash",
+        "current_assets",
+        "total_assets",
+        "trade_payables",
+        "current_liabilities",
+        "total_liabilities",
+        "share_capital",
+        "retained_earnings",
+        "total_equity",
+    ]
+    assert "non_current_assets" not in sofp_codes
+    assert "non_current_liabilities" not in sofp_codes
+    assert "investments" not in sofp_codes
+    assert "loans" not in sofp_codes
+    assert "share_premium" not in sofp_codes
+    assert _by_code(sofp, "total_assets").amount == Decimal("1000.00")
+    assert _by_code(sofp, "total_liabilities").amount == Decimal("200.00")
+    assert _by_code(sofp, "retained_earnings").amount == Decimal("900.00")
+    assert _by_code(sofp, "total_equity").amount == Decimal("1400.00")
+
+    socie_codes = [line.line_item_code for line in socie]
+    assert socie_codes == [
+        "retained_earnings_opening",
+        "profit_for_period",
+        "retained_earnings_closing",
+        "share_capital",
+        "total_equity_closing",
+    ]
+    assert "dividends" not in socie_codes
+    assert _by_code(socie, "total_equity_closing").amount == Decimal("1400.00")

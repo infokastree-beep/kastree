@@ -14,10 +14,12 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Protocol, Sequence
+from typing import Protocol, Sequence, TypeVar
 
 # Credit-normal P&L / SOFP equity & liability lines: statement amount = -net_balance.
 # Debit-normal asset / expense / dividend lines: statement amount = net_balance.
+
+_FaceLineT = TypeVar("_FaceLineT")
 
 
 class StatementAccount(Protocol):
@@ -230,6 +232,36 @@ SOFP_EQUITY_TOTAL_LINES: frozenset[str] = frozenset(
         "revaluation_reserve",
     }
 )
+
+# Display-only nil face filter (does not change totals or underlying TB/mappings).
+_NIL_FACE_TOLERANCE = Decimal("0.01")
+
+# Always shown even at €0 — SOFP/SOCIE grands and SOPL cascade / SOCIE RE closing.
+FACE_GRAND_TOTAL_CODES: frozenset[str] = frozenset(
+    {
+        "total_assets",
+        "total_liabilities",
+        "total_equity",
+        "total_equity_closing",
+        "net_profit",
+    }
+)
+FACE_ALWAYS_KEEP_SUBTOTAL_CODES: frozenset[str] = FACE_GRAND_TOTAL_CODES | frozenset(
+    {
+        "gross_profit",
+        "operating_profit",
+        "profit_before_tax",
+        "retained_earnings_closing",
+    }
+)
+
+# SOFP section subtotals — omit when every leaf in the section was nil-filtered.
+SOFP_SECTION_SUBTOTAL_LEAVES: dict[str, frozenset[str]] = {
+    "non_current_assets": frozenset(SOFP_NON_CURRENT_ASSET_ORDER),
+    "current_assets": frozenset(SOFP_CURRENT_ASSET_ORDER),
+    "non_current_liabilities": frozenset(SOFP_NON_CURRENT_LIABILITY_ORDER),
+    "current_liabilities": frozenset(SOFP_CURRENT_LIABILITY_ORDER),
+}
 
 
 def build_sopl(accounts: Sequence[StatementAccount]) -> list[StatementLineItemRecord]:
@@ -684,6 +716,65 @@ def _compute_socie_rollforward(
         total_equity_closing_amount=total_equity_closing_amount,
         total_equity_closing_ids=total_equity_closing_ids,
     )
+
+
+def iter_nil_filtered_face_lines(
+    lines: Sequence[_FaceLineT],
+) -> list[_FaceLineT]:
+    """Return face rows with nil leaves (and empty SOFP section subtots) removed.
+
+    Works on any object with ``line_item_code``, ``amount``, and ``is_subtotal``
+    (builder records or ORM ``StatementLineItem``). Does not mutate inputs.
+    """
+
+    def _is_nil(amount: Decimal) -> bool:
+        return abs(Decimal(amount)) <= _NIL_FACE_TOLERANCE
+
+    kept_leaf_codes = {
+        line.line_item_code  # type: ignore[attr-defined]
+        for line in lines
+        if not line.is_subtotal and not _is_nil(line.amount)  # type: ignore[attr-defined]
+    }
+
+    filtered: list[_FaceLineT] = []
+    for line in lines:
+        if line.is_subtotal:  # type: ignore[attr-defined]
+            code = line.line_item_code  # type: ignore[attr-defined]
+            if code in FACE_ALWAYS_KEEP_SUBTOTAL_CODES:
+                filtered.append(line)
+                continue
+            section_leaves = SOFP_SECTION_SUBTOTAL_LEAVES.get(code)
+            if section_leaves is not None:
+                if kept_leaf_codes & section_leaves:
+                    filtered.append(line)
+                continue
+            filtered.append(line)
+            continue
+        if not _is_nil(line.amount):  # type: ignore[attr-defined]
+            filtered.append(line)
+    return filtered
+
+
+def filter_nil_face_lines(
+    lines: Sequence[StatementLineItemRecord],
+) -> list[StatementLineItemRecord]:
+    """Display-only: omit nil leaves / empty SOFP sections; renumber display_order.
+
+    Used by export load (and tests). Builders persist the full unfiltered skeleton;
+    totals are unchanged because nil leaves already contributed €0.
+    """
+    filtered = iter_nil_filtered_face_lines(lines)
+    return [
+        StatementLineItemRecord(
+            line_item_code=line.line_item_code,
+            line_item_name=line.line_item_name,
+            amount=line.amount,
+            is_subtotal=line.is_subtotal,
+            display_order=index,
+            source_account_ids=line.source_account_ids,
+        )
+        for index, line in enumerate(filtered, start=1)
+    ]
 
 
 def _append_sofp_leaf_group(
