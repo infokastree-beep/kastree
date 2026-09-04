@@ -30,7 +30,7 @@ from app.schemas.variance import (
     VarianceResponse,
 )
 from app.services.prior_period import find_prior_trial_balance
-from app.services.variance import compute_variance
+from app.services.variance import compute_variance, filter_nil_variance_items
 
 router = APIRouter(prefix="/trial-balances", tags=["variance"])
 
@@ -147,6 +147,8 @@ def _items_with_commentary(
         except ValidationError:
             commentaries = {}
 
+    # Re-apply nil filter on read so pre-fix stored JSONB still hides both-zero rows.
+    visible = filter_nil_variance_items(analysis.items)
     return [
         VarianceItemResponse(
             line_item_code=item.line_item_code,
@@ -159,7 +161,7 @@ def _items_with_commentary(
             is_material=item.is_material,
             commentary=commentaries.get(item.line_item_code),
         )
-        for item in analysis.items
+        for item in visible
     ]
 
 

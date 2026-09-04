@@ -3,6 +3,10 @@
 Compares leaf statement line items from current vs prior SOPL+SOFP. Subtotals
 are excluded — their variance is a consequence of component lines. All
 arithmetic uses Decimal; division by a zero prior returns None for variance_pct.
+
+Nil-face display rule (same intent as statements.filter_nil_face_lines): omit
+rows where both current and prior face amounts are within €0.01 of zero.
+One-sided zeros (new / removed / movement from or to nil) remain visible.
 """
 
 from __future__ import annotations
@@ -15,6 +19,9 @@ from app.schemas.variance import (
     VarianceDirection,
     VarianceItemRecord,
 )
+
+# Match statements._NIL_FACE_TOLERANCE / Cursor Rules §6.4 monetary tolerance.
+_NIL_FACE_TOLERANCE = Decimal("0.01")
 
 
 class StatementLineLike(Protocol):
@@ -103,7 +110,21 @@ def compute_variance(
             )
         )
 
-    return VarianceAnalysisResult(items=items)
+    return VarianceAnalysisResult(items=filter_nil_variance_items(items))
+
+
+def filter_nil_variance_items(
+    items: Sequence[VarianceItemRecord],
+) -> list[VarianceItemRecord]:
+    """Omit rows where both period faces are nil (display parity with SOPL/SOFP)."""
+    return [item for item in items if not _both_faces_nil(item)]
+
+
+def _both_faces_nil(item: VarianceItemRecord) -> bool:
+    return (
+        abs(Decimal(item.current_amount)) <= _NIL_FACE_TOLERANCE
+        and abs(Decimal(item.prior_amount)) <= _NIL_FACE_TOLERANCE
+    )
 
 
 def _leaf_index(

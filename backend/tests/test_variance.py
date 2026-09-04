@@ -368,3 +368,52 @@ def test_matches_on_line_item_code_not_display_order() -> None:
 
     assert _by_code(result, "revenue").variance_amount == "1000.00"
     assert _by_code(result, "cash").variance_amount == "500.00"
+
+
+def test_both_nil_faces_omitted_from_variance() -> None:
+    """Display parity with SOPL/SOFP nil-face filter: hide 0/0 leaf rows."""
+    current = [
+        _line("revenue", "10000.00", name="Revenue"),
+        _line("dividends", "0.00", name="Dividends"),
+        _line("social_security_payable", "0.00", name="Social security payable"),
+    ]
+    prior = [
+        _line("revenue", "9000.00", name="Revenue"),
+        _line("dividends", "0.00", name="Dividends"),
+        _line("social_security_payable", "0.00", name="Social security payable"),
+    ]
+
+    result = compute_variance(
+        current,
+        prior,
+        materiality_threshold_pct=DEFAULT_PCT,
+        materiality_threshold_abs=DEFAULT_ABS,
+    )
+
+    codes = {item.line_item_code for item in result.items}
+    assert codes == {"revenue"}
+    assert _by_code(result, "revenue").variance_amount == "1000.00"
+
+
+def test_one_sided_nil_still_shown() -> None:
+    """Prior nil / current non-nil (and reverse) must remain visible."""
+    current = [
+        _line("interest_income", "250.00", name="Interest income"),
+        _line("dividends", "0.00", name="Dividends"),
+    ]
+    prior = [
+        _line("interest_income", "0.00", name="Interest income"),
+        _line("dividends", "500.00", name="Dividends"),
+    ]
+
+    result = compute_variance(
+        current,
+        prior,
+        materiality_threshold_pct=DEFAULT_PCT,
+        materiality_threshold_abs=DEFAULT_ABS,
+    )
+
+    codes = {item.line_item_code for item in result.items}
+    assert codes == {"interest_income", "dividends"}
+    assert _by_code(result, "interest_income").direction == "increase"
+    assert _by_code(result, "dividends").direction == "decrease"
