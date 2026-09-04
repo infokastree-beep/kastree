@@ -1,21 +1,17 @@
-# Optional: trigger a Vercel production redeploy on every push to main.
-# Add repository secret VERCEL_DEPLOY_HOOK_URL (Vercel → Settings → Git → Deploy Hooks).
+# Superseded by verify-production-frontend.yml, which optionally POSTs the same
+# deploy hook and then polls www.kastree.ie until the pushed SHA is live.
+# Kept as a no-op reminder so existing workflow badges/docs do not 404.
 name: Vercel production deploy hook
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
-  trigger-vercel:
+  superseded:
     runs-on: ubuntu-latest
-    if: ${{ secrets.VERCEL_DEPLOY_HOOK_URL != '' }}
     steps:
-      - name: POST Vercel deploy hook
+      - name: Point to the SHA guard workflow
         run: |
-          status=$(curl -sSL -o /tmp/hook.json -w '%{http_code}' -X POST "$VERCEL_DEPLOY_HOOK_URL")
-          echo "HTTP $status"
-          cat /tmp/hook.json
-          [[ "$status" =~ ^2 ]]
-        env:
-          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+          echo "This workflow is superseded by .github/workflows/verify-production-frontend.yml"
+          echo "That workflow triggers the deploy hook (if VERCEL_DEPLOY_HOOK_URL is set)"
+          echo "and fails the push if www.kastree.ie does not serve the commit SHA."

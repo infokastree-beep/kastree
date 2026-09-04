@@ -596,6 +596,15 @@ general “everything is still on personal email” fog.
    connected repo followed the GitHub change automatically. Redeploy (or fire
    the Production deploy hook) once the source is confirmed.
 
+   **Automated safeguard (2026-09-04):** every push to `main` runs
+   `.github/workflows/verify-production-frontend.yml`, which optionally POSTs
+   `VERCEL_DEPLOY_HOOK_URL` and then polls
+   `https://www.kastree.ie` for `<meta name="kastree-git-sha">` baked from
+   `VERCEL_GIT_COMMIT_SHA` / `GITHUB_SHA`. If the live marker does not match
+   the pushed SHA within ~15 minutes, the workflow **fails loudly** (no more
+   “detect only if someone remembers to run a script”). Script:
+   `scripts/verify_production_frontend_sha.sh`.
+
 3. **Blacknight domain transfer** — `kastree.ie` registration remains under the
    original personal account. Deliberately deferred because .ie registrant
    changes involve ID/passport verification. **Low priority, no functional

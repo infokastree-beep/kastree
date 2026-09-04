@@ -1,0 +1,73 @@
+# Automated safeguard: after every push to main, confirm www.kastree.ie is
+# actually serving this commit (not a stale Vercel build / wrong Git source).
+#
+# The frontend bakes <meta name="kastree-git-sha"> from VERCEL_GIT_COMMIT_SHA /
+# GITHUB_SHA (frontend/next.config.mjs + app/layout.tsx). This workflow polls
+# that public marker and FAILS LOUDLY if it does not match within the timeout.
+#
+# Optional secret VERCEL_DEPLOY_HOOK_URL: POST the Production deploy hook first
+# so a stuck/wrong Git connection still gets a redeploy attempt before we wait.
+name: Verify production frontend SHA
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: verify-production-frontend-main
+  cancel-in-progress: false
+
+jobs:
+  trigger-vercel-hook:
+    runs-on: ubuntu-latest
+    # Skip cleanly when the optional secret is unset (auto-deploy may still run).
+    if: ${{ vars.SKIP_VERCEL_DEPLOY_HOOK != 'true' }}
+    steps:
+      - name: POST Vercel Production deploy hook (optional)
+        id: hook
+        continue-on-error: true
+        env:
+          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "${VERCEL_DEPLOY_HOOK_URL:-}" ]; then
+            echo "VERCEL_DEPLOY_HOOK_URL secret not set — relying on Vercel Git auto-deploy."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          status=$(curl -sSL -o /tmp/hook.json -w '%{http_code}' -X POST "$VERCEL_DEPLOY_HOOK_URL")
+          echo "HTTP $status"
+          cat /tmp/hook.json || true
+          if [[ ! "$status" =~ ^2 ]]; then
+            echo "::warning::Deploy hook returned HTTP $status — verify job will still poll live site"
+            exit 1
+          fi
+          echo "skipped=false" >> "$GITHUB_OUTPUT"
+
+  verify-live-sha:
+    runs-on: ubuntu-latest
+    needs: [trigger-vercel-hook]
+    if: always()
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Wait until www.kastree.ie serves this commit
+        env:
+          VERCEL_SITE_URL: https://www.kastree.ie
+          # Vercel Hobby builds are usually <5m; 15m covers queue + alias swap.
+          VERIFY_TIMEOUT_SECONDS: "900"
+          VERIFY_POLL_SECONDS: "20"
+          VERIFY_INITIAL_DELAY_SECONDS: "60"
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          chmod +x scripts/verify_production_frontend_sha.sh
+          ./scripts/verify_production_frontend_sha.sh "$EXPECTED_SHA"
+
+      - name: Loud failure summary
+        if: failure()
+        run: |
+          echo "::error::Production frontend SHA guard FAILED for ${{ github.sha }}"
+          echo "www.kastree.ie is not serving this push. Check Vercel Settings → Git"
+          echo "(connected repo must be infokastree-beep/kastree), recent deployments,"
+          echo "and the Production deploy hook. Do not assume GitHub transfers update Vercel."
+          exit 1

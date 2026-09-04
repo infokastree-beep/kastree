@@ -19,6 +19,10 @@ const display = Fraunces({
 export const metadata: Metadata = {
   title: "Kastree",
   description: "Financial intelligence for accounting practices",
+  other: {
+    // Public, unauthenticated marker for CI: curl www.kastree.ie | grep kastree-git-sha
+    "kastree-git-sha": process.env.NEXT_PUBLIC_GIT_SHA ?? "dev",
+  },
 };
 
 export default function RootLayout({

@@ -216,6 +216,12 @@ git push github main
 # 4. Wait for Vercel deploy, then confirm live frontend CDN chunk (example)
 ./scripts/verify_vercel_deploy_marker.sh is_platform_admin
 
+# Automated on every push to main (.github/workflows/verify-production-frontend.yml):
+# polls www.kastree.ie for <meta name="kastree-git-sha"> matching the pushed SHA.
+# Optional repo secret VERCEL_DEPLOY_HOOK_URL triggers a Production redeploy first.
+# Manual equivalent:
+#   ./scripts/verify_production_frontend_sha.sh "$(git rev-parse HEAD)"
+
 # If Vercel production is stale (marker 404), trigger a redeploy:
 #   export VERCEL_DEPLOY_HOOK_URL='...'   # Vercel → Settings → Git → Deploy Hooks
 #   ./scripts/trigger_vercel_deploy.sh
