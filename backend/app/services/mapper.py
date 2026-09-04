@@ -394,7 +394,7 @@ def _parse_llm_mappings(
     unmapped: Sequence[MappingResult],
     payload: dict[str, Any],
 ) -> list[MappingResult]:
-    by_index: dict[int, str] = {}
+    by_index: dict[int, dict[str, Any]] = {}
     for entry in payload["mappings"]:
         if not isinstance(entry, dict):
             continue
@@ -402,7 +402,7 @@ def _parse_llm_mappings(
         raw_line = entry.get("canonical_line")
         if not isinstance(raw_index, int) or not isinstance(raw_line, str):
             continue
-        by_index[raw_index] = raw_line.strip()
+        by_index[raw_index] = entry
 
     results: list[MappingResult] = []
     for position, account in enumerate(unmapped, start=1):
@@ -410,7 +410,9 @@ def _parse_llm_mappings(
             results.append(account)
             continue
 
-        canonical_line = by_index[position]
+        entry = by_index[position]
+        canonical_line = str(entry["canonical_line"]).strip()
+        confidence = _parse_llm_confidence(entry.get("confidence"))
         if canonical_line not in MAPPING_TIE_BREAKER_CANONICAL_LINES:
             results.append(account)
             continue
@@ -421,7 +423,7 @@ def _parse_llm_mappings(
                     source_code=account.source_code,
                     source_name=account.source_name,
                     canonical_line=None,
-                    confidence=None,
+                    confidence=confidence,
                     method="llm",
                 )
             )
@@ -432,8 +434,33 @@ def _parse_llm_mappings(
                 source_code=account.source_code,
                 source_name=account.source_name,
                 canonical_line=canonical_line,
-                confidence=None,
+                confidence=confidence,
                 method="llm",
             )
         )
     return results
+
+
+def _parse_llm_confidence(raw: object) -> Decimal | None:
+    """Parse LLM self-reported confidence (0–1) to Decimal(0.01); None if missing/invalid."""
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        if isinstance(raw, str):
+            text = raw.strip()
+            if not text:
+                return None
+            value = Decimal(text)
+        elif isinstance(raw, (int, float, Decimal)):
+            value = Decimal(str(raw))
+        else:
+            return None
+    except Exception:
+        return None
+    if value.is_nan() or value.is_infinite():
+        return None
+    if value < 0:
+        value = Decimal("0")
+    elif value > 1:
+        value = Decimal("1")
+    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)

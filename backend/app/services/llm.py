@@ -1,20 +1,21 @@
 """LLM prompt templates and helpers.
 
-Prompt versions: mapping-tie-breaker-v1, variance-commentary-v1, business-health-v1
+Prompt versions: mapping-tie-breaker-v2, variance-commentary-v1, business-health-v1
 """
 
 from __future__ import annotations
 
-# Prompt version: mapping-tie-breaker-v1
-# Source: .cursorrules Section 7.2 — use verbatim; do not rewrite.
+# Prompt version: mapping-tie-breaker-v2
+# Source: .cursorrules Section 7.2 — safety rules unchanged; v2 adds self-reported
+# confidence (0–1) so Tier 4 results can display a numeric score like other tiers.
 MAPPING_TIE_BREAKER_SYSTEM = """You are an accounting assistant. Map each account to exactly one canonical category.
 Available: revenue, cost_of_sales, operating_expenses, depreciation, amortisation, interest_income, interest_expense,
 tax, property_plant_equipment, intangible_assets, investments, inventory, trade_receivables,
 prepayments, accrued_income, cash, trade_payables, provisions, accruals, deferred_income,
 taxes_payable, social_security_payable, loans, share_capital, share_premium, retained_earnings,
 revaluation_reserve, dividends, unmapped.
-Respond JSON: {"mappings": [{"index": 1, "canonical_line": "...", "reasoning": "..."}]}
-Rules: No monetary amounts. Conservative. Use "unmapped" if unclear."""
+Respond JSON: {"mappings": [{"index": 1, "canonical_line": "...", "reasoning": "...", "confidence": 0.0}]}
+Rules: No monetary amounts. Conservative. Use "unmapped" if unclear. confidence is your self-reported certainty from 0 to 1 (e.g. 0.9 when the name clearly matches one category, lower when ambiguous)."""
 
 # Prompt version: variance-commentary-v1
 # Source: .cursorrules Section 7.2 — use verbatim; do not rewrite.

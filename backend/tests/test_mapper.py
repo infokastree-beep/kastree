@@ -218,11 +218,17 @@ def test_tier4_successful_batch_mapping_response() -> None:
     client.chat.completions.create.return_value = _mock_completion(
         {
             "mappings": [
-                {"index": 1, "canonical_line": "cash", "reasoning": "Bank balance"},
+                {
+                    "index": 1,
+                    "canonical_line": "cash",
+                    "reasoning": "Bank balance",
+                    "confidence": 0.92,
+                },
                 {
                     "index": 2,
                     "canonical_line": "trade_payables",
                     "reasoning": "Creditors",
+                    "confidence": 0.88,
                 },
             ]
         }
@@ -236,8 +242,10 @@ def test_tier4_successful_batch_mapping_response() -> None:
     )
 
     assert results == [
-        MappingResult("1500", "Cash at bank", "cash", None, "llm"),
-        MappingResult("2100", "Trade creditors", "trade_payables", None, "llm"),
+        MappingResult("1500", "Cash at bank", "cash", Decimal("0.92"), "llm"),
+        MappingResult(
+            "2100", "Trade creditors", "trade_payables", Decimal("0.88"), "llm"
+        ),
     ]
     assert sleep_calls == []
 
@@ -249,10 +257,13 @@ def test_tier4_successful_batch_mapping_response() -> None:
         "role": "system",
         "content": MAPPING_TIE_BREAKER_SYSTEM,
     }
+    assert '"confidence": 0.0' in MAPPING_TIE_BREAKER_SYSTEM
     user_content = call_kwargs["messages"][1]["content"]
     assert "Code: 1500, Name: Cash at bank" in user_content
     assert "Code: 2100, Name: Trade creditors" in user_content
     assert "£" not in user_content
+    # User prompt must still carry no monetary amounts / confidence scores —
+    # confidence belongs in the system schema + model response only.
     assert "confidence" not in user_content.lower()
 
 
@@ -266,6 +277,7 @@ def test_tier4_unmapped_response_path() -> None:
                     "index": 1,
                     "canonical_line": "unmapped",
                     "reasoning": "Genuinely unclear",
+                    "confidence": 0.35,
                 }
             ]
         }
@@ -274,7 +286,7 @@ def test_tier4_unmapped_response_path() -> None:
     results = apply_llm_tie_breaker(unmapped, openai_client=client, sleep=lambda _: None)
 
     assert results == [
-        MappingResult("9000", "Misc clearing", None, None, "llm"),
+        MappingResult("9000", "Misc clearing", None, Decimal("0.35"), "llm"),
     ]
 
 
@@ -286,7 +298,12 @@ def test_tier4_retry_then_succeed() -> None:
         _mock_completion(
             {
                 "mappings": [
-                    {"index": 1, "canonical_line": "cash", "reasoning": "Cash account"}
+                    {
+                        "index": 1,
+                        "canonical_line": "cash",
+                        "reasoning": "Cash account",
+                        "confidence": 0.9,
+                    }
                 ]
             }
         ),
@@ -299,10 +316,11 @@ def test_tier4_retry_then_succeed() -> None:
         sleep=sleep_calls.append,
     )
 
-    assert results == [MappingResult("1500", "Cash at bank", "cash", None, "llm")]
+    assert results == [
+        MappingResult("1500", "Cash at bank", "cash", Decimal("0.90"), "llm")
+    ]
     assert client.chat.completions.create.call_count == 2
     assert sleep_calls == [1]
-
 
 def test_tier4_fallback_to_gpt4o_then_give_up_leaves_unmapped() -> None:
     unmapped = [
@@ -328,4 +346,31 @@ def test_tier4_fallback_to_gpt4o_then_give_up_leaves_unmapped() -> None:
     ]
     assert models == ["gpt-4o-mini"] * 4 + ["gpt-4o"] * 4
     assert sleep_calls == [1, 2, 4, 1, 2, 4]
+
+
+def test_tier4_parses_and_clamps_self_reported_confidence() -> None:
+    from app.services.mapper import _parse_llm_confidence, _parse_llm_mappings
+
+    assert _parse_llm_confidence(0.923) == Decimal("0.92")
+    assert _parse_llm_confidence("1.5") == Decimal("1.00")
+    assert _parse_llm_confidence(-0.2) == Decimal("0.00")
+    assert _parse_llm_confidence("not-a-number") is None
+    assert _parse_llm_confidence(None) is None
+
+    unmapped = [MappingResult("1100", "Cash", None, None, None)]
+    results = _parse_llm_mappings(
+        unmapped,
+        {
+            "mappings": [
+                {
+                    "index": 1,
+                    "canonical_line": "cash",
+                    "reasoning": "Cash",
+                    "confidence": "0.955",
+                }
+            ]
+        },
+    )
+    assert results[0].confidence == Decimal("0.96")
+    assert results[0].method == "llm"
 

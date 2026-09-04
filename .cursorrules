@@ -351,8 +351,8 @@ Mapping Tie-Breaker
   Available: revenue, cost_of_sales, operating_expenses, depreciation, interest_income, interest_expense,
   tax, property_plant_equipment, intangible_assets, inventory, trade_receivables, cash,
   trade_payables, accruals, loans, share_capital, retained_earnings, dividends, unmapped.
-  Respond JSON: {"mappings": [{"index": 1, "canonical_line": "...", "reasoning": "..."}]}
-  Rules: No monetary amounts. Conservative. Use "unmapped" if unclear."""
+Respond JSON: {"mappings": [{"index": 1, "canonical_line": "...", "reasoning": "...", "confidence": 0.0}]}
+Rules: No monetary amounts. Conservative. Use "unmapped" if unclear. confidence is your self-reported certainty from 0 to 1 (e.g. 0.9 when the name clearly matches one category, lower when ambiguous)."""
 
 Business Health Summary
 
@@ -962,8 +962,8 @@ Mapping Tie-Breaker
   Available: revenue, cost_of_sales, operating_expenses, depreciation, interest_income, interest_expense,
   tax, property_plant_equipment, intangible_assets, inventory, trade_receivables, cash,
   trade_payables, accruals, loans, share_capital, retained_earnings, dividends, unmapped.
-  Respond JSON: {"mappings": [{"index": 1, "canonical_line": "...", "reasoning": "..."}]}
-  Rules: No monetary amounts. Conservative. Use "unmapped" if unclear.
+Respond JSON: {"mappings": [{"index": 1, "canonical_line": "...", "reasoning": "...", "confidence": 0.0}]}
+Rules: No monetary amounts. Conservative. Use "unmapped" if unclear. confidence is your self-reported certainty from 0 to 1 (e.g. 0.9 when the name clearly matches one category, lower when ambiguous).
   USER: Map these accounts:
   1. Code: 4100, Name: Sales - Online
   2. Code: 6100, Name: Marketing - Digital

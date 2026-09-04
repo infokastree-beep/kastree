@@ -130,11 +130,19 @@ def test_mapper_parse_llm_mappings_accepts_granular_canonical_lines(line: str) -
         )
     ]
     payload = {
-        "mappings": [{"index": 1, "canonical_line": line, "reasoning": "Test mapping"}]
+        "mappings": [
+            {
+                "index": 1,
+                "canonical_line": line,
+                "reasoning": "Test mapping",
+                "confidence": 0.87,
+            }
+        ]
     }
     results = _parse_llm_mappings(unmapped, payload)
     assert results[0].canonical_line == line
     assert results[0].method == "llm"
+    assert results[0].confidence == Decimal("0.87")
 
 
 def test_sofp_places_split_lines_in_expected_positions() -> None:
