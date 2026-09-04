@@ -761,7 +761,8 @@ def filter_nil_face_lines(
     """Display-only: omit nil leaves / empty SOFP sections; renumber display_order.
 
     Used by export load (and tests). Builders persist the full unfiltered skeleton;
-    totals are unchanged because nil leaves already contributed €0.
+    GET and POST generate/regenerate responses use ``iter_nil_filtered_face_lines``
+    the same way. Totals are unchanged because nil leaves already contributed €0.
     """
     filtered = iter_nil_filtered_face_lines(lines)
     return [

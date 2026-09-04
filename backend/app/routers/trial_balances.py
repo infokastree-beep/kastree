@@ -816,7 +816,9 @@ async def _generate_and_persist_statements(
             )
             sync_session.add(fs)
             sync_session.flush()
-            line_responses: list[StatementLineResponse] = []
+            # Persist the full skeleton (including nil leaves) for audit/evidence.
+            # Response face lines match GET/export: omit nil leaves / empty sections.
+            persisted: list[StatementLineResponse] = []
             for line in lines:
                 sli = StatementLineItem(
                     statement_id=fs.id,
@@ -829,7 +831,7 @@ async def _generate_and_persist_statements(
                 )
                 sync_session.add(sli)
                 sync_session.flush()
-                line_responses.append(
+                persisted.append(
                     StatementLineResponse(
                         id=sli.id,
                         line_item_code=sli.line_item_code,
@@ -840,11 +842,15 @@ async def _generate_and_persist_statements(
                         source_account_ids=list(sli.source_account_ids or []),
                     )
                 )
+            display_lines = iter_nil_filtered_face_lines(persisted)
             blocks.append(
                 StatementBlockResponse(
                     statement_type=statement_type,  # type: ignore[arg-type]
                     generated_at=fs.generated_at,
-                    lines=line_responses,
+                    lines=[
+                        line.model_copy(update={"display_order": index})
+                        for index, line in enumerate(display_lines, start=1)
+                    ],
                 )
             )
         sync_session.commit()

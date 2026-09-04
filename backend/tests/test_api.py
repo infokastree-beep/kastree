@@ -345,7 +345,15 @@ async def test_full_happy_path_upload_to_statements(
         f"/trial-balances/{tb_id}/statements", headers=headers
     )
     assert gen.status_code == 200, gen.text
-    assert len(gen.json()["statements"]) == 3
+    gen_body = gen.json()
+    assert len(gen_body["statements"]) == 3
+    # POST generate must nil-filter face lines the same as GET (frontend caches
+    # this response). Zero-balance SOPL leaves like amortisation must not appear.
+    gen_by_type = {b["statement_type"]: b for b in gen_body["statements"]}
+    gen_sopl_codes = {line["line_item_code"] for line in gen_by_type["SOPL"]["lines"]}
+    assert "amortisation" not in gen_sopl_codes
+    assert "depreciation" not in gen_sopl_codes
+    assert "revenue" in gen_sopl_codes
 
     got = await api_client.get(
         f"/trial-balances/{tb_id}/statements", headers=headers
@@ -355,6 +363,9 @@ async def test_full_happy_path_upload_to_statements(
     assert len(statements) == 3
     types = {block["statement_type"] for block in statements}
     assert types == {"SOPL", "SOFP", "SOCIE"}
+    get_by_type = {b["statement_type"]: b for b in statements}
+    get_sopl_codes = {line["line_item_code"] for line in get_by_type["SOPL"]["lines"]}
+    assert get_sopl_codes == gen_sopl_codes
 
 
 @pytest.mark.asyncio
