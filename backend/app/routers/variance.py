@@ -22,6 +22,7 @@ from app.models.trial_balance import TrialBalance
 from app.models.variance_analysis import VarianceAnalysis
 from app.routers.trial_balances import _get_owned_tb
 from app.schemas.commentary import CommentaryRecord, VarianceCommentaryResult
+from app.services.commentary import generate_variance_commentary
 from app.schemas.variance import (
     MISSING_PRIOR_PERIOD_MESSAGE,
     PRIOR_STATEMENTS_MISSING_MESSAGE,
@@ -182,6 +183,7 @@ def _analysis_response(
     analysis = VarianceAnalysisResult.model_validate(row.items)
     return VarianceResponse(
         tb_id=tb_id,
+        variance_id=row.id,
         company_id=company_id,
         period_end=period_end,
         prior_tb_id=prior_tb_id,
@@ -249,11 +251,17 @@ async def generate_variance(
         await session.delete(row)
     await session.flush()
 
+    # AI commentary for material lines only — never raises; empty on LLM failure (§4.3).
+    commentary_result = generate_variance_commentary(result)
+    commentary_jsonb = (
+        commentary_result.to_jsonb() if commentary_result.commentaries else None
+    )
+
     row = VarianceAnalysis(
         tb_id=tb.id,
         prior_tb_id=prior.id,
         items=items_jsonb,
-        commentary=None,
+        commentary=commentary_jsonb,
         status="complete",
     )
     session.add(row)

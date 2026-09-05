@@ -162,7 +162,28 @@ export interface VarianceCommentary {
   text: string;
   reasoning?: string | null;
   confidence?: "high" | "medium" | "low" | null;
+  is_ai_generated?: boolean;
   is_edited?: boolean;
+  edited_by_user_id?: string | null;
+  original_text?: string | null;
+}
+
+export interface CommentaryFeedbackRequest {
+  variance_id: string;
+  line_item_code: string;
+  thumbs_up?: boolean | null;
+  corrected_text?: string | null;
+}
+
+export interface CommentaryFeedbackResponse {
+  id: string;
+  variance_id: string;
+  user_id: string;
+  line_item_code: string;
+  thumbs_up: boolean | null;
+  corrected_text: string | null;
+  created_at: string;
+  commentary_updated: boolean;
 }
 
 export interface VarianceItem {
@@ -179,6 +200,7 @@ export interface VarianceItem {
 
 export interface VarianceResponse {
   tb_id: string;
+  variance_id?: string | null;
   company_id?: string | null;
   period_end?: string | null;
   prior_tb_id: string | null;

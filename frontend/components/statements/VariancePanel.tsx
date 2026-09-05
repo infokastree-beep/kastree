@@ -11,6 +11,7 @@ import {
   writePreferredPriorTbId,
 } from "@/lib/prior-period";
 import { formatCanonicalLineLabel, formatDate } from "@/lib/utils";
+import { VarianceCommentarySection } from "./VarianceCommentarySection";
 import type {
   TrialBalanceListResponse,
   VarianceDirection,
@@ -517,6 +518,8 @@ export function VariancePanel({
           </table>
         </div>
       )}
+
+      <VarianceCommentarySection variance={data} />
     </div>
   );
 }

@@ -9,6 +9,8 @@ from decimal import Decimal
 from io import BytesIO
 
 import openpyxl
+from unittest.mock import patch
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
@@ -205,6 +207,77 @@ async def test_variance_generation_with_real_prior_period(
 
 
 @pytest.mark.asyncio
+
+
+@pytest.mark.asyncio
+async def test_variance_generation_attaches_ai_commentary_and_variance_id(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """POST /variance calls commentary service and returns variance_id + nested commentary."""
+    from app.schemas.commentary import CommentaryRecord, VarianceCommentaryResult
+
+    org_id = provisioned_org["org_id"]
+    company_id = provisioned_org["company_id"]
+    headers = auth_headers(provisioned_org["token"])
+
+    prior_id = _seed_tb(
+        org_id=org_id,
+        company_id=company_id,
+        period_end=date(2026, 6, 30),
+        lines=[("revenue", "Revenue", "210000.00", False)],
+    )
+    current_id = _seed_tb(
+        org_id=org_id,
+        company_id=company_id,
+        period_end=date(2026, 7, 31),
+        lines=[("revenue", "Revenue", "250000.00", False)],
+    )
+
+    fake = VarianceCommentaryResult(
+        commentaries={
+            "revenue": CommentaryRecord(
+                text="Revenue rose sharply versus the prior period.",
+                is_ai_generated=True,
+                is_edited=False,
+                reasoning="Material percentage increase in revenue.",
+                confidence="high",
+            )
+        }
+    )
+
+    with patch(
+        "app.routers.variance.generate_variance_commentary",
+        return_value=fake,
+    ):
+        response = await api_client.post(
+            f"/trial-balances/{current_id}/variance",
+            headers=headers,
+            json={"prior_tb_id": str(prior_id)},
+        )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["variance_id"] is not None
+    revenue = next(item for item in body["items"] if item["line_item_code"] == "revenue")
+    assert revenue["commentary"] is not None
+    assert revenue["commentary"]["text"].startswith("Revenue rose")
+    assert revenue["commentary"]["reasoning"]
+    assert revenue["commentary"]["confidence"] == "high"
+
+    # Feedback endpoint accepts the returned variance_id
+    feedback = await api_client.post(
+        "/commentary/feedback",
+        headers=headers,
+        json={
+            "variance_id": body["variance_id"],
+            "line_item_code": "revenue",
+            "thumbs_up": True,
+        },
+    )
+    assert feedback.status_code == 201, feedback.text
+    assert feedback.json()["thumbs_up"] is True
+
+
 async def test_variance_auto_detect_picks_most_recent_prior_not_oldest(
     api_client: AsyncClient,
     provisioned_org: dict,

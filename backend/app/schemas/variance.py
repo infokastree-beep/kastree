@@ -70,6 +70,7 @@ class VarianceResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tb_id: uuid.UUID
+    variance_id: uuid.UUID | None = None
     company_id: uuid.UUID | None = None
     period_end: date | None = None
     prior_tb_id: uuid.UUID | None = None
