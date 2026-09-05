@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import {
   PRODUCTS,
@@ -7,16 +9,26 @@ import {
   type Product,
 } from "@/lib/products";
 
+/** Signed-in functional home — Clients list, not marketing `/`. */
+export const PRODUCT_HOME_HREF = "/clients";
+
 type ProductSwitcherProps = {
   products?: readonly Product[];
   /** Which product is currently active. Defaults to the first entry. */
   activeProductId?: string;
+  /**
+   * Destination for the brand/name control.
+   * Defaults to `/clients` (signed-in app home). Used on landing + dashboard.
+   */
+  homeHref?: string;
 };
 
 export function ProductSwitcher({
   products = PRODUCTS,
   activeProductId = products[0]?.id,
+  homeHref = PRODUCT_HOME_HREF,
 }: ProductSwitcherProps) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
@@ -55,19 +67,22 @@ export function ProductSwitcher({
 
   if (products.length < 2) {
     return (
-      <span className="font-display text-base font-semibold tracking-tight text-accent sm:text-lg">
+      <Link
+        href={homeHref}
+        className="font-display text-base font-semibold tracking-tight text-accent transition-colors hover:opacity-80 sm:text-lg"
+      >
         {formatProductLabel(activeProduct)}
-      </span>
+      </Link>
     );
   }
 
   function handleSelect(product: Product) {
-    if (product.id === activeProduct.id) {
+    if (product.id === activeProduct!.id) {
       setOpen(false);
       return;
     }
-    // Routing for additional products will plug in here.
     setOpen(false);
+    router.push(product.route || homeHref);
   }
 
   return (
