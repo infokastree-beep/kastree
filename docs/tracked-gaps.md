@@ -283,7 +283,30 @@ directly — 2026-09-03):
   real product pass before monthly is a marketed use case — do not retune
   speculatively until history is actually supplied.
 
-Low priority. No production gap beyond the existing empty-history MVP skip.
+### Wiring source — confirmed 2026-09-05 (investigation)
+
+Blank Risk on companies like Berkshire is still mostly: `negative_cash` not
+triggering (cash healthy) + `unusual_variance` starved by the hardcoded empty
+dict. The missing piece is **not** “collect multi-period data.”
+
+**Performance Overview does not unlock Rule 2.** Its multi-period series are
+**absolute KPI amounts** (revenue, cash, etc.). Rule 2 needs prior
+**`variance_pct` history per line** — a different shape. Deriving MoM %s from
+those absolutes would be a second calculation path and only covers the small
+Performance Overview metric set, not the full variance line list.
+
+**Genuinely correct source: existing `variance_analyses` rows.** That table
+already stores `variance_pct` per line per period for every company with 2+
+periods. No new data collection — only wire `evaluate_risks()` to read prior
+`variance_analyses` rows instead of `_MVP_HISTORICAL_VARIANCE_PCTS = {}`.
+Berkshire alone has enough real history (**13+ periods** / 12 stored variance
+analyses with per-line `variance_pct` series) to clear the ≥3-observation bar
+easily once wired.
+
+**Assessment:** real, contained, worthwhile follow-up — **not urgent**, but
+genuinely closer to buildable than previously assumed (when the blocker was
+framed as “no historical data”). Low priority until that wiring lands; no
+production gap beyond the existing empty-history MVP skip.
 
 ## Financial statements — currency display (resolved)
 
