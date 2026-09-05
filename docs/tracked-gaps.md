@@ -16,6 +16,15 @@ Clients, companies, and trial balances soft-delete write to `archived_records`. 
 | `trial_balances` | **Done** — `DELETE /trial-balances/{id}` soft-deletes (`is_deleted` / `deleted_at`) and writes `archived_records` (`entity_type=trial_balance`). |
 | `financial_statements` | `archived_records.entity_type` includes statements, but no delete/archive write path (statements are replaced in place on regenerate; no soft-delete column). |
 
+### Soft-delete does not cascade — stranded children (accepted)
+
+Soft-deleting a **client** or **company** archives that row only. Child records
+(companies under a deleted client; trial balances under a deleted company) stay
+`is_deleted=false` in the database but are **unreachable via any UI/API path**
+(list/get joins filter the deleted parent). This is **consistent, deliberate
+behaviour** — same rule at both levels — not a bug. Those stranded rows exist
+indefinitely unless a future admin/cleanup tool surfaces or purges them.
+
 ## Clerk webhook payload persistence
 
 Clerk webhook payloads are **not persisted** anywhere (unlike Stripe's
