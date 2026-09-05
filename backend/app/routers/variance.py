@@ -60,6 +60,7 @@ async def _resolve_prior_tb(
             select(TrialBalance).where(
                 TrialBalance.id == prior_tb_id,
                 TrialBalance.company_id == current.company_id,
+                TrialBalance.is_deleted.is_(False),
             )
         )
         prior = result.scalar_one_or_none()

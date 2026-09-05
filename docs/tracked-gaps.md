@@ -8,12 +8,12 @@ see [`product-roadmap.md`](product-roadmap.md).
 
 ## Archival write paths
 
-Only **clients** soft-delete currently writes to `archived_records`. See
+Clients, companies, and trial balances soft-delete write to `archived_records`. See
 `backend/app/routers/clients.py` module docstring for detail.
 
 | Entity | Gap |
 |--------|-----|
-| `trial_balances` | `DELETE /trial-balances/{id}` specified in Product Spec §10.2 / §12.2 (snapshot on delete) — no delete handler or archive write yet. |
+| `trial_balances` | **Done** — `DELETE /trial-balances/{id}` soft-deletes (`is_deleted` / `deleted_at`) and writes `archived_records` (`entity_type=trial_balance`). |
 | `financial_statements` | `archived_records.entity_type` includes statements, but no delete/archive write path (statements are replaced in place on regenerate; no soft-delete column). |
 
 ## Clerk webhook payload persistence

@@ -1,8 +1,8 @@
 """Immutable archival helpers (Product Spec §9.1 / §12.2).
 
 Writes append-only archived_records rows with a SHA-256 of the JSON snapshot.
-Only the clients soft-delete path is wired in this slice; trial_balances and
-financial_statements still lack an archival WRITE path (see router docstring).
+Clients, companies, and trial_balances soft-delete paths write archives;
+financial_statements still lack an archival WRITE path.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.archived_record import ArchivedRecord
 from app.models.client import Client
 from app.models.company import Company
+from app.models.trial_balance import TrialBalance
 
 RETENTION_YEARS = 7
 
@@ -126,6 +127,58 @@ async def archive_company_user_deleted(
         client_id=company.client_id,
         entity_type="company",
         entity_id=company.id,
+        archive_reason="user_deleted",
+        archived_by_user_id=archived_by_user_id,
+        archived_data=snapshot,
+        archive_hash=sha256_hex(snapshot),
+        retention_until=add_years(when.date(), RETENTION_YEARS),
+    )
+    session.add(record)
+    await session.flush()
+    return record
+
+
+def trial_balance_snapshot(tb: TrialBalance) -> dict[str, Any]:
+    """Full trial_balances-row snapshot for archived_data."""
+    return {
+        "id": str(tb.id),
+        "company_id": str(tb.company_id),
+        "period_end": tb.period_end.isoformat() if tb.period_end else None,
+        "period_start": tb.period_start.isoformat() if tb.period_start else None,
+        "file_url": tb.file_url,
+        "file_type": tb.file_type,
+        "file_size_bytes": tb.file_size_bytes,
+        "file_hash": tb.file_hash,
+        "raw_data": tb.raw_data,
+        "parsed_data": tb.parsed_data,
+        "status": tb.status,
+        "currency": tb.currency,
+        "validation_results": tb.validation_results,
+        "error_message": tb.error_message,
+        "is_deleted": tb.is_deleted,
+        "deleted_at": tb.deleted_at.isoformat() if tb.deleted_at else None,
+        "created_at": tb.created_at.isoformat() if tb.created_at else None,
+        "updated_at": tb.updated_at.isoformat() if tb.updated_at else None,
+    }
+
+
+async def archive_trial_balance_user_deleted(
+    session: AsyncSession,
+    *,
+    tb: TrialBalance,
+    org_id: uuid.UUID,
+    client_id: uuid.UUID,
+    archived_by_user_id: uuid.UUID,
+    archived_at: datetime | None = None,
+) -> ArchivedRecord:
+    """Append archived_records row for a user soft-deleted trial balance (same txn)."""
+    when = archived_at or datetime.now(timezone.utc)
+    snapshot = trial_balance_snapshot(tb)
+    record = ArchivedRecord(
+        org_id=org_id,
+        client_id=client_id,
+        entity_type="trial_balance",
+        entity_id=tb.id,
         archive_reason="user_deleted",
         archived_by_user_id=archived_by_user_id,
         archived_data=snapshot,

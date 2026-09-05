@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -42,6 +42,7 @@ from app.services.statements import (
     build_statements,
     iter_nil_filtered_face_lines,
 )
+from app.services.archival import archive_trial_balance_user_deleted
 from app.services.ownership import get_owned_company
 from app.services.llm import MAPPING_TIE_BREAKER_CANONICAL_LINES
 from app.services.prior_period import find_prior_trial_balance
@@ -200,6 +201,22 @@ class TrialBalanceListResponse(BaseModel):
     offset: int
 
 
+
+class TrialBalanceResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    id: uuid.UUID
+    company_id: uuid.UUID
+    period_end: date
+    period_start: date | None = None
+    status: str
+    currency: str | None = None
+    is_deleted: bool
+    deleted_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class PriorPeriodPreviewResponse(BaseModel):
     """Read-only preview of which prior TB variance auto-detection would pick."""
 
@@ -232,6 +249,7 @@ async def _get_owned_tb(
         .join(Client, Client.id == Company.client_id)
         .where(
             TrialBalance.id == tb_id,
+            TrialBalance.is_deleted.is_(False),
             Client.org_id == org_id,
             Client.is_deleted.is_(False),
             Company.is_deleted.is_(False),
@@ -325,6 +343,7 @@ async def upload_trial_balance(
             select(TrialBalance).where(
                 TrialBalance.company_id == company.id,
                 TrialBalance.period_end == period_end,
+                TrialBalance.is_deleted.is_(False),
             )
         )
     ).scalar_one_or_none()
@@ -441,7 +460,10 @@ async def list_trial_balances(
     await aset_rls_org_id(session, auth.org_id)
     await get_owned_company(session, company_id=company_id, org_id=auth.org_id)
 
-    base = select(TrialBalance).where(TrialBalance.company_id == company_id)
+    base = select(TrialBalance).where(
+        TrialBalance.company_id == company_id,
+        TrialBalance.is_deleted.is_(False),
+    )
     total = await session.scalar(select(func.count()).select_from(base.subquery()))
     result = await session.execute(
         base.order_by(TrialBalance.period_end.desc(), TrialBalance.created_at.desc())
@@ -502,6 +524,41 @@ async def preview_prior_period(
         prior_period_end=prior.period_end,
         prior_status=prior.status,
     )
+
+
+
+@router.delete(
+    "/{tb_id}",
+    status_code=status.HTTP_200_OK,
+    response_model=TrialBalanceResponse,
+)
+async def soft_delete_trial_balance(
+    tb_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> TrialBalance:
+    """Soft delete + archived_records snapshot in the same transaction (§12.2)."""
+    await aset_rls_org_id(session, auth.org_id)
+    tb = await _get_owned_tb(session, tb_id=tb_id, org_id=auth.org_id)
+
+    company = await session.get(Company, tb.company_id)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Trial balance not found")
+
+    now = datetime.now(timezone.utc)
+    tb.is_deleted = True
+    tb.deleted_at = now
+    await session.flush()
+    await session.refresh(tb)
+    await archive_trial_balance_user_deleted(
+        session,
+        tb=tb,
+        org_id=auth.org_id,
+        client_id=company.client_id,
+        archived_by_user_id=auth.user_id,
+        archived_at=now,
+    )
+    return tb
 
 
 @router.get("/{tb_id}/status", response_model=StatusResponse)

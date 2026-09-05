@@ -255,7 +255,7 @@ export default function PrivacyPage() {
               </li>
               <li>
                 <strong className="font-medium text-ink">
-                  Client or company delete
+                  Client, company, or trial balance delete
                 </strong>{" "}
                 — soft-delete (<code className="text-ink">is_deleted</code> /{" "}
                 <code className="text-ink">deleted_at</code>) plus an{" "}
@@ -281,11 +281,12 @@ export default function PrivacyPage() {
               </li>
             </ul>
             <p className="mt-3">
-              Not every entity type in the product yet writes an archive
-              snapshot on delete (for example trial balances). Where archival is
-              wired today, it is for{" "}
-              <strong className="font-medium text-ink">client and company</strong>{" "}
-              soft-deletes as described above.
+              Statement regenerate still replaces rows in place without a
+              separate archive write. Soft-delete archival is wired today for{" "}
+              <strong className="font-medium text-ink">
+                clients, companies, and trial balances
+              </strong>{" "}
+              as described above.
             </p>
             <p className="mt-3">
               If you ask us to erase personal data we will remove or anonymise

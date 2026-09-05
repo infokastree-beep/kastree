@@ -27,6 +27,7 @@ async def find_prior_trial_balance(
         .where(
             TrialBalance.company_id == company_id,
             TrialBalance.period_end < before_period_end,
+            TrialBalance.is_deleted.is_(False),
         )
         .order_by(TrialBalance.period_end.desc())
         .limit(1)

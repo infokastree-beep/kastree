@@ -15,6 +15,7 @@ import type {
   IClient,
   ICompany,
   TrialBalanceListResponse,
+  TrialBalanceResponse,
 } from "@/types";
 
 const TB_PAGE_SIZE = 20;
@@ -39,6 +40,8 @@ function trialBalanceHref(tb: { id: string; status: string }): string {
 
 function CompanyTrialBalances({ company }: { company: ICompany }) {
   const { getToken } = useAuth();
+  const queryClient = useQueryClient();
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const trialBalancesQuery = useQuery({
     queryKey: ["trial-balances", company.id],
@@ -47,6 +50,18 @@ function CompanyTrialBalances({ company }: { company: ICompany }) {
         `/trial-balances?company_id=${company.id}&limit=${TB_PAGE_SIZE}`,
         { getToken },
       ),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (tbId: string) =>
+      apiFetch<TrialBalanceResponse>(`/trial-balances/${tbId}`, {
+        method: "DELETE",
+        getToken,
+      }),
+    onSuccess: () => {
+      setPendingDeleteId(null);
+      void queryClient.invalidateQueries({ queryKey: ["trial-balances", company.id] });
+    },
   });
 
   const trialBalances = trialBalancesQuery.data?.items ?? [];
@@ -73,6 +88,14 @@ function CompanyTrialBalances({ company }: { company: ICompany }) {
           Upload trial balance
         </Link>
       </div>
+
+      {deleteMutation.error ? (
+        <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {deleteMutation.error instanceof Error
+            ? deleteMutation.error.message
+            : "Failed to delete trial balance"}
+        </p>
+      ) : null}
 
       {trialBalancesQuery.isLoading ? (
         <p className="text-sm text-stone-600">Loading trial balances…</p>
@@ -101,26 +124,62 @@ function CompanyTrialBalances({ company }: { company: ICompany }) {
                 <th className="px-3 py-2 font-medium">Period end</th>
                 <th className="px-3 py-2 font-medium">Status</th>
                 <th className="px-3 py-2 font-medium">Uploaded</th>
+                <th className="px-3 py-2 font-medium">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               {trialBalances.map((tb) => (
                 <tr key={tb.id} className="border-b border-stone-100">
-                  <td colSpan={3} className="p-0">
+                  <td className="p-0">
                     <Link
                       href={trialBalanceHref(tb)}
-                      className="grid grid-cols-3 gap-4 px-3 py-2 hover:bg-stone-50"
+                      className="block px-3 py-2 font-medium hover:bg-stone-50"
                     >
-                      <span className="font-medium">{formatDate(tb.period_end)}</span>
-                      <span>
-                        <span className="rounded bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-700">
-                          {tb.status}
-                        </span>
-                      </span>
-                      <span className="text-stone-600">
-                        {formatDateTime(tb.created_at)}
-                      </span>
+                      {formatDate(tb.period_end)}
                     </Link>
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className="rounded bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-700">
+                      {tb.status}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-stone-600">
+                    {formatDateTime(tb.created_at)}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    {pendingDeleteId === tb.id ? (
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          disabled={deleteMutation.isPending}
+                          onClick={() => deleteMutation.mutate(tb.id)}
+                          className="rounded bg-red-800 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
+                        >
+                          {deleteMutation.isPending ? "Deleting…" : "Confirm"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deleteMutation.isPending}
+                          onClick={() => {
+                            setPendingDeleteId(null);
+                            deleteMutation.reset();
+                          }}
+                          className="rounded border border-stone-200 px-2 py-1 text-xs font-medium text-stone-700"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setPendingDeleteId(tb.id)}
+                        className="rounded border border-red-200 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-50"
+                      >
+                        Delete
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

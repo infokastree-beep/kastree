@@ -62,6 +62,19 @@ export interface TrialBalanceListItem {
   created_at: string;
 }
 
+export interface TrialBalanceResponse {
+  id: string;
+  company_id: string;
+  period_end: string;
+  period_start: string | null;
+  status: string;
+  currency: string | null;
+  is_deleted: boolean;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface TrialBalanceListResponse {
   items: TrialBalanceListItem[];
   total: number;
