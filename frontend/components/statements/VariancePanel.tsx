@@ -307,21 +307,32 @@ export function VariancePanel({
               >
                 Compare against
               </label>
-              <select
-                id="variance-prior-tb"
-                data-testid="variance-prior-select"
-                value={selectedPriorTbId}
-                disabled={isRefreshing}
-                onChange={(event) => onPriorChange(event.target.value)}
-                className="rounded-md border border-line bg-surface-elevated px-3 py-2 text-sm text-ink shadow-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
-              >
-                {priorOptions.map((tb, index) => (
-                  <option key={tb.id} value={tb.id}>
-                    {formatDate(tb.period_end)}
-                    {index === 0 ? " (auto)" : ""}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center gap-2">
+                <select
+                  id="variance-prior-tb"
+                  data-testid="variance-prior-select"
+                  value={selectedPriorTbId}
+                  disabled={priorOptions.length === 0}
+                  onChange={(event) => onPriorChange(event.target.value)}
+                  className="rounded-md border border-line bg-surface-elevated px-3 py-2 text-sm text-ink shadow-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+                >
+                  {priorOptions.map((tb, index) => (
+                    <option key={tb.id} value={tb.id}>
+                      {formatDate(tb.period_end)}
+                      {index === 0 ? " (auto)" : ""}
+                    </option>
+                  ))}
+                </select>
+                {isRefreshing ? (
+                  <span
+                    className="text-xs text-soft"
+                    role="status"
+                    data-testid="variance-prior-loading"
+                  >
+                    Updating…
+                  </span>
+                ) : null}
+              </div>
             </div>
             <p className="text-sm text-soft" role="status">
               Loading variance for selected prior…
@@ -360,25 +371,36 @@ export function VariancePanel({
           >
             Compare against
           </label>
-          <select
-            id="variance-prior-tb"
-            data-testid="variance-prior-select"
-            value={selectedPriorTbId}
-            disabled={isRefreshing || priorOptions.length === 0}
-            onChange={(event) => onPriorChange(event.target.value)}
-            className="rounded-md border border-line bg-surface-elevated px-3 py-2 text-sm text-ink shadow-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
-          >
-            {priorOptions.length === 0 ? (
-              <option value="">No prior periods available</option>
-            ) : (
-              priorOptions.map((tb, index) => (
-                <option key={tb.id} value={tb.id}>
-                  {formatDate(tb.period_end)}
-                  {index === 0 ? " (auto)" : ""}
-                </option>
-              ))
-            )}
-          </select>
+          <div className="flex items-center gap-2">
+            <select
+              id="variance-prior-tb"
+              data-testid="variance-prior-select"
+              value={selectedPriorTbId}
+              disabled={priorOptions.length === 0}
+              onChange={(event) => onPriorChange(event.target.value)}
+              className="rounded-md border border-line bg-surface-elevated px-3 py-2 text-sm text-ink shadow-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+            >
+              {priorOptions.length === 0 ? (
+                <option value="">No prior periods available</option>
+              ) : (
+                priorOptions.map((tb, index) => (
+                  <option key={tb.id} value={tb.id}>
+                    {formatDate(tb.period_end)}
+                    {index === 0 ? " (auto)" : ""}
+                  </option>
+                ))
+              )}
+            </select>
+            {isRefreshing ? (
+              <span
+                className="text-xs text-soft"
+                role="status"
+                data-testid="variance-prior-loading"
+              >
+                Updating…
+              </span>
+            ) : null}
+          </div>
           <p className="text-xs text-soft" data-testid="variance-prior-hint">
             {selectedPrior
               ? isAutoSelection

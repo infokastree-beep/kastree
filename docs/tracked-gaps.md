@@ -234,6 +234,14 @@ as a smart, editable starting suggestion — never as an authoritative audit
 determination. Requires the company-type classification already noted (holding
 vs trading) as a prerequisite.
 
+**Manual benchmark override on the suggestion banner (considered 2026-09-05 —
+declined):** do **not** add a per-banner control to pick revenue / assets / PBT /
+equity as the suggestion base. The banner stays an indicative default keyed off
+`company_type` (trading → PBT, holding → equity); override path remains dismiss
++ edit thresholds (and company type) on the company settings. If more precision
+is ever needed, expand `company_type` (e.g. high-revenue / NFP → revenue-based
+mid-range) rather than a free-form benchmark picker on the banner.
+
 **Still deferred** — no data exists to auto-calculate against until a company's
 first real upload — but this is the actual target design once built, not a vague
 "something better" placeholder.
