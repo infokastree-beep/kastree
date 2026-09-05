@@ -279,6 +279,18 @@ def _tier3_code_range(source_code: str, source_name: str) -> MappingResult | Non
     if code_int is None:
         return None
 
+    # BS contra-assets must never land on P&L depreciation/amortisation — their
+    # credit balances net against the related asset leaf on the SOFP.
+    contra_asset = _contra_asset_canonical_from_name(source_name)
+    if contra_asset is not None:
+        return MappingResult(
+            source_code=source_code,
+            source_name=source_name,
+            canonical_line=contra_asset,
+            confidence=CODE_RANGE_CONFIDENCE,
+            method="code_range",
+        )
+
     for start, end, canonical_line in UNAMBIGUOUS_CODE_RANGES:
         if start <= code_int <= end:
             resolved = canonical_line
@@ -310,7 +322,30 @@ def _name_suggests_amortisation(source_name: str) -> bool:
 def _name_suggests_depreciation(source_name: str) -> bool:
     """True when the account name clearly indicates depreciation (not generic opex)."""
     normalized = normalize_text(source_name)
+    # Accumulated / provision-for depreciation is a BS contra-asset, not a P&L charge.
+    if _contra_asset_canonical_from_name(source_name) is not None:
+        return False
     return bool(re.search(r"\bdepreciation\b", normalized))
+
+
+def _contra_asset_canonical_from_name(source_name: str) -> str | None:
+    """Map Accumulated Depreciation/Amortisation (and provision-for forms) to the asset leaf.
+
+    Credit balances on these accounts correctly reduce the debit-normal SOFP leaf
+    via existing ``_statement_amount`` netting. Returning None leaves P&L charges alone.
+    """
+    normalized = normalize_text(source_name)
+    is_contra = bool(
+        re.search(r"\baccumulat", normalized)
+        or re.search(r"\bprovision for (depreciation|amort)", normalized)
+    )
+    if not is_contra:
+        return None
+    if re.search(r"\bamort", normalized):
+        return "intangible_assets"
+    if re.search(r"\bdepreciation\b", normalized):
+        return "property_plant_equipment"
+    return None
 
 
 def _interest_canonical_from_name(source_name: str) -> str | None:

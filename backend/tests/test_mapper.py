@@ -223,6 +223,44 @@ def test_tier3_interest_polarity_income_vs_expense() -> None:
     ]
 
 
+def test_tier3_accumulated_depreciation_maps_to_ppe_not_depreciation() -> None:
+    """Accumulated Depreciation is a BS contra-asset → property_plant_equipment."""
+    accounts = [
+        FakeAccount(account_code="1450", account_name="Accumulated Depreciation - Buildings"),
+        FakeAccount(account_code="1460", account_name="Accumulated Depreciation"),
+        FakeAccount(account_code="7000", account_name="Depreciation - Buildings"),
+        FakeAccount(account_code="1450", account_name="Provision for Depreciation"),
+    ]
+
+    results = map_accounts(accounts, prior_confirmed=[])
+
+    assert [r.canonical_line for r in results] == [
+        "property_plant_equipment",
+        "property_plant_equipment",
+        "depreciation",
+        "property_plant_equipment",
+    ]
+    assert results[0].method == "code_range"
+    assert results[2].method == "code_range"
+
+
+def test_tier3_accumulated_amortisation_maps_to_intangibles_not_amortisation() -> None:
+    """Accumulated Amortisation is a BS contra-asset → intangible_assets."""
+    accounts = [
+        FakeAccount(account_code="1550", account_name="Accumulated Amortisation - Software"),
+        FakeAccount(account_code="7100", account_name="Amortisation - Software"),
+        FakeAccount(account_code="1550", account_name="Provision for Amortisation"),
+    ]
+
+    results = map_accounts(accounts, prior_confirmed=[])
+
+    assert [r.canonical_line for r in results] == [
+        "intangible_assets",
+        "amortisation",
+        "intangible_assets",
+    ]
+
+
 def test_tier3_6000_range_routes_depreciation_names_to_depreciation() -> None:
     """6000–6999 + depreciation name → depreciation; other opex names unchanged."""
     accounts = [

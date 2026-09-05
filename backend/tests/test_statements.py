@@ -205,6 +205,65 @@ def test_sopl_amortisation_is_visible_face_line_and_reduces_operating_profit() -
     assert compute_net_profit([rev, cos, opex, dep, amort]) == Decimal("3500.00")
 
 
+def test_sofp_ppe_nets_accumulated_depreciation_contra_on_same_canonical_line() -> None:
+    """Accumulated Depreciation mapped to PPE must reduce SOFP PPE (cost − accum)."""
+    ppe_cost = _acct(
+        "1400", net_balance="423500.00", canonical_line="property_plant_equipment"
+    )
+    accum_dep = _acct(
+        "1450", net_balance="-107200.00", canonical_line="property_plant_equipment"
+    )
+    re = _acct("3100", net_balance="-1000.00", canonical_line="retained_earnings")
+    sc = _acct("3000", net_balance="-315300.00", canonical_line="share_capital")
+
+    sofp = build_sofp(
+        [ppe_cost, accum_dep, re, sc],
+        retained_earnings_closing=Decimal("1000.00"),
+        retained_earnings_source_ids=[re.id],
+    )
+    ppe = _by_code(sofp, "property_plant_equipment")
+    assert ppe.amount == Decimal("316300.00")
+    assert set(ppe.source_account_ids) == {ppe_cost.id, accum_dep.id}
+
+
+def test_sopl_depreciation_excludes_bs_contra_mapped_to_ppe() -> None:
+    """Only P&L depreciation charges feed SOPL; BS contra on PPE must not."""
+    rev = _acct("4000", net_balance="-100000.00", canonical_line="revenue")
+    cos = _acct("5000", net_balance="40000.00", canonical_line="cost_of_sales")
+    opex = _acct("6000", net_balance="10000.00", canonical_line="operating_expenses")
+    dep_charge = _acct("7000", net_balance="46700.00", canonical_line="depreciation")
+    accum_dep = _acct(
+        "1450", net_balance="-107200.00", canonical_line="property_plant_equipment"
+    )
+
+    sopl = build_sopl([rev, cos, opex, dep_charge, accum_dep])
+    depreciation = _by_code(sopl, "depreciation")
+    assert depreciation.amount == Decimal("46700.00")
+    assert depreciation.source_account_ids == [dep_charge.id]
+    assert accum_dep.id not in depreciation.source_account_ids
+
+    operating_profit = _by_code(sopl, "operating_profit")
+    # 60000 GP − 10000 opex − 46700 dep = 3300
+    assert operating_profit.amount == Decimal("3300.00")
+
+
+def test_sofp_intangibles_nets_accumulated_amortisation_contra() -> None:
+    """Accumulated Amortisation on intangible_assets reduces SOFP intangibles."""
+    cost = _acct("1500", net_balance="39400.00", canonical_line="intangible_assets")
+    accum = _acct("1550", net_balance="-5600.00", canonical_line="intangible_assets")
+    re = _acct("3100", net_balance="-1000.00", canonical_line="retained_earnings")
+    sc = _acct("3000", net_balance="-32800.00", canonical_line="share_capital")
+
+    sofp = build_sofp(
+        [cost, accum, re, sc],
+        retained_earnings_closing=Decimal("1000.00"),
+        retained_earnings_source_ids=[re.id],
+    )
+    intangibles = _by_code(sofp, "intangible_assets")
+    assert intangibles.amount == Decimal("33800.00")
+    assert set(intangibles.source_account_ids) == {cost.id, accum.id}
+
+
 def test_sofp_groups_accounts_computes_subtotals_and_provenance() -> None:
     ppe_a = _acct("1100", net_balance="4000.00", canonical_line="property_plant_equipment")
     ppe_b = _acct("1200", net_balance="1000.00", canonical_line="property_plant_equipment")
