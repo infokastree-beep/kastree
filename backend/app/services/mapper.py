@@ -45,8 +45,9 @@ LLM_MAX_ATTEMPTS = 4
 LLM_BACKOFF_SECONDS = (1, 2, 4)
 
 # Appendix C ranges that resolve to exactly one canonical line.
-# 7000–7999 defaults to depreciation; names containing "amort…" are specialised
-# to amortisation inside _tier3_code_range (range alone cannot split those concepts).
+# 7000–7999 defaults to depreciation; names containing "amort…" or "interest"
+# are specialised inside _tier3_code_range (range alone cannot split those
+# concepts — e.g. Interest Expense miscoded at 7000 must not lock to depreciation).
 UNAMBIGUOUS_CODE_RANGES: tuple[tuple[int, int, str], ...] = (
     (4000, 4999, "revenue"),
     (5000, 5999, "cost_of_sales"),
@@ -281,15 +282,15 @@ def _tier3_code_range(source_code: str, source_name: str) -> MappingResult | Non
     for start, end, canonical_line in UNAMBIGUOUS_CODE_RANGES:
         if start <= code_int <= end:
             resolved = canonical_line
-            # 7000–7999 is shared by depreciation and amortisation P&L charges.
-            # Distinguish by name so amortisation-named rows do not lock to
-            # depreciation at Tier 3 and never reach Tier 4.
-            if (
-                start == 7000
-                and end == 7999
-                and _name_suggests_amortisation(source_name)
-            ):
-                resolved = "amortisation"
+            # 7000–7999 defaults to depreciation but is also used (incorrectly or
+            # in unusual charts) for amortisation and interest P&L charges.
+            # Distinguish by name so those rows do not lock to depreciation at
+            # Tier 3 and never reach Tier 4.
+            if start == 7000 and end == 7999:
+                if _name_suggests_amortisation(source_name):
+                    resolved = "amortisation"
+                elif _name_suggests_interest(source_name):
+                    resolved = "interest_expense"
             return MappingResult(
                 source_code=source_code,
                 source_name=source_name,
@@ -304,6 +305,12 @@ def _name_suggests_amortisation(source_name: str) -> bool:
     """True when the account name clearly indicates amortisation (not depreciation)."""
     normalized = normalize_text(source_name)
     return bool(re.search(r"\bamort", normalized))
+
+
+def _name_suggests_interest(source_name: str) -> bool:
+    """True when the account name clearly indicates interest (not depreciation)."""
+    normalized = normalize_text(source_name)
+    return bool(re.search(r"\binterest\b", normalized))
 
 
 def _parse_account_code(source_code: str) -> int | None:

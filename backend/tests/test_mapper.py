@@ -197,6 +197,25 @@ def test_tier3_7000_range_routes_amortisation_names_separately() -> None:
     ]
 
 
+def test_tier3_7000_range_routes_interest_names_to_interest_expense() -> None:
+    """7000–7999 + interest name → interest_expense (unusual CoA, not depreciation)."""
+    accounts = [
+        FakeAccount(account_code="7000", account_name="Interest Expense"),
+        FakeAccount(account_code="7050", account_name="Bank Interest Paid"),
+        FakeAccount(account_code="7000", account_name="Depreciation - Buildings"),
+    ]
+
+    results = map_accounts(accounts, prior_confirmed=[])
+
+    assert [r.method for r in results] == ["code_range"] * 3
+    assert [r.confidence for r in results] == [Decimal("0.65")] * 3
+    assert [r.canonical_line for r in results] == [
+        "interest_expense",
+        "interest_expense",
+        "depreciation",
+    ]
+
+
 def test_ambiguous_and_invalid_codes_fall_through_unmapped() -> None:
     accounts = [
         FakeAccount(account_code="1500", account_name="Cash at bank"),  # assets
