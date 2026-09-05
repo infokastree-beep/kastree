@@ -253,6 +253,38 @@ export interface BusinessHealthResponse {
 
 export type CompanyType = "trading" | "holding";
 
+export interface PerformancePeriodMetrics {
+  revenue: string | null;
+  gross_profit: string | null;
+  net_profit: string | null;
+  cash: string | null;
+  cost_of_sales: string | null;
+  operating_expenses: string | null;
+  depreciation: string | null;
+}
+
+export interface PerformancePeriod {
+  tb_id: string;
+  period_end: string;
+  metrics: PerformancePeriodMetrics;
+}
+
+export interface PerformanceExpenseShare {
+  code: "cost_of_sales" | "operating_expenses" | "depreciation";
+  label: string;
+  amount: string;
+}
+
+export interface PerformanceOverviewResponse {
+  tb_id: string;
+  company_id: string;
+  period_end: string;
+  functional_currency: string;
+  period_count: number;
+  periods: PerformancePeriod[];
+  expense_breakdown: PerformanceExpenseShare[];
+}
+
 export interface MaterialitySuggestionResponse {
   tb_id: string;
   company_id: string;

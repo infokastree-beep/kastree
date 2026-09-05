@@ -46,10 +46,22 @@ from app.services.archival import archive_trial_balance_user_deleted
 from app.schemas.materiality import MaterialitySuggestionResponse
 from app.services.materiality import suggest_materiality
 from app.services.ownership import get_owned_company
+from app.services.performance import (
+    METRIC_CODES,
+    build_period_metrics,
+    expense_share_amounts,
+    select_history_periods,
+)
 from app.services.llm import MAPPING_TIE_BREAKER_CANONICAL_LINES
 from app.services.prior_period import find_prior_trial_balance
 from app.services.tb_pipeline import parsed_rows_from_tb, run_parse_and_map_job
 from app.services.validator import SimpleMappedAccount, validate_trial_balance
+
+_EXPENSE_LABELS: dict[str, str] = {
+    "cost_of_sales": "Cost of sales",
+    "operating_expenses": "Operating expenses",
+    "depreciation": "Depreciation",
+}
 
 router = APIRouter(prefix="/trial-balances", tags=["trial-balances"])
 
@@ -230,6 +242,48 @@ class PriorPeriodPreviewResponse(BaseModel):
     prior_tb_id: uuid.UUID | None = None
     prior_period_end: date | None = None
     prior_status: str | None = None
+
+
+class PerformancePeriodMetrics(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    revenue: str | None = None
+    gross_profit: str | None = None
+    net_profit: str | None = None
+    cash: str | None = None
+    cost_of_sales: str | None = None
+    operating_expenses: str | None = None
+    depreciation: str | None = None
+
+
+class PerformancePeriodResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tb_id: uuid.UUID
+    period_end: date
+    metrics: PerformancePeriodMetrics
+
+
+class PerformanceExpenseShare(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: Literal["cost_of_sales", "operating_expenses", "depreciation"]
+    label: str
+    amount: str
+
+
+class PerformanceOverviewResponse(BaseModel):
+    """Multi-period KPI series for the statements performance overview."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tb_id: uuid.UUID
+    company_id: uuid.UUID
+    period_end: date
+    functional_currency: str
+    period_count: int
+    periods: list[PerformancePeriodResponse]
+    expense_breakdown: list[PerformanceExpenseShare]
 
 
 _DEFAULT_TB_PAGE = 20
@@ -1066,6 +1120,113 @@ async def get_statements(
         period_end=tb.period_end,
         functional_currency=await _get_tb_functional_currency(session, tb=tb),
         statements=blocks,
+    )
+
+
+@router.get(
+    "/{tb_id}/performance-overview",
+    response_model=PerformanceOverviewResponse,
+)
+async def get_performance_overview(
+    tb_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> PerformanceOverviewResponse:
+    """Multi-period KPI / chart series from generated statements for this company.
+
+    Returns every historical trial balance (up to the soft cap) that already has
+    statements, as of the current TB's period_end. One period is valid — charts
+    simply render what is available.
+    """
+    await aset_rls_org_id(session, auth.org_id)
+    tb = await _get_owned_tb(session, tb_id=tb_id, org_id=auth.org_id)
+
+    current_fs = await session.execute(
+        select(FinancialStatement.id).where(FinancialStatement.tb_id == tb.id).limit(1)
+    )
+    if current_fs.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Statements not generated yet")
+
+    history_rows = await session.execute(
+        select(
+            TrialBalance.id,
+            TrialBalance.period_end,
+            StatementLineItem.line_item_code,
+            StatementLineItem.amount,
+        )
+        .join(FinancialStatement, FinancialStatement.tb_id == TrialBalance.id)
+        .join(
+            StatementLineItem,
+            StatementLineItem.statement_id == FinancialStatement.id,
+        )
+        .where(
+            TrialBalance.company_id == tb.company_id,
+            TrialBalance.is_deleted.is_(False),
+            TrialBalance.period_end <= tb.period_end,
+            StatementLineItem.line_item_code.in_(METRIC_CODES),
+        )
+        .order_by(TrialBalance.period_end.asc(), TrialBalance.id.asc())
+    )
+
+    by_tb: dict[uuid.UUID, dict[str, Any]] = {}
+    for row_tb_id, period_end, code, amount in history_rows.all():
+        bucket = by_tb.setdefault(
+            row_tb_id,
+            {"period_end": period_end, "amounts": {}},
+        )
+        bucket["amounts"].setdefault(code, Decimal(amount))
+
+    built = [
+        build_period_metrics(
+            tb_id=row_tb_id,
+            period_end=payload["period_end"],
+            line_amounts=payload["amounts"],
+        )
+        for row_tb_id, payload in by_tb.items()
+    ]
+    periods = select_history_periods(built, as_of=tb.period_end)
+    if not periods:
+        raise HTTPException(status_code=404, detail="Statements not generated yet")
+
+    current_metrics = next(
+        (p.metrics for p in periods if p.tb_id == tb.id),
+        periods[-1].metrics,
+    )
+    expense_shares = expense_share_amounts(current_metrics)
+
+    def _fmt(value: Decimal | None) -> str | None:
+        return f"{value:.2f}" if value is not None else None
+
+    return PerformanceOverviewResponse(
+        tb_id=tb.id,
+        company_id=tb.company_id,
+        period_end=tb.period_end,
+        functional_currency=await _get_tb_functional_currency(session, tb=tb),
+        period_count=len(periods),
+        periods=[
+            PerformancePeriodResponse(
+                tb_id=period.tb_id,
+                period_end=period.period_end,
+                metrics=PerformancePeriodMetrics(
+                    revenue=_fmt(period.metrics.get("revenue")),
+                    gross_profit=_fmt(period.metrics.get("gross_profit")),
+                    net_profit=_fmt(period.metrics.get("net_profit")),
+                    cash=_fmt(period.metrics.get("cash")),
+                    cost_of_sales=_fmt(period.metrics.get("cost_of_sales")),
+                    operating_expenses=_fmt(period.metrics.get("operating_expenses")),
+                    depreciation=_fmt(period.metrics.get("depreciation")),
+                ),
+            )
+            for period in periods
+        ],
+        expense_breakdown=[
+            PerformanceExpenseShare(
+                code=code,  # type: ignore[arg-type]
+                label=_EXPENSE_LABELS[code],
+                amount=f"{amount:.2f}",
+            )
+            for code, amount in expense_shares.items()
+        ],
     )
 
 

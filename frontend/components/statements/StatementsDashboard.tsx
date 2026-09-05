@@ -11,6 +11,7 @@ import type { StatementBlock, StatementLine, StatementsResponse } from "@/types"
 import { BusinessHealthPanel } from "./BusinessHealthPanel";
 import { ExportButton } from "./ExportButton";
 import { MaterialitySuggestionBanner } from "./MaterialitySuggestionBanner";
+import { PerformanceOverview } from "./PerformanceOverview";
 import { RiskFlagsPanel } from "./RiskFlagsPanel";
 import { VariancePanel } from "./VariancePanel";
 
@@ -157,6 +158,9 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
       void queryClient.invalidateQueries({
         queryKey: ["tb-business-health", tbId],
       });
+      void queryClient.invalidateQueries({
+        queryKey: ["tb-performance-overview", tbId],
+      });
     },
   });
 
@@ -241,6 +245,7 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
             tbId={tbId}
             currencyCode={currencyCode}
           />
+          <PerformanceOverview tbId={tbId} currencyCode={currencyCode} />
           <BusinessHealthPanel tbId={tbId} />
 
           {isStatementTab ? (
