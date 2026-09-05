@@ -1,1 +1,247 @@
-{"tb_id":"fd2e4bf4-773c-4c7c-adbe-b3cb78dda028","company_id":"7b7ac981-0acf-4a93-af7f-964822beb104","period_end":"2026-09-20","functional_currency":"EUR","period_count":15,"periods":[{"tb_id":"8bae7c0d-7c04-44f7-843e-5447d833f653","period_end":"2026-07-08","metrics":{"revenue":"816600.00","gross_profit":"337800.00","net_profit":"-119600.00","cash":"93500.00","cost_of_sales":"478800.00","operating_expenses":"469200.00","depreciation":"-54400.00"}},{"tb_id":"2d0a6ef6-0447-44e3-93e8-ac7a272ffcc4","period_end":"2026-08-04","metrics":{"revenue":"45000.00","gross_profit":"27000.00","net_profit":"2000.00","cash":"12500.00","cost_of_sales":"18000.00","operating_expenses":"23000.00","depreciation":"0.00"}},{"tb_id":"6b40ae18-b682-43de-be95-e38793bb7d51","period_end":"2026-08-05","metrics":{"revenue":"45000.00","gross_profit":"27000.00","net_profit":"2000.00","cash":"12500.00","cost_of_sales":"18000.00","operating_expenses":"23000.00","depreciation":"0.00"}},{"tb_id":"8af9148a-cc09-464e-9dec-ef232b4b36a5","period_end":"2026-08-11","metrics":{"revenue":"45000.00","gross_profit":"27000.00","net_profit":"2000.00","cash":"12500.00","cost_of_sales":"18000.00","operating_expenses":"21000.00","depreciation":"2000.00"}},{"tb_id":"a85aa0e8-23a2-44e9-b1ce-bd66375c0917","period_end":"2026-08-12","metrics":{"revenue":"45000.00","gross_profit":"27000.00","net_profit":"2000.00","cash":"12500.00","cost_of_sales":"18000.00","operating_expenses":"23000.00","depreciation":"0.00"}},{"tb_id":"3532395e-dd14-4cfb-819e-b2afc7bc046d","period_end":"2026-08-13","metrics":{"revenue":"45000.00","gross_profit":"27000.00","net_profit":"2000.00","cash":"12500.00","cost_of_sales":"18000.00","operating_expenses":"23000.00","depreciation":"0.00"}},{"tb_id":"d8f012a8-0c0e-497a-b7e2-8f516b97d270","period_end":"2026-08-15","metrics":{"revenue":"52000.00","gross_profit":"31000.00","net_profit":"1000.00","cash":"15000.00","cost_of_sales":"21000.00","operating_expenses":"25500.00","depreciation":"2500.00"}},{"tb_id":"f84211ba-120c-4a59-82ca-115330baebfd","period_end":"2026-08-16","metrics":{"revenue":"45000.00","gross_profit":"27000.00","net_profit":"2000.00","cash":"12500.00","cost_of_sales":"18000.00","operating_expenses":"23000.00","depreciation":"0.00"}},{"tb_id":"a15dfe86-3148-4d32-9a4e-fac68dd82f6d","period_end":"2026-08-21","metrics":{"revenue":"45000.00","gross_profit":"27000.00","net_profit":"2000.00","cash":"12500.00","cost_of_sales":"18000.00","operating_expenses":"23000.00","depreciation":"0.00"}},{"tb_id":"7559cae9-416d-4d19-af38-fcacb11c3991","period_end":"2026-08-28","metrics":{"revenue":"52000.00","gross_profit":"31000.00","net_profit":"1000.00","cash":"15000.00","cost_of_sales":"21000.00","operating_expenses":"25500.00","depreciation":"2500.00"}},{"tb_id":"0a1bf49f-d9e5-4041-9300-0218be7216a1","period_end":"2026-08-30","metrics":{"revenue":"816600.00","gross_profit":"337800.00","net_profit":"-119600.00","cash":"93500.00","cost_of_sales":"478800.00","operating_expenses":"469200.00","depreciation":"-54400.00"}},{"tb_id":"8c68f45e-3a0c-4e1a-a666-7f38e410c013","period_end":"2026-08-31","metrics":{"revenue":"45000.00","gross_profit":"27000.00","net_profit":"2000.00","cash":"12500.00","cost_of_sales":"18000.00","operating_expenses":"23000.00","depreciation":"0.00"}},{"tb_id":"e22a08ef-9471-4c1e-bd0b-4feab2e14498","period_end":"2026-09-03","metrics":{"revenue":"45000.00","gross_profit":"27000.00","net_profit":"2000.00","cash":"12500.00","cost_of_sales":"18000.00","operating_expenses":"23000.00","depreciation":"0.00"}},{"tb_id":"2db53de1-b768-45c6-87c7-5c3ca3cc1d0b","period_end":"2026-09-04","metrics":{"revenue":"816600.00","gross_profit":"337800.00","net_profit":"-119600.00","cash":"93500.00","cost_of_sales":"478800.00","operating_expenses":"469200.00","depreciation":"-54400.00"}},{"tb_id":"fd2e4bf4-773c-4c7c-adbe-b3cb78dda028","period_end":"2026-09-20","metrics":{"revenue":"816600.00","gross_profit":"337800.00","net_profit":"-119600.00","cash":"93500.00","cost_of_sales":"478800.00","operating_expenses":"469200.00","depreciation":"-54400.00"}}],"expense_breakdown":[{"code":"cost_of_sales","label":"Cost of sales","amount":"478800.00"},{"code":"operating_expenses","label":"Operating expenses","amount":"469200.00"},{"code":"depreciation","label":"Depreciation","amount":"54400.00"}]}
+{
+  "tb_id": "fd2e4bf4-773c-4c7c-adbe-b3cb78dda028",
+  "company_id": "7b7ac981-0acf-4a93-af7f-964822beb104",
+  "period_end": "2026-09-20",
+  "functional_currency": "EUR",
+  "period_count": 17,
+  "periods": [
+    {
+      "tb_id": "8bae7c0d-7c04-44f7-843e-5447d833f653",
+      "period_end": "2026-07-08",
+      "metrics": {
+        "revenue": "816600.00",
+        "gross_profit": "337800.00",
+        "net_profit": "-119600.00",
+        "cash": "93500.00",
+        "cost_of_sales": "478800.00",
+        "operating_expenses": "469200.00",
+        "depreciation": "-54400.00"
+      }
+    },
+    {
+      "tb_id": "c1cdf41b-4503-4d73-bda0-0540f1651ff0",
+      "period_end": "2026-08-02",
+      "metrics": {
+        "revenue": "45000.00",
+        "gross_profit": "27000.00",
+        "net_profit": "2000.00",
+        "cash": "12500.00",
+        "cost_of_sales": "18000.00",
+        "operating_expenses": "21000.00",
+        "depreciation": "2000.00"
+      }
+    },
+    {
+      "tb_id": "2d0a6ef6-0447-44e3-93e8-ac7a272ffcc4",
+      "period_end": "2026-08-04",
+      "metrics": {
+        "revenue": "45000.00",
+        "gross_profit": "27000.00",
+        "net_profit": "2000.00",
+        "cash": "12500.00",
+        "cost_of_sales": "18000.00",
+        "operating_expenses": "23000.00",
+        "depreciation": "0.00"
+      }
+    },
+    {
+      "tb_id": "6b40ae18-b682-43de-be95-e38793bb7d51",
+      "period_end": "2026-08-05",
+      "metrics": {
+        "revenue": "45000.00",
+        "gross_profit": "27000.00",
+        "net_profit": "2000.00",
+        "cash": "12500.00",
+        "cost_of_sales": "18000.00",
+        "operating_expenses": "23000.00",
+        "depreciation": "0.00"
+      }
+    },
+    {
+      "tb_id": "8af9148a-cc09-464e-9dec-ef232b4b36a5",
+      "period_end": "2026-08-11",
+      "metrics": {
+        "revenue": "45000.00",
+        "gross_profit": "27000.00",
+        "net_profit": "2000.00",
+        "cash": "12500.00",
+        "cost_of_sales": "18000.00",
+        "operating_expenses": "21000.00",
+        "depreciation": "2000.00"
+      }
+    },
+    {
+      "tb_id": "a85aa0e8-23a2-44e9-b1ce-bd66375c0917",
+      "period_end": "2026-08-12",
+      "metrics": {
+        "revenue": "45000.00",
+        "gross_profit": "27000.00",
+        "net_profit": "2000.00",
+        "cash": "12500.00",
+        "cost_of_sales": "18000.00",
+        "operating_expenses": "23000.00",
+        "depreciation": "0.00"
+      }
+    },
+    {
+      "tb_id": "3532395e-dd14-4cfb-819e-b2afc7bc046d",
+      "period_end": "2026-08-13",
+      "metrics": {
+        "revenue": "45000.00",
+        "gross_profit": "27000.00",
+        "net_profit": "2000.00",
+        "cash": "12500.00",
+        "cost_of_sales": "18000.00",
+        "operating_expenses": "23000.00",
+        "depreciation": "0.00"
+      }
+    },
+    {
+      "tb_id": "d8f012a8-0c0e-497a-b7e2-8f516b97d270",
+      "period_end": "2026-08-15",
+      "metrics": {
+        "revenue": "52000.00",
+        "gross_profit": "31000.00",
+        "net_profit": "1000.00",
+        "cash": "15000.00",
+        "cost_of_sales": "21000.00",
+        "operating_expenses": "25500.00",
+        "depreciation": "2500.00"
+      }
+    },
+    {
+      "tb_id": "f84211ba-120c-4a59-82ca-115330baebfd",
+      "period_end": "2026-08-16",
+      "metrics": {
+        "revenue": "45000.00",
+        "gross_profit": "27000.00",
+        "net_profit": "2000.00",
+        "cash": "12500.00",
+        "cost_of_sales": "18000.00",
+        "operating_expenses": "23000.00",
+        "depreciation": "0.00"
+      }
+    },
+    {
+      "tb_id": "b3e919b5-13c5-466c-9111-404b10038841",
+      "period_end": "2026-08-17",
+      "metrics": {
+        "revenue": "45000.00",
+        "gross_profit": "27000.00",
+        "net_profit": "2000.00",
+        "cash": "12500.00",
+        "cost_of_sales": "18000.00",
+        "operating_expenses": "21000.00",
+        "depreciation": "2000.00"
+      }
+    },
+    {
+      "tb_id": "a15dfe86-3148-4d32-9a4e-fac68dd82f6d",
+      "period_end": "2026-08-21",
+      "metrics": {
+        "revenue": "45000.00",
+        "gross_profit": "27000.00",
+        "net_profit": "2000.00",
+        "cash": "12500.00",
+        "cost_of_sales": "18000.00",
+        "operating_expenses": "23000.00",
+        "depreciation": "0.00"
+      }
+    },
+    {
+      "tb_id": "7559cae9-416d-4d19-af38-fcacb11c3991",
+      "period_end": "2026-08-28",
+      "metrics": {
+        "revenue": "52000.00",
+        "gross_profit": "31000.00",
+        "net_profit": "1000.00",
+        "cash": "15000.00",
+        "cost_of_sales": "21000.00",
+        "operating_expenses": "25500.00",
+        "depreciation": "2500.00"
+      }
+    },
+    {
+      "tb_id": "0a1bf49f-d9e5-4041-9300-0218be7216a1",
+      "period_end": "2026-08-30",
+      "metrics": {
+        "revenue": "816600.00",
+        "gross_profit": "337800.00",
+        "net_profit": "-119600.00",
+        "cash": "93500.00",
+        "cost_of_sales": "478800.00",
+        "operating_expenses": "469200.00",
+        "depreciation": "-54400.00"
+      }
+    },
+    {
+      "tb_id": "8c68f45e-3a0c-4e1a-a666-7f38e410c013",
+      "period_end": "2026-08-31",
+      "metrics": {
+        "revenue": "45000.00",
+        "gross_profit": "27000.00",
+        "net_profit": "2000.00",
+        "cash": "12500.00",
+        "cost_of_sales": "18000.00",
+        "operating_expenses": "23000.00",
+        "depreciation": "0.00"
+      }
+    },
+    {
+      "tb_id": "e22a08ef-9471-4c1e-bd0b-4feab2e14498",
+      "period_end": "2026-09-03",
+      "metrics": {
+        "revenue": "45000.00",
+        "gross_profit": "27000.00",
+        "net_profit": "2000.00",
+        "cash": "12500.00",
+        "cost_of_sales": "18000.00",
+        "operating_expenses": "23000.00",
+        "depreciation": "0.00"
+      }
+    },
+    {
+      "tb_id": "2db53de1-b768-45c6-87c7-5c3ca3cc1d0b",
+      "period_end": "2026-09-04",
+      "metrics": {
+        "revenue": "816600.00",
+        "gross_profit": "337800.00",
+        "net_profit": "-119600.00",
+        "cash": "93500.00",
+        "cost_of_sales": "478800.00",
+        "operating_expenses": "469200.00",
+        "depreciation": "-54400.00"
+      }
+    },
+    {
+      "tb_id": "fd2e4bf4-773c-4c7c-adbe-b3cb78dda028",
+      "period_end": "2026-09-20",
+      "metrics": {
+        "revenue": "816600.00",
+        "gross_profit": "337800.00",
+        "net_profit": "-119600.00",
+        "cash": "93500.00",
+        "cost_of_sales": "478800.00",
+        "operating_expenses": "469200.00",
+        "depreciation": "-54400.00"
+      }
+    }
+  ],
+  "expense_breakdown": [
+    {
+      "code": "cost_of_sales",
+      "label": "Cost of sales",
+      "amount": "478800.00"
+    },
+    {
+      "code": "operating_expenses",
+      "label": "Operating expenses",
+      "amount": "469200.00"
+    },
+    {
+      "code": "depreciation",
+      "label": "Depreciation",
+      "amount": "54400.00"
+    }
+  ]
+}
