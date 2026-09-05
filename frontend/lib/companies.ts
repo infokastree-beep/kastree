@@ -1,9 +1,5 @@
 import { apiFetch } from "@/lib/api";
-import {
-  DEFAULT_MATERIALITY_ABS,
-  DEFAULT_MATERIALITY_PCT,
-  type CompanyEntityFormValues,
-} from "@/lib/company-form";
+import type { CompanyEntityFormValues } from "@/lib/company-form";
 import type {
   CompanyCreateRequest,
   CompanyUpdateRequest,
@@ -12,6 +8,11 @@ import type {
 
 type TokenGetter = () => Promise<string | null>;
 
+/**
+ * Create a company under a client group.
+ * Materiality is not collected at create time — DB defaults (10% / 1000)
+ * apply silently. Edit thresholds later via updateCompanyMateriality.
+ */
 export async function createCompanyEntity(
   clientId: string,
   values: CompanyEntityFormValues,
@@ -31,30 +32,10 @@ export async function createCompanyEntity(
     body.industry = trimmedIndustry;
   }
 
-  const company = await apiFetch<ICompany>(`/clients/${clientId}/companies`, {
+  return apiFetch<ICompany>(`/clients/${clientId}/companies`, {
     method: "POST",
     getToken,
     body: JSON.stringify(body),
-  });
-
-  const pctChanged = values.materialityPct !== DEFAULT_MATERIALITY_PCT;
-  const absChanged = values.materialityAbs !== DEFAULT_MATERIALITY_ABS;
-  if (!pctChanged && !absChanged) {
-    return company;
-  }
-
-  const update: CompanyUpdateRequest = {};
-  if (pctChanged) {
-    update.materiality_threshold_pct = values.materialityPct;
-  }
-  if (absChanged) {
-    update.materiality_threshold_abs = values.materialityAbs;
-  }
-
-  return apiFetch<ICompany>(`/companies/${company.id}`, {
-    method: "PUT",
-    getToken,
-    body: JSON.stringify(update),
   });
 }
 

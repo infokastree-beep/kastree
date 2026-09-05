@@ -2,11 +2,7 @@
 
 import { useState } from "react";
 import { FUNCTIONAL_CURRENCIES } from "@/lib/constants";
-import {
-  DEFAULT_MATERIALITY_ABS,
-  DEFAULT_MATERIALITY_PCT,
-  type CompanyEntityFormValues,
-} from "@/lib/company-form";
+import type { CompanyEntityFormValues } from "@/lib/company-form";
 
 export type { CompanyEntityFormValues } from "@/lib/company-form";
 export { DEFAULT_MATERIALITY_ABS, DEFAULT_MATERIALITY_PCT } from "@/lib/company-form";
@@ -43,8 +39,6 @@ export function CompanyEntityForm({
   const [companyNumber, setCompanyNumber] = useState("");
   const [industry, setIndustry] = useState("");
   const [companyType, setCompanyType] = useState<"trading" | "holding">("trading");
-  const [materialityPct, setMaterialityPct] = useState(DEFAULT_MATERIALITY_PCT);
-  const [materialityAbs, setMaterialityAbs] = useState(DEFAULT_MATERIALITY_ABS);
 
   return (
     <form
@@ -58,8 +52,6 @@ export function CompanyEntityForm({
           companyNumber,
           industry,
           companyType,
-          materialityPct,
-          materialityAbs,
         });
       }}
     >
@@ -97,31 +89,6 @@ export function CompanyEntityForm({
         </select>
       </label>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="block text-sm">
-          <span className="mb-1 block text-stone-600">Materiality %</span>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            className="w-full rounded border border-stone-300 px-3 py-2"
-            value={materialityPct}
-            onChange={(event) => setMaterialityPct(event.target.value)}
-          />
-        </label>
-        <label className="block text-sm">
-          <span className="mb-1 block text-stone-600">Materiality absolute</span>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            className="w-full rounded border border-stone-300 px-3 py-2"
-            value={materialityAbs}
-            onChange={(event) => setMaterialityAbs(event.target.value)}
-          />
-        </label>
-      </div>
-
       <label className="block text-sm">
         <span className="mb-1 block text-stone-600">
           Company number <span className="text-stone-400">(optional)</span>
@@ -149,7 +116,8 @@ export function CompanyEntityForm({
         </select>
         <span className="mt-1 block text-xs text-stone-500">
           Used for ISA 320-style materiality suggestions after statements are
-          generated.
+          generated. You can set materiality thresholds anytime on the company
+          card.
         </span>
       </label>
 

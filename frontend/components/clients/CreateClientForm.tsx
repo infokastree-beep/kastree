@@ -88,9 +88,10 @@ export function CreateClientForm({
         namePlaceholder="e.g. MD Trading Ltd"
         currencyHint={
           <p className="text-sm text-stone-600">
-            Each company under this client can have its own currency and materiality
-            settings — useful if this client has subsidiaries or entities trading in
-            different currencies.
+            Each company under this client can have its own functional currency —
+            useful if this client has subsidiaries or entities trading in different
+            currencies. Materiality defaults apply automatically; adjust them later
+            on the company card.
           </p>
         }
         submitLabel="Create company & continue"
