@@ -62,6 +62,44 @@ class BusinessHealthResult(BaseModel):
         return self.model_dump(mode="json", exclude_none=True)
 
 
+class BusinessHealthGenerateRequest(BaseModel):
+    """Optional explicit prior TB; omit to auto-detect (§6.2)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    prior_tb_id: uuid.UUID | None = None
+
+
+class BusinessHealthResponse(BaseModel):
+    """POST /trial-balances/{id}/business-health response.
+
+    On success ``available`` is True and the nested ``health`` payload matches
+    ``BusinessHealthResult`` (summary + 3 key_points + confidence). When prior
+    period or prior statements are missing, ``available`` is False and
+    ``health`` is None — same fail-soft pattern as variance.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tb_id: uuid.UUID
+    prior_tb_id: uuid.UUID | None = None
+    available: bool
+    message: str | None = None
+    health: BusinessHealthResult | None = None
+
+
+MISSING_PRIOR_FOR_HEALTH_MESSAGE = (
+    "Not enough history yet — upload a prior period TB to enable the "
+    "business health summary."
+)
+
+PRIOR_STATEMENTS_MISSING_FOR_HEALTH_MESSAGE = (
+    "Prior period statements have not been generated yet. "
+    "Generate statements for the prior trial balance to enable the "
+    "business health summary."
+)
+
+
 class CommentaryFeedbackRequest(BaseModel):
     """POST /commentary/feedback body."""
 

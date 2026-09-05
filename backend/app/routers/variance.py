@@ -21,8 +21,18 @@ from app.models.statement_line_item import StatementLineItem
 from app.models.trial_balance import TrialBalance
 from app.models.variance_analysis import VarianceAnalysis
 from app.routers.trial_balances import _get_owned_tb
-from app.schemas.commentary import CommentaryRecord, VarianceCommentaryResult
-from app.services.commentary import generate_variance_commentary
+from app.schemas.commentary import (
+    MISSING_PRIOR_FOR_HEALTH_MESSAGE,
+    PRIOR_STATEMENTS_MISSING_FOR_HEALTH_MESSAGE,
+    BusinessHealthGenerateRequest,
+    BusinessHealthResponse,
+    CommentaryRecord,
+    VarianceCommentaryResult,
+)
+from app.services.commentary import (
+    generate_business_health_summary,
+    generate_variance_commentary,
+)
 from app.schemas.variance import (
     MISSING_PRIOR_PERIOD_MESSAGE,
     PRIOR_STATEMENTS_MISSING_MESSAGE,
@@ -90,26 +100,27 @@ async def _tb_has_sopl_sofp_statements(
     return "SOPL" in types and "SOFP" in types
 
 
-async def _load_sopl_sofp_lines(
+async def _load_statement_type_lines(
     session: AsyncSession,
     tb_id: uuid.UUID,
+    statement_type: str,
 ) -> list[_LineAdapter] | None:
-    """Read already-built statement_line_items (statements.py output), not remapped accounts.
+    """Load statement_line_items for one statement type (SOPL or SOFP).
 
-    Returns None when SOPL/SOFP have not been generated yet — callers must not invent lines.
+    Returns None when that statement has not been generated yet.
     """
-    if not await _tb_has_sopl_sofp_statements(session, tb_id):
-        return None
     statements = await session.execute(
         select(FinancialStatement).where(
             FinancialStatement.tb_id == tb_id,
-            FinancialStatement.statement_type.in_(("SOPL", "SOFP")),
+            FinancialStatement.statement_type == statement_type,
         )
     )
-    statement_ids = [row.id for row in statements.scalars().all()]
+    statement = statements.scalar_one_or_none()
+    if statement is None:
+        return None
     lines_result = await session.execute(
         select(StatementLineItem)
-        .where(StatementLineItem.statement_id.in_(statement_ids))
+        .where(StatementLineItem.statement_id == statement.id)
         .order_by(StatementLineItem.display_order)
     )
     return [
@@ -121,6 +132,23 @@ async def _load_sopl_sofp_lines(
         )
         for line in lines_result.scalars().all()
     ]
+
+
+async def _load_sopl_sofp_lines(
+    session: AsyncSession,
+    tb_id: uuid.UUID,
+) -> list[_LineAdapter] | None:
+    """Read already-built statement_line_items (statements.py output), not remapped accounts.
+
+    Returns None when SOPL/SOFP have not been generated yet — callers must not invent lines.
+    """
+    if not await _tb_has_sopl_sofp_statements(session, tb_id):
+        return None
+    sopl = await _load_statement_type_lines(session, tb_id, "SOPL")
+    sofp = await _load_statement_type_lines(session, tb_id, "SOFP")
+    if sopl is None or sofp is None:
+        return None
+    return [*sopl, *sofp]
 
 
 def _unavailable_response(
@@ -323,3 +351,77 @@ async def get_variance(
         company=company,
         row=row,
     )
+
+def _health_unavailable(
+    tb_id: uuid.UUID,
+    *,
+    prior_tb_id: uuid.UUID | None = None,
+    message: str = MISSING_PRIOR_FOR_HEALTH_MESSAGE,
+) -> BusinessHealthResponse:
+    return BusinessHealthResponse(
+        tb_id=tb_id,
+        prior_tb_id=prior_tb_id,
+        available=False,
+        message=message,
+        health=None,
+    )
+
+
+@router.post("/{tb_id}/business-health", response_model=BusinessHealthResponse)
+async def generate_business_health(
+    tb_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    body: BusinessHealthGenerateRequest | None = None,
+) -> BusinessHealthResponse:
+    """Draft the AI Business Health summary from directional SOPL/SOFP trends.
+
+    Python derives gross-margin / opex / cash / debt directions; the LLM receives
+    those labels only — no monetary amounts (§7.1). Empty health on LLM failure
+    still returns ``available=True`` with an empty ``BusinessHealthResult``.
+    """
+    await aset_rls_org_id(session, auth.org_id)
+    tb = await _get_owned_tb(session, tb_id=tb_id, org_id=auth.org_id)
+    company = await session.get(Company, tb.company_id)
+    if company is None or company.is_deleted:
+        raise HTTPException(status_code=404, detail="Company not found")
+    client = await session.get(Client, company.client_id)
+    if client is None or client.org_id != auth.org_id or client.is_deleted:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    request = body or BusinessHealthGenerateRequest()
+    prior = await _resolve_prior_tb(session, current=tb, prior_tb_id=request.prior_tb_id)
+    if prior is None:
+        return _health_unavailable(tb.id)
+
+    current_sopl = await _load_statement_type_lines(session, tb.id, "SOPL")
+    current_sofp = await _load_statement_type_lines(session, tb.id, "SOFP")
+    if current_sopl is None or current_sofp is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Statements must be generated before business health summary",
+        )
+
+    prior_sopl = await _load_statement_type_lines(session, prior.id, "SOPL")
+    prior_sofp = await _load_statement_type_lines(session, prior.id, "SOFP")
+    if prior_sopl is None or prior_sofp is None:
+        return _health_unavailable(
+            tb.id,
+            prior_tb_id=prior.id,
+            message=PRIOR_STATEMENTS_MISSING_FOR_HEALTH_MESSAGE,
+        )
+
+    health = generate_business_health_summary(
+        current_sopl,
+        prior_sopl,
+        current_sofp,
+        prior_sofp,
+    )
+    return BusinessHealthResponse(
+        tb_id=tb.id,
+        prior_tb_id=prior.id,
+        available=True,
+        message=None,
+        health=health,
+    )
+

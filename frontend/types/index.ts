@@ -224,6 +224,25 @@ export interface VarianceResponse {
   items: VarianceItem[];
 }
 
+export type BusinessHealthConfidence = "high" | "medium" | "low";
+
+export interface BusinessHealthResult {
+  summary: string;
+  key_points: string[];
+  confidence: BusinessHealthConfidence;
+  is_ai_generated?: boolean;
+  is_edited?: boolean;
+  reasoning?: string | null;
+}
+
+export interface BusinessHealthResponse {
+  tb_id: string;
+  prior_tb_id: string | null;
+  available: boolean;
+  message: string | null;
+  health: BusinessHealthResult | null;
+}
+
 export type RiskSeverity = "warning" | "critical";
 
 export interface RiskAffectedAccount {

@@ -8,6 +8,7 @@ import { ApiError, apiFetch } from "@/lib/api";
 import { formatCurrency, formatCurrencyCode } from "@/lib/currency";
 import { DISCLAIMER_TEXT } from "@/lib/constants";
 import type { StatementBlock, StatementLine, StatementsResponse } from "@/types";
+import { BusinessHealthPanel } from "./BusinessHealthPanel";
 import { ExportButton } from "./ExportButton";
 import { RiskFlagsPanel } from "./RiskFlagsPanel";
 import { VariancePanel } from "./VariancePanel";
@@ -152,6 +153,9 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
       queryClient.setQueryData(["tb-statements", tbId], data);
       void queryClient.invalidateQueries({ queryKey: ["tb-variance", tbId] });
       void queryClient.invalidateQueries({ queryKey: ["tb-risk", tbId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["tb-business-health", tbId],
+      });
     },
   });
 
@@ -232,6 +236,8 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
 
       {statementsData ? (
         <>
+          <BusinessHealthPanel tbId={tbId} />
+
           {isStatementTab ? (
             <p className="text-sm text-ink-secondary">
               All amounts in{" "}

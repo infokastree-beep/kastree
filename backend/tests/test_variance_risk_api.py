@@ -278,6 +278,103 @@ async def test_variance_generation_attaches_ai_commentary_and_variance_id(
     assert feedback.json()["thumbs_up"] is True
 
 
+
+@pytest.mark.asyncio
+async def test_business_health_endpoint_returns_ai_summary(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """POST /business-health returns nested BusinessHealthResult from the service."""
+    from app.schemas.commentary import BusinessHealthResult
+
+    org_id = provisioned_org["org_id"]
+    company_id = provisioned_org["company_id"]
+    headers = auth_headers(provisioned_org["token"])
+
+    prior_id = _seed_tb(
+        org_id=org_id,
+        company_id=company_id,
+        period_end=date(2026, 6, 30),
+        lines=[
+            ("revenue", "Revenue", "100000.00", False),
+            ("cost_of_sales", "Cost of sales", "40000.00", False),
+            ("operating_expenses", "Operating expenses", "20000.00", False),
+        ],
+    )
+    current_id = _seed_tb(
+        org_id=org_id,
+        company_id=company_id,
+        period_end=date(2026, 7, 31),
+        lines=[
+            ("revenue", "Revenue", "120000.00", False),
+            ("cost_of_sales", "Cost of sales", "42000.00", False),
+            ("operating_expenses", "Operating expenses", "30000.00", False),
+        ],
+    )
+
+    fake = BusinessHealthResult(
+        summary="Margins improved while cash tightened.",
+        key_points=[
+            "Gross margin improved",
+            "Operating expenses grew faster than revenue",
+            "Cash position declined",
+        ],
+        confidence="medium",
+        is_ai_generated=True,
+        is_edited=False,
+    )
+
+    with patch(
+        "app.routers.variance.generate_business_health_summary",
+        return_value=fake,
+    ) as mocked:
+        response = await api_client.post(
+            f"/trial-balances/{current_id}/business-health",
+            headers=headers,
+            json={},
+        )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["available"] is True
+    assert body["prior_tb_id"] == str(prior_id)
+    assert body["health"]["summary"].startswith("Margins improved")
+    assert len(body["health"]["key_points"]) == 3
+    assert body["health"]["confidence"] == "medium"
+    assert body["health"]["is_ai_generated"] is True
+    mocked.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_business_health_unavailable_without_prior_period(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """No prior TB → available=False with guidance message (not 404)."""
+    from app.schemas.commentary import MISSING_PRIOR_FOR_HEALTH_MESSAGE
+
+    org_id = provisioned_org["org_id"]
+    company_id = provisioned_org["company_id"]
+    headers = auth_headers(provisioned_org["token"])
+
+    current_id = _seed_tb(
+        org_id=org_id,
+        company_id=company_id,
+        period_end=date(2026, 7, 31),
+        lines=[("revenue", "Revenue", "100000.00", False)],
+    )
+
+    response = await api_client.post(
+        f"/trial-balances/{current_id}/business-health",
+        headers=headers,
+        json={},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["available"] is False
+    assert body["health"] is None
+    assert body["message"] == MISSING_PRIOR_FOR_HEALTH_MESSAGE
+
+
 async def test_variance_auto_detect_picks_most_recent_prior_not_oldest(
     api_client: AsyncClient,
     provisioned_org: dict,
