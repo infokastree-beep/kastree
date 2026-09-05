@@ -162,6 +162,7 @@ async def create_company_for_client(
         name=body.name.strip(),
         company_number=body.company_number,
         industry=body.industry,
+        company_type=body.company_type or "trading",
         functional_currency=currency,
     )
     session.add(company)

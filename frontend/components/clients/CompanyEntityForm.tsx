@@ -42,6 +42,7 @@ export function CompanyEntityForm({
   const [functionalCurrency, setFunctionalCurrency] = useState("GBP");
   const [companyNumber, setCompanyNumber] = useState("");
   const [industry, setIndustry] = useState("");
+  const [companyType, setCompanyType] = useState<"trading" | "holding">("trading");
   const [materialityPct, setMaterialityPct] = useState(DEFAULT_MATERIALITY_PCT);
   const [materialityAbs, setMaterialityAbs] = useState(DEFAULT_MATERIALITY_ABS);
 
@@ -56,6 +57,7 @@ export function CompanyEntityForm({
           functionalCurrency,
           companyNumber,
           industry,
+          companyType,
           materialityPct,
           materialityAbs,
         });
@@ -131,6 +133,24 @@ export function CompanyEntityForm({
           onChange={(event) => setCompanyNumber(event.target.value)}
           placeholder="12345678"
         />
+      </label>
+
+      <label className="block text-sm">
+        <span className="mb-1 block text-stone-600">Company type</span>
+        <select
+          className="w-full rounded border border-stone-300 bg-white px-3 py-2"
+          value={companyType}
+          onChange={(event) =>
+            setCompanyType(event.target.value as "trading" | "holding")
+          }
+        >
+          <option value="trading">Trading (profit-oriented)</option>
+          <option value="holding">Holding (balance-sheet focused)</option>
+        </select>
+        <span className="mt-1 block text-xs text-stone-500">
+          Used for ISA 320-style materiality suggestions after statements are
+          generated.
+        </span>
       </label>
 
       <label className="block text-sm">

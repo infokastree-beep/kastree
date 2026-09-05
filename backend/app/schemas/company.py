@@ -10,12 +10,16 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+CompanyType = Literal["trading", "holding"]
+
+
 class CompanyCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=500)
     company_number: str | None = None
     industry: str | None = None
+    company_type: CompanyType | None = None
     functional_currency: str | None = Field(default=None, min_length=3, max_length=3)
 
 
@@ -25,6 +29,7 @@ class CompanyUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=500)
     company_number: str | None = None
     industry: str | None = None
+    company_type: CompanyType | None = None
     functional_currency: str | None = Field(default=None, min_length=3, max_length=3)
     materiality_threshold_pct: Decimal | None = None
     materiality_threshold_abs: Decimal | None = None
@@ -38,9 +43,11 @@ class CompanyResponse(BaseModel):
     name: str
     company_number: str | None
     industry: str | None
+    company_type: CompanyType
     functional_currency: str
     materiality_threshold_pct: Decimal
     materiality_threshold_abs: Decimal
+    materiality_suggestion_dismissed_at: datetime | None
     is_deleted: bool
     deleted_at: datetime | None
     created_at: datetime

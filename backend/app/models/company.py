@@ -32,11 +32,17 @@ class Company(Base):
     )
     company_number: Mapped[str | None] = mapped_column(String, nullable=True)
     industry: Mapped[str | None] = mapped_column(String, nullable=True)
+    company_type: Mapped[str] = mapped_column(
+        String, nullable=False, server_default=text("'trading'")
+    )
     materiality_threshold_pct: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, server_default=text("10.00")
     )
     materiality_threshold_abs: Mapped[Decimal] = mapped_column(
         Numeric(19, 2), nullable=False, server_default=text("1000.00")
+    )
+    materiality_suggestion_dismissed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     is_deleted: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")

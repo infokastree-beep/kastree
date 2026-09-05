@@ -23,6 +23,7 @@ from app.schemas.company import (
 )
 from app.services.archival import archive_company_user_deleted
 from app.services.ownership import get_owned_company
+from app.schemas.materiality import MaterialitySuggestionDismissResponse
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -51,11 +52,43 @@ async def update_company(
         updates["functional_currency"] = updates["functional_currency"].upper()
     if "name" in updates and updates["name"] is not None:
         updates["name"] = updates["name"].strip()
+    # Changing company type resurfaces the materiality suggestion banner.
+    if "company_type" in updates and updates["company_type"] != company.company_type:
+        company.materiality_suggestion_dismissed_at = None
+    # Applying new thresholds clears dismiss so a later drift can prompt again.
+    if (
+        "materiality_threshold_pct" in updates
+        or "materiality_threshold_abs" in updates
+    ):
+        company.materiality_suggestion_dismissed_at = None
     for field, value in updates.items():
         setattr(company, field, value)
     await session.flush()
     await session.refresh(company)
     return company
+
+
+@router.post(
+    "/{company_id}/materiality-suggestion/dismiss",
+    response_model=MaterialitySuggestionDismissResponse,
+)
+async def dismiss_materiality_suggestion(
+    company_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> MaterialitySuggestionDismissResponse:
+    """Soft-dismiss the materiality suggestion banner for this company."""
+    await aset_rls_org_id(session, auth.org_id)
+    company = await get_owned_company(session, company_id=company_id, org_id=auth.org_id)
+    now = datetime.now(timezone.utc)
+    company.materiality_suggestion_dismissed_at = now
+    await session.flush()
+    await session.refresh(company)
+    assert company.materiality_suggestion_dismissed_at is not None
+    return MaterialitySuggestionDismissResponse(
+        company_id=company.id,
+        materiality_suggestion_dismissed_at=company.materiality_suggestion_dismissed_at.isoformat(),
+    )
 
 
 @router.delete("/{company_id}", status_code=status.HTTP_200_OK, response_model=CompanyResponse)

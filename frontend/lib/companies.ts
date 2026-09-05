@@ -20,6 +20,7 @@ export async function createCompanyEntity(
   const body: CompanyCreateRequest = {
     name: values.name,
     functional_currency: values.functionalCurrency,
+    company_type: values.companyType,
   };
   const trimmedCompany = values.companyNumber.trim();
   const trimmedIndustry = values.industry.trim();

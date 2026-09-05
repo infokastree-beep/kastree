@@ -43,6 +43,8 @@ from app.services.statements import (
     iter_nil_filtered_face_lines,
 )
 from app.services.archival import archive_trial_balance_user_deleted
+from app.schemas.materiality import MaterialitySuggestionResponse
+from app.services.materiality import suggest_materiality
 from app.services.ownership import get_owned_company
 from app.services.llm import MAPPING_TIE_BREAKER_CANONICAL_LINES
 from app.services.prior_period import find_prior_trial_balance
@@ -1065,3 +1067,93 @@ async def get_statements(
         functional_currency=await _get_tb_functional_currency(session, tb=tb),
         statements=blocks,
     )
+
+
+@router.get(
+    "/{tb_id}/materiality-suggestion",
+    response_model=MaterialitySuggestionResponse,
+)
+async def get_materiality_suggestion(
+    tb_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> MaterialitySuggestionResponse:
+    """Soft ISA 320-style materiality suggestion from generated statement figures."""
+    await aset_rls_org_id(session, auth.org_id)
+    tb = await _get_owned_tb(session, tb_id=tb_id, org_id=auth.org_id)
+    company = await get_owned_company(
+        session, company_id=tb.company_id, org_id=auth.org_id
+    )
+
+    statements_result = await session.execute(
+        select(FinancialStatement).where(FinancialStatement.tb_id == tb.id)
+    )
+    statements = list(statements_result.scalars().all())
+    if not statements:
+        raise HTTPException(status_code=404, detail="Statements not generated yet")
+
+    sopl_lines: list[StatementLineItem] = []
+    sofp_lines: list[StatementLineItem] = []
+    for fs in statements:
+        lines_result = await session.execute(
+            select(StatementLineItem)
+            .where(StatementLineItem.statement_id == fs.id)
+            .order_by(StatementLineItem.display_order)
+        )
+        lines = list(lines_result.scalars().all())
+        if fs.statement_type == "SOPL":
+            sopl_lines = lines
+        elif fs.statement_type == "SOFP":
+            sofp_lines = lines
+
+    company_type = (
+        company.company_type
+        if company.company_type in ("trading", "holding")
+        else "trading"
+    )
+    suggestion = suggest_materiality(
+        company_type=company_type,  # type: ignore[arg-type]
+        current_pct=Decimal(company.materiality_threshold_pct),
+        current_abs=Decimal(company.materiality_threshold_abs),
+        sopl_lines=sopl_lines,
+        sofp_lines=sofp_lines,
+        dismissed=company.materiality_suggestion_dismissed_at is not None,
+    )
+    return MaterialitySuggestionResponse(
+        tb_id=tb.id,
+        company_id=company.id,
+        available=suggestion.available,
+        message=suggestion.message,
+        company_type=suggestion.company_type,
+        benchmark_basis=suggestion.benchmark_basis,
+        benchmark_amount=(
+            f"{suggestion.benchmark_amount:.2f}"
+            if suggestion.benchmark_amount is not None
+            else None
+        ),
+        range_pct_low=(
+            f"{suggestion.range_pct_low:.2f}"
+            if suggestion.range_pct_low is not None
+            else None
+        ),
+        range_pct_high=(
+            f"{suggestion.range_pct_high:.2f}"
+            if suggestion.range_pct_high is not None
+            else None
+        ),
+        suggested_pct=(
+            f"{suggestion.suggested_pct:.2f}"
+            if suggestion.suggested_pct is not None
+            else None
+        ),
+        suggested_abs=(
+            f"{suggestion.suggested_abs:.2f}"
+            if suggestion.suggested_abs is not None
+            else None
+        ),
+        current_pct=f"{suggestion.current_pct:.2f}",
+        current_abs=f"{suggestion.current_abs:.2f}",
+        dismissed=suggestion.dismissed,
+        disclaimer=suggestion.disclaimer,
+    )
+

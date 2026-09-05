@@ -75,6 +75,12 @@ def company_snapshot(company: Company) -> dict[str, Any]:
         "name": company.name,
         "company_number": company.company_number,
         "industry": company.industry,
+        "company_type": company.company_type,
+        "materiality_suggestion_dismissed_at": (
+            company.materiality_suggestion_dismissed_at.isoformat()
+            if company.materiality_suggestion_dismissed_at is not None
+            else None
+        ),
         "functional_currency": company.functional_currency,
         "materiality_threshold_pct": str(company.materiality_threshold_pct),
         "materiality_threshold_abs": str(company.materiality_threshold_abs),

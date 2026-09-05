@@ -27,9 +27,11 @@ export interface ICompany {
   name: string;
   company_number: string | null;
   industry: string | null;
+  company_type: "trading" | "holding";
   functional_currency: string;
   materiality_threshold_pct: string;
   materiality_threshold_abs: string;
+  materiality_suggestion_dismissed_at: string | null;
   is_deleted: boolean;
   deleted_at: string | null;
   created_at: string;
@@ -40,10 +42,16 @@ export interface CompanyCreateRequest {
   name: string;
   company_number?: string | null;
   industry?: string | null;
+  company_type?: "trading" | "holding";
   functional_currency?: string;
 }
 
 export interface CompanyUpdateRequest {
+  name?: string;
+  company_number?: string | null;
+  industry?: string | null;
+  company_type?: "trading" | "holding";
+  functional_currency?: string;
   materiality_threshold_pct?: string;
   materiality_threshold_abs?: string;
 }
@@ -241,6 +249,26 @@ export interface BusinessHealthResponse {
   available: boolean;
   message: string | null;
   health: BusinessHealthResult | null;
+}
+
+export type CompanyType = "trading" | "holding";
+
+export interface MaterialitySuggestionResponse {
+  tb_id: string;
+  company_id: string;
+  available: boolean;
+  message: string | null;
+  company_type: CompanyType;
+  benchmark_basis: "profit_before_tax" | "total_equity" | null;
+  benchmark_amount: string | null;
+  range_pct_low: string | null;
+  range_pct_high: string | null;
+  suggested_pct: string | null;
+  suggested_abs: string | null;
+  current_pct: string;
+  current_abs: string;
+  dismissed: boolean;
+  disclaimer: string;
 }
 
 export type RiskSeverity = "warning" | "critical";

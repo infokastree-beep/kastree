@@ -6,6 +6,7 @@ export type CompanyEntityFormValues = {
   functionalCurrency: string;
   companyNumber: string;
   industry: string;
+  companyType: "trading" | "holding";
   materialityPct: string;
   materialityAbs: string;
 };

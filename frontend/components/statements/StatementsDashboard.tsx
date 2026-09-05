@@ -10,6 +10,7 @@ import { DISCLAIMER_TEXT } from "@/lib/constants";
 import type { StatementBlock, StatementLine, StatementsResponse } from "@/types";
 import { BusinessHealthPanel } from "./BusinessHealthPanel";
 import { ExportButton } from "./ExportButton";
+import { MaterialitySuggestionBanner } from "./MaterialitySuggestionBanner";
 import { RiskFlagsPanel } from "./RiskFlagsPanel";
 import { VariancePanel } from "./VariancePanel";
 
@@ -236,6 +237,10 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
 
       {statementsData ? (
         <>
+          <MaterialitySuggestionBanner
+            tbId={tbId}
+            currencyCode={currencyCode}
+          />
           <BusinessHealthPanel tbId={tbId} />
 
           {isStatementTab ? (
