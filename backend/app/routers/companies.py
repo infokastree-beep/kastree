@@ -97,7 +97,15 @@ async def soft_delete_company(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Company:
-    """Soft delete + archived_records snapshot in the same transaction (§12.2)."""
+    """Soft delete + archived_records snapshot in the same transaction (§12.2).
+
+    Matches client soft-delete precedent (option c): soft-delete + archive this
+    company only. Do **not** block when trial balances / statements / mappings
+    exist, and do **not** cascade-soft-delete those children. List/get paths
+    filter ``companies.is_deleted``, so the company (and its TBs via company
+    joins) disappear from the UI the same way companies under a deleted client
+    do. Child rows stay ``is_deleted=false`` until deleted on their own.
+    """
     await aset_rls_org_id(session, auth.org_id)
     company = await get_owned_company(session, company_id=company_id, org_id=auth.org_id)
     now = datetime.now(timezone.utc)

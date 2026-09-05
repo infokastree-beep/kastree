@@ -55,3 +55,14 @@ export async function updateCompanyMateriality(
     body: JSON.stringify(update),
   });
 }
+
+/** Soft-delete a company (archived_records snapshot; children not cascaded). */
+export async function deleteCompanyEntity(
+  companyId: string,
+  getToken: TokenGetter,
+): Promise<ICompany> {
+  return apiFetch<ICompany>(`/companies/${companyId}`, {
+    method: "DELETE",
+    getToken,
+  });
+}

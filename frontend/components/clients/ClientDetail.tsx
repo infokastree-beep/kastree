@@ -9,7 +9,7 @@ import { CompanyMaterialitySettings } from "@/components/clients/CompanyMaterial
 import type { CompanyEntityFormValues } from "@/lib/company-form";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
-import { createCompanyEntity } from "@/lib/companies";
+import { createCompanyEntity, deleteCompanyEntity } from "@/lib/companies";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import type {
   CompanyListResponse,
@@ -43,6 +43,7 @@ function CompanyTrialBalances({ company }: { company: ICompany }) {
   const { getToken } = useAuth();
   const queryClient = useQueryClient();
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [confirmDeleteCompany, setConfirmDeleteCompany] = useState(false);
 
   const trialBalancesQuery = useQuery({
     queryKey: ["trial-balances", company.id],
@@ -65,6 +66,21 @@ function CompanyTrialBalances({ company }: { company: ICompany }) {
     },
   });
 
+  const deleteCompanyMutation = useMutation({
+    mutationFn: () => deleteCompanyEntity(company.id, getToken),
+    onSuccess: () => {
+      setConfirmDeleteCompany(false);
+      void queryClient.invalidateQueries({
+        queryKey: ["companies", company.client_id],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["companies"] });
+      void queryClient.invalidateQueries({ queryKey: ["clients"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["trial-balances", company.id],
+      });
+    },
+  });
+
   const trialBalances = trialBalancesQuery.data?.items ?? [];
 
   return (
@@ -82,13 +98,68 @@ function CompanyTrialBalances({ company }: { company: ICompany }) {
             ) : null}
           </p>
         </div>
-        <Link
-          href={`/upload?company=${company.id}`}
-          className="rounded bg-stone-900 px-3 py-1.5 text-sm font-medium text-white"
-        >
-          Upload trial balance
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/upload?company=${company.id}`}
+            className="rounded bg-stone-900 px-3 py-1.5 text-sm font-medium text-white"
+          >
+            Upload trial balance
+          </Link>
+          {!confirmDeleteCompany ? (
+            <button
+              type="button"
+              onClick={() => setConfirmDeleteCompany(true)}
+              className="rounded border border-red-200 px-3 py-1.5 text-sm font-medium text-red-800 hover:bg-red-50"
+              data-testid="company-delete"
+            >
+              Delete company
+            </button>
+          ) : null}
+        </div>
       </div>
+
+      {confirmDeleteCompany ? (
+        <div
+          className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-950"
+          data-testid="company-delete-confirm"
+        >
+          <p className="font-medium">Delete {company.name}?</p>
+          <p className="mt-1">
+            This removes the company from your list. Its record is archived and no
+            longer appears in Kastree. Existing trial balances are not
+            cascade-deleted (same as deleting a client that still has companies).
+          </p>
+          {deleteCompanyMutation.error ? (
+            <p className="mt-2 text-red-800">
+              {deleteCompanyMutation.error instanceof Error
+                ? deleteCompanyMutation.error.message
+                : "Failed to delete company"}
+            </p>
+          ) : null}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={deleteCompanyMutation.isPending}
+              onClick={() => deleteCompanyMutation.mutate()}
+              className="rounded bg-red-800 px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+              data-testid="company-delete-confirm-yes"
+            >
+              {deleteCompanyMutation.isPending ? "Deleting…" : "Yes, delete company"}
+            </button>
+            <button
+              type="button"
+              disabled={deleteCompanyMutation.isPending}
+              onClick={() => {
+                setConfirmDeleteCompany(false);
+                deleteCompanyMutation.reset();
+              }}
+              className="rounded border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-900 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <CompanyMaterialitySettings company={company} />
 
