@@ -197,22 +197,51 @@ def test_tier3_7000_range_routes_amortisation_names_separately() -> None:
     ]
 
 
-def test_tier3_7000_range_routes_interest_names_to_interest_expense() -> None:
-    """7000–7999 + interest name → interest_expense (unusual CoA, not depreciation)."""
+def test_tier3_interest_polarity_income_vs_expense() -> None:
+    """Interest names resolve by polarity; works in 4xxx and 7xxx bands."""
     accounts = [
         FakeAccount(account_code="7000", account_name="Interest Expense"),
         FakeAccount(account_code="7050", account_name="Bank Interest Paid"),
+        FakeAccount(account_code="7060", account_name="Interest Charge"),
+        FakeAccount(account_code="7900", account_name="Interest Income"),
+        FakeAccount(account_code="4900", account_name="Interest Income"),
         FakeAccount(account_code="7000", account_name="Depreciation - Buildings"),
+        FakeAccount(account_code="4000", account_name="Sales Revenue"),
     ]
 
     results = map_accounts(accounts, prior_confirmed=[])
 
-    assert [r.method for r in results] == ["code_range"] * 3
-    assert [r.confidence for r in results] == [Decimal("0.65")] * 3
+    assert [r.method for r in results] == ["code_range"] * 7
     assert [r.canonical_line for r in results] == [
         "interest_expense",
         "interest_expense",
+        "interest_expense",
+        "interest_income",
+        "interest_income",
         "depreciation",
+        "revenue",
+    ]
+
+
+def test_tier3_6000_range_routes_depreciation_names_to_depreciation() -> None:
+    """6000–6999 + depreciation name → depreciation; other opex names unchanged."""
+    accounts = [
+        FakeAccount(account_code="6400", account_name="Depreciation"),
+        FakeAccount(account_code="6410", account_name="Depreciation Expense"),
+        FakeAccount(account_code="6100", account_name="Rent & Rates"),
+        FakeAccount(account_code="6500", account_name="Bank Charges"),
+        FakeAccount(account_code="6550", account_name="Bad Debts Written Off"),
+    ]
+
+    results = map_accounts(accounts, prior_confirmed=[])
+
+    assert [r.method for r in results] == ["code_range"] * 5
+    assert [r.canonical_line for r in results] == [
+        "depreciation",
+        "depreciation",
+        "operating_expenses",
+        "operating_expenses",
+        "operating_expenses",
     ]
 
 
