@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { CompanyEntityForm } from "@/components/clients/CompanyEntityForm";
+import { CompanyMaterialitySettings } from "@/components/clients/CompanyMaterialitySettings";
 import type { CompanyEntityFormValues } from "@/lib/company-form";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
@@ -88,6 +89,8 @@ function CompanyTrialBalances({ company }: { company: ICompany }) {
           Upload trial balance
         </Link>
       </div>
+
+      <CompanyMaterialitySettings company={company} />
 
       {deleteMutation.error ? (
         <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">

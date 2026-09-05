@@ -57,3 +57,20 @@ export async function createCompanyEntity(
     body: JSON.stringify(update),
   });
 }
+
+/** Update materiality thresholds on an existing company (manual entry). */
+export async function updateCompanyMateriality(
+  companyId: string,
+  values: { materialityPct: string; materialityAbs: string },
+  getToken: TokenGetter,
+): Promise<ICompany> {
+  const update: CompanyUpdateRequest = {
+    materiality_threshold_pct: values.materialityPct,
+    materiality_threshold_abs: values.materialityAbs,
+  };
+  return apiFetch<ICompany>(`/companies/${companyId}`, {
+    method: "PUT",
+    getToken,
+    body: JSON.stringify(update),
+  });
+}

@@ -44,6 +44,7 @@ export function MaterialitySuggestionBanner({
         queryKey: ["tb-materiality-suggestion", tbId],
       });
       void queryClient.invalidateQueries({ queryKey: ["tb-variance", tbId] });
+      void queryClient.invalidateQueries({ queryKey: ["companies"] });
     },
   });
 
@@ -65,8 +66,16 @@ export function MaterialitySuggestionBanner({
     return null;
   }
 
-  const absLabel = formatCurrency(data.suggested_abs, currencyCode);
+  const suggestedAbsLabel = formatCurrency(data.suggested_abs, currencyCode);
+  const currentAbsLabel = formatCurrency(data.current_abs, currencyCode);
+  const pctAlreadyMatches =
+    Number(data.current_pct) === Number(data.suggested_pct);
   const pending = applyMutation.isPending || dismissMutation.isPending;
+  const bodyText =
+    data.message ??
+    (pctAlreadyMatches
+      ? `Your materiality % is already ${data.current_pct}%, but the absolute threshold (${currentAbsLabel}) is out of date — update absolute to ${suggestedAbsLabel}?`
+      : `We suggest ${data.suggested_pct}% (${suggestedAbsLabel}) based on your figures — apply it?`);
 
   return (
     <div
@@ -75,12 +84,11 @@ export function MaterialitySuggestionBanner({
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-ink">
-            Materiality suggestion
-          </p>
-          <p className="mt-1 text-sm text-ink-secondary">
-            We suggest {data.suggested_pct}% ({absLabel}) based on your figures
-            — apply it?
+          <p className="text-sm font-semibold text-ink">Materiality suggestion</p>
+          <p className="mt-1 text-sm text-ink-secondary">{bodyText}</p>
+          <p className="mt-1 text-xs text-soft">
+            Current: {data.current_pct}% / {currentAbsLabel} · Suggested:{" "}
+            {data.suggested_pct}% / {suggestedAbsLabel}
           </p>
           <p className="mt-1 text-xs text-soft">{data.disclaimer}</p>
           {applyMutation.error || dismissMutation.error ? (
@@ -99,7 +107,11 @@ export function MaterialitySuggestionBanner({
             className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-50"
             data-testid="materiality-suggestion-apply"
           >
-            {applyMutation.isPending ? "Applying…" : "Apply"}
+            {applyMutation.isPending
+              ? "Updating…"
+              : pctAlreadyMatches
+                ? "Update absolute"
+                : "Apply"}
           </button>
           <button
             type="button"

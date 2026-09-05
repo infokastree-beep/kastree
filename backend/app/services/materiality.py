@@ -229,6 +229,18 @@ def suggest_materiality(
             dismissed=False,
         )
 
+    # % already at the mid-range suggestion but absolute drifted (e.g. after
+    # statement regeneration changed the benchmark). Avoid a misleading
+    # "apply 7.5%?" when that % is already set.
+    pct_delta = abs(suggested_pct - current_pct_q)
+    abs_delta = abs(suggested_abs - current_abs_q)
+    if pct_delta < PCT_MEANINGFUL_DELTA and abs_delta >= ABS_MEANINGFUL_DELTA:
+        message = (
+            f"Your materiality percentage is already {current_pct_q}%, but the "
+            f"absolute threshold ({current_abs_q}) is out of date versus current "
+            f"{basis_label} figures — update absolute to {suggested_abs}?"
+        )
+
     return MaterialitySuggestion(
         available=True,
         message=message,

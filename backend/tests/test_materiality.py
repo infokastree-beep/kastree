@@ -74,6 +74,24 @@ def test_unavailable_when_already_matches() -> None:
     assert "already matches" in (result.message or "")
 
 
+def test_available_when_pct_matches_but_abs_drifted() -> None:
+    """Same mid-range % already applied; abs stale after benchmark change."""
+    result = suggest_materiality(
+        company_type="trading",
+        current_pct=Decimal("7.50"),
+        current_abs=Decimal("6090.00"),
+        sopl_lines=[_line("profit_before_tax", "-194000.00")],
+        sofp_lines=[],
+        dismissed=False,
+    )
+    assert result.available is True
+    assert result.suggested_pct == Decimal("7.50")
+    assert result.suggested_abs == Decimal("14550.00")
+    assert "already 7.50%" in (result.message or "")
+    assert "absolute" in (result.message or "").lower()
+    assert "apply it?" not in (result.message or "").lower()
+
+
 def test_unavailable_when_pbt_nil() -> None:
     result = suggest_materiality(
         company_type="trading",
