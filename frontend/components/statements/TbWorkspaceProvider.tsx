@@ -141,17 +141,6 @@ export function TbWorkspaceProvider({
         data-testid="tb-workspace-switcher"
       >
         <Link
-          href={dashboardPath(tbId)}
-          className={`px-3 py-2.5 text-sm font-semibold transition-colors ${
-            activePage === "dashboard"
-              ? "border-b-2 border-accent text-accent"
-              : "text-soft hover:text-ink"
-          }`}
-          data-testid="tb-switcher-dashboard"
-        >
-          Dashboard
-        </Link>
-        <Link
           href={statementsPath(tbId)}
           className={`px-3 py-2.5 text-sm font-semibold transition-colors ${
             activePage === "statements"
@@ -161,6 +150,17 @@ export function TbWorkspaceProvider({
           data-testid="tb-switcher-statements"
         >
           Statements
+        </Link>
+        <Link
+          href={dashboardPath(tbId)}
+          className={`px-3 py-2.5 text-sm font-semibold transition-colors ${
+            activePage === "dashboard"
+              ? "border-b-2 border-accent text-accent"
+              : "text-soft hover:text-ink"
+          }`}
+          data-testid="tb-switcher-dashboard"
+        >
+          Dashboard
         </Link>
       </nav>
 
