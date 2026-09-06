@@ -259,19 +259,27 @@ export function CopilotPanel({
     result?.refusal_message?.trim() ||
     "I don't have that in the evidence for this period.";
 
+  // Stacking (intentional):
+  // - Dim backdrop at z-60 so the sticky Statements|Dashboard switcher (z-70)
+  //   stays clickable over the page.
+  // - Panel aside at z-80 ABOVE the switcher. The switcher uses backdrop-blur;
+  //   if the aside sat under it, the context chip (and anything in that band)
+  //   rendered as a persistent frosted smear — not a transition glitch.
   return (
-    <div className="fixed inset-0 z-[60]" data-testid="copilot-panel">
+    <>
       <button
         type="button"
         aria-label="Close Copilot"
-        className="absolute inset-0 bg-ink/30 transition-opacity"
+        className="fixed inset-0 z-[60] bg-ink/30 transition-opacity"
         onClick={onClose}
+        data-testid="copilot-backdrop"
       />
       <aside
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="absolute inset-y-0 right-0 flex h-full w-full max-w-none flex-col border-l border-line bg-surface-elevated shadow-xl sm:max-w-md md:max-w-lg"
+        data-testid="copilot-panel"
+        className="fixed inset-y-0 right-0 z-[80] flex h-full w-full max-w-none flex-col border-l border-line bg-surface-elevated shadow-xl sm:max-w-md md:max-w-lg"
       >
         <header className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
           <div className="min-w-0">
@@ -426,6 +434,6 @@ export function CopilotPanel({
           ) : null}
         </div>
       </aside>
-    </div>
+    </>
   );
 }
