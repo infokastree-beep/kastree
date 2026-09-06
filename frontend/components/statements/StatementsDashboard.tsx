@@ -221,7 +221,7 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
               className="flex items-center gap-1.5 rounded-md border border-line bg-surface-elevated px-3 py-1.5 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
               data-testid="copilot-ask-button"
             >
-              Ask
+              Ask Copilot
             </button>
             <ExportButton tbId={tbId} />
             <button
