@@ -49,6 +49,7 @@ from app.services.materiality import suggest_materiality
 from app.services.ownership import get_owned_company
 from app.services.performance import (
     METRIC_CODES,
+    aggregate_performance_periods,
     build_period_metrics,
     expense_share_amounts,
     select_history_periods,
@@ -268,6 +269,9 @@ class PerformancePeriodResponse(BaseModel):
     tb_id: uuid.UUID
     period_end: date
     metrics: PerformancePeriodMetrics
+    bucket_key: str
+    is_partial: bool = False
+    source_period_count: int = 1
 
 
 class PerformanceExpenseShare(BaseModel):
@@ -288,6 +292,7 @@ class PerformanceOverviewResponse(BaseModel):
     period_end: date
     functional_currency: str
     period_count: int
+    granularity: Literal["monthly", "quarterly", "yearly"] = "monthly"
     periods: list[PerformancePeriodResponse]
     expense_breakdown: list[PerformanceExpenseShare]
 
@@ -1282,12 +1287,16 @@ async def get_performance_overview(
     tb_id: uuid.UUID,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    granularity: Annotated[
+        Literal["monthly", "quarterly", "yearly"], Query()
+    ] = "monthly",
 ) -> PerformanceOverviewResponse:
     """Multi-period KPI / chart series from generated statements for this company.
 
     Returns every historical trial balance (up to the soft cap) that already has
-    statements, as of the current TB's period_end. One period is valid — charts
-    simply render what is available.
+    statements, as of the current TB's period_end. Optional ``granularity``
+    aggregates calendar quarters/years: flow metrics sum, stock metrics take the
+    last period in the bucket; incomplete buckets are included as partial.
     """
     await aset_rls_org_id(session, auth.org_id)
     tb = await _get_owned_tb(session, tb_id=tb_id, org_id=auth.org_id)
@@ -1335,9 +1344,15 @@ async def get_performance_overview(
         )
         for row_tb_id, payload in by_tb.items()
     ]
-    periods = select_history_periods(built, as_of=tb.period_end)
-    if not periods:
+    monthly = select_history_periods(built, as_of=tb.period_end)
+    if not monthly:
         raise HTTPException(status_code=404, detail="Statements not generated yet")
+
+    periods = aggregate_performance_periods(
+        monthly,
+        granularity=granularity,
+        as_of=tb.period_end,
+    )
 
     current_metrics = next(
         (p.metrics for p in periods if p.tb_id == tb.id),
@@ -1354,10 +1369,14 @@ async def get_performance_overview(
         period_end=tb.period_end,
         functional_currency=await _get_tb_functional_currency(session, tb=tb),
         period_count=len(periods),
+        granularity=granularity,
         periods=[
             PerformancePeriodResponse(
                 tb_id=period.tb_id,
                 period_end=period.period_end,
+                bucket_key=period.bucket_key,
+                is_partial=period.is_partial,
+                source_period_count=period.source_period_count,
                 metrics=PerformancePeriodMetrics(
                     revenue=_fmt(period.metrics.get("revenue")),
                     gross_profit=_fmt(period.metrics.get("gross_profit")),

@@ -272,6 +272,10 @@ export interface PerformancePeriod {
   tb_id: string;
   period_end: string;
   metrics: PerformancePeriodMetrics;
+  /** Present on live API; optional for older preview fixtures. */
+  bucket_key?: string;
+  is_partial?: boolean;
+  source_period_count?: number;
 }
 
 export interface PerformanceExpenseShare {
@@ -280,12 +284,15 @@ export interface PerformanceExpenseShare {
   amount: string;
 }
 
+export type PerformanceGranularity = "monthly" | "quarterly" | "yearly";
+
 export interface PerformanceOverviewResponse {
   tb_id: string;
   company_id: string;
   period_end: string;
   functional_currency: string;
   period_count: number;
+  granularity?: PerformanceGranularity;
   periods: PerformancePeriod[];
   expense_breakdown: PerformanceExpenseShare[];
 }

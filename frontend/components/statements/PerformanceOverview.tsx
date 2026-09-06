@@ -24,6 +24,7 @@ import { formatCurrency } from "@/lib/currency";
 import { formatDate } from "@/lib/utils";
 import type {
   PerformanceExpenseShare,
+  PerformanceGranularity,
   PerformanceOverviewResponse,
   PerformancePeriod,
   PerformancePeriodMetrics,
@@ -49,6 +50,15 @@ const EXPENSE_LABELS: Record<PerformanceExpenseShare["code"], string> = {
   depreciation: "Depreciation",
 };
 
+const GRANULARITY_OPTIONS: {
+  value: PerformanceGranularity;
+  label: string;
+}[] = [
+  { value: "monthly", label: "Monthly" },
+  { value: "quarterly", label: "Quarterly" },
+  { value: "yearly", label: "Yearly" },
+];
+
 function shortPeriodLabel(isoDate: string): string {
   const d = new Date(`${isoDate}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return isoDate;
@@ -58,6 +68,33 @@ function shortPeriodLabel(isoDate: string): string {
     year: "2-digit",
     timeZone: "UTC",
   });
+}
+
+function bucketChartLabel(period: PerformancePeriod): string {
+  const key = period.bucket_key ?? period.period_end;
+  if (key.includes("-Q")) {
+    const [year, quarter] = key.split("-Q");
+    return period.is_partial
+      ? `${year} Q${quarter} (to ${shortPeriodLabel(period.period_end)})`
+      : `${year} Q${quarter}`;
+  }
+  if (/^\d{4}$/.test(key)) {
+    return period.is_partial
+      ? `${key} (to ${shortPeriodLabel(period.period_end)})`
+      : key;
+  }
+  return shortPeriodLabel(period.period_end);
+}
+
+function bucketSelectLabel(period: PerformancePeriod, isLatest: boolean): string {
+  const base = bucketChartLabel(period);
+  return isLatest ? `${base} (current)` : base;
+}
+
+function priorGrowthSuffix(granularity: PerformanceGranularity): string {
+  if (granularity === "quarterly") return "vs prior quarter";
+  if (granularity === "yearly") return "vs prior year";
+  return "vs prior";
 }
 
 function toNumber(value: string | null | undefined): number | null {
@@ -140,12 +177,18 @@ function Sparkline({ values }: { values: Array<number | null> }) {
   );
 }
 
-function GrowthBadge({ pct }: { pct: number | null }) {
+function GrowthBadge({
+  pct,
+  priorSuffix,
+}: {
+  pct: number | null;
+  priorSuffix: string;
+}) {
   const label = formatGrowthPct(pct);
   if (label == null) {
     return (
       <span className="text-xs text-soft" data-testid="performance-kpi-growth">
-        vs prior —
+        {priorSuffix} —
       </span>
     );
   }
@@ -158,7 +201,7 @@ function GrowthBadge({ pct }: { pct: number | null }) {
       }`}
       data-testid="performance-kpi-growth"
     >
-      {label} vs prior
+      {label} {priorSuffix}
     </span>
   );
 }
@@ -221,18 +264,23 @@ export function PerformanceOverview({
 }) {
   const { getToken } = useAuth();
   const [selectedTbId, setSelectedTbId] = useState<string>("");
+  const [granularity, setGranularity] =
+    useState<PerformanceGranularity>("monthly");
 
   const overviewQuery = useQuery({
-    queryKey: ["tb-performance-overview", tbId],
+    queryKey: ["tb-performance-overview", tbId, granularity],
     queryFn: () =>
       apiFetch<PerformanceOverviewResponse>(
-        `/trial-balances/${tbId}/performance-overview`,
+        `/trial-balances/${tbId}/performance-overview?granularity=${granularity}`,
         { getToken },
       ),
     enabled: previewData == null,
   });
 
   const data = previewData ?? overviewQuery.data;
+  const activeGranularity: PerformanceGranularity =
+    previewData != null ? "monthly" : (data?.granularity ?? granularity);
+  const priorSuffix = priorGrowthSuffix(activeGranularity);
 
   useEffect(() => {
     if (!data?.periods.length) return;
@@ -300,7 +348,7 @@ export function PerformanceOverview({
 
   const trendRows: TrendRow[] = data.periods.map((period) => ({
     tbId: period.tb_id,
-    label: shortPeriodLabel(period.period_end),
+    label: bucketChartLabel(period),
     revenue: toNumber(period.metrics.revenue),
     net_profit: toNumber(period.metrics.net_profit),
     selected: period.tb_id === selectedPeriod.tb_id,
@@ -316,6 +364,49 @@ export function PerformanceOverview({
     value: Math.abs(toNumber(item.amount) ?? 0),
     code: item.code,
   }));
+
+  const granularityToggle =
+    previewData == null ? (
+      <div
+        className="inline-flex rounded-md border border-line bg-surface p-0.5"
+        role="group"
+        aria-label="Performance period granularity"
+        data-testid="performance-granularity-toggle"
+      >
+        {GRANULARITY_OPTIONS.map((option) => {
+          const active = granularity === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setGranularity(option.value)}
+              className={`rounded px-2.5 py-1 text-xs font-semibold transition-colors ${
+                active
+                  ? "bg-accent text-accent-foreground"
+                  : "text-ink-secondary hover:text-ink"
+              }`}
+              data-testid={`performance-granularity-${option.value}`}
+              aria-pressed={active}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    ) : null;
+
+  const periodCountLabel = (() => {
+    if (!multiPeriod) {
+      return "Single period — upload prior trial balances to unlock trends";
+    }
+    if (activeGranularity === "quarterly") {
+      return `${data.period_count} quarter${data.period_count === 1 ? "" : "s"} (aggregated from monthly statements)`;
+    }
+    if (activeGranularity === "yearly") {
+      return `${data.period_count} year${data.period_count === 1 ? "" : "s"} (aggregated from monthly statements)`;
+    }
+    return `${data.period_count} periods with generated statements`;
+  })();
 
   if (collapsible && !expanded) {
     const priorHintParts: string[] = [];
@@ -373,7 +464,7 @@ export function PerformanceOverview({
                   <div className="w-14 shrink-0">
                     <Sparkline values={series} />
                   </div>
-                  <GrowthBadge pct={pct} />
+                  <GrowthBadge pct={pct} priorSuffix={priorSuffix} />
                 </div>
               );
             })}
@@ -383,9 +474,10 @@ export function PerformanceOverview({
               className="hidden text-xs text-soft xl:block"
               data-testid="performance-collapsed-vs-prior"
             >
-              vs prior: {priorHintParts.join(" · ")}
+              {priorSuffix}: {priorHintParts.join(" · ")}
             </p>
           ) : null}
+          {granularityToggle}
           <button
             type="button"
             onClick={onToggle}
@@ -424,12 +516,9 @@ export function PerformanceOverview({
                 Collapse
               </button>
             ) : null}
+            {granularityToggle}
           </div>
-          <p className="mt-1 text-sm text-ink-secondary">
-            {multiPeriod
-              ? `${data.period_count} periods with generated statements`
-              : "Single period — upload prior trial balances to unlock trends"}
-          </p>
+          <p className="mt-1 text-sm text-ink-secondary">{periodCountLabel}</p>
         </div>
 
         {multiPeriod ? (
@@ -449,8 +538,7 @@ export function PerformanceOverview({
             >
               {periodOptions.map((period) => (
                 <option key={period.tb_id} value={period.tb_id}>
-                  {formatDate(period.period_end)}
-                  {period.tb_id === latestTbId ? " (current)" : ""}
+                  {bucketSelectLabel(period, period.tb_id === latestTbId)}
                 </option>
               ))}
             </select>
@@ -459,8 +547,8 @@ export function PerformanceOverview({
               data-testid="performance-period-hint"
             >
               {isCurrentPeriod
-                ? `Showing current period (${formatDate(selectedPeriod.period_end)}).`
-                : `Showing ${formatDate(selectedPeriod.period_end)}. Trend chart always shows full history.`}
+                ? `Showing ${bucketChartLabel(selectedPeriod)}.`
+                : `Showing ${bucketChartLabel(selectedPeriod)}. Trend chart always shows full history.`}
             </p>
           </div>
         ) : null}
@@ -494,7 +582,7 @@ export function PerformanceOverview({
                     ? "—"
                     : formatCurrency(value, currencyCode)}
                 </p>
-                <GrowthBadge pct={pct} />
+                <GrowthBadge pct={pct} priorSuffix={priorSuffix} />
               </div>
               <div className="mt-3 border-t border-line/70 pt-2">
                 <Sparkline values={series} />
@@ -513,13 +601,15 @@ export function PerformanceOverview({
               </h3>
               <p className="mt-1 text-xs text-soft">
                 {multiPeriod
-                  ? "Full history — click a point to view that period"
+                  ? activeGranularity === "monthly"
+                    ? "Full history — click a point to view that period"
+                    : "Aggregated history — click a point to view that bucket (growth vs prior bucket)"
                   : "Only the current period is available"}
               </p>
             </div>
             {multiPeriod ? (
               <p className="rounded-md bg-accent-muted px-2 py-1 text-xs font-medium text-accent">
-                Selected {shortPeriodLabel(selectedPeriod.period_end)}
+                Selected {bucketChartLabel(selectedPeriod)}
               </p>
             ) : null}
           </div>
