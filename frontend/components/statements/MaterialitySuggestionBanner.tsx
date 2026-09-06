@@ -1,10 +1,11 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
 import { formatCurrency } from "@/lib/currency";
-import type { MaterialitySuggestionResponse } from "@/types";
+import type { ICompany, MaterialitySuggestionResponse } from "@/types";
 
 export function MaterialitySuggestionBanner({
   tbId,
@@ -24,6 +25,15 @@ export function MaterialitySuggestionBanner({
         { getToken },
       ),
   });
+
+  const companyId = suggestionQuery.data?.company_id;
+  const companyQuery = useQuery({
+    queryKey: ["company", companyId],
+    enabled: Boolean(companyId),
+    queryFn: () =>
+      apiFetch<ICompany>(`/companies/${companyId}`, { getToken }),
+  });
+  const clientId = companyQuery.data?.client_id ?? null;
 
   const applyMutation = useMutation({
     mutationFn: async (suggestion: MaterialitySuggestionResponse) => {
@@ -49,8 +59,8 @@ export function MaterialitySuggestionBanner({
   });
 
   const dismissMutation = useMutation({
-    mutationFn: async (companyId: string) =>
-      apiFetch(`/companies/${companyId}/materiality-suggestion/dismiss`, {
+    mutationFn: async (dismissCompanyId: string) =>
+      apiFetch(`/companies/${dismissCompanyId}/materiality-suggestion/dismiss`, {
         method: "POST",
         getToken,
       }),
@@ -98,11 +108,6 @@ export function MaterialitySuggestionBanner({
                 : "Could not update materiality"}
             </p>
           ) : null}
-          <p className="mt-2 text-xs text-soft">
-            Prefer to set your own values? Use{" "}
-            <span className="font-medium text-ink">Edit materiality</span> next
-            to the Variance thresholds.
-          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -127,6 +132,15 @@ export function MaterialitySuggestionBanner({
           >
             Not now
           </button>
+          {clientId ? (
+            <Link
+              href={`/clients/${clientId}#materiality-${data.company_id}`}
+              className="rounded-md px-3 py-1.5 text-sm font-semibold text-accent underline-offset-2 hover:underline"
+              data-testid="materiality-suggestion-edit-link"
+            >
+              Edit manually
+            </Link>
+          ) : null}
         </div>
       </div>
     </div>
