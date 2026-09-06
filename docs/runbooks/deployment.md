@@ -197,15 +197,27 @@ After changing any `NEXT_PUBLIC_*` variable, trigger a new Vercel deployment so 
 ## Release verification (security changes)
 
 Railway deploys from **GitHub** (`infokastree-beep/kastree`), not the Cursor
-Cloud Agent `origin` remote. A commit pushed only to `origin` is **not** live in
-production even if Railway env vars change and trigger a redeploy.
+Cloud Agent `origin` remote. **Vercel does too.** A commit pushed only to
+`origin` is **not** live in production even if Railway/Vercel dashboards look
+healthy — neither platform saw the new SHA.
+
+**Default push (agents and humans):**
+
+```bash
+./scripts/push_production_remotes.sh
+# or, after a feature lands and you want CDN proof:
+./scripts/push_production_remotes.sh --verify-live
+```
+
+That pushes `origin` + `github`, runs `verify_remotes_in_sync.sh`, and
+optionally polls `www.kastree.ie` for `<meta name="kastree-git-sha">`.
 
 **After every security-relevant change**, run this checklist before claiming a
 fix is deployed:
 
 ```bash
-# 1. Push to GitHub (Railway's deploy source)
-git push github main
+# 1. Push to BOTH remotes (GitHub is Railway + Vercel deploy source)
+./scripts/push_production_remotes.sh
 
 # 2. Confirm origin and github point at the same commit
 ./scripts/verify_remotes_in_sync.sh
@@ -216,13 +228,14 @@ git push github main
 # 4. Wait for Vercel deploy, then confirm live frontend CDN chunk (example)
 ./scripts/verify_vercel_deploy_marker.sh is_platform_admin
 
-# Automated on every push to main (.github/workflows/verify-production-frontend.yml):
+# Automated on every push to GitHub main (.github/workflows/verify-production-frontend.yml):
 # polls www.kastree.ie for <meta name="kastree-git-sha"> matching the pushed SHA.
 # Optional repo secret VERCEL_DEPLOY_HOOK_URL triggers a Production redeploy first.
 # Manual equivalent:
 #   ./scripts/verify_production_frontend_sha.sh "$(git rev-parse HEAD)"
 
-# If Vercel production is stale (marker 404), trigger a redeploy:
+# If Vercel production is stale after github is in sync (marker 404 / wrong SHA),
+# trigger a redeploy:
 #   export VERCEL_DEPLOY_HOOK_URL='...'   # Vercel → Settings → Git → Deploy Hooks
 #   ./scripts/trigger_vercel_deploy.sh
 # Or: Vercel dashboard → Deployments → latest → Redeploy → clear build cache.
@@ -236,15 +249,16 @@ git push github main
 ```bash
 git fetch origin main github main
 git log github/main -1 --oneline   # must match the commit you intend to be live
+./scripts/verify_remotes_in_sync.sh
 ```
 
 If `origin/main` and `github/main` diverge, `verify_remotes_in_sync.sh` exits
-non-zero with the SHAs and tells you to `git push github main`.
+non-zero with the SHAs and tells you to run `./scripts/push_production_remotes.sh`.
 
 **Vercel** auto-deploys from the same `github/main` push. A green Vercel deploy is
 not sufficient on its own. Two checks:
 
-1. **Automated (every push to main):**
+1. **Automated (every push to GitHub main):**
    `.github/workflows/verify-production-frontend.yml` polls
    `https://www.kastree.ie` for `<meta name="kastree-git-sha">` and **fails the
    workflow** if it does not match `github.sha` within ~15 minutes. Set repo
@@ -254,10 +268,14 @@ not sufficient on its own. Two checks:
 2. **Marker smoke (optional):** `verify_vercel_deploy_marker.sh` for a specific
    string in a CDN chunk (e.g. `is_platform_admin`).
 
+**Twice this session (Admin nav, then materiality) production looked “stuck” on
+Vercel.** Both times GitHub was simply behind Cursor `origin`. Pushing to
+`github` fixed it in ~1 minute — do not treat that as a Vercel product outage.
+
 After any GitHub-side repo transfer/rename, confirm Vercel Settings → Git still
 points at `infokastree-beep/kastree` (it has silently lagged behind twice).
 
-See also: `docs/tracked-gaps.md` — Vercel Git source / admin exposure notes.
+See also: `docs/tracked-gaps.md` — Vercel Git source / dual-remote notes.
 
 ## Local / dev backend process
 

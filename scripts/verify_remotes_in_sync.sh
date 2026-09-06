@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # Fail if origin/main and github/main point at different commits.
 #
-# Railway deploys from GitHub (markdooling25-commits/kastree). Cloud Agent sessions
-# often push to origin (Cursor) first. Pushing only to origin leaves production on
-# stale code even when Railway env vars change and redeploy.
+# Railway + Vercel both auto-deploy from GitHub (infokastree-beep/kastree).
+# Cloud Agent sessions often push only to origin (Cursor git host). That leaves
+# production on a stale SHA even though Vercel/Railway auto-deploy is healthy —
+# the GitHub tip never moved. This caused two "stale CDN" incidents in one
+# session (Admin nav, then materiality / Delete company).
 #
-# Run after every security-relevant commit, before claiming a fix is live:
+# Prefer: ./scripts/push_production_remotes.sh
+# Or after a manual push:
 #   ./scripts/verify_remotes_in_sync.sh
 #   ./scripts/verify_remotes_in_sync.sh --require-commit f6cb675
 #
@@ -40,8 +43,8 @@ if ! git remote get-url origin >/dev/null 2>&1; then
 fi
 
 if ! git remote get-url github >/dev/null 2>&1; then
-  echo "ERROR: remote 'github' is not configured (Railway deploy source)" >&2
-  echo "Add: git remote add github git@github.com:markdooling25-commits/kastree.git" >&2
+  echo "ERROR: remote 'github' is not configured (Vercel + Railway deploy source)" >&2
+  echo "Add: git remote add github git@github.com:infokastree-beep/kastree.git" >&2
   exit 1
 fi
 
@@ -58,8 +61,9 @@ echo "github/main : $GITHUB_SHA $(git log -1 --format='%s' github/main)"
 if [[ "$ORIGIN_SHA" != "$GITHUB_SHA" ]]; then
   echo "" >&2
   echo "FAIL: origin/main and github/main are OUT OF SYNC." >&2
-  echo "Railway deploys from github — production may be running older code." >&2
-  echo "Fix: git push github main" >&2
+  echo "Vercel + Railway deploy from github — production may be on older code." >&2
+  echo "Fix: ./scripts/push_production_remotes.sh" >&2
+  echo "  or: git push github main" >&2
   exit 1
 fi
 

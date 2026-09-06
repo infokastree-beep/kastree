@@ -539,28 +539,45 @@ tonight did **not** get the new chunk onto the production CDN — worth investig
 fresh in a future session (possible Vercel-side caching, root-directory, or build
 configuration issue). **Do not keep forcing redeploys in the same session.**
 
-**Confirmed still stale (2026-09-06):** live `https://www.kastree.ie` meta
+**Confirmed still stale (2026-09-06, morning):** live `https://www.kastree.ie` meta
 `kastree-git-sha` = `b932f8e7e6c1be980a91516414e87d426ab3e92e` (**6 commits
-behind** `main` HEAD `35243f9`). That SHA predates:
+behind** then-HEAD). That SHA predates materiality settings + Delete company.
 
-- `8490cba` — `CompanyMaterialitySettings` on the client company card
-- `7a1c013` — Delete company on the same card
+**Root cause (confirmed 2026-09-06, evening — not flaky Vercel auto-deploy):**
+Cloud Agent pushes went to Cursor `origin` only. Vercel + Railway watch
+**GitHub** (`github` remote → `infokastree-beep/kastree`). `github/main` was
+still at `b932f8e` — identical to the live meta SHA — so Vercel correctly never
+rebuilt. Auto-deploy is reliable once GitHub moves; the failure mode is
+**dual-remote drift**.
 
-Live `ClientDetail` company card (what users actually see) is still
-name + currency + Upload TB + TB list only. Repo HEAD **does** render
-`<CompanyMaterialitySettings company={company} />` at line 164 inside
-`CompanyTrialBalances` — this is a **CDN/deploy lag**, not a ClientDetail
-regression. Live JS chunks contain **zero** hits for
-`company-materiality-settings` / `Save materiality` / `Delete company`.
+**Resolved 2026-09-06:** `git push github HEAD:main` advanced GitHub to
+`5299f2e`; Vercel Production rebuilt in ~1 minute; live meta
+`kastree-git-sha` = `5299f2eea1791a2dbf0f216cefb5f24696092334`. Live company
+cards now show **Materiality thresholds** + **Delete company** (verified in
+browser).
 
-**Longer-term deploy plumbing added:** `scripts/trigger_vercel_deploy.sh` (POST
-to `VERCEL_DEPLOY_HOOK_URL`) and `.github/workflows/vercel-deploy-hook.yml`
-(optional GitHub secret `VERCEL_DEPLOY_HOOK_URL`). Use these once a deploy hook
-is configured, then re-run `scripts/verify_security_deploy.sh` until the Vercel
-CDN step passes.
+**Permanent safeguards (already partially in place; completed this fix):**
 
-**Until the CDN updates:** treat as UI-only — unauthorized users who click Admin
-see a blocked API, not cross-tenant data.
+1. **Always push both remotes:** `./scripts/push_production_remotes.sh`
+   (optionally `--verify-live` to poll the meta tag).
+2. **`./scripts/verify_remotes_in_sync.sh`** — fails if `origin/main` ≠
+   `github/main` (updated to call out Vercel as well as Railway).
+3. **CI on every GitHub `main` push:**
+   `.github/workflows/verify-production-frontend.yml` polls
+   `www.kastree.ie` for `<meta name="kastree-git-sha">` matching `github.sha`
+   and **fails the workflow** if production stays stale (~15 min). Optional
+   secret `VERCEL_DEPLOY_HOOK_URL` can force a Production redeploy first.
+
+That CI check never fired during the lag because GitHub never received the
+commits — pushing to `github` is the missing link, not a new Vercel product
+bug.
+
+**Until agents habitually use `push_production_remotes.sh`:** any
+origin-only push will recreate this exact “Vercel silently behind” symptom.
+
+**Longer-term deploy plumbing:** `scripts/trigger_vercel_deploy.sh` (POST
+`VERCEL_DEPLOY_HOOK_URL`) remains useful when Git is connected but a build
+needs a kick. Prefer the dual-remote push + SHA guard as the default path.
 
 ## Production users table — placeholder Clerk emails
 
