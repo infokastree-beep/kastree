@@ -107,7 +107,7 @@ export function TbWorkspaceProvider({
         }),
       );
     }
-    const delay = tab ? 180 : 80;
+    const delay = tab ? 350 : 120;
     flashCiteAnchor(cite, delay);
 
     // Strip cite params so refresh does not re-flash; keep tab if present.
@@ -136,7 +136,7 @@ export function TbWorkspaceProvider({
   return (
     <TbWorkspaceContext.Provider value={value}>
       <nav
-        className="mb-6 flex flex-wrap gap-1 border-b border-line"
+        className="sticky top-0 z-[70] mb-6 flex flex-wrap gap-1 border-b border-line bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80"
         aria-label="Trial balance sections"
         data-testid="tb-workspace-switcher"
       >

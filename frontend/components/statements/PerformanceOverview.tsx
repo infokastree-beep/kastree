@@ -254,6 +254,7 @@ export function PerformanceOverview({
     return (
       <section
         className="rounded-md border border-line bg-surface-elevated px-4 py-3"
+        id="copilot-anchor-performance"
         data-testid="performance-overview-loading"
       >
         <div className="flex items-center justify-between gap-3">
@@ -268,6 +269,7 @@ export function PerformanceOverview({
     return (
       <section
         className="rounded-md border border-red-200 bg-red-50 px-4 py-3"
+        id="copilot-anchor-performance"
         data-testid="performance-overview-error"
       >
         <p className="text-sm font-semibold text-ink">Performance</p>

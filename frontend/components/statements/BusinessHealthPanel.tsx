@@ -70,6 +70,7 @@ export function BusinessHealthPanel({
     return (
       <div
         className="rounded-md border border-line bg-surface-elevated px-4 py-3"
+        id="copilot-anchor-health"
         data-testid="business-health-loading"
       >
         <div className="flex items-center justify-between gap-3">
@@ -84,6 +85,7 @@ export function BusinessHealthPanel({
     return (
       <div
         className="rounded-md border border-red-200 bg-red-50 px-4 py-3"
+        id="copilot-anchor-health"
         data-testid="business-health-error"
       >
         <p className="text-sm font-semibold text-ink">Business health</p>

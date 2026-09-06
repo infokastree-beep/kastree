@@ -21,15 +21,35 @@ export type CopilotNavigateTarget = {
   anchorId: string;
 };
 
-export function flashCiteAnchor(anchorId: string, delayMs = 0): void {
+function applyCiteFlash(el: HTMLElement): void {
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.classList.remove("copilot-cite-flash");
+  // Force reflow so re-clicking the same chip retriggers the flash.
+  void el.offsetWidth;
+  el.classList.add("copilot-cite-flash");
+}
+
+/**
+ * Scroll + highlight a cite anchor. Retries briefly so late-mounting
+ * Dashboard/Statements sections (async health/performance/variance) still flash.
+ */
+export function flashCiteAnchor(
+  anchorId: string,
+  delayMs = 0,
+  retryMs = 2500,
+): void {
   window.setTimeout(() => {
-    const el = document.getElementById(anchorId);
-    if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
-    el.classList.remove("copilot-cite-flash");
-    // Force reflow so re-clicking the same chip retriggers the flash.
-    void el.offsetWidth;
-    el.classList.add("copilot-cite-flash");
+    const started = Date.now();
+    const attempt = (): void => {
+      const el = document.getElementById(anchorId);
+      if (el) {
+        applyCiteFlash(el);
+        return;
+      }
+      if (Date.now() - started >= retryMs) return;
+      window.setTimeout(attempt, 100);
+    };
+    attempt();
   }, delayMs);
 }
 
