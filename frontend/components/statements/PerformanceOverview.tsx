@@ -396,14 +396,24 @@ export function PerformanceOverview({
     ) : null;
 
   const periodCountLabel = (() => {
-    if (!multiPeriod) {
-      return "Single period — upload prior trial balances to unlock trends";
-    }
     if (activeGranularity === "quarterly") {
-      return `${data.period_count} quarter${data.period_count === 1 ? "" : "s"} (aggregated from monthly statements)`;
+      const n = data.period_count;
+      const sources = data.periods.reduce(
+        (sum, p) => sum + (p.source_period_count ?? 1),
+        0,
+      );
+      return `${n} quarter${n === 1 ? "" : "s"} (from ${sources} monthly statement${sources === 1 ? "" : "s"})`;
     }
     if (activeGranularity === "yearly") {
-      return `${data.period_count} year${data.period_count === 1 ? "" : "s"} (aggregated from monthly statements)`;
+      const n = data.period_count;
+      const sources = data.periods.reduce(
+        (sum, p) => sum + (p.source_period_count ?? 1),
+        0,
+      );
+      return `${n} year${n === 1 ? "" : "s"} (from ${sources} monthly statement${sources === 1 ? "" : "s"})`;
+    }
+    if (!multiPeriod) {
+      return "Single period — upload prior trial balances to unlock trends";
     }
     return `${data.period_count} periods with generated statements`;
   })();
