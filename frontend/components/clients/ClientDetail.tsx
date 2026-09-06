@@ -9,7 +9,7 @@ import { CompanyMaterialitySettings } from "@/components/clients/CompanyMaterial
 import type { CompanyEntityFormValues } from "@/lib/company-form";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
-import { createCompanyEntity, deleteCompanyEntity } from "@/lib/companies";
+import { createCompanyEntity, deleteCompanyEntity, updateCompanyEntity } from "@/lib/companies";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import type {
   CompanyListResponse,
@@ -44,6 +44,7 @@ function CompanyTrialBalances({ company }: { company: ICompany }) {
   const queryClient = useQueryClient();
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [confirmDeleteCompany, setConfirmDeleteCompany] = useState(false);
+  const [editingCompany, setEditingCompany] = useState(false);
 
   const trialBalancesQuery = useQuery({
     queryKey: ["trial-balances", company.id],
@@ -81,7 +82,26 @@ function CompanyTrialBalances({ company }: { company: ICompany }) {
     },
   });
 
+  const editCompanyMutation = useMutation({
+    mutationFn: (values: CompanyEntityFormValues) =>
+      updateCompanyEntity(company.id, values, getToken),
+    onSuccess: () => {
+      setEditingCompany(false);
+      void queryClient.invalidateQueries({
+        queryKey: ["companies", company.client_id],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["companies"] });
+    },
+  });
+
   const trialBalances = trialBalancesQuery.data?.items ?? [];
+  const hasTrialBalances = trialBalances.length > 0;
+  const editError =
+    editCompanyMutation.error instanceof Error
+      ? editCompanyMutation.error.message
+      : editCompanyMutation.error
+        ? "Failed to save company"
+        : null;
 
   return (
     <div className="space-y-3 rounded border border-stone-200 bg-white p-4">
@@ -90,12 +110,15 @@ function CompanyTrialBalances({ company }: { company: ICompany }) {
           <h3 className="font-semibold text-stone-900">{company.name}</h3>
           <p className="mt-0.5 text-sm text-stone-600">
             <span className="font-mono text-xs">{company.functional_currency}</span>
+            {" · "}
+            <span className="capitalize">{company.company_type}</span>
             {company.company_number ? (
               <>
                 {" "}
                 · Co. no. {company.company_number}
               </>
             ) : null}
+            {company.industry ? <> · {company.industry}</> : null}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -105,7 +128,21 @@ function CompanyTrialBalances({ company }: { company: ICompany }) {
           >
             Upload trial balance
           </Link>
-          {!confirmDeleteCompany ? (
+          {!editingCompany && !confirmDeleteCompany ? (
+            <button
+              type="button"
+              onClick={() => {
+                setEditingCompany(true);
+                setConfirmDeleteCompany(false);
+                editCompanyMutation.reset();
+              }}
+              className="rounded border border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-800 hover:bg-stone-50"
+              data-testid="company-edit"
+            >
+              Edit company
+            </button>
+          ) : null}
+          {!confirmDeleteCompany && !editingCompany ? (
             <button
               type="button"
               onClick={() => setConfirmDeleteCompany(true)}
@@ -117,6 +154,38 @@ function CompanyTrialBalances({ company }: { company: ICompany }) {
           ) : null}
         </div>
       </div>
+
+      {editingCompany ? (
+        <div
+          className="rounded border border-stone-200 bg-stone-50 p-3"
+          data-testid="company-edit-form"
+        >
+          <CompanyEntityForm
+            key={company.id}
+            title="Edit company"
+            initialValues={{
+              name: company.name,
+              functionalCurrency: company.functional_currency,
+              companyNumber: company.company_number ?? "",
+              industry: company.industry ?? "",
+              companyType: company.company_type,
+            }}
+            currencyChangeWarning={
+              hasTrialBalances
+                ? "This company already has trial balances. Changing currency only updates the label on existing statements and exports — amounts are not converted. Future uploads will use the new currency."
+                : null
+            }
+            submitLabel="Save company"
+            isPending={editCompanyMutation.isPending}
+            errorMessage={editError}
+            onSubmit={(values) => editCompanyMutation.mutate(values)}
+            onCancel={() => {
+              setEditingCompany(false);
+              editCompanyMutation.reset();
+            }}
+          />
+        </div>
+      ) : null}
 
       {confirmDeleteCompany ? (
         <div

@@ -56,6 +56,29 @@ export async function updateCompanyMateriality(
   });
 }
 
+/**
+ * Update company identity / classification fields (name, currency, type, etc.).
+ * Does not touch materiality thresholds — use updateCompanyMateriality for those.
+ */
+export async function updateCompanyEntity(
+  companyId: string,
+  values: CompanyEntityFormValues,
+  getToken: TokenGetter,
+): Promise<ICompany> {
+  const update: CompanyUpdateRequest = {
+    name: values.name,
+    functional_currency: values.functionalCurrency,
+    company_type: values.companyType,
+    company_number: values.companyNumber.trim() ? values.companyNumber.trim() : null,
+    industry: values.industry.trim() ? values.industry.trim() : null,
+  };
+  return apiFetch<ICompany>(`/companies/${companyId}`, {
+    method: "PUT",
+    getToken,
+    body: JSON.stringify(update),
+  });
+}
+
 /** Soft-delete a company (archived_records snapshot; children not cascaded). */
 export async function deleteCompanyEntity(
   companyId: string,

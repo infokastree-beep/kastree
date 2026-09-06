@@ -27,22 +27,20 @@ indefinitely unless a future admin/cleanup tool surfaces or purges them.
 
 ## No company-details edit UI after create
 
-**Confirmed gap (2026-09-06).** After a company is created, there is **no UI** to
-edit its own details: name, functional currency, company number, industry, or
-`company_type` (trading/holding). Card actions are Upload TB, Delete company
-(once CDN catches up), and materiality thresholds only.
+**Resolved (UI shipped).** ClientDetail company cards now have **Edit company**
+(next to Upload / Delete). Prefills name, currency, company number, industry,
+and `company_type`; saves via `updateCompanyEntity` → `PUT /companies/{id}`.
 
-Backend already supports a full update: `PUT /companies/{id}` via
-`CompanyUpdateRequest` accepts `name`, `company_number`, `industry`,
-`company_type`, `functional_currency`, plus materiality fields. Frontend
-`updateCompanyMateriality` is the **only** caller of that PUT, and it sends
-materiality fields alone.
+**Currency behaviour (warn, don’t block):** upload stamps `trial_balances.currency`
+from the company at upload time, but statement/export display uses live
+`Company.functional_currency` via `_get_tb_functional_currency`. Changing
+currency therefore **relabels** existing statements/exports without converting
+amounts; future uploads store the new code. The edit form warns when the
+company already has TBs.
 
-**User impact:** a typo in the company name, wrong currency, or wrong
-trading/holding type (which drives the ISA 320 materiality benchmark) cannot be
-corrected without deleting and recreating the company (and losing/re-uploading
-TBs). Real gap — not blocked on API work; needs an Edit company surface on the
-client company card (or a company settings page).
+**company_type:** trading↔holding clears `materiality_suggestion_dismissed_at`
+(banner resurfaces) but does **not** overwrite applied materiality thresholds;
+future suggestions use PBT vs equity per type.
 
 ## Clerk webhook payload persistence
 

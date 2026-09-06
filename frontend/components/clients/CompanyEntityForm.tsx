@@ -5,14 +5,18 @@ import { FUNCTIONAL_CURRENCIES } from "@/lib/constants";
 import type { CompanyEntityFormValues } from "@/lib/company-form";
 
 export type { CompanyEntityFormValues } from "@/lib/company-form";
-export { DEFAULT_MATERIALITY_ABS, DEFAULT_MATERIALITY_PCT } from "@/lib/company-form";
+export { DEFAULT_MATERIALITY_PCT, DEFAULT_MATERIALITY_ABS } from "@/lib/company-form";
 
 type CompanyEntityFormProps = {
+  /** Prefill for edit mode; create mode leaves defaults. */
+  initialValues?: Partial<CompanyEntityFormValues>;
   initialName?: string;
   namePlaceholder?: string;
   title?: string;
   intro?: React.ReactNode;
   currencyHint?: React.ReactNode;
+  /** Shown under the currency field when the company already has trial balances. */
+  currencyChangeWarning?: string | null;
   submitLabel: string;
   isPending?: boolean;
   errorMessage?: string | null;
@@ -22,11 +26,13 @@ type CompanyEntityFormProps = {
 };
 
 export function CompanyEntityForm({
+  initialValues,
   initialName = "",
   namePlaceholder = "Acme Ltd",
   title,
   intro,
   currencyHint,
+  currencyChangeWarning = null,
   submitLabel,
   isPending = false,
   errorMessage = null,
@@ -34,11 +40,21 @@ export function CompanyEntityForm({
   onCancel,
   cancelLabel = "Cancel",
 }: CompanyEntityFormProps) {
-  const [name, setName] = useState(initialName);
-  const [functionalCurrency, setFunctionalCurrency] = useState("GBP");
-  const [companyNumber, setCompanyNumber] = useState("");
-  const [industry, setIndustry] = useState("");
-  const [companyType, setCompanyType] = useState<"trading" | "holding">("trading");
+  const [name, setName] = useState(initialValues?.name ?? initialName);
+  const [functionalCurrency, setFunctionalCurrency] = useState(
+    initialValues?.functionalCurrency ?? "GBP",
+  );
+  const [companyNumber, setCompanyNumber] = useState(
+    initialValues?.companyNumber ?? "",
+  );
+  const [industry, setIndustry] = useState(initialValues?.industry ?? "");
+  const [companyType, setCompanyType] = useState<"trading" | "holding">(
+    initialValues?.companyType ?? "trading",
+  );
+
+  const currencyChanged =
+    initialValues?.functionalCurrency != null &&
+    functionalCurrency !== initialValues.functionalCurrency;
 
   return (
     <form
@@ -69,6 +85,7 @@ export function CompanyEntityForm({
           value={name}
           onChange={(event) => setName(event.target.value)}
           placeholder={namePlaceholder}
+          data-testid="company-form-name"
         />
       </label>
 
@@ -80,6 +97,7 @@ export function CompanyEntityForm({
           className="w-full rounded border border-stone-300 bg-white px-3 py-2"
           value={functionalCurrency}
           onChange={(event) => setFunctionalCurrency(event.target.value)}
+          data-testid="company-form-currency"
         >
           {FUNCTIONAL_CURRENCIES.map((code) => (
             <option key={code} value={code}>
@@ -88,6 +106,15 @@ export function CompanyEntityForm({
           ))}
         </select>
       </label>
+
+      {currencyChanged && currencyChangeWarning ? (
+        <p
+          className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+          data-testid="company-currency-change-warning"
+        >
+          {currencyChangeWarning}
+        </p>
+      ) : null}
 
       <label className="block text-sm">
         <span className="mb-1 block text-stone-600">
@@ -99,6 +126,7 @@ export function CompanyEntityForm({
           value={companyNumber}
           onChange={(event) => setCompanyNumber(event.target.value)}
           placeholder="12345678"
+          data-testid="company-form-number"
         />
       </label>
 
@@ -110,14 +138,16 @@ export function CompanyEntityForm({
           onChange={(event) =>
             setCompanyType(event.target.value as "trading" | "holding")
           }
+          data-testid="company-form-type"
         >
           <option value="trading">Trading (profit-oriented)</option>
           <option value="holding">Holding (balance-sheet focused)</option>
         </select>
         <span className="mt-1 block text-xs text-stone-500">
-          Used for ISA 320-style materiality suggestions after statements are
-          generated. You can set materiality thresholds anytime on the company
-          card.
+          Drives ISA 320-style materiality suggestions after statements are
+          generated (trading → profit before tax; holding → equity). Changing
+          type resurfaces the suggestion banner; existing thresholds are not
+          overwritten.
         </span>
       </label>
 
@@ -131,6 +161,7 @@ export function CompanyEntityForm({
           value={industry}
           onChange={(event) => setIndustry(event.target.value)}
           placeholder="Professional services"
+          data-testid="company-form-industry"
         />
       </label>
 
@@ -145,6 +176,7 @@ export function CompanyEntityForm({
           type="submit"
           disabled={!name.trim() || isPending}
           className="rounded bg-stone-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+          data-testid="company-form-submit"
         >
           {isPending ? "Saving…" : submitLabel}
         </button>
