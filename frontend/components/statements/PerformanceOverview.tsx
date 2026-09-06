@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import {
   Area,
   AreaChart,
@@ -21,6 +22,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
 import { formatCurrency } from "@/lib/currency";
+import { dashboardPath } from "@/lib/copilot-navigation";
 import { formatDate } from "@/lib/utils";
 import type {
   PerformanceExpenseShare,
@@ -28,6 +30,7 @@ import type {
   PerformanceOverviewResponse,
   PerformancePeriod,
   PerformancePeriodMetrics,
+  TrialBalanceListResponse,
 } from "@/types";
 
 const ACCENT = "#0f5c4c";
@@ -263,6 +266,7 @@ export function PerformanceOverview({
   collapsible?: boolean;
 }) {
   const { getToken } = useAuth();
+  const router = useRouter();
   const [selectedTbId, setSelectedTbId] = useState<string>("");
   const [granularity, setGranularity] =
     useState<PerformanceGranularity>("monthly");
@@ -281,6 +285,45 @@ export function PerformanceOverview({
   const activeGranularity: PerformanceGranularity =
     previewData != null ? "monthly" : (data?.granularity ?? granularity);
   const priorSuffix = priorGrowthSuffix(activeGranularity);
+
+  // Navigation-only: full company TB list (same as Statements View period).
+  // Must NOT reuse as-of-filtered overview periods — that blocks forward nav.
+  const companyId = data?.company_id ?? null;
+  const periodNavQuery = useQuery({
+    queryKey: ["tb-period-nav", companyId],
+    enabled: Boolean(companyId) && previewData == null,
+    queryFn: () =>
+      apiFetch<TrialBalanceListResponse>(
+        `/trial-balances?company_id=${encodeURIComponent(companyId!)}&limit=100`,
+        { getToken },
+      ),
+  });
+
+  const navPeriodOptions = useMemo(() => {
+    const items = periodNavQuery.data?.items ?? [];
+    const navigable = items.filter(
+      (tb) =>
+        tb.id === tbId ||
+        tb.status === "complete" ||
+        tb.status === "validating" ||
+        tb.status === "generating" ||
+        tb.status === "analysing",
+    );
+    return [...navigable].sort((a, b) => {
+      if (a.period_end !== b.period_end) {
+        return a.period_end < b.period_end ? 1 : -1;
+      }
+      return a.id < b.id ? 1 : -1;
+    });
+  }, [periodNavQuery.data?.items, tbId]);
+  const companyLatestTbId = navPeriodOptions[0]?.id ?? null;
+  const showNavPeriodSelect =
+    previewData == null && navPeriodOptions.length > 1;
+
+  function onNavPeriodChange(nextTbId: string) {
+    if (!nextTbId || nextTbId === tbId) return;
+    router.push(dashboardPath(nextTbId));
+  }
 
   useEffect(() => {
     if (!data?.periods.length) return;
@@ -339,12 +382,10 @@ export function PerformanceOverview({
   const selectedPeriod: PerformancePeriod = data.periods[selectedIndex]!;
   const priorPeriod: PerformancePeriod | null =
     selectedIndex > 0 ? data.periods[selectedIndex - 1]! : null;
-  const latestTbId = data.periods[data.periods.length - 1]!.tb_id;
-  const isCurrentPeriod = selectedPeriod.tb_id === latestTbId;
+  // Latest within the as-of series (calculation scope) — not company-wide.
+  const seriesLatestTbId = data.periods[data.periods.length - 1]!.tb_id;
+  const isCurrentPeriod = selectedPeriod.tb_id === seriesLatestTbId;
   const multiPeriod = data.period_count > 1;
-
-  // Newest first — same convention as Variance "Compare against".
-  const periodOptions = [...data.periods].reverse();
 
   const trendRows: TrendRow[] = data.periods.map((period) => ({
     tbId: period.tb_id,
@@ -531,7 +572,7 @@ export function PerformanceOverview({
           <p className="mt-1 text-sm text-ink-secondary">{periodCountLabel}</p>
         </div>
 
-        {multiPeriod ? (
+        {showNavPeriodSelect ? (
           <div className="flex min-w-[16rem] flex-col gap-1.5">
             <label
               htmlFor="performance-period-tb"
@@ -542,13 +583,14 @@ export function PerformanceOverview({
             <select
               id="performance-period-tb"
               data-testid="performance-period-select"
-              value={selectedPeriod.tb_id}
-              onChange={(event) => setSelectedTbId(event.target.value)}
+              value={tbId}
+              onChange={(event) => onNavPeriodChange(event.target.value)}
               className="rounded-md border border-line bg-surface-elevated px-3 py-2 text-sm text-ink shadow-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
             >
-              {periodOptions.map((period) => (
-                <option key={period.tb_id} value={period.tb_id}>
-                  {bucketSelectLabel(period, period.tb_id === latestTbId)}
+              {navPeriodOptions.map((period) => (
+                <option key={period.id} value={period.id}>
+                  {formatDate(period.period_end)}
+                  {period.id === companyLatestTbId ? " (current)" : ""}
                 </option>
               ))}
             </select>
@@ -556,9 +598,11 @@ export function PerformanceOverview({
               className="text-xs text-soft"
               data-testid="performance-period-hint"
             >
-              {isCurrentPeriod
-                ? `Showing ${bucketChartLabel(selectedPeriod)}.`
-                : `Showing ${bucketChartLabel(selectedPeriod)}. Trend chart always shows full history.`}
+              Dashboard as of {formatDate(data.period_end)}. Charts and
+              aggregates use history through this date only
+              {activeGranularity !== "monthly"
+                ? ` (${activeGranularity} buckets).`
+                : "."}
             </p>
           </div>
         ) : null}
