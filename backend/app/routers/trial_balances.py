@@ -42,6 +42,7 @@ from app.services.statements import (
     build_statements,
     iter_nil_filtered_face_lines,
 )
+from app.services.comparative_statements import merge_comparative_face_lines
 from app.services.archival import archive_trial_balance_user_deleted
 from app.schemas.materiality import MaterialitySuggestionResponse
 from app.services.materiality import suggest_materiality
@@ -161,7 +162,8 @@ class StatementLineResponse(BaseModel):
     id: uuid.UUID
     line_item_code: str
     line_item_name: str
-    amount: str
+    amount: str | None
+    prior_amount: str | None = None
     is_subtotal: bool
     display_order: int
     source_account_ids: list[uuid.UUID] = Field(default_factory=list)
@@ -181,6 +183,8 @@ class StatementsResponse(BaseModel):
     tb_id: uuid.UUID
     company_id: uuid.UUID
     period_end: date
+    prior_tb_id: uuid.UUID | None = None
+    prior_period_end: date | None = None
     functional_currency: str
     statements: list[StatementBlockResponse]
 
@@ -191,6 +195,8 @@ class StatementsGenerateResponse(BaseModel):
     tb_id: uuid.UUID
     company_id: uuid.UUID
     period_end: date
+    prior_tb_id: uuid.UUID | None = None
+    prior_period_end: date | None = None
     status: str
     functional_currency: str
     statements: list[StatementBlockResponse]
@@ -906,6 +912,7 @@ async def generate_statements(
     tb_id: uuid.UUID,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    prior_tb_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> StatementsGenerateResponse:
     await aset_rls_org_id(session, auth.org_id)
     tb = await _get_owned_tb(session, tb_id=tb_id, org_id=auth.org_id)
@@ -940,13 +947,25 @@ async def generate_statements(
     tb.status = "complete"
     await session.flush()
 
+    prior = await _resolve_statements_prior_tb(
+        session, current=tb, prior_tb_id=prior_tb_id
+    )
+    prior_blocks = (
+        await _load_prior_statement_blocks(session, prior.id) if prior is not None else None
+    )
+    comparative = _attach_comparative_amounts(payload, prior_blocks)
+
     return StatementsGenerateResponse(
         tb_id=tb.id,
         company_id=tb.company_id,
         period_end=tb.period_end,
+        prior_tb_id=prior.id if prior is not None and prior_blocks is not None else None,
+        prior_period_end=(
+            prior.period_end if prior is not None and prior_blocks is not None else None
+        ),
         status="complete",
         functional_currency=await _get_tb_functional_currency(session, tb=tb),
-        statements=payload,
+        statements=comparative,
     )
 
 
@@ -1008,6 +1027,7 @@ async def _generate_and_persist_statements(
                         line_item_code=sli.line_item_code,
                         line_item_name=sli.line_item_name,
                         amount=str(sli.amount),
+                        prior_amount=None,
                         is_subtotal=sli.is_subtotal,
                         display_order=sli.display_order,
                         source_account_ids=list(sli.source_account_ids or []),
@@ -1075,6 +1095,7 @@ async def get_statements(
     tb_id: uuid.UUID,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    prior_tb_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> StatementsResponse:
     await aset_rls_org_id(session, auth.org_id)
     tb = await _get_owned_tb(session, tb_id=tb_id, org_id=auth.org_id)
@@ -1106,6 +1127,7 @@ async def get_statements(
                         line_item_code=line.line_item_code,
                         line_item_name=line.line_item_name,
                         amount=str(line.amount),
+                        prior_amount=None,
                         is_subtotal=line.is_subtotal,
                         display_order=index,
                         source_account_ids=list(line.source_account_ids or []),
@@ -1114,13 +1136,142 @@ async def get_statements(
                 ],
             )
         )
+
+    prior = await _resolve_statements_prior_tb(
+        session, current=tb, prior_tb_id=prior_tb_id
+    )
+    prior_blocks = (
+        await _load_prior_statement_blocks(session, prior.id) if prior is not None else None
+    )
+    comparative = _attach_comparative_amounts(blocks, prior_blocks)
+
     return StatementsResponse(
         tb_id=tb.id,
         company_id=tb.company_id,
         period_end=tb.period_end,
+        prior_tb_id=prior.id if prior is not None and prior_blocks is not None else None,
+        prior_period_end=(
+            prior.period_end if prior is not None and prior_blocks is not None else None
+        ),
         functional_currency=await _get_tb_functional_currency(session, tb=tb),
-        statements=blocks,
+        statements=comparative,
     )
+
+
+async def _resolve_statements_prior_tb(
+    session: AsyncSession,
+    *,
+    current: TrialBalance,
+    prior_tb_id: uuid.UUID | None,
+) -> TrialBalance | None:
+    """Same prior resolution as variance: explicit id or auto most-recent earlier period."""
+    if prior_tb_id is not None:
+        if prior_tb_id == current.id:
+            raise HTTPException(
+                status_code=400, detail="prior_tb_id must differ from current TB"
+            )
+        result = await session.execute(
+            select(TrialBalance).where(
+                TrialBalance.id == prior_tb_id,
+                TrialBalance.company_id == current.company_id,
+                TrialBalance.is_deleted.is_(False),
+            )
+        )
+        prior = result.scalar_one_or_none()
+        if prior is None:
+            raise HTTPException(status_code=404, detail="Prior trial balance not found")
+        return prior
+    return await find_prior_trial_balance(
+        session,
+        company_id=current.company_id,
+        before_period_end=current.period_end,
+    )
+
+
+async def _load_prior_statement_blocks(
+    session: AsyncSession,
+    prior_tb_id: uuid.UUID,
+) -> dict[str, StatementBlockResponse] | None:
+    """Load nil-filtered SOPL/SOFP/SOCIE for prior TB. None if any type missing."""
+    result = await session.execute(
+        select(FinancialStatement)
+        .where(FinancialStatement.tb_id == prior_tb_id)
+        .order_by(FinancialStatement.statement_type)
+    )
+    statements = list(result.scalars().all())
+    by_type = {fs.statement_type: fs for fs in statements}
+    required = ("SOPL", "SOFP", "SOCIE")
+    if any(stmt_type not in by_type for stmt_type in required):
+        return None
+
+    blocks: dict[str, StatementBlockResponse] = {}
+    for stmt_type in required:
+        fs = by_type[stmt_type]
+        lines_result = await session.execute(
+            select(StatementLineItem)
+            .where(StatementLineItem.statement_id == fs.id)
+            .order_by(StatementLineItem.display_order)
+        )
+        lines = iter_nil_filtered_face_lines(list(lines_result.scalars().all()))
+        blocks[stmt_type] = StatementBlockResponse(
+            statement_type=stmt_type,  # type: ignore[arg-type]
+            generated_at=fs.generated_at,
+            lines=[
+                StatementLineResponse(
+                    id=line.id,
+                    line_item_code=line.line_item_code,
+                    line_item_name=line.line_item_name,
+                    amount=str(line.amount),
+                    prior_amount=None,
+                    is_subtotal=line.is_subtotal,
+                    display_order=index,
+                    source_account_ids=list(line.source_account_ids or []),
+                )
+                for index, line in enumerate(lines, start=1)
+            ],
+        )
+    return blocks
+
+
+def _attach_comparative_amounts(
+    current_blocks: list[StatementBlockResponse],
+    prior_blocks: dict[str, StatementBlockResponse] | None,
+) -> list[StatementBlockResponse]:
+    """Merge prior face amounts onto current blocks when prior statements exist."""
+    if prior_blocks is None:
+        return current_blocks
+
+    merged_blocks: list[StatementBlockResponse] = []
+    for block in current_blocks:
+        prior_block = prior_blocks.get(block.statement_type)
+        if prior_block is None:
+            merged_blocks.append(block)
+            continue
+        merged_lines = merge_comparative_face_lines(
+            block.statement_type,
+            block.lines,
+            prior_block.lines,
+        )
+        merged_blocks.append(
+            StatementBlockResponse(
+                statement_type=block.statement_type,
+                generated_at=block.generated_at,
+                lines=[
+                    StatementLineResponse(
+                        id=line.id,
+                        line_item_code=line.line_item_code,
+                        line_item_name=line.line_item_name,
+                        amount=line.amount,
+                        prior_amount=line.prior_amount,
+                        is_subtotal=line.is_subtotal,
+                        display_order=line.display_order,
+                        source_account_ids=line.source_account_ids,
+                    )
+                    for line in merged_lines
+                ],
+            )
+        )
+    return merged_blocks
 
 
 @router.get(

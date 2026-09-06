@@ -157,7 +157,10 @@ export interface StatementLine {
   id: string;
   line_item_code: string;
   line_item_name: string;
-  amount: string;
+  /** Current-period face amount; null when the line exists only on the prior side. */
+  amount: string | null;
+  /** Prior-period face amount; null when missing on prior (em dash) or no prior TB. */
+  prior_amount?: string | null;
   is_subtotal: boolean;
   display_order: number;
   source_account_ids: string[];
@@ -173,6 +176,8 @@ export interface StatementsResponse {
   tb_id: string;
   company_id: string;
   period_end: string;
+  prior_tb_id?: string | null;
+  prior_period_end?: string | null;
   functional_currency: string;
   statements: StatementBlock[];
 }

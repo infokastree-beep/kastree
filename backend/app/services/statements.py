@@ -234,6 +234,50 @@ EQUITY_COMPONENT_LINES: tuple[str, ...] = (
 )
 SOFP_EQUITY_TOTAL_LINES: frozenset[str] = frozenset(EQUITY_COMPONENT_LINES)
 
+# Canonical face order for comparative merge (must match builder display order).
+SOPL_FACE_ORDER: tuple[str, ...] = (
+    "revenue",
+    "cost_of_sales",
+    "gross_profit",
+    "operating_expenses",
+    "depreciation",
+    "amortisation",
+    "operating_profit",
+    "interest_income",
+    "interest_expense",
+    "profit_before_tax",
+    "tax",
+    "net_profit",
+)
+SOFP_FACE_ORDER: tuple[str, ...] = (
+    *SOFP_NON_CURRENT_ASSET_ORDER,
+    "non_current_assets",
+    *SOFP_CURRENT_ASSET_ORDER,
+    "current_assets",
+    "total_assets",
+    *SOFP_NON_CURRENT_LIABILITY_ORDER,
+    "non_current_liabilities",
+    *SOFP_CURRENT_LIABILITY_ORDER,
+    "current_liabilities",
+    "total_liabilities",
+    *EQUITY_COMPONENT_LINES,
+    "dividends",
+    "total_equity",
+)
+SOCIE_FACE_ORDER: tuple[str, ...] = (
+    "retained_earnings_opening",
+    "profit_for_period",
+    "dividends",
+    "retained_earnings_closing",
+    "share_capital",
+    "total_equity_closing",
+)
+STATEMENT_FACE_ORDER: dict[str, tuple[str, ...]] = {
+    "SOPL": SOPL_FACE_ORDER,
+    "SOFP": SOFP_FACE_ORDER,
+    "SOCIE": SOCIE_FACE_ORDER,
+}
+
 
 def compute_total_equity(amounts_by_line: Mapping[str, Decimal]) -> Decimal:
     """Sum every equity component line from :data:`EQUITY_COMPONENT_LINES`.

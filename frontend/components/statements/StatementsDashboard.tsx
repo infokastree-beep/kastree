@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
 import { formatCurrency, formatCurrencyCode } from "@/lib/currency";
 import { DISCLAIMER_TEXT } from "@/lib/constants";
+import { formatDate } from "@/lib/utils";
 import type { StatementBlock, StatementLine, StatementsResponse } from "@/types";
 import { ExportButton } from "./ExportButton";
 import { MaterialitySuggestionBanner } from "./MaterialitySuggestionBanner";
@@ -49,11 +50,33 @@ function sectionIndexes(lines: StatementLine[]): number[] {
 function StatementTable({
   block,
   currencyCode,
+  periodEnd,
+  priorPeriodEnd,
 }: {
   block: StatementBlock;
   currencyCode: string;
+  periodEnd: string;
+  priorPeriodEnd?: string | null;
 }) {
   const sections = sectionIndexes(block.lines);
+  const comparative = Boolean(priorPeriodEnd);
+
+  function renderAmount(value: string | null | undefined): {
+    text: string;
+    isNegative: boolean;
+    isEmpty: boolean;
+  } {
+    if (value == null || value === "") {
+      return { text: "—", isNegative: false, isEmpty: true };
+    }
+    const numericAmount = Number.parseFloat(value);
+    const isNegative = Number.isFinite(numericAmount) && numericAmount < 0;
+    return {
+      text: formatCurrency(value, currencyCode),
+      isNegative,
+      isEmpty: false,
+    };
+  }
 
   return (
     <div className="overflow-x-auto rounded-md border border-line bg-surface-elevated">
@@ -61,14 +84,22 @@ function StatementTable({
         <thead className="border-b border-line bg-accent-muted/50 text-xs uppercase tracking-[0.12em] text-soft">
           <tr>
             <th className="px-4 py-3 font-semibold">Line item</th>
-            <th className="px-4 py-3 text-right font-semibold">Amount</th>
+            <th className="px-4 py-3 text-right font-semibold">
+              {formatDate(periodEnd)}
+            </th>
+            {comparative ? (
+              <th className="px-4 py-3 text-right font-semibold">
+                {formatDate(priorPeriodEnd!)}
+              </th>
+            ) : null}
           </tr>
         </thead>
         <tbody>
           {block.lines.map((line, index) => {
-            const numericAmount = Number.parseFloat(line.amount);
-            const isNegative =
-              Number.isFinite(numericAmount) && numericAmount < 0;
+            const current = renderAmount(line.amount);
+            const prior = comparative
+              ? renderAmount(line.prior_amount)
+              : null;
             const grandTotal = line.is_subtotal && isGrandTotal(line);
             const section = sections[index] ?? 0;
             const sectionShade =
@@ -100,7 +131,11 @@ function StatementTable({
                 : "font-normal text-ink";
 
             return (
-              <tr key={line.id} className={rowClass}>
+              <tr
+                key={line.id}
+                className={rowClass}
+                data-line-code={line.line_item_code}
+              >
                 <td
                   className={`py-2.5 ${nameWeight} ${
                     line.is_subtotal ? "pl-4 pr-4" : "pl-10 pr-4 sm:pl-12"
@@ -110,11 +145,30 @@ function StatementTable({
                 </td>
                 <td
                   className={`px-4 py-2.5 text-right tabular-nums ${amountWeight} ${
-                    isNegative ? "text-red-800" : ""
+                    current.isEmpty
+                      ? "text-soft"
+                      : current.isNegative
+                        ? "text-red-800"
+                        : ""
                   }`}
+                  data-testid={`stmt-amount-current-${line.line_item_code}`}
                 >
-                  {formatCurrency(line.amount, currencyCode)}
+                  {current.text}
                 </td>
+                {prior ? (
+                  <td
+                    className={`px-4 py-2.5 text-right tabular-nums ${amountWeight} ${
+                      prior.isEmpty
+                        ? "text-soft"
+                        : prior.isNegative
+                          ? "text-red-800"
+                          : ""
+                    }`}
+                    data-testid={`stmt-amount-prior-${line.line_item_code}`}
+                  >
+                    {prior.text}
+                  </td>
+                ) : null}
               </tr>
             );
           })}
@@ -356,7 +410,12 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
             {tab === "Risk" ? <RiskFlagsPanel tbId={tbId} /> : null}
             {isStatementTab ? (
               block ? (
-                <StatementTable block={block} currencyCode={currencyCode} />
+                <StatementTable
+                  block={block}
+                  currencyCode={currencyCode}
+                  periodEnd={statementsData.period_end}
+                  priorPeriodEnd={statementsData.prior_period_end}
+                />
               ) : (
                 <p className="text-sm text-soft">No {tab} lines returned.</p>
               )
