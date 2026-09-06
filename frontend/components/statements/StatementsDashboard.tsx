@@ -11,10 +11,10 @@ import { DISCLAIMER_TEXT } from "@/lib/constants";
 import { formatDate } from "@/lib/utils";
 import { statementsPath, parseStatementsTab } from "@/lib/copilot-navigation";
 import type {
-  PerformanceOverviewResponse,
   StatementBlock,
   StatementLine,
   StatementsResponse,
+  TrialBalanceListResponse,
 } from "@/types";
 import { ExportButton } from "./ExportButton";
 import { MaterialitySuggestionBanner } from "./MaterialitySuggestionBanner";
@@ -225,23 +225,6 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
     },
   });
 
-  const periodsQuery = useQuery({
-    queryKey: ["tb-performance-overview", tbId],
-    queryFn: async () => {
-      try {
-        return await apiFetch<PerformanceOverviewResponse>(
-          `/trial-balances/${tbId}/performance-overview`,
-          { getToken },
-        );
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 404) {
-          return null;
-        }
-        throw err;
-      }
-    },
-  });
-
   const generateMutation = useMutation({
     mutationFn: () =>
       apiFetch<StatementsResponse>(`/trial-balances/${tbId}/statements`, {
@@ -258,6 +241,9 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
       void queryClient.invalidateQueries({
         queryKey: ["tb-performance-overview", tbId],
       });
+      void queryClient.invalidateQueries({
+        queryKey: ["tb-period-nav"],
+      });
     },
   });
 
@@ -268,13 +254,41 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
     ? statementsData?.statements.find((s) => s.statement_type === tab)
     : undefined;
 
+  // Full company period list for View period navigation (not as-of-filtered
+  // performance history). Filtering to ≤ current period is correct for prior
+  // comparison / chart "as of", but reused here it creates a forward dead-end.
+  const companyId = statementsData?.company_id ?? null;
+  const periodNavQuery = useQuery({
+    queryKey: ["tb-period-nav", companyId],
+    enabled: Boolean(companyId),
+    queryFn: () =>
+      apiFetch<TrialBalanceListResponse>(
+        `/trial-balances?company_id=${encodeURIComponent(companyId!)}&limit=100`,
+        { getToken },
+      ),
+  });
+
   const periodOptions = useMemo(() => {
-    const periods = periodsQuery.data?.periods ?? [];
-    // Newest first — same convention as Dashboard Performance "View period".
-    return [...periods].reverse();
-  }, [periodsQuery.data?.periods]);
+    const items = periodNavQuery.data?.items ?? [];
+    // Statements-ready statuses (same routing family as client TB links).
+    const navigable = items.filter(
+      (tb) =>
+        tb.id === tbId ||
+        tb.status === "complete" ||
+        tb.status === "validating" ||
+        tb.status === "generating" ||
+        tb.status === "analysing",
+    );
+    return [...navigable].sort((a, b) => {
+      if (a.period_end !== b.period_end) {
+        return a.period_end < b.period_end ? 1 : -1;
+      }
+      return a.id < b.id ? 1 : -1;
+    });
+  }, [periodNavQuery.data?.items, tbId]);
   const multiPeriod = periodOptions.length > 1;
-  const latestTbId = periodOptions[0]?.tb_id;
+  // Company-wide newest — not "newest among as-of-filtered priors".
+  const latestTbId = periodOptions[0]?.id ?? null;
 
   function onPeriodChange(nextTbId: string) {
     if (!nextTbId || nextTbId === tbId) return;
@@ -323,9 +337,9 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
                 className="rounded-md border border-line bg-surface-elevated px-3 py-2 text-sm text-ink shadow-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
               >
                 {periodOptions.map((period) => (
-                  <option key={period.tb_id} value={period.tb_id}>
+                  <option key={period.id} value={period.id}>
                     {formatDate(period.period_end)}
-                    {period.tb_id === latestTbId ? " (current)" : ""}
+                    {period.id === latestTbId ? " (current)" : ""}
                   </option>
                 ))}
               </select>
