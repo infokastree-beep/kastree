@@ -287,11 +287,19 @@ standard accounting-software framing (akin to citing GAAP/IFRS/FRS by name);
 it is **not** treated as an open product question or a reason to strip the
 reference pending legal review.
 
-**One remaining legal item (not blocking copy):** when formal legal / ToS
-review happens, ask counsel specifically whether nominative use of
-“ISA 320” / “ISA 320-style” (and any ISA® / IAASB branding polish) is
-acceptable with this disclaimer — confirm risk posture, do **not** rewrite or
-remove the settled wording unless counsel advises a change.
+**One remaining legal item (not urgent; not blocking copy):** if/when formal
+legal review is sought, include these specific questions:
+
+1. Is nominative use of “ISA 320” / “ISA 320-style” in a SaaS
+   materiality-suggestion UI acceptable with the current disclaimer
+   (“not an audit determination”)?
+2. Any trademark considerations around ISA® / IAASB branding?
+3. Does the current disclaimer + product ToS + internal-review-only
+   positioning sufficiently protect against being “held out as audit tooling”?
+
+Current copy is reasonable and **unchanged pending this** — not evidence of a
+problem. Do **not** rewrite or remove the settled wording unless counsel
+advises a change.
 
 **Monthly cadence (confirmed 2026-09-03):** variance auto-detect and
 month-over-month arithmetic already work with monthly `period_end` dates
