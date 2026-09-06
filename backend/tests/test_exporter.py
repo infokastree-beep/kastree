@@ -19,6 +19,7 @@ from app.services.exporter import (
     WATERMARK_TEXT,
     BuiltExport,
     ExportBranding,
+    ExportFaceLine,
     ExportPackage,
     build_csv,
     build_excel,
@@ -48,6 +49,25 @@ class _ExportRow:
 
 
 def _line(
+    code: str,
+    name: str,
+    amount: str,
+    *,
+    display_order: int,
+    is_subtotal: bool = False,
+    prior_amount: str | None = None,
+) -> ExportFaceLine:
+    return ExportFaceLine(
+        line_item_code=code,
+        line_item_name=name,
+        amount=Decimal(amount),
+        is_subtotal=is_subtotal,
+        display_order=display_order,
+        prior_amount=Decimal(prior_amount) if prior_amount is not None else None,
+    )
+
+
+def _record_line(
     code: str,
     name: str,
     amount: str,
@@ -150,13 +170,18 @@ def test_exports_keep_thousands_separators_after_nil_face_filter() -> None:
     from app.services.statements import filter_nil_face_lines
 
     raw = [
-        _line("revenue", "Revenue", "30000.00", display_order=1),
-        _line("investments", "Investments", "0.00", display_order=2),  # nil leaf
-        _line("gross_profit", "Gross profit", "30000.00", display_order=3, is_subtotal=True),
+        _record_line("revenue", "Revenue", "30000.00", display_order=1),
+        _record_line("investments", "Investments", "0.00", display_order=2),  # nil leaf
+        _record_line(
+            "gross_profit", "Gross profit", "30000.00", display_order=3, is_subtotal=True
+        ),
     ]
     filtered = filter_nil_face_lines(raw)
     assert [line.line_item_code for line in filtered] == ["revenue", "gross_profit"]
 
+    from app.services.exporter import face_lines_from_records
+
+    face = face_lines_from_records(filtered)
     for currency, expected in (
         ("GBP", "£30,000.00"),
         ("EUR", "€30,000.00"),
@@ -170,9 +195,9 @@ def test_exports_keep_thousands_separators_after_nil_face_filter() -> None:
             functional_currency=currency,
         )
         package = ExportPackage(
-            sopl=filtered,
-            sofp=filtered,
-            socie=filtered,
+            sopl=face,
+            sofp=face,
+            socie=face,
             variance=None,
             risk_flags=[],
             mappings=[],
@@ -608,3 +633,138 @@ def test_empty_business_health_omitted_from_exports() -> None:
     assert workbook.sheetnames[0] == "SOPL"
     assert "Business Health" not in workbook.sheetnames
 
+
+
+def test_comparative_period_columns_on_excel_pdf_and_csv() -> None:
+    """S1 comparative face: dated columns, em dash for missing side, both periods."""
+    branding = ExportBranding(
+        company_name="Berkshire",
+        client_name="Berkshire Group",
+        period_end=date(2026, 8, 2),
+        prior_period_end=date(2026, 7, 8),
+        generated_at=datetime(2026, 8, 3, 12, 0, tzinfo=timezone.utc),
+        functional_currency="EUR",
+        organisation_name="Practice",
+    )
+    package = ExportPackage(
+        sopl=[
+            _line("revenue", "Revenue", "45000.00", display_order=1, prior_amount="816600.00"),
+            ExportFaceLine(
+                line_item_code="amortisation",
+                line_item_name="Amortisation",
+                amount=None,
+                is_subtotal=False,
+                display_order=2,
+                prior_amount=Decimal("6100.00"),
+            ),
+            _line(
+                "net_profit",
+                "Net profit",
+                "2000.00",
+                display_order=3,
+                is_subtotal=True,
+                prior_amount="-232400.00",
+            ),
+        ],
+        sofp=[
+            _line(
+                "property_plant_equipment",
+                "Property, plant and equipment",
+                "16000.00",
+                display_order=1,
+                prior_amount="316300.00",
+            ),
+            ExportFaceLine(
+                line_item_code="intangible_assets",
+                line_item_name="Intangible assets",
+                amount=None,
+                is_subtotal=False,
+                display_order=2,
+                prior_amount=Decimal("33800.00"),
+            ),
+            _line(
+                "non_current_assets",
+                "Non-current assets",
+                "16000.00",
+                display_order=3,
+                is_subtotal=True,
+                prior_amount="362100.00",
+            ),
+        ],
+        socie=[
+            _line(
+                "retained_earnings_opening",
+                "Retained earnings (opening)",
+                "8400.00",
+                display_order=1,
+                prior_amount="437000.00",
+            ),
+            _line(
+                "profit_for_period",
+                "Profit for the period",
+                "2000.00",
+                display_order=2,
+                prior_amount="-232400.00",
+            ),
+            _line(
+                "retained_earnings_closing",
+                "Retained earnings (closing)",
+                "10400.00",
+                display_order=3,
+                is_subtotal=True,
+                prior_amount="204600.00",
+            ),
+        ],
+        variance=None,
+        risk_flags=[],
+        mappings=[],
+    )
+
+    # Excel
+    workbook = load_workbook(
+        io.BytesIO(build_excel(branding, package, organisation=_Org("pro")))
+    )
+    sopl = workbook["SOPL"]
+    header = None
+    for row in sopl.iter_rows(min_row=1, max_col=4):
+        if row[0].value == "Line item":
+            header = [c.value for c in row]
+            break
+    assert header is not None
+    assert header[1] == "02 Aug 2026"
+    assert header[2] == "08 Jul 2026"
+    amort = None
+    for row in sopl.iter_rows(min_row=1, max_col=4):
+        if row[0].value == "Amortisation":
+            amort = (row[1].value, row[2].value)
+            break
+    assert amort == ("—", Decimal("6100.00"))
+
+    sofp = workbook["SOFP"]
+    nc = None
+    for row in sofp.iter_rows(min_row=1, max_col=4):
+        if row[0].value == "Non-current assets":
+            nc = (row[1].value, row[2].value)
+            break
+    assert nc == (Decimal("16000.00"), Decimal("362100.00"))
+
+    socie = workbook["SOCIE"]
+    opening = None
+    for row in socie.iter_rows(min_row=1, max_col=4):
+        if row[0].value == "Retained earnings (opening)":
+            opening = (row[1].value, row[2].value)
+            break
+    assert opening == (Decimal("8400.00"), Decimal("437000.00"))
+
+    # PDF HTML
+    html = render_pdf_html(branding, package, organisation=_Org("pro"))
+    assert "02 Aug 2026" in html and "08 Jul 2026" in html
+    assert "€45,000.00" in html and "€816,600.00" in html
+    assert "€8,400.00" in html and "€437,000.00" in html
+    assert "—" in html
+
+    # CSV
+    csv_text = build_csv(branding, package).decode("utf-8")
+    assert "prior_amount" in csv_text
+    assert "Prior period end: 2026-07-08" in csv_text
+    assert "—" in csv_text

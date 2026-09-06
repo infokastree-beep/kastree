@@ -27,11 +27,14 @@ from app.schemas.variance import VarianceAnalysisResult
 from app.services.commentary import generate_business_health_summary
 from app.services.exporter import (
     ExportBranding,
+    ExportFaceLine,
     ExportPackage,
     ObjectStorage,
     S3ObjectStorage,
+    face_lines_from_records,
     run_export_job,
 )
+from app.services.comparative_statements import merge_comparative_face_lines
 from app.services.mapper import MappingResult
 from app.services.statements import StatementLineItemRecord, filter_nil_face_lines
 
@@ -130,6 +133,26 @@ def _load_export_context(
     if not sopl and not sofp and not socie:
         raise ValueError("Statements must be generated before export")
 
+    prior = _find_prior_trial_balance(
+        session,
+        company_id=tb.company_id,
+        before_period_end=tb.period_end,
+    )
+    prior_period_end = None
+    export_sopl = face_lines_from_records(sopl)
+    export_sofp = face_lines_from_records(sofp)
+    export_socie = face_lines_from_records(socie)
+    if prior is not None:
+        prior_sopl = _load_statement_lines(session, prior.id, "SOPL")
+        prior_sofp = _load_statement_lines(session, prior.id, "SOFP")
+        prior_socie = _load_statement_lines(session, prior.id, "SOCIE")
+        # Same gate as the dashboard API: all three faces must exist on prior.
+        if prior_sopl and prior_sofp and prior_socie:
+            prior_period_end = prior.period_end
+            export_sopl = _comparative_export_lines("SOPL", sopl, prior_sopl)
+            export_sofp = _comparative_export_lines("SOFP", sofp, prior_sofp)
+            export_socie = _comparative_export_lines("SOCIE", socie, prior_socie)
+
     variance = _load_variance(session, tb.id)
     risk_flags = _load_risk_flags(session, tb.id) if include_risk else []
     mappings = _load_mappings(session, tb.company_id) if include_mapping else []
@@ -144,20 +167,89 @@ def _load_export_context(
         company_name=company.name,
         client_name=client.name,
         period_end=tb.period_end,
+        prior_period_end=prior_period_end,
         generated_at=datetime.now(timezone.utc),
         functional_currency=company.functional_currency,
         organisation_name=organisation.name,
     )
     package = ExportPackage(
-        sopl=sopl,
-        sofp=sofp,
-        socie=socie,
+        sopl=export_sopl,
+        sofp=export_sofp,
+        socie=export_socie,
         variance=variance,
         risk_flags=risk_flags,
         mappings=mappings,
         business_health=business_health,
     )
     return branding, package, organisation
+
+
+def _comparative_export_lines(
+    statement_type: str,
+    current: list[StatementLineItemRecord],
+    prior: list[StatementLineItemRecord],
+) -> list[ExportFaceLine]:
+    """S1 comparative face for export — mirrors dashboard merge + em dashes."""
+
+    def _adapt(lines: list[StatementLineItemRecord]) -> list[_ExportFaceAdapter]:
+        return [
+            _ExportFaceAdapter(
+                id=uuid.uuid4(),
+                line_item_code=line.line_item_code,
+                line_item_name=line.line_item_name,
+                amount=line.amount,
+                is_subtotal=line.is_subtotal,
+                source_account_ids=list(line.source_account_ids),
+            )
+            for line in lines
+        ]
+
+    merged = merge_comparative_face_lines(
+        statement_type, _adapt(current), _adapt(prior)
+    )
+    return [
+        ExportFaceLine(
+            line_item_code=line.line_item_code,
+            line_item_name=line.line_item_name,
+            amount=Decimal(line.amount) if line.amount is not None else None,
+            prior_amount=(
+                Decimal(line.prior_amount) if line.prior_amount is not None else None
+            ),
+            is_subtotal=line.is_subtotal,
+            display_order=line.display_order,
+        )
+        for line in merged
+    ]
+
+
+class _ExportFaceAdapter:
+    """Thin adapter so export merge can reuse comparative_statements."""
+
+    __slots__ = (
+        "id",
+        "line_item_code",
+        "line_item_name",
+        "amount",
+        "is_subtotal",
+        "source_account_ids",
+    )
+
+    def __init__(
+        self,
+        *,
+        id: uuid.UUID,
+        line_item_code: str,
+        line_item_name: str,
+        amount: Decimal,
+        is_subtotal: bool,
+        source_account_ids: list[uuid.UUID],
+    ) -> None:
+        self.id = id
+        self.line_item_code = line_item_code
+        self.line_item_name = line_item_name
+        self.amount = amount
+        self.is_subtotal = is_subtotal
+        self.source_account_ids = source_account_ids
 
 
 def _load_statement_lines(

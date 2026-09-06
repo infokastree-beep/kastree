@@ -121,21 +121,59 @@ class ExportBranding:
     generated_at: datetime
     functional_currency: str = "GBP"
     organisation_name: str = ""
+    # When set, statement sheets/PDF use current + prior face columns (S1).
+    prior_period_end: date | None = None
+
+
+@dataclass(frozen=True)
+class ExportFaceLine:
+    """One statement face row for export — optional amounts become em dashes."""
+
+    line_item_code: str
+    line_item_name: str
+    amount: Decimal | None
+    is_subtotal: bool
+    display_order: int
+    prior_amount: Decimal | None = None
 
 
 @dataclass(frozen=True)
 class ExportPackage:
     """Already-built statement / variance / risk / mapping / health outputs."""
 
-    sopl: Sequence[StatementLineItemRecord]
-    sofp: Sequence[StatementLineItemRecord]
-    socie: Sequence[StatementLineItemRecord]
+    sopl: Sequence[ExportFaceLine]
+    sofp: Sequence[ExportFaceLine]
+    socie: Sequence[ExportFaceLine]
     variance: VarianceAnalysisResult | None
     risk_flags: Sequence[RiskFlagRecord]
     mappings: Sequence[MappingResult]
     # Optional AI Business Health text (summary + bullets). Omitted from TOC/body
     # when None or empty — never fails the export. Charts stay dashboard-only.
     business_health: BusinessHealthResult | None = None
+
+
+def _format_face_amount(amount: Decimal | None, currency_code: str) -> str:
+    """Format a face cell; missing side → em dash (matches on-screen comparative)."""
+    if amount is None:
+        return "—"
+    return format_currency(amount, currency_code)
+
+
+def face_lines_from_records(
+    lines: Sequence[StatementLineItemRecord],
+) -> list[ExportFaceLine]:
+    """Current-only face (no prior column)."""
+    return [
+        ExportFaceLine(
+            line_item_code=line.line_item_code,
+            line_item_name=line.line_item_name,
+            amount=line.amount,
+            is_subtotal=line.is_subtotal,
+            display_order=line.display_order,
+            prior_amount=None,
+        )
+        for line in lines
+    ]
 
 
 @dataclass(frozen=True)
@@ -234,27 +272,34 @@ def build_csv(branding: ExportBranding, package: ExportPackage) -> bytes:
     """Flat CSV of all statement line items with metadata + disclaimer header."""
     buffer = io.StringIO()
     buffer.write(f"# DISCLAIMER: {DISCLAIMER_TEXT}\n")
+    prior_meta = (
+        f"| Prior period end: {branding.prior_period_end.isoformat()} "
+        if branding.prior_period_end is not None
+        else ""
+    )
     buffer.write(
         f"# Company: {branding.company_name} | Client group: {branding.client_name} "
         f"| Period end: {branding.period_end.isoformat()} "
+        f"{prior_meta}"
         f"| Generated: {branding.generated_at.date().isoformat()} "
         f"| Currency: {branding.functional_currency.upper()}\n"
     )
     writer = csv.writer(buffer)
-    writer.writerow(
-        [
-            "statement_type",
-            "line_item_code",
-            "line_item_name",
-            "amount",
-            "is_subtotal",
-            "display_order",
-            "company_name",
-            "client_name",
-            "period_end",
-            "generated_at",
-        ]
-    )
+    headers = [
+        "statement_type",
+        "line_item_code",
+        "line_item_name",
+        "amount",
+        "prior_amount",
+        "is_subtotal",
+        "display_order",
+        "company_name",
+        "client_name",
+        "period_end",
+        "prior_period_end",
+        "generated_at",
+    ]
+    writer.writerow(headers)
     for statement_type, lines in (
         ("SOPL", package.sopl),
         ("SOFP", package.sofp),
@@ -266,12 +311,20 @@ def build_csv(branding: ExportBranding, package: ExportPackage) -> bytes:
                     statement_type,
                     line.line_item_code,
                     line.line_item_name,
-                    format_currency(line.amount, branding.functional_currency),
+                    _format_face_amount(line.amount, branding.functional_currency),
+                    _format_face_amount(
+                        line.prior_amount, branding.functional_currency
+                    )
+                    if branding.prior_period_end is not None
+                    else "",
                     "true" if line.is_subtotal else "false",
                     line.display_order,
                     branding.company_name,
                     branding.client_name,
                     branding.period_end.isoformat(),
+                    branding.prior_period_end.isoformat()
+                    if branding.prior_period_end is not None
+                    else "",
                     branding.generated_at.isoformat(),
                 ]
             )
@@ -573,24 +626,45 @@ def _pdf_pack_sections(
         )
 
     currency_label = branding.functional_currency.upper()
+    comparative = branding.prior_period_end is not None
+    current_header = branding.period_end.strftime("%d %b %Y")
+    prior_header = (
+        branding.prior_period_end.strftime("%d %b %Y") if comparative else "Amount"
+    )
     for title, lines in (
         ("Statement of Profit or Loss", package.sopl),
         ("Statement of Financial Position", package.sofp),
         ("Statement of Changes in Equity", package.socie),
     ):
-        rows = "".join(
-            "<tr>"
-            f"<td>{_html_escape(line.line_item_name)}</td>"
-            f"<td class='num'>{_html_escape(format_currency(line.amount, branding.functional_currency))}</td>"
-            "</tr>"
-            for line in lines
-        )
+        if comparative:
+            head = (
+                f"<thead><tr><th>Line</th>"
+                f"<th>{_html_escape(current_header)}</th>"
+                f"<th>{_html_escape(prior_header)}</th></tr></thead>"
+            )
+            rows = "".join(
+                "<tr>"
+                f"<td>{_html_escape(line.line_item_name)}</td>"
+                f"<td class='num'>{_html_escape(_format_face_amount(line.amount, branding.functional_currency))}</td>"
+                f"<td class='num'>{_html_escape(_format_face_amount(line.prior_amount, branding.functional_currency))}</td>"
+                "</tr>"
+                for line in lines
+            )
+        else:
+            head = "<thead><tr><th>Line</th><th>Amount</th></tr></thead>"
+            rows = "".join(
+                "<tr>"
+                f"<td>{_html_escape(line.line_item_name)}</td>"
+                f"<td class='num'>{_html_escape(_format_face_amount(line.amount, branding.functional_currency))}</td>"
+                "</tr>"
+                for line in lines
+            )
         sections.append(
             (
                 title,
                 f"<section><h2>{_html_escape(title)}</h2>"
                 f"<p>All amounts in <strong>{currency_label}</strong></p>"
-                f"<table><thead><tr><th>Line</th><th>Amount</th></tr></thead>"
+                f"<table>{head}"
                 f"<tbody>{rows}</tbody></table></section>",
             )
         )
@@ -756,28 +830,51 @@ def _write_statement_sheet(
     workbook: Workbook,
     title: str,
     branding: ExportBranding,
-    lines: Sequence[StatementLineItemRecord],
+    lines: Sequence[ExportFaceLine],
     watermark: bool,
 ) -> None:
     ws = workbook.create_sheet(title)
     row = _write_branding(ws, branding, watermark=watermark)
     row = _write_disclaimer(ws, row)
-    ws.cell(row, 1, "Line item").font = _HEADER_FONT
-    ws.cell(row, 1).fill = _HEADER_FILL
-    ws.cell(row, 2, "Amount").font = _HEADER_FONT
-    ws.cell(row, 2).fill = _HEADER_FILL
-    ws.cell(row, 3, "Subtotal").font = _HEADER_FONT
-    ws.cell(row, 3).fill = _HEADER_FILL
+    comparative = branding.prior_period_end is not None
+    current_header = branding.period_end.strftime("%d %b %Y")
+    prior_header = (
+        branding.prior_period_end.strftime("%d %b %Y")
+        if branding.prior_period_end is not None
+        else "Amount"
+    )
+
+    headers = ["Line item", current_header if comparative else "Amount"]
+    if comparative:
+        headers.append(prior_header)
+    headers.append("Subtotal")
+
+    for col, header in enumerate(headers, start=1):
+        cell = ws.cell(row, col, header)
+        cell.font = _HEADER_FONT
+        cell.fill = _HEADER_FILL
     row += 1
     money_format = _money_number_format(branding.functional_currency)
     for line in lines:
         ws.cell(row, 1, line.line_item_name)
-        amount_cell = ws.cell(row, 2, _excel_money(line.amount))
-        amount_cell.number_format = money_format
-        amount_cell.alignment = Alignment(horizontal="right")
-        ws.cell(row, 3, "Yes" if line.is_subtotal else "No")
+        if line.amount is None:
+            ws.cell(row, 2, "—").alignment = Alignment(horizontal="right")
+        else:
+            amount_cell = ws.cell(row, 2, _excel_money(line.amount))
+            amount_cell.number_format = money_format
+            amount_cell.alignment = Alignment(horizontal="right")
+        col = 3
+        if comparative:
+            if line.prior_amount is None:
+                ws.cell(row, col, "—").alignment = Alignment(horizontal="right")
+            else:
+                prior_cell = ws.cell(row, col, _excel_money(line.prior_amount))
+                prior_cell.number_format = money_format
+                prior_cell.alignment = Alignment(horizontal="right")
+            col += 1
+        ws.cell(row, col, "Yes" if line.is_subtotal else "No")
         row += 1
-    _autosize(ws, 3)
+    _autosize(ws, len(headers))
 
 
 def _write_variance_sheet(

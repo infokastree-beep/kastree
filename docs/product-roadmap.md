@@ -110,13 +110,30 @@ historical period statement derived from trial-balance / statement data.
 Forecasting is a bigger, later undertaking (assumptions, drivers, model
 governance, and liability surface differ from “rebuild last month’s CFS”).
 
-### Dual-period upload for first-time variance onboarding
+### Dual-period upload for first-time comparative onboarding
 
-**Distinct from** the Variance tab’s prior-period selector (which lets companies
-that already have multiple uploaded periods choose which prior to compare
-against). This is about **first-time setup**: allow uploading the current and
-prior period trial balances **together in one flow**, so a new company with no
-upload history can get variance analysis without two separate upload trips.
+**Product 1 future consideration — first-time company setup only.**
+
+Allow a **new company’s first-ever setup** to optionally include a second,
+prior-period trial balance upload so comparative statements (SOPL / SOFP /
+SOCIE prior columns) — and first-run variance — can show immediately, rather
+than waiting for a second real-world period to naturally occur.
+
+This is deliberately scoped to **first-time setup only**, not a general
+dual-upload option. That is the only case where no prior-period data exists
+anywhere in the system yet. For every subsequent upload, a real,
+already-correct prior period already exists automatically via
+`find_prior_trial_balance`, so re-uploading it again would be redundant and
+would introduce a real risk: two potentially different sources of the same
+period’s data that could silently disagree, undermining the
+single-source-of-truth design that makes the current upload flow robust.
+
+This does **not** change or add to the core, ongoing single-file-per-period
+upload flow, which remains the correct, safer default for every upload after
+a company’s first.
+
+**Distinct from** the Variance tab’s prior-period selector (and from the
+Statements “View period” selector), which operate on periods already stored.
 Capture only — do not build until Close variance UX is settled and demand is
 clear.
 
