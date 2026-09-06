@@ -25,6 +25,25 @@ Soft-deleting a **client** or **company** archives that row only. Child records
 behaviour** — same rule at both levels — not a bug. Those stranded rows exist
 indefinitely unless a future admin/cleanup tool surfaces or purges them.
 
+## No company-details edit UI after create
+
+**Confirmed gap (2026-09-06).** After a company is created, there is **no UI** to
+edit its own details: name, functional currency, company number, industry, or
+`company_type` (trading/holding). Card actions are Upload TB, Delete company
+(once CDN catches up), and materiality thresholds only.
+
+Backend already supports a full update: `PUT /companies/{id}` via
+`CompanyUpdateRequest` accepts `name`, `company_number`, `industry`,
+`company_type`, `functional_currency`, plus materiality fields. Frontend
+`updateCompanyMateriality` is the **only** caller of that PUT, and it sends
+materiality fields alone.
+
+**User impact:** a typo in the company name, wrong currency, or wrong
+trading/holding type (which drives the ISA 320 materiality benchmark) cannot be
+corrected without deleting and recreating the company (and losing/re-uploading
+TBs). Real gap — not blocked on API work; needs an Edit company surface on the
+client company card (or a company settings page).
+
 ## Clerk webhook payload persistence
 
 Clerk webhook payloads are **not persisted** anywhere (unlike Stripe's
@@ -519,6 +538,20 @@ confirms the marker is **404 / absent** on `https://www.kastree.ie` as of
 tonight did **not** get the new chunk onto the production CDN — worth investigating
 fresh in a future session (possible Vercel-side caching, root-directory, or build
 configuration issue). **Do not keep forcing redeploys in the same session.**
+
+**Confirmed still stale (2026-09-06):** live `https://www.kastree.ie` meta
+`kastree-git-sha` = `b932f8e7e6c1be980a91516414e87d426ab3e92e` (**6 commits
+behind** `main` HEAD `35243f9`). That SHA predates:
+
+- `8490cba` — `CompanyMaterialitySettings` on the client company card
+- `7a1c013` — Delete company on the same card
+
+Live `ClientDetail` company card (what users actually see) is still
+name + currency + Upload TB + TB list only. Repo HEAD **does** render
+`<CompanyMaterialitySettings company={company} />` at line 164 inside
+`CompanyTrialBalances` — this is a **CDN/deploy lag**, not a ClientDetail
+regression. Live JS chunks contain **zero** hits for
+`company-materiality-settings` / `Save materiality` / `Delete company`.
 
 **Longer-term deploy plumbing added:** `scripts/trigger_vercel_deploy.sh` (POST
 to `VERCEL_DEPLOY_HOOK_URL`) and `.github/workflows/vercel-deploy-hook.yml`
