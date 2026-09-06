@@ -23,6 +23,8 @@ export default function PerformancePreviewPage() {
           tbId={data.tb_id}
           currencyCode={data.functional_currency}
           previewData={data}
+          expanded
+          onToggle={() => undefined}
         />
       </div>
     </main>

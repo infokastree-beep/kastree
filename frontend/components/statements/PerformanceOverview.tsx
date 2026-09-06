@@ -206,10 +206,15 @@ export function PerformanceOverview({
   tbId,
   currencyCode,
   previewData,
+  expanded,
+  onToggle,
 }: {
   tbId: string;
   currencyCode: string;
   previewData?: PerformanceOverviewResponse;
+  /** Controlled expand state from the statements page (default collapsed). */
+  expanded: boolean;
+  onToggle: () => void;
 }) {
   const { getToken } = useAuth();
   const [selectedTbId, setSelectedTbId] = useState<string>("");
@@ -245,13 +250,13 @@ export function PerformanceOverview({
   if (previewData == null && overviewQuery.isLoading) {
     return (
       <section
-        className="rounded-md border border-line bg-surface-elevated p-5"
+        className="rounded-md border border-line bg-surface-elevated px-4 py-3"
         data-testid="performance-overview-loading"
       >
-        <h2 className="font-display text-base font-semibold text-ink">
-          Performance overview
-        </h2>
-        <p className="mt-2 text-sm text-soft">Loading period history…</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold text-ink">Performance</p>
+          <p className="text-sm text-soft">Loading period history…</p>
+        </div>
       </section>
     );
   }
@@ -259,13 +264,11 @@ export function PerformanceOverview({
   if (previewData == null && overviewQuery.error) {
     return (
       <section
-        className="rounded-md border border-red-200 bg-red-50 p-5"
+        className="rounded-md border border-red-200 bg-red-50 px-4 py-3"
         data-testid="performance-overview-error"
       >
-        <h2 className="font-display text-base font-semibold text-ink">
-          Performance overview
-        </h2>
-        <p className="mt-2 text-sm text-red-800">
+        <p className="text-sm font-semibold text-ink">Performance</p>
+        <p className="mt-1 text-sm text-red-800">
           {overviewQuery.error instanceof Error
             ? overviewQuery.error.message
             : "Could not load performance overview"}
@@ -309,16 +312,112 @@ export function PerformanceOverview({
     code: item.code,
   }));
 
+  if (!expanded) {
+    const priorHintParts: string[] = [];
+    for (const card of KPI_CARDS) {
+      const value = toNumber(selectedPeriod.metrics[card.key]);
+      const priorValue = priorPeriod
+        ? toNumber(priorPeriod.metrics[card.key])
+        : null;
+      const pct = growthPct(value, priorValue);
+      const label = formatGrowthPct(pct);
+      if (label && (card.key === "revenue" || card.key === "net_profit")) {
+        priorHintParts.push(`${card.label} ${label}`);
+      }
+    }
+    return (
+      <section
+        className="rounded-md border border-line bg-surface-elevated px-4 py-3"
+        id="copilot-anchor-performance"
+        data-testid="performance-overview"
+        data-expanded="false"
+      >
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="shrink-0 text-sm font-semibold text-ink">Performance</p>
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2">
+            {KPI_CARDS.map((card) => {
+              const series = data.periods.map((p) =>
+                toNumber(p.metrics[card.key]),
+              );
+              const value = toNumber(selectedPeriod.metrics[card.key]);
+              const priorValue = priorPeriod
+                ? toNumber(priorPeriod.metrics[card.key])
+                : null;
+              const pct = growthPct(value, priorValue);
+              return (
+                <div
+                  key={card.key}
+                  id={`copilot-anchor-performance-${card.key}`}
+                  className="flex min-w-[7.5rem] items-center gap-2"
+                  data-testid={`performance-kpi-${card.key}`}
+                >
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-soft">
+                      {card.label}
+                    </p>
+                    <p
+                      className={`truncate text-sm font-semibold tabular-nums ${
+                        value != null && value < 0 ? "text-red-800" : "text-ink"
+                      }`}
+                    >
+                      {value == null
+                        ? "—"
+                        : formatCurrency(value, currencyCode)}
+                    </p>
+                  </div>
+                  <div className="w-14 shrink-0">
+                    <Sparkline values={series} />
+                  </div>
+                  <GrowthBadge pct={pct} />
+                </div>
+              );
+            })}
+          </div>
+          {priorHintParts.length > 0 ? (
+            <p
+              className="hidden text-xs text-soft xl:block"
+              data-testid="performance-collapsed-vs-prior"
+            >
+              vs prior: {priorHintParts.join(" · ")}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            onClick={onToggle}
+            className="shrink-0 rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
+            data-testid="performance-expand"
+            aria-expanded={false}
+          >
+            Expand
+          </button>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section
       className="space-y-5 rounded-md border border-line bg-surface-elevated p-5 sm:p-6"
+      id="copilot-anchor-performance"
       data-testid="performance-overview"
+      data-expanded="true"
     >
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h2 className="font-display text-base font-semibold text-ink">
-            Performance overview
-          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="font-display text-base font-semibold text-ink">
+              Performance overview
+            </h2>
+            <button
+              type="button"
+              onClick={onToggle}
+              className="rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
+              data-testid="performance-collapse"
+              aria-expanded={true}
+            >
+              Collapse
+            </button>
+          </div>
           <p className="mt-1 text-sm text-ink-secondary">
             {multiPeriod
               ? `${data.period_count} periods with generated statements`

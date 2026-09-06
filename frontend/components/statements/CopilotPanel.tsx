@@ -24,6 +24,8 @@ import type { CopilotAskResponse, CopilotCitation } from "@/types";
 export type CopilotNavigateTarget = {
   tab?: "Variance" | "Risk";
   anchorId: string;
+  /** Auto-expand the matching context strip on the statements page. */
+  contextStrip?: "health" | "performance";
 };
 
 type CopilotPanelProps = {
@@ -81,6 +83,16 @@ function citationTab(
   }
   if (citation.source === "risk") {
     return "Risk";
+  }
+  return undefined;
+}
+
+function citationContextStrip(
+  citation: CopilotCitation,
+): CopilotNavigateTarget["contextStrip"] | undefined {
+  if (citation.source === "health") return "health";
+  if (citation.source === "performance" || citation.source === "expense_mix") {
+    return "performance";
   }
   return undefined;
 }
@@ -233,6 +245,7 @@ export function CopilotPanel({
       onNavigateCitation({
         tab: citationTab(citation),
         anchorId,
+        contextStrip: citationContextStrip(citation),
       });
     },
     [onNavigateCitation],

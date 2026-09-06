@@ -129,6 +129,8 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>("SOPL");
   const [copilotOpen, setCopilotOpen] = useState(false);
+  const [healthExpanded, setHealthExpanded] = useState(false);
+  const [performanceExpanded, setPerformanceExpanded] = useState(false);
 
   const statementsQuery = useQuery({
     queryKey: ["tb-statements", tbId],
@@ -175,16 +177,61 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
     : undefined;
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="font-display text-heading-lg text-ink">Statements</h1>
-        <p className="mt-2 text-sm text-ink-secondary">
-          Review SOPL, SOFP, SOCIE, variance, and risk flags for this trial
-          balance.
-        </p>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="font-display text-heading-lg text-ink">Statements</h1>
+          <p className="mt-1 text-sm text-ink-secondary">
+            {statementsData ? (
+              <>
+                Period ending{" "}
+                <span className="font-medium text-ink">
+                  {statementsData.period_end}
+                </span>
+                {" · "}
+                <span className="font-mono font-medium text-ink">
+                  {formatCurrencyCode(currencyCode)}
+                </span>
+              </>
+            ) : (
+              "Review SOPL, SOFP, SOCIE, variance, and risk flags for this trial balance."
+            )}
+          </p>
+        </div>
+        {statementsData ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCopilotOpen(true)}
+              className="flex items-center gap-1.5 rounded-md border border-line bg-surface-elevated px-3 py-1.5 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
+              data-testid="copilot-ask-button"
+            >
+              Ask
+            </button>
+            <ExportButton tbId={tbId} />
+            <button
+              type="button"
+              disabled={generateMutation.isPending}
+              onClick={() => generateMutation.mutate()}
+              className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+            >
+              {generateMutation.isPending
+                ? "Regenerating…"
+                : "Regenerate Statements"}
+            </button>
+          </div>
+        ) : null}
       </div>
 
-      <p className="rounded-md border border-amber-200/80 bg-amber-50/90 px-4 py-3 text-sm text-amber-950">
+      {generateMutation.error && statementsData ? (
+        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {generateMutation.error instanceof Error
+            ? generateMutation.error.message
+            : "Regenerate failed"}
+        </p>
+      ) : null}
+
+      <p className="rounded-md border border-amber-200/80 bg-amber-50/90 px-3 py-2 text-xs text-amber-950 sm:text-sm">
         <span className="font-semibold">Disclaimer: </span>
         {DISCLAIMER_TEXT}
       </p>
@@ -247,80 +294,76 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
             tbId={tbId}
             currencyCode={currencyCode}
           />
-          <PerformanceOverview tbId={tbId} currencyCode={currencyCode} />
-          <BusinessHealthPanel tbId={tbId} />
 
-          {isStatementTab ? (
-            <p className="text-sm text-ink-secondary">
-              All amounts in{" "}
-              <span className="font-mono font-medium text-ink">
-                {formatCurrencyCode(currencyCode)}
-              </span>
-            </p>
-          ) : null}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap gap-1 border-b border-line">
-              {ALL_TABS.map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  onClick={() => setTab(name)}
-                  className={`px-3 py-2.5 text-sm font-semibold transition-colors ${
-                    tab === name
-                      ? "border-b-2 border-accent text-accent"
-                      : "text-soft hover:text-ink"
-                  }`}
-                >
-                  {name}
-                </button>
-              ))}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setCopilotOpen(true)}
-                className="flex items-center gap-1.5 rounded-md border border-line bg-surface-elevated px-3 py-1.5 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
-                data-testid="copilot-ask-button"
-              >
-                Ask
-              </button>
-              <ExportButton tbId={tbId} />
-              {generateMutation.error ? (
-                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-                  {generateMutation.error instanceof Error
-                    ? generateMutation.error.message
-                    : "Regenerate failed"}
-                </p>
-              ) : null}
-              <button
-                type="button"
-                disabled={generateMutation.isPending}
-                onClick={() => generateMutation.mutate()}
-                className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
-              >
-                {generateMutation.isPending
-                  ? "Regenerating…"
-                  : "Regenerate Statements"}
-              </button>
-            </div>
-          </div>
-
-          {tab === "Variance" ? (
-            <VariancePanel
+          <div
+            className="space-y-2"
+            data-testid="context-strips"
+          >
+            <BusinessHealthPanel
+              tbId={tbId}
+              expanded={healthExpanded}
+              onToggle={() => setHealthExpanded((v) => !v)}
+            />
+            <PerformanceOverview
               tbId={tbId}
               currencyCode={currencyCode}
-              companyId={statementsData.company_id}
-              periodEnd={statementsData.period_end}
+              expanded={performanceExpanded}
+              onToggle={() => setPerformanceExpanded((v) => !v)}
             />
-          ) : null}
-          {tab === "Risk" ? <RiskFlagsPanel tbId={tbId} /> : null}
-          {isStatementTab ? (
-            block ? (
-              <StatementTable block={block} currencyCode={currencyCode} />
-            ) : (
-              <p className="text-sm text-soft">No {tab} lines returned.</p>
-            )
-          ) : null}
+          </div>
+
+          <div
+            className="space-y-4"
+            data-testid="statements-primary-workspace"
+          >
+            {isStatementTab ? (
+              <p className="text-sm text-ink-secondary">
+                All amounts in{" "}
+                <span className="font-mono font-medium text-ink">
+                  {formatCurrencyCode(currencyCode)}
+                </span>
+              </p>
+            ) : null}
+
+            <div
+              className="sticky top-0 z-20 -mx-1 border-b border-line bg-surface/95 px-1 backdrop-blur supports-[backdrop-filter]:bg-surface/80"
+              data-testid="statements-tab-bar"
+            >
+              <div className="flex flex-wrap gap-1">
+                {ALL_TABS.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => setTab(name)}
+                    className={`px-3 py-2.5 text-sm font-semibold transition-colors ${
+                      tab === name
+                        ? "border-b-2 border-accent text-accent"
+                        : "text-soft hover:text-ink"
+                    }`}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {tab === "Variance" ? (
+              <VariancePanel
+                tbId={tbId}
+                currencyCode={currencyCode}
+                companyId={statementsData.company_id}
+                periodEnd={statementsData.period_end}
+              />
+            ) : null}
+            {tab === "Risk" ? <RiskFlagsPanel tbId={tbId} /> : null}
+            {isStatementTab ? (
+              block ? (
+                <StatementTable block={block} currencyCode={currencyCode} />
+              ) : (
+                <p className="text-sm text-soft">No {tab} lines returned.</p>
+              )
+            ) : null}
+          </div>
         </>
       ) : null}
 
@@ -329,9 +372,17 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
         open={copilotOpen}
         onClose={() => setCopilotOpen(false)}
         onNavigateCitation={(target: CopilotNavigateTarget) => {
+          if (target.contextStrip === "health") {
+            setHealthExpanded(true);
+          }
+          if (target.contextStrip === "performance") {
+            setPerformanceExpanded(true);
+          }
           if (target.tab) {
             setTab(target.tab);
           }
+          const delay =
+            target.contextStrip || target.tab ? 120 : 0;
           window.setTimeout(() => {
             const el = document.getElementById(target.anchorId);
             if (!el) return;
@@ -340,9 +391,10 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
             // Force reflow so re-clicking the same chip retriggers the flash.
             void el.offsetWidth;
             el.classList.add("copilot-cite-flash");
-          }, target.tab ? 120 : 0);
+          }, delay);
         }}
       />
     </div>
   );
+
 }
