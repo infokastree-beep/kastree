@@ -1,4 +1,4 @@
-"""In-memory per-client rate limiting for unauthenticated public endpoints.
+"""In-memory rate limiting for public endpoints and Copilot.
 
 Process-local only (no Redis). Sufficient for a single-instance MVP; multi-instance
 deploys get per-pod limits, which is still better than no limit.
@@ -34,22 +34,35 @@ def enforce_rate_limit(
     window: timedelta,
 ) -> None:
     """Raise HTTP 429 when ``key_prefix:client_ip`` exceeds ``max_requests`` in ``window``."""
+    enforce_rate_limit_key(
+        key=f"{key_prefix}:{client_ip(request)}",
+        max_requests=max_requests,
+        window=window,
+    )
+
+
+def enforce_rate_limit_key(
+    *,
+    key: str,
+    max_requests: int,
+    window: timedelta,
+) -> None:
+    """Raise HTTP 429 when ``key`` exceeds ``max_requests`` in ``window``."""
     if max_requests <= 0:
         return
 
-    client_key = f"{key_prefix}:{client_ip(request)}"
     now = datetime.now(timezone.utc)
     cutoff = now - window
 
     with _lock:
-        recent = [ts for ts in _hits[client_key] if ts > cutoff]
+        recent = [ts for ts in _hits[key] if ts > cutoff]
         if len(recent) >= max_requests:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Too many requests. Please try again later.",
             )
         recent.append(now)
-        _hits[client_key] = recent
+        _hits[key] = recent
 
 
 def reset_rate_limits_for_tests() -> None:

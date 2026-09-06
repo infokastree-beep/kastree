@@ -161,3 +161,19 @@ def test_model_refused_flag_preserved() -> None:
     grounded = ground_answer(answer, pack)
     assert grounded.refused is True
     assert grounded.refusal_message == REFUSAL_MESSAGE
+
+
+def test_iso_dates_in_prose_are_not_treated_as_ungrounded_amounts() -> None:
+    """Period labels like 2026-09-20 must not cause a grounded sentence to drop."""
+    pack = _pack_with_revenue_variance()
+    answer = CopilotAnswer(
+        answer_markdown=(
+            "For the period ending 2026-09-20, revenue increased by 20000.00 (20.00%)."
+        ),
+        citations=[CopilotCitation(source="variance", line_code="revenue")],
+        confidence="high",
+    )
+    grounded = ground_answer(answer, pack)
+    assert grounded.refused is False
+    assert grounded.dropped_sentence_count == 0
+    assert "20000.00" in grounded.answer_markdown

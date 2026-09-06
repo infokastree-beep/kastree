@@ -7,6 +7,7 @@ from app.models.base import Base
 from app.models.client import Client
 from app.models.company import Company
 from app.models.commentary_feedback import CommentaryFeedback
+from app.models.copilot_turn import CopilotTurn
 from app.models.export import Export
 from app.models.financial_statement import FinancialStatement
 from app.models.notification import Notification
@@ -28,6 +29,7 @@ __all__ = [
     "Client",
     "Company",
     "CommentaryFeedback",
+    "CopilotTurn",
     "Export",
     "FinancialStatement",
     "Notification",

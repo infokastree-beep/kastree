@@ -24,7 +24,7 @@ class ProcessingJob(Base):
     __tablename__ = "processing_jobs"
     __table_args__ = (
         CheckConstraint(
-            "job_type IN ('parse', 'map', 'validate', 'statements', 'variance', 'risk', 'export')",
+            "job_type IN ('parse', 'map', 'validate', 'statements', 'variance', 'risk', 'export', 'copilot')",
             name="processing_jobs_job_type_check",
         ),
         CheckConstraint(
@@ -60,6 +60,10 @@ class ProcessingJob(Base):
         Integer, nullable=False, server_default=text("3")
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    model_used: Mapped[str | None] = mapped_column(String, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

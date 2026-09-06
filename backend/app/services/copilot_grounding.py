@@ -25,6 +25,10 @@ _NUMERIC_TOKEN_RE = re.compile(
     r"|[£€$]?-?\d+(?:\.\d+)?%?"
 )
 
+# ISO dates in prose are not monetary evidence — mask before token extraction
+# so "2026-09-20" does not become ungrounded tokens 2026 / 09 / 20.
+_ISO_DATE_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+
 # Split on sentence boundaries while keeping abbreviations crude-safe enough for v1.
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-ZÀ-ÖØ-Þ])")
 
@@ -95,8 +99,10 @@ def _sentence_is_grounded(sentence: str, *, allowed_amounts: set[str]) -> bool:
     """True when every numeric token in the sentence appears in the evidence pack.
 
     Sentences with no numeric tokens (pure narrative / glossary) are allowed.
+    ISO dates are masked so period labels are not mistaken for money figures.
     """
-    tokens = _NUMERIC_TOKEN_RE.findall(sentence)
+    scrubbed = _ISO_DATE_RE.sub(" ", sentence)
+    tokens = _NUMERIC_TOKEN_RE.findall(scrubbed)
     if not tokens:
         return True
     for token in tokens:
