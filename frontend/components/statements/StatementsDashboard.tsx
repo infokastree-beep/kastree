@@ -2,20 +2,25 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
 import { formatCurrency, formatCurrencyCode } from "@/lib/currency";
 import { DISCLAIMER_TEXT } from "@/lib/constants";
 import { formatDate } from "@/lib/utils";
-import type { StatementBlock, StatementLine, StatementsResponse } from "@/types";
+import { statementsPath, parseStatementsTab } from "@/lib/copilot-navigation";
+import type {
+  PerformanceOverviewResponse,
+  StatementBlock,
+  StatementLine,
+  StatementsResponse,
+} from "@/types";
 import { ExportButton } from "./ExportButton";
 import { MaterialitySuggestionBanner } from "./MaterialitySuggestionBanner";
 import { RiskFlagsPanel } from "./RiskFlagsPanel";
 import { VariancePanel } from "./VariancePanel";
 import { useTbWorkspace } from "./TbWorkspaceProvider";
-import { parseStatementsTab } from "@/lib/copilot-navigation";
 
 type Tab = "SOPL" | "SOFP" | "SOCIE" | "Variance" | "Risk";
 
@@ -181,6 +186,7 @@ function StatementTable({
 export function StatementsDashboard({ tbId }: { tbId: string }) {
   const { getToken } = useAuth();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { openAsk } = useTbWorkspace();
   const initialTab = parseStatementsTab(searchParams?.get("tab")) ?? "SOPL";
@@ -219,6 +225,23 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
     },
   });
 
+  const periodsQuery = useQuery({
+    queryKey: ["tb-performance-overview", tbId],
+    queryFn: async () => {
+      try {
+        return await apiFetch<PerformanceOverviewResponse>(
+          `/trial-balances/${tbId}/performance-overview`,
+          { getToken },
+        );
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) {
+          return null;
+        }
+        throw err;
+      }
+    },
+  });
+
   const generateMutation = useMutation({
     mutationFn: () =>
       apiFetch<StatementsResponse>(`/trial-balances/${tbId}/statements`, {
@@ -245,6 +268,22 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
     ? statementsData?.statements.find((s) => s.statement_type === tab)
     : undefined;
 
+  const periodOptions = useMemo(() => {
+    const periods = periodsQuery.data?.periods ?? [];
+    // Newest first — same convention as Dashboard Performance "View period".
+    return [...periods].reverse();
+  }, [periodsQuery.data?.periods]);
+  const multiPeriod = periodOptions.length > 1;
+  const latestTbId = periodOptions[0]?.tb_id;
+
+  function onPeriodChange(nextTbId: string) {
+    if (!nextTbId || nextTbId === tbId) return;
+    const params = new URLSearchParams();
+    if (tab !== "SOPL") params.set("tab", tab);
+    const qs = params.toString();
+    router.push(qs ? `${statementsPath(nextTbId)}?${qs}` : statementsPath(nextTbId));
+  }
+
   return (
     <div className="space-y-5" data-testid="statements-workspace">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -255,7 +294,7 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
               <>
                 Period ending{" "}
                 <span className="font-medium text-ink">
-                  {statementsData.period_end}
+                  {formatDate(statementsData.period_end)}
                 </span>
                 {" · "}
                 <span className="font-mono font-medium text-ink">
@@ -267,16 +306,41 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
             )}
           </p>
         </div>
-        {statementsData ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={openAsk}
-              className="flex items-center gap-1.5 rounded-md border border-line bg-surface-elevated px-3 py-1.5 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
-              data-testid="copilot-ask-button"
-            >
-              Ask Copilot
-            </button>
+        <div className="flex flex-wrap items-end gap-3">
+          {multiPeriod ? (
+            <div className="flex min-w-[14rem] flex-col gap-1.5">
+              <label
+                htmlFor="statements-period-tb"
+                className="text-xs font-semibold uppercase tracking-[0.12em] text-soft"
+              >
+                View period
+              </label>
+              <select
+                id="statements-period-tb"
+                data-testid="statements-period-select"
+                value={tbId}
+                onChange={(event) => onPeriodChange(event.target.value)}
+                className="rounded-md border border-line bg-surface-elevated px-3 py-2 text-sm text-ink shadow-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+              >
+                {periodOptions.map((period) => (
+                  <option key={period.tb_id} value={period.tb_id}>
+                    {formatDate(period.period_end)}
+                    {period.tb_id === latestTbId ? " (current)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          {statementsData ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={openAsk}
+                className="flex items-center gap-1.5 rounded-md border border-line bg-surface-elevated px-3 py-1.5 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
+                data-testid="copilot-ask-button"
+              >
+                Ask Copilot
+              </button>
             <ExportButton tbId={tbId} />
             <button
               type="button"
@@ -290,6 +354,7 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
             </button>
           </div>
         ) : null}
+        </div>
       </div>
 
       {generateMutation.error && statementsData ? (
