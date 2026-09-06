@@ -1,14 +1,15 @@
 """Risk flag routes — POST/GET /trial-balances/{id}/risk (§10.2).
 
-Rule 2 (unusual variance) needs historical_variance_pcts. There is no
-monthly-history table in §9.1, so this router always passes an empty mapping.
-Section 4.3 correctly skips Rule 2 when history length < 3 — that is intentional
-MVP behaviour, not fabricated history.
+Rule 2 (unusual variance) needs historical_variance_pcts. Those are loaded from
+prior ``variance_analyses`` rows for the same company (period_end < current),
+never cross-company. Section 4.3 still skips Rule 2 when a line has fewer than
+3 prior observations.
 """
 
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from decimal import Decimal
 from typing import Annotated
 
@@ -25,13 +26,10 @@ from app.models.variance_analysis import VarianceAnalysis
 from app.routers.trial_balances import _get_owned_tb
 from app.schemas.risk import AffectedAccount, RiskFlagResponse, RiskFlagsResponse
 from app.schemas.variance import VarianceAnalysisResult
-from app.services.risk import evaluate_risks
+from app.services.risk import build_historical_variance_pcts, evaluate_risks
 from app.services.tb_pipeline import parsed_rows_from_tb
 
 router = APIRouter(prefix="/trial-balances", tags=["risk"])
-
-# Explicit empty history — do not invent monthly variance percentages for MVP.
-_MVP_HISTORICAL_VARIANCE_PCTS: dict[str, list[Decimal]] = {}
 
 
 class _RiskAccountAdapter:
@@ -110,6 +108,43 @@ async def _load_stored_variance(
     return VarianceAnalysisResult.model_validate(row.items)
 
 
+async def _load_historical_variance_pcts(
+    session: AsyncSession,
+    *,
+    company_id: uuid.UUID,
+    before_period_end: date,
+) -> tuple[dict[str, list[Decimal]], int]:
+    """Load per-line variance_pct history from prior periods of this company only.
+
+    Returns ``(history_by_line_code, prior_period_count)``. ``prior_period_count``
+    is the number of complete prior variance runs (company-scoped), which feeds
+    ``unusual_variance_history_months`` on the API response.
+    """
+    result = await session.execute(
+        select(VarianceAnalysis.items, TrialBalance.period_end)
+        .join(TrialBalance, TrialBalance.id == VarianceAnalysis.tb_id)
+        .where(
+            TrialBalance.company_id == company_id,
+            TrialBalance.is_deleted.is_(False),
+            TrialBalance.period_end < before_period_end,
+            VarianceAnalysis.status == "complete",
+        )
+        .order_by(TrialBalance.period_end.asc(), VarianceAnalysis.created_at.asc())
+    )
+    rows = list(result.all())
+    # One payload per period_end (keep earliest complete row if duplicates).
+    seen_periods: set[date] = set()
+    payloads: list[object] = []
+    for items_jsonb, period_end in rows:
+        if period_end in seen_periods:
+            continue
+        seen_periods.add(period_end)
+        payloads.append(items_jsonb)
+
+    history = build_historical_variance_pcts(payloads)
+    return history, len(payloads)
+
+
 def _flag_to_response(flag: RiskFlag) -> RiskFlagResponse:
     affected: list[AffectedAccount] | None = None
     if flag.affected_accounts is not None:
@@ -139,12 +174,16 @@ async def generate_risk_flags(
 
     accounts = await _load_risk_accounts(session, tb)
     variance_result = await _load_stored_variance(session, tb.id)
+    historical_pcts, history_months = await _load_historical_variance_pcts(
+        session,
+        company_id=tb.company_id,
+        before_period_end=tb.period_end,
+    )
 
-    # Empty history on purpose — Rule 2 skips when len(history) < 3 (§4.3).
     records = evaluate_risks(
         accounts,
         variance_result=variance_result,
-        historical_variance_pcts=_MVP_HISTORICAL_VARIANCE_PCTS,
+        historical_variance_pcts=historical_pcts,
     )
 
     existing = await session.execute(select(RiskFlag).where(RiskFlag.tb_id == tb.id))
@@ -172,7 +211,7 @@ async def generate_risk_flags(
     return RiskFlagsResponse(
         tb_id=tb.id,
         flags=[_flag_to_response(flag) for flag in persisted],
-        unusual_variance_history_months=0,
+        unusual_variance_history_months=history_months,
     )
 
 
@@ -191,8 +230,13 @@ async def get_risk_flags(
         .order_by(RiskFlag.created_at.asc())
     )
     flags = list(result.scalars().all())
+    _, history_months = await _load_historical_variance_pcts(
+        session,
+        company_id=tb.company_id,
+        before_period_end=tb.period_end,
+    )
     return RiskFlagsResponse(
         tb_id=tb.id,
         flags=[_flag_to_response(flag) for flag in flags],
-        unusual_variance_history_months=0,
+        unusual_variance_history_months=history_months,
     )

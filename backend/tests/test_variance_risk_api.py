@@ -706,6 +706,215 @@ async def test_risk_rule2_skipped_with_empty_history_not_fabricated(
     assert "unusual_variance" not in rule_names
 
 
+def _seed_variance_run(
+    *,
+    org_id: uuid.UUID,
+    tb_id: uuid.UUID,
+    prior_tb_id: uuid.UUID | None,
+    items: list[dict],
+) -> uuid.UUID:
+    """Insert a complete variance_analyses row under RLS."""
+    variance_id = uuid.uuid4()
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        session.add(
+            VarianceAnalysis(
+                id=variance_id,
+                tb_id=tb_id,
+                prior_tb_id=prior_tb_id,
+                items={"items": items},
+                status="complete",
+            )
+        )
+        session.commit()
+    return variance_id
+
+
+def _revenue_item(*, current: str, prior: str, pct: str) -> dict:
+    return {
+        "line_item_code": "revenue",
+        "line_item_name": "Revenue",
+        "current_amount": current,
+        "prior_amount": prior,
+        "variance_amount": str(Decimal(current) - Decimal(prior)),
+        "variance_pct": pct,
+        "direction": "increase" if Decimal(current) >= Decimal(prior) else "decrease",
+        "is_material": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_risk_rule2_uses_company_scoped_variance_history(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """Prior variance_analyses for THIS company feed Rule 2; empty cross-company."""
+    org_id = provisioned_org["org_id"]
+    company_id = provisioned_org["company_id"]
+    headers = auth_headers(provisioned_org["token"])
+
+    # Three prior periods with modest MoM history, then a current 80% spike.
+    prior_pcts = ["5.00", "6.00", "4.00"]
+    prior_ids: list[uuid.UUID] = []
+    for i, pct in enumerate(prior_pcts):
+        tb_id = _seed_tb(
+            org_id=org_id,
+            company_id=company_id,
+            period_end=date(2026, 1 + i, 28),
+            lines=[("revenue", "Revenue", "100.00", False)],
+            parsed_rows=[
+                {
+                    "account_code": "4100",
+                    "account_name": "Sales",
+                    "debit": "0.00",
+                    "credit": "100.00",
+                    "net_balance": "-100.00",
+                    "currency": "GBP",
+                    "row_index": 1,
+                }
+            ],
+        )
+        prior_tb = prior_ids[-1] if prior_ids else None
+        _seed_variance_run(
+            org_id=org_id,
+            tb_id=tb_id,
+            prior_tb_id=prior_tb,
+            items=[_revenue_item(current="100.00", prior="95.00", pct=pct)],
+        )
+        prior_ids.append(tb_id)
+
+    current_id = _seed_tb(
+        org_id=org_id,
+        company_id=company_id,
+        period_end=date(2026, 4, 30),
+        lines=[("revenue", "Revenue", "180.00", False)],
+        parsed_rows=[
+            {
+                "account_code": "4100",
+                "account_name": "Sales",
+                "debit": "0.00",
+                "credit": "180.00",
+                "net_balance": "-180.00",
+                "currency": "GBP",
+                "row_index": 1,
+            }
+        ],
+    )
+    _seed_variance_run(
+        org_id=org_id,
+        tb_id=current_id,
+        prior_tb_id=prior_ids[-1],
+        items=[_revenue_item(current="180.00", prior="100.00", pct="80.00")],
+    )
+    _seed_mapping(
+        org_id=org_id,
+        company_id=company_id,
+        source_code="4100",
+        source_name="Sales",
+        canonical_line="revenue",
+    )
+
+    risk = await api_client.post(
+        f"/trial-balances/{current_id}/risk",
+        headers=headers,
+    )
+    assert risk.status_code == 200, risk.text
+    body = risk.json()
+    assert body["unusual_variance_history_months"] == 3
+    unusual = [f for f in body["flags"] if f["rule_name"] == "unusual_variance"]
+    assert len(unusual) == 1
+    assert "80.00%" in unusual[0]["description"]
+    assert "3 months" in unusual[0]["description"]
+
+
+@pytest.mark.asyncio
+async def test_risk_rule2_history_does_not_cross_companies(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """Variance history from another company in the same org must not feed Rule 2."""
+    org_id = provisioned_org["org_id"]
+    company_a = provisioned_org["company_id"]
+    headers = auth_headers(provisioned_org["token"])
+
+    # Second company under the same org.
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        from app.models.company import Company
+
+        company_b = Company(
+            id=uuid.uuid4(),
+            client_id=provisioned_org["client_id"],
+            name="Other Co",
+            functional_currency="GBP",
+        )
+        session.add(company_b)
+        session.commit()
+        company_b_id = company_b.id
+
+    # Rich history on company B only.
+    for i, pct in enumerate(["5.00", "6.00", "4.00", "7.00"]):
+        tb_id = _seed_tb(
+            org_id=org_id,
+            company_id=company_b_id,
+            period_end=date(2026, 1 + i, 15),
+            lines=[("revenue", "Revenue", "100.00", False)],
+        )
+        _seed_variance_run(
+            org_id=org_id,
+            tb_id=tb_id,
+            prior_tb_id=None,
+            items=[_revenue_item(current="100.00", prior="95.00", pct=pct)],
+        )
+
+    # Company A: only current variance with a huge pct — no own history.
+    prior_a = _seed_tb(
+        org_id=org_id,
+        company_id=company_a,
+        period_end=date(2026, 5, 31),
+        lines=[("revenue", "Revenue", "100.00", False)],
+    )
+    current_a = _seed_tb(
+        org_id=org_id,
+        company_id=company_a,
+        period_end=date(2026, 6, 30),
+        lines=[("revenue", "Revenue", "500.00", False)],
+        parsed_rows=[
+            {
+                "account_code": "4100",
+                "account_name": "Sales",
+                "debit": "0.00",
+                "credit": "500.00",
+                "net_balance": "-500.00",
+                "currency": "GBP",
+                "row_index": 1,
+            }
+        ],
+    )
+    _seed_variance_run(
+        org_id=org_id,
+        tb_id=current_a,
+        prior_tb_id=prior_a,
+        items=[_revenue_item(current="500.00", prior="100.00", pct="400.00")],
+    )
+    _seed_mapping(
+        org_id=org_id,
+        company_id=company_a,
+        source_code="4100",
+        source_name="Sales",
+        canonical_line="revenue",
+    )
+
+    risk = await api_client.post(
+        f"/trial-balances/{current_a}/risk",
+        headers=headers,
+    )
+    assert risk.status_code == 200, risk.text
+    body = risk.json()
+    assert body["unusual_variance_history_months"] == 0
+    assert "unusual_variance" not in {f["rule_name"] for f in body["flags"]}
+
+
 def _monthly_balanced_xlsx(*, cash: str, sales: str, opex: str) -> bytes:
     """Closed TB: cash + opex = share_capital(4000) + RE(6000) + sales."""
     workbook = openpyxl.Workbook()

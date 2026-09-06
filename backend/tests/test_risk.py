@@ -12,10 +12,45 @@ from app.schemas.risk import AffectedAccount, RiskFlagRecord
 from app.schemas.variance import VarianceAnalysisResult, VarianceItemRecord
 from app.services.risk import (
     NEGATIVE_CASH_DESCRIPTION,
+    build_historical_variance_pcts,
     evaluate_negative_cash,
     evaluate_risks,
     evaluate_unusual_variance,
 )
+
+# Real Berkshire Hathaway (prod) revenue MoM variance_pct series, chronological.
+# Sourced 2026-09-06 from variance_analyses for company berkshire
+# (7b7ac981-…). Thirteen complete runs; used to lock Rule 2 against real shape.
+_BERKSHIRE_REVENUE_PCTS = [
+    Decimal("-94.49"),
+    Decimal("-94.49"),
+    Decimal("0.00"),
+    Decimal("0.00"),
+    Decimal("15.56"),
+    Decimal("-13.46"),
+    Decimal("0.00"),
+    Decimal("15.56"),
+    Decimal("1470.38"),
+    Decimal("-13.46"),
+    Decimal("0.00"),
+    Decimal("1714.67"),
+    Decimal("1714.67"),
+]
+_BERKSHIRE_CASH_PCTS = [
+    Decimal("-86.63"),
+    Decimal("-86.63"),
+    Decimal("0.00"),
+    Decimal("0.00"),
+    Decimal("20.00"),
+    Decimal("-16.67"),
+    Decimal("0.00"),
+    Decimal("20.00"),
+    Decimal("523.33"),
+    Decimal("-16.67"),
+    Decimal("0.00"),
+    Decimal("648.00"),
+    Decimal("648.00"),
+]
 
 
 @dataclass(frozen=True)
@@ -322,3 +357,140 @@ def test_evaluate_risks_combines_both_rules() -> None:
         "unusual_variance",
     ]
     assert flags[0].to_jsonb()["affected_accounts"][0]["net_balance"] == "-25.00"
+
+
+# --- Berkshire real-history calibration --------------------------------------
+
+
+def test_build_historical_variance_pcts_orders_and_skips_nulls() -> None:
+    """JSONB payloads → per-line chronological pct lists; null pcts dropped."""
+    payloads = [
+        {
+            "items": [
+                {
+                    "line_item_code": "revenue",
+                    "line_item_name": "Revenue",
+                    "current_amount": "100.00",
+                    "prior_amount": "80.00",
+                    "variance_amount": "20.00",
+                    "variance_pct": "25.00",
+                    "direction": "increase",
+                    "is_material": True,
+                },
+                {
+                    "line_item_code": "cash",
+                    "line_item_name": "Cash",
+                    "current_amount": "0.00",
+                    "prior_amount": "0.00",
+                    "variance_amount": "0.00",
+                    "variance_pct": None,
+                    "direction": "new",
+                    "is_material": False,
+                },
+            ]
+        },
+        {
+            "items": [
+                {
+                    "line_item_code": "revenue",
+                    "line_item_name": "Revenue",
+                    "current_amount": "110.00",
+                    "prior_amount": "100.00",
+                    "variance_amount": "10.00",
+                    "variance_pct": "10.00",
+                    "direction": "increase",
+                    "is_material": False,
+                }
+            ]
+        },
+    ]
+    history = build_historical_variance_pcts(payloads)
+    assert history["revenue"] == [Decimal("25.00"), Decimal("10.00")]
+    assert "cash" not in history  # only null pct → omitted
+
+
+def test_berkshire_12plus_bucket_does_not_flag_latest_ordinary_relative_to_fat_tails() -> None:
+    """12+ bucket on Berkshire's real revenue history: latest does NOT flag.
+
+    Berkshire's MoM series is fat-tailed (spikes to ~1470% / ~1714%). Against
+    that baseline the latest 1714.67% observation is only ~2.3σ — below the 3σ
+    bar. This is the calibration check that quiet synthetic series cannot
+    answer: real multi-period data must not drown in false positives.
+    """
+    history = _BERKSHIRE_REVENUE_PCTS[:-1]
+    assert len(history) == 12
+    current = _variance_item(
+        "revenue", name="Revenue", variance_pct=str(_BERKSHIRE_REVENUE_PCTS[-1])
+    )
+    assert evaluate_unusual_variance(current, history) is None
+
+    # Cash latest likewise stays under 3σ against its own fat-tailed history.
+    cash_history = _BERKSHIRE_CASH_PCTS[:-1]
+    assert len(cash_history) == 12
+    cash = _variance_item(
+        "cash", name="Cash", variance_pct=str(_BERKSHIRE_CASH_PCTS[-1])
+    )
+    assert evaluate_unusual_variance(cash, cash_history) is None
+
+
+def test_berkshire_3_to_11_bucket_ignores_ordinary_mom_flags_real_spikes() -> None:
+    """3–11 bucket on Berkshire mid-history: ~15–20% MoM quiet; 500%+ spikes fire."""
+    # As-of 2026-08-28: 8th observation current, 7 priors — ordinary MoM.
+    ordinary_history = _BERKSHIRE_REVENUE_PCTS[:7]
+    ordinary_current = _variance_item(
+        "revenue", name="Revenue", variance_pct=str(_BERKSHIRE_REVENUE_PCTS[7])
+    )
+    assert len(ordinary_history) == 7
+    assert abs(Decimal(ordinary_current.variance_pct or "0")) < Decimal("50")
+    assert evaluate_unusual_variance(ordinary_current, ordinary_history) is None
+
+    cash_ordinary_history = _BERKSHIRE_CASH_PCTS[:7]
+    cash_ordinary = _variance_item(
+        "cash", name="Cash", variance_pct=str(_BERKSHIRE_CASH_PCTS[7])
+    )
+    assert evaluate_unusual_variance(cash_ordinary, cash_ordinary_history) is None
+
+    # As-of 2026-08-30: 9th observation — real spike (1470% / 523%).
+    spike_history = _BERKSHIRE_REVENUE_PCTS[:8]
+    spike_current = _variance_item(
+        "revenue", name="Revenue", variance_pct=str(_BERKSHIRE_REVENUE_PCTS[8])
+    )
+    assert len(spike_history) == 8
+    flagged = evaluate_unusual_variance(spike_current, spike_history)
+    assert flagged is not None
+    assert flagged.rule_name == "unusual_variance"
+    assert "8 months" in flagged.description
+
+    cash_spike_history = _BERKSHIRE_CASH_PCTS[:8]
+    cash_spike = _variance_item(
+        "cash", name="Cash", variance_pct=str(_BERKSHIRE_CASH_PCTS[8])
+    )
+    assert evaluate_unusual_variance(cash_spike, cash_spike_history) is not None
+
+
+def test_berkshire_shaped_evaluate_risks_latest_emits_no_unusual_variance_flags() -> None:
+    """End-to-end evaluate_risks with Berkshire's latest + 12 prior observations."""
+    variance = VarianceAnalysisResult(
+        items=[
+            _variance_item(
+                "revenue",
+                name="Revenue",
+                variance_pct=str(_BERKSHIRE_REVENUE_PCTS[-1]),
+            ),
+            _variance_item(
+                "cash",
+                name="Cash",
+                variance_pct=str(_BERKSHIRE_CASH_PCTS[-1]),
+            ),
+        ]
+    )
+    history = {
+        "revenue": _BERKSHIRE_REVENUE_PCTS[:-1],
+        "cash": _BERKSHIRE_CASH_PCTS[:-1],
+    }
+    flags = evaluate_risks(
+        [],  # cash balances healthy — Rule 1 silent
+        variance_result=variance,
+        historical_variance_pcts=history,
+    )
+    assert flags == []

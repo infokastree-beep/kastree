@@ -56,5 +56,6 @@ class RiskFlagsResponse(BaseModel):
 
     tb_id: uuid.UUID
     flags: list[RiskFlagResponse] = Field(default_factory=list)
-    # MVP: no monthly-history table — Rule 2 always receives empty history (§4.3).
+    # Count of prior complete variance_analyses periods for this company
+    # (period_end < current). Feeds Rule 2; 0 means Rule 2 still skips.
     unusual_variance_history_months: int = 0

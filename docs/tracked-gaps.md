@@ -294,47 +294,29 @@ span: skip if history length &lt; 3; **3–11** flag when `abs(variance_pct) > 5
 **12+** flag when `|current − mean| > 3 × sample stdev` over the last 12
 percentages. Copy always says “N months of historical data.”
 
-**Live API today:** `POST /trial-balances/{id}/risk` always passes an empty
-history map (`_MVP_HISTORICAL_VARIANCE_PCTS`). Rule 2 therefore **never fires
-in production**, monthly or annual, until history is loaded from prior
-`variance_analyses` rows. That is documented MVP behaviour in `risk.py`, not a
-monthly-specific bug.
+**Wired 2026-09-06:** `POST /trial-balances/{id}/risk` now loads prior
+`variance_analyses` rows for the **same company** (`period_end < current`,
+`status=complete`, non-deleted TBs) and passes the resulting
+`{line_item_code: [variance_pct, …]}` map into `evaluate_risks()`. Cross-company
+leakage is blocked by the `company_id` filter (same RLS discipline as the rest
+of the stack). `unusual_variance_history_months` reports the prior-period count.
 
-**Engine check with monthly-scale % series** (unit tests, history passed in
-directly — 2026-09-03):
+**Berkshire live calibration (13 variance runs, company `berkshire`):**
 
-- 4 prior MoM observations: 20% does **not** flag; 60% **does** (50% bar).
-  Sensible for monthly.
-- 12 quiet MoM observations (mean ≈ 3.8%, stdev ≈ 3.3%): **15% MoM flags**
-  (z ≈ 3.4); 8% does not. Once history is wired, a normal busy month can trip
-  the 12+ bucket because MoM noise is tighter than typical YoY swings. Worth a
-  real product pass before monthly is a marketed use case — do not retune
-  speculatively until history is actually supplied.
+| Bucket | As-of | Result |
+| --- | --- | --- |
+| 12+ (3σ) | 2026-09-20 latest | **0 flags**. Dense lines sit at z ≈ 1.85–2.42 vs fat-tailed history (spikes to ~1470% / ~1714%). No false positives on this real series — **3σ kept**. |
+| 3–11 (50% bar) | 2026-08-28 ordinary MoM (~15–20%) | **0 flags** — sensible. |
+| 3–11 (50% bar) | 2026-08-30 / 2026-09-04 real spikes (500%+) | Flags fire as expected. |
 
-### Wiring source — confirmed 2026-09-05 (investigation)
+Quiet synthetic MoM series can still trip 3σ at ~15% (unit test retained as a
+known property). Berkshire’s **actual** fat-tailed MoM history does not, so
+thresholds were **not** retuned. Revisit only if a quiet monthly client shows
+false positives in production.
 
-Blank Risk on companies like Berkshire is still mostly: `negative_cash` not
-triggering (cash healthy) + `unusual_variance` starved by the hardcoded empty
-dict. The missing piece is **not** “collect multi-period data.”
-
-**Performance Overview does not unlock Rule 2.** Its multi-period series are
-**absolute KPI amounts** (revenue, cash, etc.). Rule 2 needs prior
-**`variance_pct` history per line** — a different shape. Deriving MoM %s from
-those absolutes would be a second calculation path and only covers the small
-Performance Overview metric set, not the full variance line list.
-
-**Genuinely correct source: existing `variance_analyses` rows.** That table
-already stores `variance_pct` per line per period for every company with 2+
-periods. No new data collection — only wire `evaluate_risks()` to read prior
-`variance_analyses` rows instead of `_MVP_HISTORICAL_VARIANCE_PCTS = {}`.
-Berkshire alone has enough real history (**13+ periods** / 12 stored variance
-analyses with per-line `variance_pct` series) to clear the ≥3-observation bar
-easily once wired.
-
-**Assessment:** real, contained, worthwhile follow-up — **not urgent**, but
-genuinely closer to buildable than previously assumed (when the blocker was
-framed as “no historical data”). Low priority until that wiring lands; no
-production gap beyond the existing empty-history MVP skip.
+**Performance Overview still does not unlock Rule 2** — it stores absolute KPI
+amounts, not per-line `variance_pct` history. The wiring source is
+`variance_analyses` only.
 
 ## Financial statements — currency display (resolved)
 

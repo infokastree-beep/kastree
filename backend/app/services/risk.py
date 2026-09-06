@@ -2,12 +2,16 @@
 
 Rule 2 does not fetch history itself: callers pass historical variance percentages
 per line item. Tier selection is driven by len(history) only.
+
+Historical percentages should come from prior ``variance_analyses`` rows for the
+same company (see ``build_historical_variance_pcts``), never from another
+company and never including the current period's own variance run.
 """
 
 from __future__ import annotations
 
-from decimal import Decimal
-from typing import Mapping, Protocol, Sequence
+from decimal import Decimal, InvalidOperation
+from typing import Any, Mapping, Protocol, Sequence
 
 from app.schemas.risk import AffectedAccount, RiskFlagRecord
 from app.schemas.variance import VarianceAnalysisResult, VarianceItemRecord
@@ -42,6 +46,51 @@ class RiskAccount(Protocol):
     account_name: str
     net_balance: Decimal
     canonical_line: str
+
+
+def build_historical_variance_pcts(
+    prior_items_payloads: Sequence[Mapping[str, Any] | VarianceAnalysisResult],
+) -> dict[str, list[Decimal]]:
+    """Shape prior variance runs into ``{line_item_code: [variance_pct, ...]}``.
+
+    ``prior_items_payloads`` must already be ordered chronologically (oldest
+    first) and must exclude the current period. Each payload is the JSONB
+    ``variance_analyses.items`` document (``{"items": [...]}``) or a parsed
+    ``VarianceAnalysisResult``.
+
+    Null ``variance_pct`` values (new/removed lines) are skipped so they do not
+    count toward the 3–11 / 12+ observation tiers.
+    """
+    history: dict[str, list[Decimal]] = {}
+    for payload in prior_items_payloads:
+        if isinstance(payload, VarianceAnalysisResult):
+            items = payload.items
+            for item in items:
+                if item.variance_pct is None:
+                    continue
+                try:
+                    pct = Decimal(item.variance_pct)
+                except (InvalidOperation, ValueError):
+                    continue
+                history.setdefault(item.line_item_code, []).append(pct)
+            continue
+
+        raw_items = payload.get("items") if isinstance(payload, Mapping) else None
+        if not isinstance(raw_items, list):
+            continue
+        for raw in raw_items:
+            if not isinstance(raw, Mapping):
+                continue
+            code = raw.get("line_item_code")
+            pct_raw = raw.get("variance_pct")
+            if not isinstance(code, str) or pct_raw is None:
+                continue
+            try:
+                pct = Decimal(str(pct_raw))
+            except (InvalidOperation, ValueError):
+                continue
+            history.setdefault(code, []).append(pct)
+    return history
 
 
 def evaluate_risks(
