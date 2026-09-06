@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
@@ -13,6 +14,7 @@ import {
 import { formatCanonicalLineLabel, formatDate } from "@/lib/utils";
 import { VarianceCommentarySection } from "./VarianceCommentarySection";
 import type {
+  ICompany,
   TrialBalanceListResponse,
   VarianceDirection,
   VarianceResponse,
@@ -122,6 +124,15 @@ export function VariancePanel({
     companyIdProp ?? storedQuery.data?.company_id ?? null;
   const periodEnd =
     periodEndProp ?? storedQuery.data?.period_end ?? null;
+
+  // Resolve client_id so Variance can deep-link to company materiality editor.
+  const companyQuery = useQuery({
+    queryKey: ["company", companyId],
+    enabled: Boolean(companyId),
+    queryFn: () =>
+      apiFetch<ICompany>(`/companies/${companyId}`, { getToken }),
+  });
+  const clientId = companyQuery.data?.client_id ?? null;
 
   const priorsQuery = useQuery({
     queryKey: ["tb-prior-options", companyId, periodEnd],
@@ -417,18 +428,29 @@ export function VariancePanel({
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <p className="text-sm text-ink-secondary">
-            Material when ≥{" "}
-            <span className="font-mono font-medium text-ink">
-              {data.materiality_threshold_pct ?? "—"}%
-            </span>{" "}
-            or{" "}
-            <span className="font-mono font-medium text-ink">
-              {data.materiality_threshold_abs
-                ? formatCurrency(data.materiality_threshold_abs, currencyCode)
-                : "—"}
-            </span>
-          </p>
+          <div className="text-right">
+            <p className="text-sm text-ink-secondary">
+              Material when ≥{" "}
+              <span className="font-mono font-medium text-ink">
+                {data.materiality_threshold_pct ?? "—"}%
+              </span>{" "}
+              or{" "}
+              <span className="font-mono font-medium text-ink">
+                {data.materiality_threshold_abs
+                  ? formatCurrency(data.materiality_threshold_abs, currencyCode)
+                  : "—"}
+              </span>
+            </p>
+            {clientId && companyId ? (
+              <Link
+                href={`/clients/${clientId}#materiality-${companyId}`}
+                className="mt-1 inline-block text-sm font-medium text-accent underline-offset-2 hover:underline"
+                data-testid="edit-materiality-link"
+              >
+                Edit materiality
+              </Link>
+            ) : null}
+          </div>
           <button
             type="button"
             disabled={isRefreshing}

@@ -98,6 +98,11 @@ export function MaterialitySuggestionBanner({
                 : "Could not update materiality"}
             </p>
           ) : null}
+          <p className="mt-2 text-xs text-soft">
+            Prefer to set your own values? Use{" "}
+            <span className="font-medium text-ink">Edit materiality</span> next
+            to the Variance thresholds.
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError } from "@/lib/api";
 import { updateCompanyMateriality } from "@/lib/companies";
@@ -17,6 +17,15 @@ export function CompanyMaterialitySettings({ company }: { company: ICompany }) {
   const [pct, setPct] = useState(company.materiality_threshold_pct);
   const [abs, setAbs] = useState(company.materiality_threshold_abs);
   const [savedFlash, setSavedFlash] = useState(false);
+  const anchorId = `materiality-${company.id}`;
+
+  // Deep-link from Statements "Edit materiality" (`/clients/{id}#materiality-{companyId}`).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.location.hash !== `#${anchorId}`) return;
+    const el = document.getElementById(anchorId);
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [anchorId]);
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -54,7 +63,8 @@ export function CompanyMaterialitySettings({ company }: { company: ICompany }) {
 
   return (
     <div
-      className="rounded border border-stone-100 bg-stone-50/80 p-3"
+      id={anchorId}
+      className="scroll-mt-24 rounded border border-stone-100 bg-stone-50/80 p-3"
       data-testid="company-materiality-settings"
     >
       <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">
