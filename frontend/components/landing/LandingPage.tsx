@@ -3,35 +3,42 @@
 import Link from "next/link";
 import { SignInNavLink } from "@/components/auth/SignInNavLink";
 import { clerkReady } from "@/lib/clerk";
-import { WaitlistForm } from "@/components/landing/WaitlistForm";
 import { ProductSwitcher } from "@/components/layout/ProductSwitcher";
 import { useAuth } from "@/hooks/useAuth";
 import { APP_NAME, DISCLAIMER_TEXT, POST_AUTH_PATH } from "@/lib/constants";
 
-const LIVE_STEPS = [
+const WHAT_YOU_GET = [
   {
-    title: "Upload",
-    body: "Drop a trial balance (Excel or CSV) for a client company and period.",
-  },
-  {
-    title: "Map",
-    body: "Kastree suggests account → line mappings. You review, override anything odd, and confirm — nothing generates until you sign off.",
-  },
-  {
-    title: "Validate",
-    body: "Basic integrity checks run (TB balances, balance sheet ties, etc.) before statements build.",
+    title: "Upload & map",
+    body: "Upload a trial balance, then review suggested account → line mappings and confirm before anything generates.",
   },
   {
     title: "Statements",
-    body: "SOPL, SOFP, and SOCIE generate in minutes. View them in the app, tab by tab.",
+    body: "SOPL, SOFP, and SOCIE generate in the browser — switch tabs, review line amounts, regenerate when mappings change.",
+  },
+  {
+    title: "Performance overview",
+    body: "KPIs, trend charts, and expense mix for the period so you see the shape of the numbers before diving into line detail.",
+  },
+  {
+    title: "Business health",
+    body: "A short executive read grounded in this period’s evidence — trends and ratios, not a spreadsheet dump.",
+  },
+  {
+    title: "Variance",
+    body: "Period-on-period movements when a prior trial balance exists for the same company, ready for review.",
+  },
+  {
+    title: "Risk flags",
+    body: "Deterministic checks (for example negative cash or anomalous balances) surfaced alongside the statements.",
+  },
+  {
+    title: "Ask",
+    body: "Ask questions answered only from this period’s evidence, with citations back to performance, variance, or risk.",
   },
   {
     title: "Export",
     body: "Download Excel, PDF, or CSV packs with the statements — currency formatting and tier-aware watermarking included.",
-  },
-  {
-    title: "Clients",
-    body: "Organise work by client group and company (GBP / EUR / USD functional currency per company).",
   },
 ] as const;
 
@@ -53,8 +60,8 @@ const FAQ = [
     a: "No. Internal management review only.",
   },
   {
-    q: "Is variance commentary live?",
-    a: "The engine exists on the backend; we're putting the review UI in front of pilot users now. Join the waitlist if that's the part you care about most.",
+    q: "Can I ask about next year or forecasts?",
+    a: "No. Ask only uses evidence for the selected period. Out-of-scope questions get a clear refusal, not a guess.",
   },
 ] as const;
 
@@ -76,7 +83,15 @@ export function LandingPage() {
                   Go to app
                 </Link>
               ) : (
-                <SignInNavLink className="font-medium text-ink-secondary underline-offset-4 transition-colors hover:text-accent hover:underline" />
+                <>
+                  <SignInNavLink className="font-medium text-ink-secondary underline-offset-4 transition-colors hover:text-accent hover:underline" />
+                  <Link
+                    href="/sign-up"
+                    className="rounded-md bg-accent px-4 py-2 font-medium text-accent-foreground transition-colors hover:bg-accent-hover"
+                  >
+                    Create account
+                  </Link>
+                </>
               )}
             </div>
           ) : null}
@@ -84,7 +99,6 @@ export function LandingPage() {
       </header>
 
       <main>
-        {/* Hero — brand, headline, support, CTA, then dominant product image */}
         <section className="relative overflow-hidden border-b border-line bg-surface-elevated">
           <div
             aria-hidden
@@ -98,32 +112,32 @@ export function LandingPage() {
               For accounting practices &amp; fractional CFOs
             </p>
             <h1 className="landing-fade-up-delay font-display mt-6 max-w-3xl text-display-lg text-ink sm:text-display-xl">
-              Trial balance in. SOPL, SOFP, and SOCIE out — without rebuilding the
-              same spreadsheet every month.
+              Trial balance in. Statements, variance, and risk out — ready for
+              review.
             </h1>
             <p className="landing-fade-up-delay mt-6 max-w-2xl text-lg leading-relaxed text-ink-secondary sm:text-xl">
-              Upload <code className="rounded bg-accent-muted/70 px-1.5 py-0.5 text-base text-accent">.xlsx</code>{" "}
-              or{" "}
-              <code className="rounded bg-accent-muted/70 px-1.5 py-0.5 text-base text-accent">.csv</code>
-              , confirm how accounts map to standard lines, and review the three
-              statements in the browser.
-            </p>
-            <p className="landing-fade-up-delay mt-4 text-sm text-soft">
-              Early access — we&apos;re onboarding a small number of practices for
-              live feedback.
+              Upload a trial balance, confirm account mappings, and review SOPL,
+              SOFP, SOCIE, performance, variance, and risk in one place — with an
+              Ask panel grounded in this period&apos;s evidence.
             </p>
             <div className="landing-fade-up-delay mt-10 flex flex-wrap items-center gap-4">
-              <a
-                href="#waitlist"
+              <Link
+                href="/sign-up"
                 className="inline-flex rounded-md bg-accent px-6 py-3 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
               >
-                Join the waitlist
-              </a>
+                Create account
+              </Link>
+              <Link
+                href="/sign-in"
+                className="inline-flex rounded-md border border-line bg-surface-elevated px-6 py-3 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
+              >
+                Sign in
+              </Link>
               <a
                 href="#what-you-get"
                 className="text-sm font-medium text-ink-secondary underline-offset-4 transition-colors hover:text-accent hover:underline"
               >
-                See what&apos;s live
+                See what it does
               </a>
             </div>
           </div>
@@ -131,14 +145,15 @@ export function LandingPage() {
           <div className="landing-fade-in relative mx-auto max-w-content px-6 pb-16 sm:px-8 sm:pb-24">
             <img
               src="/images/statements-dashboard.png"
-              alt="Kastree statements dashboard showing SOPL, SOFP, and SOCIE tabs with a Statement of Financial Position in EUR"
+              alt="Kastree statements dashboard showing performance overview, business health, statement tabs, and the Ask panel"
               className="w-full border border-line bg-surface-elevated shadow-[0_24px_60px_-28px_rgba(20,32,28,0.35)]"
               width={1280}
               height={900}
             />
             <p className="mt-4 text-sm text-soft">
-              The statements dashboard — switch between SOPL, SOFP, and SOCIE, then
-              export Excel, PDF, or CSV when you&apos;re ready.
+              The statements dashboard — performance and business health above;
+              SOPL, SOFP, SOCIE, Variance, and Risk below. Ask opens a grounded
+              Q&amp;A panel for this period.
             </p>
           </div>
         </section>
@@ -180,40 +195,16 @@ export function LandingPage() {
             <h2 className="font-display text-heading-lg text-ink sm:text-[2.25rem]">
               What you get
             </h2>
-
-            <h3 className="mt-14 text-xs font-semibold uppercase tracking-[0.16em] text-accent">
-              Live now
-            </h3>
-            <ul className="mt-8 grid gap-x-12 gap-y-10 sm:grid-cols-2">
-              {LIVE_STEPS.map((step) => (
-                <li key={step.title} className="border-t border-line pt-5">
-                  <p className="font-display text-heading-md text-ink">{step.title}</p>
+            <ul className="mt-12 grid gap-x-12 gap-y-10 sm:grid-cols-2">
+              {WHAT_YOU_GET.map((item) => (
+                <li key={item.title} className="border-t border-line pt-5">
+                  <p className="font-display text-heading-md text-ink">{item.title}</p>
                   <p className="mt-2 text-[0.95rem] leading-relaxed text-ink-secondary">
-                    {step.body}
+                    {item.body}
                   </p>
                 </li>
               ))}
             </ul>
-
-            <div className="mt-16 border-l-4 border-amber-500 bg-amber-50/80 px-6 py-5 text-sm text-amber-950">
-              <p className="font-semibold tracking-tight">
-                In pilot / rolling out to early users
-              </p>
-              <ul className="mt-3 list-disc space-y-2 pl-5 text-amber-950/85">
-                <li>
-                  Period-on-period variance when a prior trial balance exists for the
-                  same company
-                </li>
-                <li>
-                  AI-drafted commentary on material movements — suggested wording only;
-                  you review and edit before anything goes to a client
-                </li>
-              </ul>
-              <p className="mt-4 text-amber-900/75">
-                Upload, map, statements, and export are live. Variance commentary UI is
-                what pilot users are helping us finish.
-              </p>
-            </div>
 
             <h3 className="mt-16 text-xs font-semibold uppercase tracking-[0.16em] text-soft">
               What it is not
@@ -225,6 +216,10 @@ export function LandingPage() {
                 person
               </li>
               <li>Not a general ledger — you still work from the client&apos;s TB export</li>
+              <li>
+                Not a crystal ball — Ask refuses questions outside this period&apos;s
+                evidence
+              </li>
             </ul>
           </div>
         </section>
@@ -249,7 +244,7 @@ export function LandingPage() {
                 {
                   n: "3",
                   title: "Generate and review",
-                  body: "SOPL, SOFP, SOCIE in the dashboard. Typical first run: mapping review is where you spend time; regenerate is one click once mappings are right.",
+                  body: "Generate and review statements, performance, variance, and risk. Use Ask when you want a cited answer from the evidence.",
                 },
               ].map((step) => (
                 <li key={step.n} className="flex gap-5">
@@ -287,18 +282,28 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section id="waitlist" className="border-b border-line">
+        <section id="get-started" className="border-b border-line">
           <div className="mx-auto max-w-content px-6 py-section-sm sm:px-8 sm:py-section">
             <h2 className="font-display text-heading-lg text-ink sm:text-[2.25rem]">
-              Get early access
+              Start with your next trial balance
             </h2>
             <p className="mt-5 max-w-2xl text-lg leading-relaxed text-ink-secondary">
-              We&apos;re opening Kastree to a handful of practices for structured
-              feedback — not a public launch. Tell us who you are and we&apos;ll reach
-              out when there&apos;s a slot.
+              Create an account to upload a client TB, or sign in if you already have
+              one.
             </p>
-            <div className="mt-12 max-w-xl">
-              <WaitlistForm />
+            <div className="mt-10 flex flex-wrap items-center gap-4">
+              <Link
+                href="/sign-up"
+                className="inline-flex rounded-md bg-accent px-6 py-3 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
+              >
+                Create account
+              </Link>
+              <Link
+                href="/sign-in"
+                className="inline-flex rounded-md border border-line bg-surface-elevated px-6 py-3 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
+              >
+                Sign in
+              </Link>
             </div>
           </div>
         </section>
@@ -324,7 +329,9 @@ export function LandingPage() {
         <div className="mx-auto max-w-content px-6 py-10 text-xs leading-relaxed sm:px-8">
           <p className="opacity-80">{DISCLAIMER_TEXT}</p>
           <p className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 font-medium text-white/90">
-            <span>© {new Date().getFullYear()} {APP_NAME}</span>
+            <span>
+              © {new Date().getFullYear()} {APP_NAME}
+            </span>
             <Link
               href="/privacy"
               className="text-white/70 underline-offset-4 hover:text-white hover:underline"

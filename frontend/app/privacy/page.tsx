@@ -5,7 +5,7 @@ import { APP_NAME } from "@/lib/constants";
 export const metadata: Metadata = {
   title: `Privacy Policy — ${APP_NAME}`,
   description:
-    "How Kastree collects, stores, and shares data for waitlist, accounts, and the product.",
+    "How Kastree collects, stores, and shares data for accounts and the product.",
 };
 
 export default function PrivacyPage() {
@@ -29,7 +29,7 @@ export default function PrivacyPage() {
       </header>
 
       <main className="mx-auto max-w-content px-6 py-section-sm sm:px-8 sm:py-section">
-        <p className="text-sm text-ink-secondary">Last updated: 3 September 2026</p>
+        <p className="text-sm text-ink-secondary">Last updated: 6 September 2026</p>
         <h1 className="mt-3 font-display text-heading-lg text-ink sm:text-[2.25rem]">
           Privacy Policy
         </h1>
@@ -49,8 +49,8 @@ export default function PrivacyPage() {
             >
               infokastree@gmail.com
             </a>
-            ) determines how the website, waitlist, and product accounts are
-            run. If an accountancy practice uses Kastree for its clients&apos;
+            ) determines how the website and product accounts are run. If an
+            accountancy practice uses Kastree for its clients&apos;
             books, that practice is typically the controller of those client
             financial records and Kastree processes them to provide the
             service. A formal Data Processing Agreement for practices is
@@ -62,21 +62,25 @@ export default function PrivacyPage() {
               What we collect
             </h2>
             <p className="mt-3">
-              <strong className="font-medium text-ink">Waitlist (public form).</strong>{" "}
-              When you join the waitlist we store: name, email, firm, role, and
-              optionally approximate client count and a short note about your
-              main pain point. We also see technical request metadata (such as
-              IP address) used for rate limiting and abuse prevention.
-            </p>
-            <p className="mt-3">
               <strong className="font-medium text-ink">Accounts.</strong> Sign-up
               and sign-in are provided by{" "}
-              <strong className="font-medium text-ink">Clerk</strong>. Clerk holds
-              your authentication credentials and session. Via Clerk (including
-              webhooks) we receive identifiers and profile fields such as email
-              address, name, Clerk user id, and organisation membership/role,
-              and we store matching user and organisation rows in our
-              application database so the product can authorise access.
+              <strong className="font-medium text-ink">Clerk</strong>. New users
+              create an account directly through Clerk (the public site no
+              longer offers a waitlist form). Clerk holds your authentication
+              credentials and session. Via Clerk (including webhooks) we receive
+              identifiers and profile fields such as email address, name, Clerk
+              user id, and organisation membership/role, and we store matching
+              user and organisation rows in our application database so the
+              product can authorise access.
+            </p>
+            <p className="mt-3">
+              <strong className="font-medium text-ink">
+                Legacy waitlist rows.
+              </strong>{" "}
+              Earlier public waitlist submissions may still exist in a{" "}
+              <code className="text-ink">waitlist_signups</code> table (name,
+              email, firm, role, and optional notes). That path is not used for
+              new account creation.
             </p>
             <p className="mt-3">
               <strong className="font-medium text-ink">
@@ -103,13 +107,9 @@ export default function PrivacyPage() {
             </h2>
             <ul className="mt-3 list-disc space-y-2 pl-5">
               <li>
-                To run the waitlist and email you about access (and, when
-                configured, to notify our team of a new signup).
-              </li>
-              <li>
-                To authenticate you through Clerk and enforce organisation
-                boundaries (including database row-level isolation between
-                organisations).
+                To create and manage your account, authenticate you through
+                Clerk, and enforce organisation boundaries (including database
+                row-level isolation between organisations).
               </li>
               <li>
                 To parse trial balances, build statements, and generate
@@ -158,8 +158,11 @@ export default function PrivacyPage() {
               </li>
               <li>
                 <strong className="font-medium text-ink">Resend</strong> — sends
-                transactional email such as waitlist confirmation (from our
-                configured Kastree sender address)
+                transactional email we trigger from the Kastree API (today:
+                founder alerts on new Clerk organisation signup, and
+                confirmation/founder alerts if a legacy waitlist submission is
+                recorded). Authentication emails (verification, magic links,
+                password reset) are sent by Clerk, not Resend.
               </li>
             </ul>
             <p className="mt-3">
@@ -197,8 +200,9 @@ export default function PrivacyPage() {
               <li>
                 <strong className="font-medium text-ink">Application database</strong>{" "}
                 (users, organisations, clients, companies, trial balances
-                metadata, mappings, statements, waitlist rows, archive
-                snapshots, logs): PostgreSQL on Railway.
+                metadata, mappings, statements, archive snapshots, logs, and
+                any remaining legacy <code className="text-ink">waitlist_signups</code>{" "}
+                rows): PostgreSQL on Railway.
               </li>
               <li>
                 <strong className="font-medium text-ink">
@@ -230,13 +234,17 @@ export default function PrivacyPage() {
             </h2>
             <ul className="mt-3 list-disc space-y-2 pl-5">
               <li>
-                <strong className="font-medium text-ink">Waitlist entries</strong> —
-                kept so we can manage early access; remove on request where
-                straightforward.
+                <strong className="font-medium text-ink">Account profile</strong> in
+                our database — kept while the account/organisation exists;
+                remove or anonymise on request where straightforward.
               </li>
               <li>
-                <strong className="font-medium text-ink">Account profile</strong> in
-                our database — kept while the account/organisation exists.
+                <strong className="font-medium text-ink">
+                  Legacy waitlist entries
+                </strong>{" "}
+                (if any remain in <code className="text-ink">waitlist_signups</code>) —
+                kept until deleted on request; not used for new account
+                provisioning.
               </li>
               <li>
                 <strong className="font-medium text-ink">
@@ -290,9 +298,9 @@ export default function PrivacyPage() {
             </p>
             <p className="mt-3">
               If you ask us to erase personal data we will remove or anonymise
-              waitlist and account PII where we can. Financial working data may
-              be retained or anonymised rather than fully erased where we need a
-              continuing accounting or security record.
+              account PII and any legacy waitlist PII where we can. Financial
+              working data may be retained or anonymised rather than fully
+              erased where we need a continuing accounting or security record.
             </p>
           </section>
 
