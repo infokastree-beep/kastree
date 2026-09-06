@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 
 from openpyxl import load_workbook
 
+from app.schemas.commentary import BusinessHealthResult
 from app.schemas.risk import RiskFlagRecord
 from app.schemas.variance import VarianceAnalysisResult, VarianceItemRecord
 from app.services.exporter import (
@@ -25,6 +26,7 @@ from app.services.exporter import (
     format_currency,
     regenerate_export_if_missing,
     render_pdf_html,
+    _pdf_pack_sections,
     run_export_job,
     tier_requires_watermark,
     upload_export_file,
@@ -513,3 +515,96 @@ def test_s3_client_region_uses_auto_for_r2(monkeypatch: pytest.MonkeyPatch) -> N
     assert _s3_client_region() == "auto"
     monkeypatch.setattr(settings, "s3_region", "weur")
     assert _s3_client_region() == "weur"
+
+def test_pdf_toc_and_body_share_single_section_list() -> None:
+    """Contents <ol> titles must equal body <h2> titles in the same order."""
+    import re
+
+    html = render_pdf_html(_branding(), _package(), organisation=_Org("pro"))
+    toc = re.findall(r"<li>(.*?)</li>", re.search(r"<ol>(.*?)</ol>", html, re.S).group(1))
+    body_h2 = re.findall(r"<h2>(.*?)</h2>", html.split("</section>", 1)[1])
+    assert toc == body_h2
+    assert toc == [
+        "Statement of Profit or Loss",
+        "Statement of Financial Position",
+        "Statement of Changes in Equity",
+        "Variance Analysis",
+        "Risk Flags",
+        "Mapping Summary",
+    ]
+    # Same ordered list powers both sides.
+    sections = _pdf_pack_sections(_branding(), _package())
+    assert [title for title, _ in sections] == toc
+
+
+def test_business_health_text_in_pdf_and_excel_before_sopl() -> None:
+    """Business Health text (summary + bullets) leads the pack; no charts."""
+    import re
+
+    health = BusinessHealthResult(
+        summary="Overall trading remains solid with improving cash cover.",
+        key_points=[
+            "Gross margin trend is improving.",
+            "Operating leverage is stable.",
+            "Cash position is strengthening.",
+        ],
+        confidence="high",
+    )
+    base = _package()
+    package = ExportPackage(
+        sopl=base.sopl,
+        sofp=base.sofp,
+        socie=base.socie,
+        variance=base.variance,
+        risk_flags=base.risk_flags,
+        mappings=base.mappings,
+        business_health=health,
+    )
+    html = render_pdf_html(_branding(), package, organisation=_Org("pro"))
+    toc = re.findall(r"<li>(.*?)</li>", re.search(r"<ol>(.*?)</ol>", html, re.S).group(1))
+    body_h2 = re.findall(r"<h2>(.*?)</h2>", html.split("</section>", 1)[1])
+    assert toc[0] == "Business Health"
+    assert toc == body_h2
+    assert "Overall trading remains solid with improving cash cover." in html
+    assert "Gross margin trend is improving." in html
+    assert "recharts" not in html.lower()
+    assert "<svg" not in html.lower()
+
+    content = build_excel(_branding(), package, organisation=_Org("pro"))
+    workbook = load_workbook(io.BytesIO(content))
+    assert workbook.sheetnames[0] == "Business Health"
+    assert workbook.sheetnames[1] == "SOPL"
+    flat = " ".join(
+        str(cell.value)
+        for row in workbook["Business Health"].iter_rows(max_col=2)
+        for cell in row
+        if cell.value is not None
+    )
+    assert "Overall trading remains solid with improving cash cover." in flat
+    assert "Gross margin trend is improving." in flat
+
+
+def test_empty_business_health_omitted_from_exports() -> None:
+    base = _package()
+    empty = BusinessHealthResult(
+        summary="",
+        key_points=[],
+        confidence="low",
+    )
+    package = ExportPackage(
+        sopl=base.sopl,
+        sofp=base.sofp,
+        socie=base.socie,
+        variance=base.variance,
+        risk_flags=base.risk_flags,
+        mappings=base.mappings,
+        business_health=empty,
+    )
+    html = render_pdf_html(_branding(), package, organisation=_Org("pro"))
+    assert "Business Health" not in html
+    workbook = load_workbook(
+        io.BytesIO(build_excel(_branding(), package, organisation=_Org("pro")))
+    )
+    assert workbook.sheetnames[0] == "SOPL"
+    assert "Business Health" not in workbook.sheetnames
+

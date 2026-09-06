@@ -25,6 +25,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 from app.config import settings
+from app.schemas.commentary import BusinessHealthResult
 from app.schemas.risk import RiskFlagRecord
 from app.schemas.variance import VarianceAnalysisResult
 from app.services.mapper import MappingResult
@@ -124,7 +125,7 @@ class ExportBranding:
 
 @dataclass(frozen=True)
 class ExportPackage:
-    """Already-built statement / variance / risk / mapping outputs."""
+    """Already-built statement / variance / risk / mapping / health outputs."""
 
     sopl: Sequence[StatementLineItemRecord]
     sofp: Sequence[StatementLineItemRecord]
@@ -132,6 +133,9 @@ class ExportPackage:
     variance: VarianceAnalysisResult | None
     risk_flags: Sequence[RiskFlagRecord]
     mappings: Sequence[MappingResult]
+    # Optional AI Business Health text (summary + bullets). Omitted from TOC/body
+    # when None or empty — never fails the export. Charts stay dashboard-only.
+    business_health: BusinessHealthResult | None = None
 
 
 @dataclass(frozen=True)
@@ -209,6 +213,11 @@ def build_excel(
     default = workbook.active
     workbook.remove(default)
 
+    # Sheet order matches PDF section order (Business Health first when present).
+    if _business_health_has_content(package.business_health):
+        _write_business_health_sheet(
+            workbook, branding, package.business_health, watermark
+        )
     _write_statement_sheet(workbook, "SOPL", branding, package.sopl, watermark)
     _write_statement_sheet(workbook, "SOFP", branding, package.sofp, watermark)
     _write_statement_sheet(workbook, "SOCIE", branding, package.socie, watermark)
@@ -292,7 +301,11 @@ def render_pdf_html(
     *,
     organisation: OrganisationTier,
 ) -> str:
-    """HTML source for the PDF pack (tested directly for disclaimer/watermark)."""
+    """HTML source for the PDF pack (tested directly for disclaimer/watermark).
+
+    Cover/Contents and body sections are driven by one ordered list from
+    ``_pdf_pack_sections`` so TOC numbering cannot drift from body order.
+    """
     watermark = tier_requires_watermark(organisation)
     watermark_css = ""
     watermark_div = ""
@@ -306,85 +319,9 @@ def render_pdf_html(
         """
         watermark_div = f'<div class="watermark">{WATERMARK_TEXT}</div>'
 
-    sections = [
-        ("Statement of Profit or Loss", package.sopl),
-        ("Statement of Financial Position", package.sofp),
-        ("Statement of Changes in Equity", package.socie),
-    ]
-    toc_items = "".join(
-        f"<li>{title}</li>" for title, _ in sections
-    ) + "<li>Variance Analysis</li><li>Risk Flags</li><li>Mapping Summary</li>"
-
-    body_sections: list[str] = []
-    for title, lines in sections:
-        currency_label = branding.functional_currency.upper()
-        rows = "".join(
-            "<tr>"
-            f"<td>{_html_escape(line.line_item_name)}</td>"
-            f"<td class='num'>{_html_escape(format_currency(line.amount, branding.functional_currency))}</td>"
-            "</tr>"
-            for line in lines
-        )
-        body_sections.append(
-            f"<section><h2>{_html_escape(title)}</h2>"
-            f"<p>All amounts in <strong>{currency_label}</strong></p>"
-            f"<table><thead><tr><th>Line</th><th>Amount</th></tr></thead>"
-            f"<tbody>{rows}</tbody></table></section>"
-        )
-
-    variance_rows = ""
-    if package.variance is not None:
-        for item in package.variance.items:
-            pct = item.variance_pct if item.variance_pct is not None else "n/a"
-            variance_rows += (
-                "<tr>"
-                f"<td>{_html_escape(item.line_item_name)}</td>"
-                f"<td class='num'>{item.current_amount}</td>"
-                f"<td class='num'>{item.prior_amount}</td>"
-                f"<td class='num'>{item.variance_amount}</td>"
-                f"<td>{pct}</td>"
-                f"<td>{item.direction}</td>"
-                f"<td>{'Yes' if item.is_material else 'No'}</td>"
-                "</tr>"
-            )
-    body_sections.append(
-        "<section><h2>Variance Analysis</h2>"
-        "<table><thead><tr>"
-        "<th>Line</th><th>Current</th><th>Prior</th><th>Variance</th>"
-        "<th>%</th><th>Direction</th><th>Material</th>"
-        f"</tr></thead><tbody>{variance_rows}</tbody></table></section>"
-    )
-
-    risk_rows = "".join(
-        "<tr>"
-        f"<td>{_html_escape(flag.rule_name)}</td>"
-        f"<td>{flag.severity}</td>"
-        f"<td>{_html_escape(flag.description)}</td>"
-        "</tr>"
-        for flag in package.risk_flags
-    )
-    body_sections.append(
-        "<section><h2>Risk Flags</h2>"
-        "<table><thead><tr><th>Rule</th><th>Severity</th><th>Description</th></tr></thead>"
-        f"<tbody>{risk_rows}</tbody></table></section>"
-    )
-
-    mapping_rows = "".join(
-        "<tr>"
-        f"<td>{_html_escape(row.source_code)}</td>"
-        f"<td>{_html_escape(row.source_name)}</td>"
-        f"<td>{_html_escape(row.canonical_line or '')}</td>"
-        f"<td>{_html_escape(row.method or '')}</td>"
-        f"<td>{_money_str(row.confidence) if row.confidence is not None else ''}</td>"
-        "</tr>"
-        for row in package.mappings
-    )
-    body_sections.append(
-        "<section><h2>Mapping Summary</h2>"
-        "<table><thead><tr>"
-        "<th>Code</th><th>Name</th><th>Canonical</th><th>Method</th><th>Confidence</th>"
-        f"</tr></thead><tbody>{mapping_rows}</tbody></table></section>"
-    )
+    sections = _pdf_pack_sections(branding, package)
+    toc_items = "".join(f"<li>{_html_escape(title)}</li>" for title, _ in sections)
+    body_html = "".join(html for _, html in sections)
 
     org_line = (
         f"<p><strong>Organisation:</strong> {_html_escape(branding.organisation_name)}</p>"
@@ -403,6 +340,8 @@ def render_pdf_html(
   .disclaimer {{ margin-top: 24px; padding: 12px; border: 1px solid #999;
                  background: #f7f7f7; font-size: 10px; font-style: italic; }}
   .cover {{ page-break-after: always; }}
+  ul.key-points {{ margin: 8px 0 0 18px; padding: 0; }}
+  ul.key-points li {{ margin-bottom: 4px; }}
   {watermark_css}
 </style></head><body>
 {watermark_div}
@@ -418,8 +357,9 @@ def render_pdf_html(
   <h2>Contents</h2>
   <ol>{toc_items}</ol>
 </section>
-{"".join(body_sections)}
+{body_html}
 </body></html>"""
+
 
 
 def export_object_key(export_id: uuid.UUID, format: ExportFormat) -> str:
@@ -603,6 +543,175 @@ class S3ObjectStorage:
 
 
 # --- Excel helpers -----------------------------------------------------------
+
+
+
+def _business_health_has_content(health: BusinessHealthResult | None) -> bool:
+    """True when summary or at least one non-empty key point is present."""
+    if health is None:
+        return False
+    if health.summary.strip():
+        return True
+    return any(point.strip() for point in health.key_points)
+
+
+def _pdf_pack_sections(
+    branding: ExportBranding,
+    package: ExportPackage,
+) -> list[tuple[str, str]]:
+    """Single ordered source of truth for PDF Contents + body sections.
+
+    Returns ``(title, section_html)`` pairs. Business Health is first when it has
+    text content; Performance Overview charts are intentionally excluded.
+    """
+    sections: list[tuple[str, str]] = []
+
+    if _business_health_has_content(package.business_health):
+        assert package.business_health is not None
+        sections.append(
+            ("Business Health", _render_business_health_section(package.business_health))
+        )
+
+    currency_label = branding.functional_currency.upper()
+    for title, lines in (
+        ("Statement of Profit or Loss", package.sopl),
+        ("Statement of Financial Position", package.sofp),
+        ("Statement of Changes in Equity", package.socie),
+    ):
+        rows = "".join(
+            "<tr>"
+            f"<td>{_html_escape(line.line_item_name)}</td>"
+            f"<td class='num'>{_html_escape(format_currency(line.amount, branding.functional_currency))}</td>"
+            "</tr>"
+            for line in lines
+        )
+        sections.append(
+            (
+                title,
+                f"<section><h2>{_html_escape(title)}</h2>"
+                f"<p>All amounts in <strong>{currency_label}</strong></p>"
+                f"<table><thead><tr><th>Line</th><th>Amount</th></tr></thead>"
+                f"<tbody>{rows}</tbody></table></section>",
+            )
+        )
+
+    variance_rows = ""
+    if package.variance is not None:
+        for item in package.variance.items:
+            pct = item.variance_pct if item.variance_pct is not None else "n/a"
+            variance_rows += (
+                "<tr>"
+                f"<td>{_html_escape(item.line_item_name)}</td>"
+                f"<td class='num'>{item.current_amount}</td>"
+                f"<td class='num'>{item.prior_amount}</td>"
+                f"<td class='num'>{item.variance_amount}</td>"
+                f"<td>{pct}</td>"
+                f"<td>{item.direction}</td>"
+                f"<td>{'Yes' if item.is_material else 'No'}</td>"
+                "</tr>"
+            )
+    sections.append(
+        (
+            "Variance Analysis",
+            "<section><h2>Variance Analysis</h2>"
+            "<table><thead><tr>"
+            "<th>Line</th><th>Current</th><th>Prior</th><th>Variance</th>"
+            "<th>%</th><th>Direction</th><th>Material</th>"
+            f"</tr></thead><tbody>{variance_rows}</tbody></table></section>",
+        )
+    )
+
+    risk_rows = "".join(
+        "<tr>"
+        f"<td>{_html_escape(flag.rule_name)}</td>"
+        f"<td>{flag.severity}</td>"
+        f"<td>{_html_escape(flag.description)}</td>"
+        "</tr>"
+        for flag in package.risk_flags
+    )
+    sections.append(
+        (
+            "Risk Flags",
+            "<section><h2>Risk Flags</h2>"
+            "<table><thead><tr><th>Rule</th><th>Severity</th><th>Description</th></tr></thead>"
+            f"<tbody>{risk_rows}</tbody></table></section>",
+        )
+    )
+
+    mapping_rows = "".join(
+        "<tr>"
+        f"<td>{_html_escape(row.source_code)}</td>"
+        f"<td>{_html_escape(row.source_name)}</td>"
+        f"<td>{_html_escape(row.canonical_line or '')}</td>"
+        f"<td>{_html_escape(row.method or '')}</td>"
+        f"<td>{_money_str(row.confidence) if row.confidence is not None else ''}</td>"
+        "</tr>"
+        for row in package.mappings
+    )
+    sections.append(
+        (
+            "Mapping Summary",
+            "<section><h2>Mapping Summary</h2>"
+            "<table><thead><tr>"
+            "<th>Code</th><th>Name</th><th>Canonical</th><th>Method</th><th>Confidence</th>"
+            f"</tr></thead><tbody>{mapping_rows}</tbody></table></section>",
+        )
+    )
+    return sections
+
+
+def _render_business_health_section(health: BusinessHealthResult) -> str:
+    """PDF HTML for Business Health text only (no charts)."""
+    points = [p.strip() for p in health.key_points if p.strip()]
+    points_html = ""
+    if points:
+        items = "".join(f"<li>{_html_escape(point)}</li>" for point in points)
+        points_html = f'<ul class="key-points">{items}</ul>'
+    summary_html = (
+        f"<p>{_html_escape(health.summary.strip())}</p>"
+        if health.summary.strip()
+        else ""
+    )
+    confidence = _html_escape(health.confidence)
+    return (
+        "<section><h2>Business Health</h2>"
+        f"<p><em>Confidence: {confidence}</em></p>"
+        f"{summary_html}{points_html}</section>"
+    )
+
+
+def _write_business_health_sheet(
+    workbook: Workbook,
+    branding: ExportBranding,
+    health: BusinessHealthResult | None,
+    watermark: bool,
+) -> None:
+    """Excel sheet for Business Health text summary (executive summary first)."""
+    if not _business_health_has_content(health):
+        return
+    assert health is not None
+    ws = workbook.create_sheet("Business Health", 0)
+    row = _write_branding(ws, branding, watermark=watermark)
+    row = _write_disclaimer(ws, row)
+    ws.cell(row, 1, "Confidence").font = _HEADER_FONT
+    ws.cell(row, 1).fill = _HEADER_FILL
+    ws.cell(row, 2, health.confidence)
+    row += 2
+    ws.cell(row, 1, "Summary").font = _HEADER_FONT
+    ws.cell(row, 1).fill = _HEADER_FILL
+    row += 1
+    ws.cell(row, 1, health.summary.strip())
+    row += 2
+    ws.cell(row, 1, "Key points").font = _HEADER_FONT
+    ws.cell(row, 1).fill = _HEADER_FILL
+    row += 1
+    for point in health.key_points:
+        cleaned = point.strip()
+        if not cleaned:
+            continue
+        ws.cell(row, 1, f"• {cleaned}")
+        row += 1
+    _autosize(ws, 2)
 
 
 def _write_branding(

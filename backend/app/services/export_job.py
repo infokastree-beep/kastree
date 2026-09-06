@@ -21,8 +21,10 @@ from app.models.risk_flag import RiskFlag
 from app.models.statement_line_item import StatementLineItem
 from app.models.trial_balance import TrialBalance
 from app.models.variance_analysis import VarianceAnalysis
+from app.schemas.commentary import BusinessHealthResult
 from app.schemas.risk import AffectedAccount, RiskFlagRecord
 from app.schemas.variance import VarianceAnalysisResult
+from app.services.commentary import generate_business_health_summary
 from app.services.exporter import (
     ExportBranding,
     ExportPackage,
@@ -131,6 +133,12 @@ def _load_export_context(
     variance = _load_variance(session, tb.id)
     risk_flags = _load_risk_flags(session, tb.id) if include_risk else []
     mappings = _load_mappings(session, tb.company_id) if include_mapping else []
+    business_health = _load_business_health(
+        session,
+        current_tb=tb,
+        current_sopl=sopl,
+        current_sofp=sofp,
+    )
 
     branding = ExportBranding(
         company_name=company.name,
@@ -147,6 +155,7 @@ def _load_export_context(
         variance=variance,
         risk_flags=risk_flags,
         mappings=mappings,
+        business_health=business_health,
     )
     return branding, package, organisation
 
@@ -247,3 +256,66 @@ def _load_mappings(session: Session, company_id: uuid.UUID) -> list[MappingResul
         )
         for row in rows
     ]
+
+def _find_prior_trial_balance(
+    session: Session,
+    *,
+    company_id: uuid.UUID,
+    before_period_end,
+) -> TrialBalance | None:
+    """Most recent same-company TB with period_end strictly before current (§6.2)."""
+    return session.execute(
+        select(TrialBalance)
+        .where(
+            TrialBalance.company_id == company_id,
+            TrialBalance.period_end < before_period_end,
+            TrialBalance.is_deleted.is_(False),
+        )
+        .order_by(TrialBalance.period_end.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+
+def _load_business_health(
+    session: Session,
+    *,
+    current_tb: TrialBalance,
+    current_sopl: list[StatementLineItemRecord],
+    current_sofp: list[StatementLineItemRecord],
+) -> BusinessHealthResult | None:
+    """Best-effort Business Health text for the export pack.
+
+    Mirrors the dashboard endpoint: needs a prior TB with SOPL+SOFP. Failures
+    (no prior, missing statements, empty LLM result) omit the section — exports
+    still succeed. Charts are never included.
+    """
+    if not current_sopl or not current_sofp:
+        return None
+    prior = _find_prior_trial_balance(
+        session,
+        company_id=current_tb.company_id,
+        before_period_end=current_tb.period_end,
+    )
+    if prior is None:
+        return None
+    prior_sopl = _load_statement_lines(session, prior.id, "SOPL")
+    prior_sofp = _load_statement_lines(session, prior.id, "SOFP")
+    if not prior_sopl or not prior_sofp:
+        return None
+    try:
+        health = generate_business_health_summary(
+            current_sopl,
+            prior_sopl,
+            current_sofp,
+            prior_sofp,
+        )
+    except Exception:
+        logger.exception(
+            "Business health generation failed during export for TB %s",
+            current_tb.id,
+        )
+        return None
+    if not health.summary.strip() and not any(p.strip() for p in health.key_points):
+        return None
+    return health
+
