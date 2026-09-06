@@ -275,6 +275,24 @@ first real upload — but this is the actual target design once built, not a vag
 **Source:** standard audit materiality practice (ISA 320 framework; commonly
 cited ranges from professional audit guidance).
 
+**ISA 320 user-facing copy — settled (2026-09-06):** keep the live disclaimer
+exactly as written — no speculative removal. Confirmed on production
+(`/trial-balances/{tb_id}/materiality-suggestion` → `disclaimer`):
+
+> Indicative SaaS default from ISA 320-style benchmarks — not an audit determination.
+
+Source of truth: `DISCLAIMER` in `backend/app/services/materiality.py`. Decision
+rationale: naming ISA 320 with “-style” + the non-audit disclaimer is honest,
+standard accounting-software framing (akin to citing GAAP/IFRS/FRS by name);
+it is **not** treated as an open product question or a reason to strip the
+reference pending legal review.
+
+**One remaining legal item (not blocking copy):** when formal legal / ToS
+review happens, ask counsel specifically whether nominative use of
+“ISA 320” / “ISA 320-style” (and any ISA® / IAASB branding polish) is
+acceptable with this disclaimer — confirm risk posture, do **not** rewrite or
+remove the settled wording unless counsel advises a change.
+
 **Monthly cadence (confirmed 2026-09-03):** variance auto-detect and
 month-over-month arithmetic already work with monthly `period_end` dates
 (June then July upload through the real API — see
