@@ -24,7 +24,7 @@ const TB_PAGE_SIZE = 20;
 /**
  * Route each TB to its current workflow step:
  * - mapping / failed / still parsing → /mapping/{id}
- * - validating onward (statements may exist or be generatable) → /dashboard/{id}
+ * - validating onward (statements may exist or be generatable) → /dashboard/{id}/statements
  */
 function trialBalanceHref(tb: { id: string; status: string }): string {
   const status = tb.status;
@@ -34,7 +34,7 @@ function trialBalanceHref(tb: { id: string; status: string }): string {
     status === "generating" ||
     status === "analysing"
   ) {
-    return `/dashboard/${tb.id}`;
+    return `/dashboard/${tb.id}/statements`;
   }
   return `/mapping/${tb.id}`;
 }

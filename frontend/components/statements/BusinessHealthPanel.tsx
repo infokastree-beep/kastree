@@ -42,15 +42,18 @@ function confidenceStatus(confidence: string | null | undefined): {
 
 type BusinessHealthPanelProps = {
   tbId: string;
-  /** Controlled expand state from the statements page (default collapsed). */
+  /** Controlled expand state from the parent (default collapsed on Statements legacy; Dashboard forces open). */
   expanded: boolean;
   onToggle: () => void;
+  /** When false, always show the full panel and hide expand/collapse controls (Dashboard). */
+  collapsible?: boolean;
 };
 
 export function BusinessHealthPanel({
   tbId,
   expanded,
   onToggle,
+  collapsible = true,
 }: BusinessHealthPanelProps) {
   const { getToken } = useAuth();
 
@@ -141,7 +144,7 @@ export function BusinessHealthPanel({
   const oneLiner =
     summary || points[0] || "Executive summary available — expand for detail.";
 
-  if (!expanded) {
+  if (collapsible && !expanded) {
     return (
       <section
         className="rounded-md border border-line bg-surface-elevated px-4 py-3"
@@ -212,15 +215,17 @@ export function BusinessHealthPanel({
             {confidenceCaption(health?.confidence)}
             {health?.is_edited ? " · Edited" : " · AI draft"}
           </p>
-          <button
-            type="button"
-            onClick={onToggle}
-            className="rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
-            data-testid="business-health-collapse"
-            aria-expanded={true}
-          >
-            Collapse
-          </button>
+          {collapsible ? (
+            <button
+              type="button"
+              onClick={onToggle}
+              className="rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
+              data-testid="business-health-collapse"
+              aria-expanded={true}
+            >
+              Collapse
+            </button>
+          ) : null}
         </div>
       </div>
 

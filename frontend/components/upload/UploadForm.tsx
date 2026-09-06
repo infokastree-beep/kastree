@@ -378,7 +378,7 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
           conflictTbStatus === "validating" ||
           conflictTbStatus === "generating" ||
           conflictTbStatus === "analysing"
-        ? `/dashboard/${conflictTbId}`
+        ? `/dashboard/${conflictTbId}/statements`
         : `/mapping/${conflictTbId}`;
 
   const errorMessage =

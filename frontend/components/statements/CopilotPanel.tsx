@@ -18,15 +18,15 @@ import {
 } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
+import type {
+  CopilotCitePage,
+  CopilotNavigateTarget,
+  StatementsTab,
+} from "@/lib/copilot-navigation";
 import { formatCanonicalLineLabel, formatDate } from "@/lib/utils";
 import type { CopilotAskResponse, CopilotCitation } from "@/types";
 
-export type CopilotNavigateTarget = {
-  tab?: "Variance" | "Risk";
-  anchorId: string;
-  /** Auto-expand the matching context strip on the statements page. */
-  contextStrip?: "health" | "performance";
-};
+export type { CopilotNavigateTarget };
 
 type CopilotPanelProps = {
   tbId: string;
@@ -77,7 +77,7 @@ function citationAnchorId(citation: CopilotCitation): string | null {
 
 function citationTab(
   citation: CopilotCitation,
-): CopilotNavigateTarget["tab"] | undefined {
+): StatementsTab | undefined {
   if (citation.source === "variance" || citation.source === "commentary") {
     return "Variance";
   }
@@ -87,14 +87,15 @@ function citationTab(
   return undefined;
 }
 
-function citationContextStrip(
-  citation: CopilotCitation,
-): CopilotNavigateTarget["contextStrip"] | undefined {
-  if (citation.source === "health") return "health";
-  if (citation.source === "performance" || citation.source === "expense_mix") {
-    return "performance";
+function citationPage(citation: CopilotCitation): CopilotCitePage {
+  if (
+    citation.source === "health" ||
+    citation.source === "performance" ||
+    citation.source === "expense_mix"
+  ) {
+    return "dashboard";
   }
-  return undefined;
+  return "statements";
 }
 
 function citationChipLabel(citation: CopilotCitation): string {
@@ -243,9 +244,9 @@ export function CopilotPanel({
       const anchorId = citationAnchorId(citation);
       if (!anchorId) return;
       onNavigateCitation({
+        page: citationPage(citation),
         tab: citationTab(citation),
         anchorId,
-        contextStrip: citationContextStrip(citation),
       });
     },
     [onNavigateCitation],

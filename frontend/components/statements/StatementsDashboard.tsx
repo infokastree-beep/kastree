@@ -2,19 +2,19 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
 import { formatCurrency, formatCurrencyCode } from "@/lib/currency";
 import { DISCLAIMER_TEXT } from "@/lib/constants";
 import type { StatementBlock, StatementLine, StatementsResponse } from "@/types";
-import { BusinessHealthPanel } from "./BusinessHealthPanel";
 import { ExportButton } from "./ExportButton";
 import { MaterialitySuggestionBanner } from "./MaterialitySuggestionBanner";
-import { PerformanceOverview } from "./PerformanceOverview";
 import { RiskFlagsPanel } from "./RiskFlagsPanel";
-import { CopilotPanel, type CopilotNavigateTarget } from "./CopilotPanel";
 import { VariancePanel } from "./VariancePanel";
+import { useTbWorkspace } from "./TbWorkspaceProvider";
+import { parseStatementsTab } from "@/lib/copilot-navigation";
 
 type Tab = "SOPL" | "SOFP" | "SOCIE" | "Variance" | "Risk";
 
@@ -127,10 +127,26 @@ function StatementTable({
 export function StatementsDashboard({ tbId }: { tbId: string }) {
   const { getToken } = useAuth();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<Tab>("SOPL");
-  const [copilotOpen, setCopilotOpen] = useState(false);
-  const [healthExpanded, setHealthExpanded] = useState(false);
-  const [performanceExpanded, setPerformanceExpanded] = useState(false);
+  const searchParams = useSearchParams();
+  const { openAsk } = useTbWorkspace();
+  const initialTab = parseStatementsTab(searchParams?.get("tab")) ?? "SOPL";
+  const [tab, setTab] = useState<Tab>(initialTab);
+
+  useEffect(() => {
+    const fromUrl = parseStatementsTab(searchParams?.get("tab"));
+    if (fromUrl) setTab(fromUrl);
+  }, [searchParams]);
+
+  useEffect(() => {
+    function onSetTab(event: Event) {
+      const detail = (event as CustomEvent<{ tab?: string }>).detail;
+      const next = parseStatementsTab(detail?.tab);
+      if (next) setTab(next);
+    }
+    window.addEventListener("kastree:set-statements-tab", onSetTab);
+    return () =>
+      window.removeEventListener("kastree:set-statements-tab", onSetTab);
+  }, []);
 
   const statementsQuery = useQuery({
     queryKey: ["tb-statements", tbId],
@@ -171,13 +187,12 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
   const statementsData = statementsQuery.data ?? generateMutation.data ?? null;
   const currencyCode = statementsData?.functional_currency ?? "GBP";
   const isStatementTab = STATEMENT_TABS.includes(tab);
-
   const block = isStatementTab
     ? statementsData?.statements.find((s) => s.statement_type === tab)
     : undefined;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" data-testid="statements-workspace">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <h1 className="font-display text-heading-lg text-ink">Statements</h1>
@@ -202,7 +217,7 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => setCopilotOpen(true)}
+              onClick={openAsk}
               className="flex items-center gap-1.5 rounded-md border border-line bg-surface-elevated px-3 py-1.5 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
               data-testid="copilot-ask-button"
             >
@@ -296,23 +311,6 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
           />
 
           <div
-            className="space-y-2"
-            data-testid="context-strips"
-          >
-            <BusinessHealthPanel
-              tbId={tbId}
-              expanded={healthExpanded}
-              onToggle={() => setHealthExpanded((v) => !v)}
-            />
-            <PerformanceOverview
-              tbId={tbId}
-              currencyCode={currencyCode}
-              expanded={performanceExpanded}
-              onToggle={() => setPerformanceExpanded((v) => !v)}
-            />
-          </div>
-
-          <div
             className="space-y-4"
             data-testid="statements-primary-workspace"
           >
@@ -366,35 +364,6 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
           </div>
         </>
       ) : null}
-
-      <CopilotPanel
-        tbId={tbId}
-        open={copilotOpen}
-        onClose={() => setCopilotOpen(false)}
-        onNavigateCitation={(target: CopilotNavigateTarget) => {
-          if (target.contextStrip === "health") {
-            setHealthExpanded(true);
-          }
-          if (target.contextStrip === "performance") {
-            setPerformanceExpanded(true);
-          }
-          if (target.tab) {
-            setTab(target.tab);
-          }
-          const delay =
-            target.contextStrip || target.tab ? 120 : 0;
-          window.setTimeout(() => {
-            const el = document.getElementById(target.anchorId);
-            if (!el) return;
-            el.scrollIntoView({ behavior: "smooth", block: "center" });
-            el.classList.remove("copilot-cite-flash");
-            // Force reflow so re-clicking the same chip retriggers the flash.
-            void el.offsetWidth;
-            el.classList.add("copilot-cite-flash");
-          }, delay);
-        }}
-      />
     </div>
   );
-
 }

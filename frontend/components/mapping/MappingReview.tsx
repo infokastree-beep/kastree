@@ -131,7 +131,7 @@ export function MappingReview({ tbId }: { tbId: string }) {
       );
     },
     onSuccess: () => {
-      router.push(`/dashboard/${tbId}`);
+      router.push(`/dashboard/${tbId}/statements`);
     },
   });
 

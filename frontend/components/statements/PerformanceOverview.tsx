@@ -208,13 +208,16 @@ export function PerformanceOverview({
   previewData,
   expanded,
   onToggle,
+  collapsible = true,
 }: {
   tbId: string;
   currencyCode: string;
   previewData?: PerformanceOverviewResponse;
-  /** Controlled expand state from the statements page (default collapsed). */
+  /** Controlled expand state from the parent (Dashboard forces open). */
   expanded: boolean;
   onToggle: () => void;
+  /** When false, always show the full panel and hide expand/collapse controls. */
+  collapsible?: boolean;
 }) {
   const { getToken } = useAuth();
   const [selectedTbId, setSelectedTbId] = useState<string>("");
@@ -312,7 +315,7 @@ export function PerformanceOverview({
     code: item.code,
   }));
 
-  if (!expanded) {
+  if (collapsible && !expanded) {
     const priorHintParts: string[] = [];
     for (const card of KPI_CARDS) {
       const value = toNumber(selectedPeriod.metrics[card.key]);
@@ -408,15 +411,17 @@ export function PerformanceOverview({
             <h2 className="font-display text-base font-semibold text-ink">
               Performance overview
             </h2>
-            <button
-              type="button"
-              onClick={onToggle}
-              className="rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
-              data-testid="performance-collapse"
-              aria-expanded={true}
-            >
-              Collapse
-            </button>
+            {collapsible ? (
+              <button
+                type="button"
+                onClick={onToggle}
+                className="rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
+                data-testid="performance-collapse"
+                aria-expanded={true}
+              >
+                Collapse
+              </button>
+            ) : null}
           </div>
           <p className="mt-1 text-sm text-ink-secondary">
             {multiPeriod
