@@ -25,12 +25,18 @@ const isDashboardRoute = createRouteMatcher([
 import { clerkReady } from "@/lib/clerk";
 
 const clerkHandler = clerkMiddleware(async (auth, request) => {
+  if (request.nextUrl.pathname.startsWith("/dev")) {
+    return;
+  }
   if (isDashboardRoute(request)) {
     await auth().protect();
   }
 });
 
 function safePlaceholderMiddleware(request: NextRequest) {
+  if (request.nextUrl.pathname.startsWith("/dev")) {
+    return NextResponse.next();
+  }
   if (isDashboardRoute(request)) {
     const home = new URL("/", request.url);
     home.searchParams.set("clerk", "required");

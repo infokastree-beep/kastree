@@ -65,3 +65,18 @@ body {
     animation: none;
   }
 }
+
+@keyframes copilot-cite-flash {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent);
+    background-color: color-mix(in srgb, var(--accent-muted) 80%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    background-color: transparent;
+  }
+}
+
+.copilot-cite-flash {
+  animation: copilot-cite-flash 1.6s ease-out;
+}

@@ -64,7 +64,7 @@ export function BusinessHealthPanel({ tbId }: { tbId: string }) {
     return (
       <div
         className="rounded-md border border-line bg-surface-elevated p-5"
-        data-testid="business-health-unavailable"
+        id="copilot-anchor-health" data-testid="business-health-unavailable"
       >
         <h2 className="font-display text-base font-semibold text-ink">
           Business health
@@ -85,7 +85,7 @@ export function BusinessHealthPanel({ tbId }: { tbId: string }) {
     return (
       <div
         className="rounded-md border border-line bg-surface-elevated p-5"
-        data-testid="business-health-empty"
+        id="copilot-anchor-health" data-testid="business-health-empty"
       >
         <h2 className="font-display text-base font-semibold text-ink">
           Business health
@@ -102,7 +102,7 @@ export function BusinessHealthPanel({ tbId }: { tbId: string }) {
   return (
     <section
       className="rounded-md border border-line bg-surface-elevated p-5"
-      data-testid="business-health-panel"
+      id="copilot-anchor-health" data-testid="business-health-panel"
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>

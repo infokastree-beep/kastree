@@ -58,7 +58,7 @@ export function RiskFlagsPanel({ tbId }: { tbId: string }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" id="copilot-anchor-risk">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-ink-secondary">
           Deterministic rules evaluated against this trial balance
@@ -113,6 +113,7 @@ export function RiskFlagsPanel({ tbId }: { tbId: string }) {
               {flags.map((flag) => (
                 <tr
                   key={flag.id}
+                  id={`copilot-anchor-risk-${flag.rule_name}`}
                   className={`border-b border-line/70 ${
                     flag.severity === "critical"
                       ? "bg-red-50/60"

@@ -13,6 +13,7 @@ import { ExportButton } from "./ExportButton";
 import { MaterialitySuggestionBanner } from "./MaterialitySuggestionBanner";
 import { PerformanceOverview } from "./PerformanceOverview";
 import { RiskFlagsPanel } from "./RiskFlagsPanel";
+import { CopilotPanel, type CopilotNavigateTarget } from "./CopilotPanel";
 import { VariancePanel } from "./VariancePanel";
 
 type Tab = "SOPL" | "SOFP" | "SOCIE" | "Variance" | "Risk";
@@ -127,6 +128,7 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
   const { getToken } = useAuth();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>("SOPL");
+  const [copilotOpen, setCopilotOpen] = useState(false);
 
   const statementsQuery = useQuery({
     queryKey: ["tb-statements", tbId],
@@ -274,6 +276,14 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
               ))}
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCopilotOpen(true)}
+                className="flex items-center gap-1.5 rounded-md border border-line bg-surface-elevated px-3 py-1.5 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
+                data-testid="copilot-ask-button"
+              >
+                Ask
+              </button>
               <ExportButton tbId={tbId} />
               {generateMutation.error ? (
                 <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
@@ -313,6 +323,26 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
           ) : null}
         </>
       ) : null}
+
+      <CopilotPanel
+        tbId={tbId}
+        open={copilotOpen}
+        onClose={() => setCopilotOpen(false)}
+        onNavigateCitation={(target: CopilotNavigateTarget) => {
+          if (target.tab) {
+            setTab(target.tab);
+          }
+          window.setTimeout(() => {
+            const el = document.getElementById(target.anchorId);
+            if (!el) return;
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+            el.classList.remove("copilot-cite-flash");
+            // Force reflow so re-clicking the same chip retriggers the flash.
+            void el.offsetWidth;
+            el.classList.add("copilot-cite-flash");
+          }, target.tab ? 120 : 0);
+        }}
+      />
     </div>
   );
 }

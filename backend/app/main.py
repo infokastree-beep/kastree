@@ -14,6 +14,7 @@ from app.routers import (
     clients,
     commentary,
     companies,
+    copilot,
     export,
     notifications,
     organisations,
@@ -56,6 +57,7 @@ app.include_router(export.trial_balances_router)
 app.include_router(export.exports_router)
 app.include_router(webhooks.router)
 app.include_router(commentary.router)
+app.include_router(copilot.router)
 app.include_router(notifications.router)
 app.include_router(archived_records.clients_router)
 app.include_router(archived_records.org_router)

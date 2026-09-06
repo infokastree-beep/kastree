@@ -457,7 +457,7 @@ export function VariancePanel({
       ) : (
         <div
           className="overflow-x-auto rounded-md border border-line bg-surface-elevated"
-          data-testid="variance-table"
+          id="copilot-anchor-variance" data-testid="variance-table"
           data-prior-tb-id={data.prior_tb_id ?? ""}
         >
           <table className="min-w-full text-left text-sm">
@@ -476,6 +476,7 @@ export function VariancePanel({
               {data.items.map((item) => (
                 <tr
                   key={item.line_item_code}
+                  id={`copilot-anchor-variance-${item.line_item_code}`}
                   className={`border-b border-line/70 ${
                     item.is_material ? "bg-amber-50/70" : "bg-surface-elevated"
                   }`}

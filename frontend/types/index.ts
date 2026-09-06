@@ -344,3 +344,31 @@ export interface ExportStatusResponse {
   file_url: string | null;
   error_message: string | null;
 }
+
+export type CopilotCitationSource =
+  | "performance"
+  | "variance"
+  | "expense_mix"
+  | "risk"
+  | "commentary"
+  | "health"
+  | "glossary";
+
+export interface CopilotCitation {
+  source: CopilotCitationSource;
+  line_code: string | null;
+  period_end: string | null;
+}
+
+export interface CopilotAskResponse {
+  company_name: string;
+  period_end: string;
+  prior_period_end: string | null;
+  answer_markdown: string;
+  citations: CopilotCitation[];
+  confidence: "high" | "medium" | "low" | null;
+  refused: boolean;
+  refusal_message: string | null;
+  dropped_sentence_count: number;
+  turn_id: string;
+}

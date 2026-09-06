@@ -371,6 +371,7 @@ export function PerformanceOverview({
           return (
             <div
               key={card.key}
+              id={`copilot-anchor-performance-${card.key}`}
               className="rounded-md border border-line bg-surface px-4 py-4"
               data-testid={`performance-kpi-${card.key}`}
             >
@@ -519,7 +520,7 @@ export function PerformanceOverview({
           ) : (
             <div
               className="mt-3 h-64 w-full"
-              data-testid="performance-expense-chart"
+              id="copilot-anchor-expense-mix" data-testid="performance-expense-chart"
             >
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>

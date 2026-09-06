@@ -227,3 +227,28 @@ def normalize_numeric_token(raw: str) -> str:
     if cleaned.endswith("."):
         cleaned = cleaned[:-1]
     return cleaned
+
+
+class CopilotAskRequest(BaseModel):
+    """POST /trial-balances/{tb_id}/copilot body."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    question: str = Field(min_length=1, max_length=2000)
+
+
+class CopilotAskResponse(BaseModel):
+    """Grounded Copilot answer plus context for the slide-over chip."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    company_name: str
+    period_end: date
+    prior_period_end: date | None = None
+    answer_markdown: str
+    citations: list[CopilotCitation] = Field(default_factory=list)
+    confidence: Literal["high", "medium", "low"] | None = None
+    refused: bool = False
+    refusal_message: str | None = None
+    dropped_sentence_count: int = 0
+    turn_id: uuid.UUID
