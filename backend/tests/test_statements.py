@@ -8,6 +8,7 @@ from decimal import Decimal
 import pytest
 
 from app.services.statements import (
+    EQUITY_COMPONENT_LINES,
     MappedStatementAccount,
     SocieSofpEquityMismatchError,
     _compute_socie_rollforward,
@@ -16,6 +17,13 @@ from app.services.statements import (
     build_sopl,
     build_statements,
     compute_net_profit,
+    compute_total_equity,
+)
+from app.services.validator import (
+    SimpleMappedAccount,
+    _total_equity_balance_sheet,
+    _total_equity_sofp,
+    validate_trial_balance,
 )
 
 
@@ -799,3 +807,141 @@ def test_nil_face_lines_omitted_and_empty_sofp_section_subtotal_hidden() -> None
     ]
     assert "dividends" not in socie_codes
     assert _by_code(socie, "total_equity_closing").amount == Decimal("1400.00")
+
+
+def test_compute_total_equity_sums_every_equity_component_line() -> None:
+    """Shared helper is the only place that defines the equity-total sum."""
+    amounts = {
+        "share_capital": Decimal("2000.00"),
+        "share_premium": Decimal("1000.00"),
+        "retained_earnings": Decimal("5500.00"),
+        "revaluation_reserve": Decimal("500.00"),
+        "dividends": Decimal("999.00"),  # must be ignored
+    }
+    assert compute_total_equity(amounts) == Decimal("9000.00")
+    assert compute_total_equity({}) == Decimal("0")
+    assert set(EQUITY_COMPONENT_LINES) == {
+        "share_capital",
+        "share_premium",
+        "retained_earnings",
+        "revaluation_reserve",
+    }
+
+
+def test_four_equity_total_sites_all_call_compute_total_equity() -> None:
+    """Structural guard: the four historical drift sites share one call.
+
+    net_assets, balance_sheet_balance, build_sofp, and build_socie (via
+    ``_compute_socie_rollforward``) each used to hand-sum equity components.
+    Missing a new line in any one copy was the recurring bug class. After the
+    refactor every site must call ``compute_total_equity``.
+    """
+    import ast
+    import inspect
+
+    import app.services.statements as statements_mod
+    import app.services.validator as validator_mod
+
+    def _calls_compute_total_equity(fn: object) -> bool:
+        tree = ast.parse(inspect.getsource(fn))  # type: ignore[arg-type]
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if isinstance(func, ast.Name) and func.id == "compute_total_equity":
+                return True
+            if isinstance(func, ast.Attribute) and func.attr == "compute_total_equity":
+                return True
+        return False
+
+    assert _calls_compute_total_equity(statements_mod.build_sofp)
+    assert _calls_compute_total_equity(statements_mod._compute_socie_rollforward)
+    assert _calls_compute_total_equity(validator_mod._total_equity_sofp)
+    assert _calls_compute_total_equity(validator_mod._total_equity_balance_sheet)
+
+
+def test_new_equity_canonical_line_cannot_diverge_across_four_call_sites(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Extending EQUITY_COMPONENT_LINES alone must update all four totals.
+
+    This is the test that would have caught all four historical bugs at once:
+    when a new equity face line (e.g. share_premium / revaluation_reserve) is
+    added to the shared tuple, SOFP total_equity, SOCIE total_equity_closing,
+    validator net_assets, and balance_sheet_balance must all include it —
+    because they all derive from ``compute_total_equity`` / that tuple.
+    """
+    import app.services.statements as statements_mod
+    import app.services.validator as validator_mod
+
+    new_lines = statements_mod.EQUITY_COMPONENT_LINES + ("other_reserves",)
+    monkeypatch.setattr(statements_mod, "EQUITY_COMPONENT_LINES", new_lines)
+    monkeypatch.setattr(
+        statements_mod, "SOFP_EQUITY_TOTAL_LINES", frozenset(new_lines)
+    )
+    monkeypatch.setattr(validator_mod, "EQUITY_COMPONENT_LINES", new_lines)
+    monkeypatch.setattr(validator_mod, "EQUITY_LINES_SOFP", frozenset(new_lines))
+    monkeypatch.setitem(
+        statements_mod.LINE_ITEM_NAMES, "other_reserves", "Other reserves"
+    )
+
+    # Assets 10_000 − liabilities 2_000 = net assets 8_000.
+    # Components: SC 3_000 + other_reserves 400 + opening RE 2_600 = 6_000
+    # + period profit 2_000 → closing equity 8_000 (with other_reserves).
+    # Without other_reserves the four sites would land at 7_600 and disagree
+    # with net assets — the exact historical drift pattern.
+    statement_accounts = [
+        _acct("1000", net_balance="10000.00", canonical_line="cash"),
+        _acct("2000", net_balance="-2000.00", canonical_line="trade_payables"),
+        _acct("3000", net_balance="-3000.00", canonical_line="share_capital"),
+        _acct("3300", net_balance="-400.00", canonical_line="other_reserves"),
+        _acct("3100", net_balance="-2600.00", canonical_line="retained_earnings"),
+        _acct("4000", net_balance="-2000.00", canonical_line="revenue"),
+    ]
+
+    _sopl, sofp_lines, socie_lines = build_statements(statement_accounts)
+
+    assert _by_code(sofp_lines, "other_reserves").amount == Decimal("400.00")
+    sofp_total = _by_code(sofp_lines, "total_equity").amount
+    socie_total = _by_code(socie_lines, "total_equity_closing").amount
+    assert sofp_total == Decimal("8000.00")
+    assert socie_total == Decimal("8000.00")
+    assert sofp_total == socie_total
+
+    shared = compute_total_equity(
+        {
+            "share_capital": Decimal("3000.00"),
+            "share_premium": Decimal("0"),
+            "retained_earnings": Decimal("4600.00"),  # 2600 opening + 2000 profit
+            "revaluation_reserve": Decimal("0"),
+            "other_reserves": Decimal("400.00"),
+        }
+    )
+    assert shared == Decimal("8000.00")
+    assert shared == sofp_total == socie_total
+
+    mapped = [
+        SimpleMappedAccount(
+            account_code=a.account_code,
+            account_name=a.account_code,
+            debit=a.net_balance if a.net_balance >= 0 else Decimal("0"),
+            credit=(-a.net_balance) if a.net_balance < 0 else Decimal("0"),
+            net_balance=a.net_balance,
+            canonical_line=a.canonical_line,
+        )
+        for a in statement_accounts
+    ]
+    # Validator Check 4 equity (components + profit) and Check 2 (same, + dividends)
+    # must both include other_reserves via the shared helper.
+    assert _total_equity_sofp(mapped) == Decimal("8000.00")
+    assert _total_equity_balance_sheet(mapped) == Decimal("8000.00")
+
+    results = validate_trial_balance(mapped)
+    assert _by_name_check(results, "net_assets").passed is True
+    assert _by_name_check(results, "balance_sheet_balance").passed is True
+
+
+def _by_name_check(results, check_name: str):
+    matches = [c for c in results.checks if c.check_name == check_name]
+    assert len(matches) == 1, f"expected one {check_name}, got {len(matches)}"
+    return matches[0]

@@ -167,24 +167,24 @@ prompts must stay aligned.
 
 ## Equity total — duplicated inline formulas (structural drift risk)
 
-Total-equity calculation has now needed the **same class of fix four separate
-times** during this build — `net_assets`, `balance_sheet_balance`, `build_sofp`,
-and `build_socie` (`_compute_socie_rollforward`). Each time a new equity concept
-was correctly added to one formula but missed in another (most recently
-`share_premium` and `revaluation_reserve` on SOFP but not SOCIE).
+**Resolved.** Total equity is no longer hand-summed in four places. A single
+shared `compute_total_equity(amounts_by_line)` in `backend/app/services/statements.py`
+sums every entry of `EQUITY_COMPONENT_LINES` (`share_capital`, `share_premium`,
+`retained_earnings`, `revaluation_reserve`). All four former drift sites call it:
 
-This is a **structural risk**, not a one-off oversight: four independent inline
-formulas that must stay aligned will drift again the next time equity logic
-changes.
+- `build_sofp` → SOFP `total_equity`
+- `_compute_socie_rollforward` / `build_socie` → SOCIE `total_equity_closing`
+- validator `_total_equity_sofp` → Check 4 `net_assets`
+- validator `_total_equity_balance_sheet` → Check 2 `balance_sheet_balance`
 
-**Worth considering a genuine refactor:** a single shared
-`compute_total_equity(accounts)` (or equivalent) that every call site uses,
-rather than four separate sums that can diverge silently until a reconciliation
-check fires.
-
-**Not urgent** — each instance has been caught correctly so far — but the pattern
-itself is worth fixing at the source **next time equity logic is touched**, rather
-than relying on manually catching a fifth instance.
+Adding a future equity face line means extending `EQUITY_COMPONENT_LINES` (and
+display metadata) once — not patching four formulas. Regression coverage:
+`test_four_equity_total_sites_all_call_compute_total_equity` and
+`test_new_equity_canonical_line_cannot_diverge_across_four_call_sites` (would
+have caught the share_premium / revaluation_reserve misses on all four sites at
+once). Live proof: charlie munger / berkshire periods with nonzero share_premium
+(25,000) and revaluation_reserve (18,000) recomputed bit-exact to stored
+SOFP/SOCIE totals (327,600.00) across four period ends.
 
 ## CreateClientForm step-1-only recovery (misleading empty state)
 

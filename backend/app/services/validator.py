@@ -11,7 +11,11 @@ from decimal import Decimal
 from typing import Protocol, Sequence
 
 from app.schemas.trial_balance import ValidationCheck, ValidationResults
-from app.services.statements import compute_net_profit
+from app.services.statements import (
+    EQUITY_COMPONENT_LINES,
+    compute_net_profit,
+    compute_total_equity,
+)
 
 TOLERANCE = Decimal("0.01")
 
@@ -38,18 +42,8 @@ LIABILITY_LINES: frozenset[str] = frozenset(
         "loans",
     }
 )
-# SOFP "total equity" for the net-assets cross-check starts from capital + opening
-# RE, then adds current-period profit (P&L still open on the TB). Dividends stay
-# excluded so this check remains independent of balance_sheet_balance — open
-# dividends still fail net_assets by exactly the dividend amount.
-EQUITY_LINES_SOFP: frozenset[str] = frozenset(
-    {
-        "share_capital",
-        "share_premium",
-        "retained_earnings",
-        "revaluation_reserve",
-    }
-)
+# Derived from statements.EQUITY_COMPONENT_LINES — never extend this independently.
+EQUITY_LINES_SOFP: frozenset[str] = frozenset(EQUITY_COMPONENT_LINES)
 
 
 class MappedAccount(Protocol):
@@ -151,31 +145,43 @@ def _total_liabilities(accounts: Sequence[MappedAccount]) -> Decimal:
     return _credit_normal_total(accounts, LIABILITY_LINES)
 
 
-def _total_equity_balance_sheet(accounts: Sequence[MappedAccount]) -> Decimal:
-    """Closing equity for Check 2: SC + opening RE + period profit + dividends.
+def _equity_component_amounts(
+    accounts: Sequence[MappedAccount],
+) -> dict[str, Decimal]:
+    """Credit-normal TB amounts for every :data:`EQUITY_COMPONENT_LINES` entry."""
+    return {
+        line: _credit_normal_total(accounts, frozenset({line}))
+        for line in EQUITY_COMPONENT_LINES
+    }
 
-    Dividends are debit-normal contra-equity (credit-normal sum reduces equity).
-    Period profit uses :func:`compute_net_profit` — the same function as Check 3,
-    Check 4, SOPL, and SOCIE. Without it, open P&L false-fails Check 2 the way
-    Check 4 did before the net_assets fix.
+
+def _total_equity_balance_sheet(accounts: Sequence[MappedAccount]) -> Decimal:
+    """Closing equity for Check 2: equity components + period profit + dividends.
+
+    Equity components come from :func:`compute_total_equity` (shared with SOFP /
+    SOCIE). Dividends are debit-normal contra-equity (credit-normal sum reduces
+    equity). Period profit uses :func:`compute_net_profit` — the same function as
+    Check 3, Check 4, SOPL, and SOCIE.
     """
     return (
-        _credit_normal_total(accounts, EQUITY_LINES_SOFP)
+        compute_total_equity(_equity_component_amounts(accounts))
         + compute_net_profit(accounts)
         + _credit_normal_total(accounts, frozenset({"dividends"}))
     )
 
 
 def _total_equity_sofp(accounts: Sequence[MappedAccount]) -> Decimal:
-    """Closing equity for Check 4: SC + opening RE + period profit.
+    """Closing equity for Check 4: equity components + period profit.
 
     Dividends are deliberately omitted (Product Spec §4.2.1 Check 4) so an open
     Dividends balance fails this check while balance_sheet_balance may still pass.
     Period profit must be included: SOFP-mapped assets already reflect trading
     cash/working-capital effects, but opening RE on an unclosed TB does not.
+    Equity components come from :func:`compute_total_equity` (shared with SOFP /
+    SOCIE / Check 2).
     """
     return (
-        _credit_normal_total(accounts, EQUITY_LINES_SOFP)
+        compute_total_equity(_equity_component_amounts(accounts))
         + compute_net_profit(accounts)
     )
 

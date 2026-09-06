@@ -14,7 +14,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Protocol, Sequence, TypeVar
+from typing import Mapping, Protocol, Sequence, TypeVar
 
 # Credit-normal P&L / SOFP equity & liability lines: statement amount = -net_balance.
 # Debit-normal asset / expense / dividend lines: statement amount = net_balance.
@@ -223,15 +223,30 @@ SOFP_LIABILITY_ORDER: tuple[str, ...] = (
     SOFP_NON_CURRENT_LIABILITY_ORDER + SOFP_CURRENT_LIABILITY_ORDER
 )
 
-# total_equity = share_capital + share_premium + retained_earnings + revaluation_reserve.
-SOFP_EQUITY_TOTAL_LINES: frozenset[str] = frozenset(
-    {
-        "share_capital",
-        "share_premium",
-        "retained_earnings",
-        "revaluation_reserve",
-    }
+# Single source of truth for "what counts as equity" in SOFP total_equity,
+# SOCIE total_equity_closing, validator net_assets, and balance_sheet_balance.
+# Add new equity face lines HERE — not as one-off terms in any call-site sum.
+EQUITY_COMPONENT_LINES: tuple[str, ...] = (
+    "share_capital",
+    "share_premium",
+    "retained_earnings",
+    "revaluation_reserve",
 )
+SOFP_EQUITY_TOTAL_LINES: frozenset[str] = frozenset(EQUITY_COMPONENT_LINES)
+
+
+def compute_total_equity(amounts_by_line: Mapping[str, Decimal]) -> Decimal:
+    """Sum every equity component line from :data:`EQUITY_COMPONENT_LINES`.
+
+    Callers pass already-signed statement amounts (credit-normal, positive on
+    the face) keyed by canonical line. Missing keys count as zero. Dividends
+    are never included — they are contra-equity / presentation-only and are
+    handled by validator Check 2 separately from SOFP total equity.
+    """
+    total = Decimal("0")
+    for line in EQUITY_COMPONENT_LINES:
+        total += amounts_by_line.get(line, Decimal("0"))
+    return total
 
 # Display-only nil face filter (does not change totals or underlying TB/mappings).
 _NIL_FACE_TOLERANCE = Decimal("0.01")
@@ -442,46 +457,33 @@ def build_sofp(
     )
     order += 1
 
-    share_capital = _leaf_line("share_capital", grouped, order)
-    order += 1
-    lines.append(share_capital)
-
-    share_premium = _leaf_line("share_premium", grouped, order)
-    order += 1
-    lines.append(share_premium)
-
-    re_ids = list(retained_earnings_source_ids)
-    retained_earnings = StatementLineItemRecord(
-        line_item_code="retained_earnings",
-        line_item_name=LINE_ITEM_NAMES["retained_earnings"],
-        amount=_quantize(retained_earnings_closing),
-        is_subtotal=False,
-        display_order=order,
-        source_account_ids=re_ids,
-    )
-    order += 1
-    lines.append(retained_earnings)
-
-    revaluation_reserve = _leaf_line("revaluation_reserve", grouped, order)
-    order += 1
-    lines.append(revaluation_reserve)
+    equity_leaves: dict[str, StatementLineItemRecord] = {}
+    for line_code in EQUITY_COMPONENT_LINES:
+        if line_code == "retained_earnings":
+            leaf = StatementLineItemRecord(
+                line_item_code="retained_earnings",
+                line_item_name=LINE_ITEM_NAMES["retained_earnings"],
+                amount=_quantize(retained_earnings_closing),
+                is_subtotal=False,
+                display_order=order,
+                source_account_ids=list(retained_earnings_source_ids),
+            )
+        else:
+            leaf = _leaf_line(line_code, grouped, order)
+        order += 1
+        lines.append(leaf)
+        equity_leaves[line_code] = leaf
 
     dividends = _leaf_line("dividends", grouped, order)
     order += 1
     lines.append(dividends)
 
-    # Must match validator.py net_assets / EQUITY_LINES_SOFP: SC + SP + RE + RR.
-    total_equity_amount = (
-        share_capital.amount
-        + share_premium.amount
-        + retained_earnings.amount
-        + revaluation_reserve.amount
+    # Single shared total — same EQUITY_COMPONENT_LINES as SOCIE / validator.
+    total_equity_amount = compute_total_equity(
+        {code: leaf.amount for code, leaf in equity_leaves.items()}
     )
     total_equity_ids = _merge_ids(
-        share_capital.source_account_ids,
-        share_premium.source_account_ids,
-        retained_earnings.source_account_ids,
-        revaluation_reserve.source_account_ids,
+        *(equity_leaves[code].source_account_ids for code in EQUITY_COMPONENT_LINES)
     )
     lines.append(
         _subtotal_line("total_equity", total_equity_amount, order, total_equity_ids)
@@ -677,29 +679,30 @@ def _compute_socie_rollforward(
     profit_amount = compute_net_profit(accounts)
     profit_ids = pnl_source_account_ids(accounts)
     dividends_amount, dividends_ids = _sum_line("dividends", grouped)
-    share_capital_amount, share_capital_ids = _sum_line("share_capital", grouped)
-    share_premium_amount, share_premium_ids = _sum_line("share_premium", grouped)
-    revaluation_reserve_amount, revaluation_reserve_ids = _sum_line(
-        "revaluation_reserve", grouped
-    )
 
     retained_earnings_closing_amount = (
         opening_amount + profit_amount - dividends_amount
     )
     retained_earnings_closing_ids = _merge_ids(opening_ids, profit_ids, dividends_ids)
 
-    # Must match build_sofp total_equity: SC + SP + closing RE + RR (excludes dividends).
-    total_equity_closing_amount = (
-        share_capital_amount
-        + share_premium_amount
-        + retained_earnings_closing_amount
-        + revaluation_reserve_amount
-    )
+    equity_amounts: dict[str, Decimal] = {}
+    equity_ids: dict[str, list[uuid.UUID]] = {}
+    for line_code in EQUITY_COMPONENT_LINES:
+        if line_code == "retained_earnings":
+            equity_amounts[line_code] = retained_earnings_closing_amount
+            equity_ids[line_code] = retained_earnings_closing_ids
+        else:
+            amount, ids = _sum_line(line_code, grouped)
+            equity_amounts[line_code] = amount
+            equity_ids[line_code] = ids
+
+    share_capital_amount = equity_amounts["share_capital"]
+    share_capital_ids = equity_ids["share_capital"]
+
+    # Single shared total — same EQUITY_COMPONENT_LINES as SOFP / validator.
+    total_equity_closing_amount = compute_total_equity(equity_amounts)
     total_equity_closing_ids = _merge_ids(
-        share_capital_ids,
-        share_premium_ids,
-        retained_earnings_closing_ids,
-        revaluation_reserve_ids,
+        *(equity_ids[code] for code in EQUITY_COMPONENT_LINES)
     )
 
     return _SocieRollforward(
