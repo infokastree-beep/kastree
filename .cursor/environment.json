@@ -1,0 +1,21 @@
+{
+  "name": "FinDraft (Kastree)",
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh",
+  "terminals": [
+    {
+      "name": "backend",
+      "command": "cd backend && OPENAI_API_KEY=\"${OPENAI_API_KEY:-sk-local-dev-placeholder}\" .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload",
+      "description": "FastAPI backend (http://127.0.0.1:8000, docs at /docs). Set a real OPENAI_API_KEY secret to enable AI mapping/commentary; otherwise LLM calls fail-soft."
+    },
+    {
+      "name": "frontend",
+      "command": "cd frontend && npm run dev",
+      "description": "Next.js frontend (http://127.0.0.1:43123). Public landing page renders without auth; dashboard routes require real Clerk keys."
+    }
+  ],
+  "ports": [
+    { "name": "backend", "port": 8000 },
+    { "name": "frontend", "port": 43123 }
+  ]
+}
