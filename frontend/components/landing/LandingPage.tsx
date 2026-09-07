@@ -1,11 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { SignInNavLink } from "@/components/auth/SignInNavLink";
-import { MarketingBrandLink } from "@/components/landing/MarketingBrandLink";
-import { clerkReady } from "@/lib/clerk";
-import { useAuth } from "@/hooks/useAuth";
-import { APP_NAME, DISCLAIMER_TEXT, POST_AUTH_PATH } from "@/lib/constants";
+import { MarketingFooter } from "@/components/landing/MarketingFooter";
+import { MarketingNav } from "@/components/landing/MarketingNav";
+import { APP_NAME } from "@/lib/constants";
 
 const WHAT_YOU_GET = [
   {
@@ -66,51 +64,9 @@ const FAQ = [
 ] as const;
 
 export function LandingPage() {
-  const { isSignedIn } = useAuth();
-
   return (
     <div className="min-h-screen bg-surface text-ink">
-      <header className="border-b border-line/80 bg-surface-elevated/90 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-content items-center justify-between gap-4 px-6 py-5 sm:px-8">
-          <div className="flex items-center gap-6">
-            <MarketingBrandLink />
-            <Link
-              href="/pricing"
-              className="hidden text-sm font-medium text-ink-secondary underline-offset-4 transition-colors hover:text-accent hover:underline sm:inline"
-            >
-              Pricing
-            </Link>
-          </div>
-          {clerkReady ? (
-            <div className="flex items-center gap-4 text-sm">
-              <Link
-                href="/pricing"
-                className="font-medium text-ink-secondary underline-offset-4 transition-colors hover:text-accent hover:underline sm:hidden"
-              >
-                Pricing
-              </Link>
-              {isSignedIn ? (
-                <Link
-                  href={POST_AUTH_PATH}
-                  className="rounded-md bg-accent px-4 py-2 font-medium text-accent-foreground transition-colors hover:bg-accent-hover"
-                >
-                  Go to app
-                </Link>
-              ) : (
-                <>
-                  <SignInNavLink className="font-medium text-ink-secondary underline-offset-4 transition-colors hover:text-accent hover:underline" />
-                  <Link
-                    href="/sign-up"
-                    className="rounded-md bg-accent px-4 py-2 font-medium text-accent-foreground transition-colors hover:bg-accent-hover"
-                  >
-                    Create account
-                  </Link>
-                </>
-              )}
-            </div>
-          ) : null}
-        </div>
-      </header>
+      <MarketingNav />
 
       <main>
         <section className="relative overflow-hidden border-b border-line bg-surface-elevated">
@@ -238,7 +194,7 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section className="border-b border-line">
+        <section id="how-it-works" className="border-b border-line">
           <div className="mx-auto max-w-content px-6 py-section-sm sm:px-8 sm:py-section">
             <h2 className="font-display text-heading-lg text-ink sm:text-[2.25rem]">
               How it works
@@ -248,17 +204,32 @@ export function LandingPage() {
                 {
                   n: "1",
                   title: "Upload the trial balance",
-                  body: "Same file you'd normally drop into a template.",
+                  body: "Drop the same .xlsx or .csv export you’d normally paste into a template.",
                 },
                 {
                   n: "2",
                   title: "Confirm mappings",
-                  body: "Fix anything the suggestions got wrong — unusual accounts, one-offs, reclasses.",
+                  body: "Review suggested account → line mappings. Fix unusual accounts, one-offs, and reclasses before anything generates.",
                 },
                 {
                   n: "3",
-                  title: "Generate and review",
-                  body: "Generate and review statements, performance, variance, and risk. Use Ask when you want a cited answer from the evidence.",
+                  title: "Generate statements",
+                  body: "SOPL, SOFP, and SOCIE build from confirmed mappings — amounts from the deterministic engine, not the model.",
+                },
+                {
+                  n: "4",
+                  title: "Review Performance and Business Health",
+                  body: "KPIs, trends, expense mix, and a short executive read grounded in this period’s evidence.",
+                },
+                {
+                  n: "5",
+                  title: "Check Variance, Risk, Commentary — Ask Copilot",
+                  body: "Period movements, deterministic risk flags, and AI commentary. Ask only answers from this period’s evidence, with citations.",
+                },
+                {
+                  n: "6",
+                  title: "Export",
+                  body: "Download Excel, PDF, or CSV packs with currency formatting and tier-aware watermarking.",
                 },
               ].map((step) => (
                 <li key={step.n} className="flex gap-5">
@@ -266,12 +237,38 @@ export function LandingPage() {
                     {step.n}
                   </span>
                   <div className="pt-0.5">
-                    <p className="font-display text-heading-md text-ink">{step.title}</p>
-                    <p className="mt-1.5 leading-relaxed text-ink-secondary">{step.body}</p>
+                    <p className="font-display text-heading-md text-ink">
+                      {step.title}
+                    </p>
+                    <p className="mt-1.5 leading-relaxed text-ink-secondary">
+                      {step.body}
+                    </p>
                   </div>
                 </li>
               ))}
             </ol>
+            <div className="mt-14">
+              <img
+                src="/images/statements-dashboard.png"
+                alt="Kastree statements dashboard after generate — performance, business health, statement tabs, and Ask"
+                className="w-full border border-line bg-surface-elevated shadow-[0_24px_60px_-28px_rgba(20,32,28,0.35)]"
+                width={1280}
+                height={900}
+              />
+              <p className="mt-4 text-sm text-soft">
+                After generate: performance and business health above; SOPL,
+                SOFP, SOCIE, Variance, and Risk below. Ask opens a grounded
+                Q&amp;A panel for this period.
+              </p>
+            </div>
+            <div className="mt-10">
+              <Link
+                href="/pricing"
+                className="text-sm font-medium text-accent underline-offset-4 hover:underline"
+              >
+                See pricing
+              </Link>
+            </div>
           </div>
         </section>
 
@@ -339,34 +336,7 @@ export function LandingPage() {
         </section>
       </main>
 
-      <footer className="border-t border-line bg-[var(--ink)] text-[var(--accent-muted)]">
-        <div className="mx-auto max-w-content px-6 py-10 text-xs leading-relaxed sm:px-8">
-          <p className="opacity-80">{DISCLAIMER_TEXT}</p>
-          <p className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 font-medium text-white/90">
-            <span>
-              © {new Date().getFullYear()} {APP_NAME}
-            </span>
-            <Link
-              href="/privacy"
-              className="text-white/70 underline-offset-4 hover:text-white hover:underline"
-            >
-              Privacy
-            </Link>
-            <Link
-              href="/terms"
-              className="text-white/70 underline-offset-4 hover:text-white hover:underline"
-            >
-              Terms
-            </Link>
-            <Link
-              href="/pricing"
-              className="text-white/70 underline-offset-4 hover:text-white hover:underline"
-            >
-              Pricing
-            </Link>
-          </p>
-        </div>
-      </footer>
+      <MarketingFooter />
     </div>
   );
 }

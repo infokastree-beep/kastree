@@ -777,6 +777,18 @@ Managed Payments (commit `f6a6e40`).
 This gap is closed for Product 1 sellability. Remaining billing polish (Customer
 Portal, annual plans, invoices UI) is demand-gated — not a blocker.
 
+## Public product demo without signup (follow-up)
+
+**Status:** not built; not blocking sellability.
+
+Prospects today see a **static** statements-dashboard screenshot on the landing
+page. There is no video walkthrough and no public read-only sample company.
+
+**Agreed next step (when a recording exists):** embed a short (60–90s)
+screen-recording of a real upload → map → statements → Ask flow on the landing
+“How it works” section. A guest/sample-company explorer is deferred (auth/RLS
+exceptions + seed maintenance).
+
 ## No uptime or error monitoring
 
 Nothing alerts if `kastree.ie` or the Railway backend goes down, or if the app

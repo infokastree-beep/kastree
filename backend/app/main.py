@@ -15,6 +15,7 @@ from app.routers import (
     clients,
     commentary,
     companies,
+    contact,
     copilot,
     export,
     notifications,
@@ -54,6 +55,7 @@ app.include_router(billing.router)
 app.include_router(trial_balances.router)
 app.include_router(variance.router)
 app.include_router(waitlist.router)
+app.include_router(contact.router)
 app.include_router(risk.router)
 app.include_router(export.trial_balances_router)
 app.include_router(export.exports_router)

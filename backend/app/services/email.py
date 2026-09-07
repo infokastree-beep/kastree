@@ -190,3 +190,31 @@ def notify_founder_new_user_signup(
         html_body=html_body,
         notification_type="user_signup",
     )
+
+
+def notify_founder_contact_message(
+    *,
+    name: str,
+    email: str,
+    message: str,
+) -> bool:
+    """Forward a public /contact form submission to the founder inbox. Never raises."""
+    subject = f"Contact form: {name}"
+    text_body = (
+        "New contact form message\n\n"
+        f"Name: {name}\n"
+        f"Email: {email}\n\n"
+        f"Message:\n{message}\n"
+    )
+    html_body = (
+        "<p><strong>New contact form message</strong></p>"
+        f"<p>Name: {html.escape(name)}<br>"
+        f"Email: {html.escape(email)}</p>"
+        f"<p>{html.escape(message).replace(chr(10), '<br>')}</p>"
+    )
+    return _send_founder_notification(
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+        notification_type="contact_form",
+    )
