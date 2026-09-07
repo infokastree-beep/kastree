@@ -372,33 +372,23 @@ production-ready for untrusted file intake. Likely packages on PyPI:
 `stored_path.write_bytes(content)` returns 202, rejecting infected files with
 4xx. Add integration tests with EICAR when implemented.
 
-## Object storage (S3/R2) — not configured in production; exports will fail
+## Object storage (S3/R2) — exports confirmed working in production
 
-**Exports are non-functional in production until this is resolved.**
+**Status (resolved 3 Sep 2026; confirmed working):** Cloudflare R2 bucket
+`kastree-exports` is live with Object R/W credentials on Railway. Production
+exports (xlsx / pdf / csv) succeed. Bucket lifecycle for `exports/` is also
+live (next section).
 
-`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `S3_BUCKET` are listed as
-`[REQUIRED for exports]` in `.env.production.example` but have never been set
-in the Railway environment. When any export job runs, `boto3` raises
-`NoCredentialsError` on the first `put_object` call. The export record lands in
-`status="failed"` and the UI shows the error message.
+**Historical context:** Before credentials were set, `boto3` raised
+`NoCredentialsError` on `put_object` and export jobs landed in
+`status="failed"`. The UI still surfaces a clear message if credentials are
+ever absent: *"Object storage credentials are not configured…"*
+(commit `030b8fc`+).
 
-**Fix (three steps, one-time):**
-
-1. Create an S3 bucket (AWS `eu-west-1`) or Cloudflare R2 bucket.
-2. Set in Railway service environment:
-   - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET`
-   - `S3_ENDPOINT_URL` (R2 only: `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`)
-3. Run once against the bucket to configure 30-day auto-deletion lifecycle:
-   `cd backend && python scripts/configure_s3_lifecycle.py`
-   (see **R2 lifecycle Admin token** below — **resolved 3 Sep 2026**).
-
-The error message surfaced to the UI when credentials are absent now reads
-*"Object storage credentials are not configured…"* (improved from the generic
-`"Export job failed unexpectedly"` — commit `030b8fc`+).
-
-> **Note (3 Sep 2026):** Object R/W credentials and the `kastree-exports` bucket
-> are live; exports work. Bucket lifecycle for `exports/` is also live (next
-> section).
+**Required env (now set in Railway):** `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY`, `S3_BUCKET`, and for R2 `S3_ENDPOINT_URL`
+(`https://<ACCOUNT_ID>.r2.cloudflarestorage.com`). See
+`.env.production.example`.
 
 ## R2 lifecycle Admin token — `exports/` 30-day expiry (resolved)
 
@@ -887,11 +877,14 @@ Also not built (same bar — demand-gated, not speculative):
 | Spreadsheet-style formulae / variables | Second calculation engine outside TB → mapping → statements; violates Golden Rule. |
 | Add / delete statement lines | Face presentation without TB provenance. |
 
-## Product 3 (statutory reports) — planning notes
+## Product 2 (statutory reports) — planning notes
 
 Product sequencing lives in [`product-roadmap.md`](product-roadmap.md)
-(Product 3 — Full Statutory Annual Report, Ireland & UK). Capture hard gates
-here so they are not treated as optional polish after build starts.
+(**Product 2** — Full Statutory Annual Report, Ireland & UK; formerly called
+Product 3). Capture hard gates here so they are not treated as optional polish
+after build starts. Working-paper / reconciliation evidence is **not** a
+separate product — it is a future Product 1 add-on (same internal-review
+liability posture).
 
 ### Legal gate — “AI-assisted SaaS, not filer/signer of record” (upfront)
 
@@ -905,9 +898,10 @@ production, obtain **real legal counsel** (Ireland/UK) on:
 2. What **disclaimer and liability structure** would actually be required
    (ToS, UI copy, engagement letters, professional-indemnity boundary) — not
    what sounds reassuring in product docs.
-3. How this **differs from the already-settled Product 2 (working papers)
-   positioning**, which correctly stays **entirely internal** (no filing /
-   signing surface). Product 3 is a different liability category; Product 2’s
+3. How this **differs from Product 1’s settled internal-review-only
+   positioning** (including future working-paper / reconciliation add-ons),
+   which correctly stays **entirely internal** (no filing / signing surface).
+   Product 2 (statutory) is a different liability category; Product 1’s
    internal framing does **not** automatically transfer.
 
 This is a **real, upfront legal gate before building**, not a retrofit after

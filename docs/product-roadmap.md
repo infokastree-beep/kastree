@@ -7,9 +7,14 @@ Two-product structure for the Kastree platform:
    (comparative statements, Variance, Commentary, Risk, Copilot, and — in
    future — reconciliation / working-paper evidence and multi-entity client
    views). Not separate, siloed products.
-2. **Full Statutory Annual Report, Ireland & UK** (Product 3, renamed in
-   sequencing as Product 2 below) — genuinely separate: filing-capable output
-   with its own legal gate and liability posture.
+2. **Full Statutory Annual Report, Ireland & UK** (Product 2; formerly
+   Product 3) — genuinely separate: filing-capable output with its own legal
+   gate and liability posture.
+
+Former working-paper / multi-entity work (old Product 2) is **folded into
+Product 1** as future add-ons. Those items already carried **no liability
+change** from Product 1 — a structural simplification, not a new liability
+decision.
 
 The dashboard [`ProductSwitcher`](../../frontend/components/layout/ProductSwitcher.tsx)
 and [`frontend/lib/products.ts`](../../frontend/lib/products.ts) were built to
@@ -17,26 +22,32 @@ support multiple product entries — add the statutory product there only when a
 slice is ready to ship. Today only **FinDraft** (`id: "findraft"`) is
 registered; that remains the Product 1 surface.
 
-This is a **reference document**, not a build queue.
+This is a **reference document**, not a build queue. **Nothing below the
+shipped Product 1 surface is scheduled for build** until real customer usage
+of Product 1 shows genuine demand (and, for Product 2, until the legal gate
+clears).
 
 ---
 
 ## Product 1 — Kastree — Financial Intelligence Platform (current, live)
 
-**Status:** MVP live in production. Core loop (upload → map → validate →
-statements) proven end-to-end.
+**Status: complete and ready to sell now.**
+
+MVP is live in production. Core loop (upload → map → validate → statements →
+Variance / Risk / Commentary / Copilot / Export / Dashboard) is proven
+end-to-end and live-tested. Product 1 is a **finished sellable surface** —
+not a half-built platform waiting on the items in this document.
 
 **Framing:** one platform for accounting practices doing **internal review and
-analysis**. Features below are add-ons of that same product — not separate
-SKUs or liability regimes. Everything here stays inside the existing
-“internal review only” disclaimer.
+analysis**. A practice uses the features that matter for the engagement —
+comparative statements, Variance, Commentary, Risk, Copilot, and (later)
+reconciliation / working-paper evidence — rather than jumping between separate
+products. Everything here stays inside the existing “internal review only”
+disclaimer.
 
 Registered in `products.ts` today as **FinDraft** (`id: "findraft"`).
 
 ### Close — shipped
-
-Originally “same data, needs a screen.” All Close items below are live in
-production.
 
 | Feature | Status |
 |---------|--------|
@@ -50,147 +61,121 @@ production.
 
 ### Medium — shipped
 
-Originally “new work, grounded in existing data,” sequenced after Close. All
-Medium items below are live in production.
-
 - **Data visualization dashboard** — Done — built and live-tested 2026-09-07
   (Performance Overview charts / KPI cards / expense mix on Dashboard).
 - **Multi-period trend views** — Done — built and live-tested 2026-09-07
-  (period history, View period navigation, KPI drill-down). Backend
-  Monthly/Quarterly/Yearly aggregation remains available; Dashboard UI toggle
-  is parked until multi-quarter/year data would differentiate results (see
-  [`tracked-gaps.md`](tracked-gaps.md) — Performance granularity toggle).
+  (period history, View period navigation, KPI drill-down).
 - **Statement line evidence drill-down** — Done — click any SOPL/SOFP/SOCIE
   face line to open source TB accounts (read-only evidence graph). Manual
-  line edits, formulae, and add-line remain deferred (see
+  line edits, formulae, and add-line remain deliberately unbuilt (see
   [`tracked-gaps.md`](tracked-gaps.md)).
 
-### Conversational statement query ("Copilot")
+### Conversational statement query ("Copilot") — shipped
 
 Done — built and live-tested 2026-09-07 (full 3-phase Copilot: Ask panel,
 evidence-grounded answers, citations, Dashboard/Statements navigation).
 
-Inspired by reviewing real reference screenshots (LucaNet's "Copilot"/"Message
-Luca" chat interface). A natural-language chat panel letting a user ask
-questions like "summarize expense changes this quarter" or "what changed in
-gross margin over the last 2 years", answered from already-computed statement
-and variance data via the existing evidence graph — NOT a new calculation
-engine, a query/answer layer sitting on top of data already proven correct.
-
-### Future Product 1 add-ons (same liability posture)
-
-Formerly sequenced as a separate “Product 2.” Folded into Product 1 because
-these features were always scoped as **SaaS productivity inside internal
-review** — no liability change from the live platform. Still **not built**;
-demand- and design-gated, not a commitment to build next.
-
-- **Working Paper / Reconciliation Evidence** — attach and organize supporting
-  documents (bank statements, reconciliations) against individual balance line
-  items. Explicitly **not** an audit sign-off tool.
-- **Client → Company multi-entity enhancements** — group-level views once
-  companies exist under one client. Distinct from true accounting
-  consolidation (see Product 2 — Statutory below).
+Natural-language questions answered from already-computed statement and
+variance data via the existing evidence graph — **not** a new calculation
+engine.
 
 ---
 
-## Product 2 — Full Statutory Annual Report, Ireland & UK (future, long-term)
+## Future directions (captured, not scheduled)
 
-Formerly “Product 3.” Kept as the **only** separate product because it is a
-different **liability category**: filing-capable output. Requires its own
-legal / ToS review before build, not just before launch. Not an add-on of the
-internal-review Financial Intelligence platform.
+**None of the items in this section are scheduled for immediate build.** They
+are a complete record of directions already discussed. Build only when real
+Product 1 customer usage indicates genuine demand (Product 2 also requires its
+legal gate).
+
+### 1. Working Paper / Reconciliation Evidence — first in line when demand appears
+
+**Product 1 add-on** (same internal-review liability posture). Formerly a
+standalone “Product 2”; folded in because it never changed liability.
+
+Attach supporting documents (bank statements, reconciliations) against
+statement line items, **reusing the existing drill-down /
+`source_account_ids` evidence pattern as the anchor point**. Real, contained
+scope — explicitly **not** an audit sign-off tool.
+
+**Sequencing:** first in line whenever Product 1 has real customer signal and
+appetite for more building. Still demand-gated — not a commitment to build
+next on a calendar.
+
+Also under this Product 1 add-on umbrella (same posture, still unbuilt):
+
+- **Client → Company multi-entity enhancements** — group-level views once
+  companies exist under one client. Distinct from true accounting
+  consolidation (see Product 2 below).
+
+### 2. Product 2 — Full Statutory Annual Report, Ireland & UK
+
+Genuinely **separate** product (formerly Product 3). Different **liability
+category**: filing-capable output. **Paused** behind the specific legal
+consultation already documented in [`tracked-gaps.md`](tracked-gaps.md)
+(Product 2 — statutory reports — planning notes).
 
 **Upfront legal gate (do not start build until cleared):** counsel must confirm
 whether “AI-assisted SaaS platform, not the filer/signer of record” is legally
 sufficient in Ireland/UK for this use case, what disclaimer/liability structure
 is actually required, and how that differs from Product 1’s settled
-internal-review-only positioning (including future working-paper add-ons).
-Detail in [`tracked-gaps.md`](tracked-gaps.md) — Product 3 planning notes
-(section title retained for continuity; refers to this statutory product).
-Framing that merely *sounds* reasonable is not enough.
+internal-review-only positioning. Framing that merely *sounds* reasonable is
+**not** enough.
 
-- **Toggle-based note / disclosure content library** (Accurri-style pattern) —
-  FRS 102 Section 1A first, matching actual target market.
-- **iXBRL tagging** — distinct, later sub-phase; separate technical standard.
+Scoped capabilities (after the gate clears — still not scheduled):
+
+- **Toggle-based note / disclosure content library** (Accurri-style) — FRS 102
+  Section 1A first.
+- **iXBRL tagging** — later sub-phase; separate technical standard.
 - **Multi-entity true consolidation** — intercompany eliminations, ownership
-  %, currency translation. Explicitly excluded from current MVP scope; real
-  engineering reasons documented in [`tracked-gaps.md`](tracked-gaps.md).
-- **Cash Flow Statement** — *historical* statement (IAS 7 / FRS 102 style),
-  not forecasting. Needs prior-period data (available); requires resolving the
-  PPE cost / depreciation netting decision made in Statement Builder, since
-  gross capex cannot be derived from a netted PPE figure today. Forward-looking
-  cash-flow work is a separate capability — see **Future considerations** below.
+  %, currency translation (explicitly out of Product 1).
+- **Cash Flow Statement** — *historical* (IAS 7 / FRS 102 style), not
+  forecasting. Needs prior-period data; requires resolving PPE cost /
+  depreciation netting so gross capex is derivable. Forward-looking cash-flow
+  work is a separate initiative (section 3 below).
 
----
+### 3. Internal-use-only scenario analysis / forecasting / budgeting
 
-## Future considerations (not sequenced — demand-gated)
+A **large architectural undertaking**, correctly deferred. Scope includes
+what-if scenarios, cash-flow forecasts, predictive modelling, and budgeting on
+top of (or beside) proven historical statements.
 
-Items below are **not** on the Product 1 Close/Medium build path and are **not**
-implied by the statutory product’s historical Cash Flow Statement. Capture them
-here so they are not confused with nearer work. **Do not build without real
-customer demand** — the same caution already applied to ERP / direct
-accounting-system integration (Xero, QuickBooks, Sage, etc.).
+**Hard design constraint:** the system must safely distinguish **real uploaded
+data** from **hypothetical user input** everywhere (statements, variance,
+exports, Copilot, drill-down). That boundary is the cost of the initiative —
+do not start casually.
 
-### Scenario analysis, cash flow forecasting, and predictive modelling
+**Liability:** no new external-filing concern while scoped **internal-use
+only** (same Product 1 disclaimer family). Still a major Product 1-adjacent
+initiative, not a polish item. Separate from Product 2’s historical Cash Flow
+Statement.
 
-A **distinct future capability**: forward-looking what-if scenarios, cash-flow
-forecasts, and predictive models on top of (or beside) proven historical
-statements. Separate from the statutory product’s **Cash Flow Statement**, which
-is a historical period statement derived from trial-balance / statement data.
-Forecasting is a bigger, later undertaking (assumptions, drivers, model
-governance, and liability surface differ from “rebuild last month’s CFS”).
+### 4. Smaller items (demand-gated polish / data prerequisites)
 
-### Dual-period upload for first-time comparative onboarding
+| Item | Notes |
+|------|--------|
+| **Member invites** | Org member invite-by-email flow — useful for multi-user practices; not required to sell Product 1 solo. |
+| **Monthly / Quarterly / Yearly toggle** | **Already built** on the performance-overview API; **hidden in UI** until real multi-quarter / multi-year company data would differentiate results (see [`tracked-gaps.md`](tracked-gaps.md) — Performance granularity toggle). Unhide when data warrants — not a new build. |
+| **Departmental drill-down** | Needs **new data collection** first (department / cost-centre dimensions on TB or mapping). Cannot ship as a pure UI add-on. |
+| **BI / Power BI connectivity** | Export or connector paths into firm BI stacks. Genuinely uncertain priority — wait for clear demand. |
+| **Dual-period upload for new companies** | **First-time company setup only** — optional second (prior) TB so comparative columns and first-run variance appear immediately. Not a general dual-upload; later periods keep the single-file-per-period flow via `find_prior_trial_balance`. Distinct from Variance / “View period” selectors on already-stored periods. |
 
-**Product 1 future consideration — first-time company setup only.**
-
-Allow a **new company’s first-ever setup** to optionally include a second,
-prior-period trial balance upload so comparative statements (SOPL / SOFP /
-SOCIE prior columns) — and first-run variance — can show immediately, rather
-than waiting for a second real-world period to naturally occur.
-
-This is deliberately scoped to **first-time setup only**, not a general
-dual-upload option. That is the only case where no prior-period data exists
-anywhere in the system yet. For every subsequent upload, a real,
-already-correct prior period already exists automatically via
-`find_prior_trial_balance`, so re-uploading it again would be redundant and
-would introduce a real risk: two potentially different sources of the same
-period’s data that could silently disagree, undermining the
-single-source-of-truth design that makes the current upload flow robust.
-
-This does **not** change or add to the core, ongoing single-file-per-period
-upload flow, which remains the correct, safer default for every upload after
-a company’s first.
-
-**Distinct from** the Variance tab’s prior-period selector (and from the
-Statements “View period” selector), which operate on periods already stored.
-Capture only — do not build until demand is clear.
-
-### General data export / BI connectivity
-
-Possible future add-on: connectors or export paths for BI tools (e.g. **Power
-BI**) so firms can pull Kastree statement / variance outputs into their own
-reporting stacks. **Genuinely uncertain priority** — useful for some practices,
-irrelevant for others. Same rule as ERP integration: wait for clear customer
-demand before designing APIs, schemas, or sync jobs.
+Same rule for all rows: **do not build (or unhide) until Product 1 usage shows the need.**
 
 ---
 
 ## Sequencing note
 
-**Product 1 Close and Medium are complete** (including Variance, materiality,
-Risk, Commentary, Business Health, Export, canonical lines, Performance
-Overview / multi-period trends / KPI drill-down, statement evidence
-drill-down, and full 3-phase Copilot) — built and live-tested 2026-09-07.
+| Track | State |
+|-------|--------|
+| **Product 1 (sellable)** | **Complete and ready to sell now.** Close, Medium, Copilot, evidence drill-down — live-tested 2026-09-07. |
+| **Working Paper / Reconciliation Evidence** | First Product 1 build candidate **when** real customer signal appears. Contained scope on existing evidence anchors. |
+| **Product 2 (Statutory)** | Paused — legal consultation gate in [`tracked-gaps.md`](tracked-gaps.md). Only separate product. |
+| **Scenario / forecast / budget** | Captured; large architecture; internal-only; not casual. |
+| **Smaller items** | Captured in the table above; demand-gated. |
 
-**Next substantial Product 1 work** is whichever polish or future add-on
-(working-paper evidence, multi-entity client views) earns clear demand — still
-under the same internal-review liability posture.
-
-**The statutory annual-report product** (section above) remains the only
-separate product track and **still requires its upfront legal gate** (see that
-section and [`tracked-gaps.md`](tracked-gaps.md)) before any statutory-report
-build starts. Future considerations above remain demand-gated.
+**Nothing in “Future directions” is on an immediate build schedule.** Sell and
+learn from Product 1 first.
 
 For granular technical debt, smaller fixes, and infrastructure gaps not captured
 at product level, see [`tracked-gaps.md`](tracked-gaps.md).
