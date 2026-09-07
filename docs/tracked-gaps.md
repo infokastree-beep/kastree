@@ -855,6 +855,25 @@ Frontend is locked to `granularity=monthly` with a comment pointing here.
 **Re-enable the UI control** once calendar-spanning data would show meaningful
 differentiation — no further backend work expected.
 
+## Statement line edit / formulae / add-line (deferred)
+
+**Phase 1 shipped:** click any SOPL/SOFP/SOCIE face line → read-only slide-over
+of contributing TB accounts via
+`GET /trial-balances/{tb_id}/statements/lines/{line_id}/sources`
+(`source_account_ids` → `account_mappings` + parsed TB rows). Matches Product
+Spec “View Source” / evidence graph.
+
+**Not built (product decision still open):**
+
+| Capability | Why deferred |
+|------------|--------------|
+| Edit face amounts (`is_manual_override`) | Schema columns exist; no API/UI. Must keep Python as sole maths owner and write audit + original_amount. |
+| Spreadsheet-style formulae | Would invent a second calculation engine outside TB → mapping → statements. Violates Golden Rule unless scoped as audited overrides only. |
+| Add / delete statement lines | Changes face presentation without TB provenance; needs explicit product rules before UI. |
+
+Do not ship edit/formulae without an override audit trail and a clear rule that
+regenerate from TB still wins unless the override is re-applied deliberately.
+
 ## Product 3 (statutory reports) — planning notes
 
 Product sequencing lives in [`product-roadmap.md`](product-roadmap.md)

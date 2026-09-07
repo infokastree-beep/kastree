@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 import uuid
 from datetime import date
+from decimal import Decimal
 
 import pytest
 from httpx import AsyncClient
@@ -366,6 +367,33 @@ async def test_full_happy_path_upload_to_statements(
     get_by_type = {b["statement_type"]: b for b in statements}
     get_sopl_codes = {line["line_item_code"] for line in get_by_type["SOPL"]["lines"]}
     assert get_sopl_codes == gen_sopl_codes
+
+    # Evidence-graph drill-down: revenue leaf must expose TB source accounts.
+    revenue = next(
+        line
+        for line in get_by_type["SOPL"]["lines"]
+        if line["line_item_code"] == "revenue"
+    )
+    assert len(revenue["source_account_ids"]) >= 1
+    sources_resp = await api_client.get(
+        f"/trial-balances/{tb_id}/statements/lines/{revenue['id']}/sources",
+        headers=headers,
+    )
+    assert sources_resp.status_code == 200, sources_resp.text
+    sources_body = sources_resp.json()
+    assert sources_body["line_item_code"] == "revenue"
+    assert sources_body["tb_id"] == tb_id
+    assert sources_body["statement_type"] == "SOPL"
+    assert len(sources_body["sources"]) == len(revenue["source_account_ids"])
+    assert Decimal(sources_body["sources_face_total"]) == Decimal(
+        sources_body["amount"]
+    )
+
+    missing = await api_client.get(
+        f"/trial-balances/{tb_id}/statements/lines/{uuid.uuid4()}/sources",
+        headers=headers,
+    )
+    assert missing.status_code == 404
 
 
 @pytest.mark.asyncio

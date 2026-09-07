@@ -44,6 +44,10 @@ Medium items below are live in production.
   Monthly/Quarterly/Yearly aggregation remains available; Dashboard UI toggle
   is parked until multi-quarter/year data would differentiate results (see
   [`tracked-gaps.md`](tracked-gaps.md) — Performance granularity toggle).
+- **Statement line evidence drill-down** — Done — click any SOPL/SOFP/SOCIE
+  face line to open source TB accounts (read-only evidence graph). Manual
+  line edits, formulae, and add-line remain deferred (see
+  [`tracked-gaps.md`](tracked-gaps.md)).
 
 ### Conversational statement query ("Copilot")
 

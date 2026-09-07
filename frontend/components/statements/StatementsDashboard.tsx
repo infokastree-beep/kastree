@@ -19,6 +19,7 @@ import type {
 import { ExportButton } from "./ExportButton";
 import { MaterialitySuggestionBanner } from "./MaterialitySuggestionBanner";
 import { RiskFlagsPanel } from "./RiskFlagsPanel";
+import { StatementLineDrilldown } from "./StatementLineDrilldown";
 import { VariancePanel } from "./VariancePanel";
 import { useTbWorkspace } from "./TbWorkspaceProvider";
 
@@ -57,11 +58,15 @@ function StatementTable({
   currencyCode,
   periodEnd,
   priorPeriodEnd,
+  selectedLineId,
+  onSelectLine,
 }: {
   block: StatementBlock;
   currencyCode: string;
   periodEnd: string;
   priorPeriodEnd?: string | null;
+  selectedLineId: string | null;
+  onSelectLine: (line: StatementLine) => void;
 }) {
   const sections = sectionIndexes(block.lines);
   const comparative = Boolean(priorPeriodEnd);
@@ -135,11 +140,26 @@ function StatementTable({
                 ? "font-semibold text-ink"
                 : "font-normal text-ink";
 
+            const selected = selectedLineId === line.id;
+            const interactiveClass = selected
+              ? " cursor-pointer ring-1 ring-inset ring-accent/40"
+              : " cursor-pointer hover:bg-accent-muted/50";
+
             return (
               <tr
                 key={line.id}
-                className={rowClass}
+                className={`${rowClass}${interactiveClass}`}
                 data-line-code={line.line_item_code}
+                data-testid={`stmt-row-${line.line_item_code}`}
+                tabIndex={0}
+                aria-label={`View sources for ${line.line_item_name}`}
+                onClick={() => onSelectLine(line)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelectLine(line);
+                  }
+                }}
               >
                 <td
                   className={`py-2.5 ${nameWeight} ${
@@ -188,9 +208,26 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
   const queryClient = useQueryClient();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { openAsk } = useTbWorkspace();
+  const { openAsk, closeAsk, askOpen } = useTbWorkspace();
   const initialTab = parseStatementsTab(searchParams?.get("tab")) ?? "SOPL";
   const [tab, setTab] = useState<Tab>(initialTab);
+  const [drilldownLineId, setDrilldownLineId] = useState<string | null>(null);
+
+  // Stacking rule: exclusive with Copilot — never two right sheets at once.
+  useEffect(() => {
+    if (askOpen && drilldownLineId != null) {
+      setDrilldownLineId(null);
+    }
+  }, [askOpen, drilldownLineId]);
+
+  function openLineDrilldown(line: StatementLine) {
+    closeAsk();
+    setDrilldownLineId(line.id);
+  }
+
+  function closeLineDrilldown() {
+    setDrilldownLineId(null);
+  }
 
   useEffect(() => {
     const fromUrl = parseStatementsTab(searchParams?.get("tab"));
@@ -494,12 +531,21 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
                   currencyCode={currencyCode}
                   periodEnd={statementsData.period_end}
                   priorPeriodEnd={statementsData.prior_period_end}
+                  selectedLineId={drilldownLineId}
+                  onSelectLine={openLineDrilldown}
                 />
               ) : (
                 <p className="text-sm text-soft">No {tab} lines returned.</p>
               )
             ) : null}
           </div>
+
+          <StatementLineDrilldown
+            open={drilldownLineId != null}
+            tbId={tbId}
+            lineId={drilldownLineId}
+            onClose={closeLineDrilldown}
+          />
         </>
       ) : null}
     </div>

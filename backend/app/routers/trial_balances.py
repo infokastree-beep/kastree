@@ -40,6 +40,7 @@ from app.services.statements import (
     MappedStatementAccount,
     StatementLineItemRecord,
     build_statements,
+    face_amount_from_net_balance,
     iter_nil_filtered_face_lines,
 )
 from app.services.comparative_statements import merge_comparative_face_lines
@@ -188,6 +189,34 @@ class StatementsResponse(BaseModel):
     prior_period_end: date | None = None
     functional_currency: str
     statements: list[StatementBlockResponse]
+
+
+class StatementLineSourceAccount(BaseModel):
+    """One TB account contributing to a statement face line (evidence graph)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mapping_id: uuid.UUID
+    account_code: str
+    account_name: str
+    canonical_line: str
+    net_balance: str
+    face_amount: str
+
+
+class StatementLineSourcesResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tb_id: uuid.UUID
+    statement_type: Literal["SOPL", "SOFP", "SOCIE"]
+    line_id: uuid.UUID
+    line_item_code: str
+    line_item_name: str
+    is_subtotal: bool
+    amount: str
+    functional_currency: str
+    sources: list[StatementLineSourceAccount]
+    sources_face_total: str
 
 
 class StatementsGenerateResponse(BaseModel):
@@ -1093,6 +1122,92 @@ def _statement_accounts(
             )
         )
     return accounts
+
+
+@router.get(
+    "/{tb_id}/statements/lines/{line_id}/sources",
+    response_model=StatementLineSourcesResponse,
+)
+async def get_statement_line_sources(
+    tb_id: uuid.UUID,
+    line_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> StatementLineSourcesResponse:
+    """Evidence-graph drill-down: TB accounts behind one statement face line.
+
+    ``source_account_ids`` on statement_line_items are account_mappings.id
+    values captured at generate time. Read-only — no edits or formulae.
+    """
+    await aset_rls_org_id(session, auth.org_id)
+    tb = await _get_owned_tb(session, tb_id=tb_id, org_id=auth.org_id)
+
+    line_result = await session.execute(
+        select(StatementLineItem, FinancialStatement)
+        .join(
+            FinancialStatement,
+            FinancialStatement.id == StatementLineItem.statement_id,
+        )
+        .where(
+            StatementLineItem.id == line_id,
+            FinancialStatement.tb_id == tb.id,
+        )
+    )
+    row = line_result.one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Statement line not found")
+    line, fs = row
+
+    mapping_ids = list(line.source_account_ids or [])
+    sources: list[StatementLineSourceAccount] = []
+    if mapping_ids:
+        mappings_result = await session.execute(
+            select(AccountMapping).where(
+                AccountMapping.company_id == tb.company_id,
+                AccountMapping.id.in_(mapping_ids),
+            )
+        )
+        mappings = {m.id: m for m in mappings_result.scalars().all()}
+        tb_rows = {
+            (r.account_code, r.account_name): r for r in parsed_rows_from_tb(tb)
+        }
+        # Preserve generate-time order of source_account_ids.
+        for mapping_id in mapping_ids:
+            mapping = mappings.get(mapping_id)
+            if mapping is None:
+                continue
+            code = mapping.source_code or ""
+            tb_row = tb_rows.get((code, mapping.source_name))
+            net = tb_row.net_balance if tb_row is not None else Decimal("0")
+            face = face_amount_from_net_balance(mapping.canonical_line, net)
+            sources.append(
+                StatementLineSourceAccount(
+                    mapping_id=mapping.id,
+                    account_code=code,
+                    account_name=mapping.source_name,
+                    canonical_line=mapping.canonical_line,
+                    net_balance=str(net),
+                    face_amount=str(face),
+                )
+            )
+
+    sources_total = sum(
+        (Decimal(s.face_amount) for s in sources),
+        Decimal("0"),
+    )
+    currency = await _get_tb_functional_currency(session, tb=tb)
+    return StatementLineSourcesResponse(
+        tb_id=tb.id,
+        statement_type=fs.statement_type,  # type: ignore[arg-type]
+        line_id=line.id,
+        line_item_code=line.line_item_code,
+        line_item_name=line.line_item_name,
+        is_subtotal=line.is_subtotal,
+        amount=str(line.amount),
+        functional_currency=currency,
+        sources=sources,
+        sources_face_total=str(sources_total),
+    )
 
 
 @router.get("/{tb_id}/statements", response_model=StatementsResponse)

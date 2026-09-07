@@ -856,6 +856,13 @@ def _statement_amount(canonical_line: str, net_balance: Decimal) -> Decimal:
     return -net_balance
 
 
+def face_amount_from_net_balance(
+    canonical_line: str, net_balance: Decimal
+) -> Decimal:
+    """Public wrapper: TB net_balance → statement face amount for a canonical line."""
+    return _statement_amount(canonical_line, net_balance)
+
+
 def _sum_line(
     canonical_line: str,
     grouped: dict[str, list[StatementAccount]],

@@ -18,6 +18,7 @@ from app.services.statements import (
     build_statements,
     compute_net_profit,
     compute_total_equity,
+    face_amount_from_net_balance,
 )
 from app.services.validator import (
     SimpleMappedAccount,
@@ -46,6 +47,19 @@ def _by_code(lines, code: str):
     matches = [line for line in lines if line.line_item_code == code]
     assert len(matches) == 1, f"expected one {code}, got {len(matches)}"
     return matches[0]
+
+
+def test_face_amount_from_net_balance_sign_convention() -> None:
+    # Credit-normal revenue: credit TB → positive face.
+    assert face_amount_from_net_balance("revenue", Decimal("-1000.00")) == Decimal(
+        "1000.00"
+    )
+    # Debit-normal expense: debit TB → positive face.
+    assert face_amount_from_net_balance(
+        "operating_expenses", Decimal("250.00")
+    ) == Decimal("250.00")
+    # Debit-normal asset: debit TB → positive face.
+    assert face_amount_from_net_balance("cash", Decimal("500.00")) == Decimal("500.00")
 
 
 def test_sopl_groups_accounts_computes_subtotals_and_provenance() -> None:

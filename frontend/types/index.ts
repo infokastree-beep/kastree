@@ -182,6 +182,29 @@ export interface StatementsResponse {
   statements: StatementBlock[];
 }
 
+/** Evidence-graph drill-down for one statement face line. */
+export interface StatementLineSourceAccount {
+  mapping_id: string;
+  account_code: string;
+  account_name: string;
+  canonical_line: string;
+  net_balance: string;
+  face_amount: string;
+}
+
+export interface StatementLineSourcesResponse {
+  tb_id: string;
+  statement_type: "SOPL" | "SOFP" | "SOCIE";
+  line_id: string;
+  line_item_code: string;
+  line_item_name: string;
+  is_subtotal: boolean;
+  amount: string;
+  functional_currency: string;
+  sources: StatementLineSourceAccount[];
+  sources_face_total: string;
+}
+
 export type VarianceDirection = "increase" | "decrease" | "new" | "removed";
 
 export interface VarianceCommentary {
