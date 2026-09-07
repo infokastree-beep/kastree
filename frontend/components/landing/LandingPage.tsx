@@ -72,9 +72,23 @@ export function LandingPage() {
     <div className="min-h-screen bg-surface text-ink">
       <header className="border-b border-line/80 bg-surface-elevated/90 backdrop-blur-sm">
         <div className="mx-auto flex max-w-content items-center justify-between gap-4 px-6 py-5 sm:px-8">
-          <ProductSwitcher />
+          <div className="flex items-center gap-6">
+            <ProductSwitcher />
+            <Link
+              href="/pricing"
+              className="hidden text-sm font-medium text-ink-secondary underline-offset-4 transition-colors hover:text-accent hover:underline sm:inline"
+            >
+              Pricing
+            </Link>
+          </div>
           {clerkReady ? (
             <div className="flex items-center gap-4 text-sm">
+              <Link
+                href="/pricing"
+                className="font-medium text-ink-secondary underline-offset-4 transition-colors hover:text-accent hover:underline sm:hidden"
+              >
+                Pricing
+              </Link>
               {isSignedIn ? (
                 <Link
                   href={POST_AUTH_PATH}
@@ -343,6 +357,12 @@ export function LandingPage() {
               className="text-white/70 underline-offset-4 hover:text-white hover:underline"
             >
               Terms
+            </Link>
+            <Link
+              href="/pricing"
+              className="text-white/70 underline-offset-4 hover:text-white hover:underline"
+            >
+              Pricing
             </Link>
           </p>
         </div>
