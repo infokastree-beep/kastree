@@ -103,6 +103,9 @@ async def create_checkout_session(
 
     price_id = _price_id_for_tier(body.tier)
     stripe.api_key = settings.stripe_secret_key
+    # Stripe account has Managed Payments enabled; Checkout requires basil+.
+    # SDK 11.4.1 defaults to 2024-12-18.acacia which Stripe rejects for this account.
+    stripe.api_version = "2025-03-31.basil"
 
     frontend = _frontend_base_url()
     success_url = f"{frontend}/pricing?checkout=success&tier={body.tier}"
