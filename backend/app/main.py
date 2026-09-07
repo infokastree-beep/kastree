@@ -11,6 +11,7 @@ from app.routers import (
     admin,
     archived_records,
     auth,
+    billing,
     clients,
     commentary,
     companies,
@@ -49,6 +50,7 @@ app.include_router(users.router)
 app.include_router(clients.router)
 app.include_router(companies.router)
 app.include_router(organisations.router)
+app.include_router(billing.router)
 app.include_router(trial_balances.router)
 app.include_router(variance.router)
 app.include_router(waitlist.router)

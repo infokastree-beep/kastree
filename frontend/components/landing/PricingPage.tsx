@@ -1,10 +1,13 @@
 "use client";
 
+import { useMutation } from "@tanstack/react-query";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { SignInNavLink } from "@/components/auth/SignInNavLink";
 import { clerkReady } from "@/lib/clerk";
 import { ProductSwitcher } from "@/components/layout/ProductSwitcher";
 import { useAuth } from "@/hooks/useAuth";
+import { apiFetch } from "@/lib/api";
 import { APP_NAME, DISCLAIMER_TEXT, POST_AUTH_PATH } from "@/lib/constants";
 
 const CAPABILITIES = [
@@ -30,6 +33,7 @@ const TIER_FEATURES = [
 const TIERS = [
   {
     id: "starter",
+    apiTier: "starter" as const,
     name: "Starter",
     eyebrow: "For getting started",
     price: "€69",
@@ -40,6 +44,7 @@ const TIERS = [
   },
   {
     id: "growth",
+    apiTier: "pro" as const,
     name: "Growth",
     eyebrow: "Most practices",
     price: "€175",
@@ -50,6 +55,7 @@ const TIERS = [
   },
   {
     id: "practice",
+    apiTier: "scale" as const,
     name: "Practice",
     eyebrow: "Larger books",
     price: "€349",
@@ -71,7 +77,7 @@ const FAQ = [
   },
   {
     q: "Is there a free trial?",
-    a: "Yes — start from Create account / Start free trial and upload your own trial balance. Billing and plan enforcement come later; the product itself is ready to use.",
+    a: "Yes — create an account with no card required. New organisations start on Free with up to 3 clients and the full toolkit. Upgrade here when you need more capacity.",
   },
   {
     q: "What if I outgrow my plan?",
@@ -165,6 +171,26 @@ function MarketingFooter() {
 }
 
 export function PricingPage() {
+  const { isSignedIn, getToken } = useAuth();
+  const searchParams = useSearchParams();
+  const checkoutState = searchParams.get("checkout");
+
+  const checkoutMutation = useMutation({
+    mutationFn: async (tier: "starter" | "pro" | "scale") => {
+      return apiFetch<{ checkout_url: string; session_id: string; tier: string }>(
+        "/billing/checkout",
+        {
+          method: "POST",
+          getToken,
+          body: JSON.stringify({ tier }),
+        },
+      );
+    },
+    onSuccess: (data) => {
+      window.location.assign(data.checkout_url);
+    },
+  });
+
   return (
     <div className="min-h-screen bg-surface text-ink">
       <MarketingNav />
@@ -188,6 +214,26 @@ export function PricingPage() {
               plan includes Variance, Commentary, Risk, Business Health,
               Performance Overview, Ask Copilot, and Export.
             </p>
+            {checkoutState === "success" ? (
+              <p className="mt-6 rounded-md border border-accent/30 bg-accent-muted px-4 py-3 text-sm text-ink">
+                Payment received — your plan updates when Stripe confirms the
+                subscription (usually within a few seconds). Refresh if limits
+                have not changed yet.
+              </p>
+            ) : null}
+            {checkoutState === "cancelled" ? (
+              <p className="mt-6 rounded-md border border-line bg-surface px-4 py-3 text-sm text-ink-secondary">
+                Checkout cancelled — no charge was made. You can upgrade any
+                time.
+              </p>
+            ) : null}
+            {checkoutMutation.error ? (
+              <p className="mt-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                {checkoutMutation.error instanceof Error
+                  ? checkoutMutation.error.message
+                  : "Could not start checkout"}
+              </p>
+            ) : null}
           </div>
         </section>
 
@@ -260,22 +306,40 @@ export function PricingPage() {
                   <p className="mt-4 text-sm font-medium text-ink">
                     Client capacity: {tier.clients}
                   </p>
-                  <Link
-                    href="/sign-up"
-                    className={
-                      tier.emphasized
-                        ? "mt-6 inline-flex items-center justify-center rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
-                        : "mt-6 inline-flex items-center justify-center rounded-md border border-line bg-surface px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
-                    }
-                  >
-                    Start free trial
-                  </Link>
+                  {isSignedIn ? (
+                    <button
+                      type="button"
+                      data-testid={`pricing-upgrade-${tier.id}`}
+                      disabled={checkoutMutation.isPending}
+                      onClick={() => checkoutMutation.mutate(tier.apiTier)}
+                      className={
+                        tier.emphasized
+                          ? "mt-6 inline-flex items-center justify-center rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-50"
+                          : "mt-6 inline-flex items-center justify-center rounded-md border border-line bg-surface px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+                      }
+                    >
+                      {checkoutMutation.isPending
+                        ? "Starting checkout…"
+                        : `Upgrade to ${tier.name}`}
+                    </button>
+                  ) : (
+                    <Link
+                      href="/sign-up"
+                      className={
+                        tier.emphasized
+                          ? "mt-6 inline-flex items-center justify-center rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
+                          : "mt-6 inline-flex items-center justify-center rounded-md border border-line bg-surface px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
+                      }
+                    >
+                      Start free trial
+                    </Link>
+                  )}
                   <p className="mt-3 text-xs leading-relaxed text-soft">
-                    No card required to try. Cancel anytime. Client limit applies
-                    to active clients in your organisation.
+                    Free plan: up to 3 clients, no card required. Paid plans
+                    start when you upgrade. Client limits apply to active
+                    clients in your organisation.
                   </p>
-                </article>
-              ))}
+                </article>              ))}
             </div>
 
             <div

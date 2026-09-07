@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     stripe_price_id_pro: str | None = None
     stripe_price_id_scale: str | None = None
 
+    # Public site origin for Stripe Checkout success/cancel redirects.
+    frontend_base_url: str = "https://www.kastree.ie"
+
     # Public POST /waitlist — per-IP cap (in-memory, process-local).
     waitlist_rate_limit_per_ip_per_hour: int = 10
 

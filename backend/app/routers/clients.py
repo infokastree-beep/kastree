@@ -32,6 +32,10 @@ from app.schemas.company import (
 )
 from app.services.archival import archive_client_user_deleted
 from app.services.ownership import get_owned_client
+from app.services.tier_limits import (
+    client_limit_for_tier,
+    format_client_limit_message,
+)
 
 router = APIRouter(prefix="/clients", tags=["clients"])
 
@@ -49,6 +53,26 @@ async def create_client(
     org = await session.get(Organisation, auth.org_id)
     if org is None:
         raise HTTPException(status_code=401, detail="Unknown organisation")
+
+    limit = client_limit_for_tier(org.subscription_tier)
+    active_count = await session.scalar(
+        select(func.count())
+        .select_from(Client)
+        .where(Client.org_id == auth.org_id, Client.is_deleted.is_(False))
+    )
+    if active_count is None:
+        active_count = 0
+    if int(active_count) >= limit:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "CLIENT_LIMIT_REACHED",
+                "message": format_client_limit_message(limit),
+                "limit": limit,
+                "tier": org.subscription_tier,
+                "upgrade_url": "/pricing",
+            },
+        )
 
     client = Client(
         org_id=auth.org_id,

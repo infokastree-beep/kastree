@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
@@ -8,7 +9,7 @@ import {
 } from "@/components/clients/CompanyEntityForm";
 import type { CompanyEntityFormValues } from "@/lib/company-form";
 import { useAuth } from "@/hooks/useAuth";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 import { createCompanyEntity } from "@/lib/companies";
 import type { ClientCreateRequest, IClient } from "@/types";
 
@@ -22,6 +23,26 @@ type CreateClientFormProps = {
 type Step = "client" | "company";
 
 export type { Step as CreateClientStep };
+
+function clientLimitUpgradeUrl(error: unknown): string | null {
+  if (!(error instanceof ApiError) || error.status !== 403) {
+    return null;
+  }
+  const body = error.body;
+  if (typeof body !== "object" || body === null || !("detail" in body)) {
+    return null;
+  }
+  const detail = (body as { detail: unknown }).detail;
+  if (typeof detail !== "object" || detail === null) {
+    return null;
+  }
+  const code = (detail as { code?: unknown }).code;
+  const upgrade = (detail as { upgrade_url?: unknown }).upgrade_url;
+  if (code === "CLIENT_LIMIT_REACHED" && typeof upgrade === "string") {
+    return upgrade;
+  }
+  return null;
+}
 
 export function CreateClientForm({
   redirectPath = "/upload",
@@ -66,14 +87,12 @@ export function CreateClientForm({
     },
   });
 
+  const activeError =
+    step === "client" ? createClientMutation.error : createCompanyMutation.error;
   const errorMessage =
-    (step === "client"
-      ? createClientMutation.error
-      : createCompanyMutation.error) instanceof Error
-      ? (step === "client"
-          ? createClientMutation.error
-          : createCompanyMutation.error)!.message
-      : null;
+    activeError instanceof Error ? activeError.message : null;
+  const upgradeUrl =
+    step === "client" ? clientLimitUpgradeUrl(createClientMutation.error) : null;
 
   if (step === "company" && createdClient) {
     return (
@@ -131,8 +150,22 @@ export function CreateClientForm({
       </label>
 
       {errorMessage ? (
-        <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+        <p
+          className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+          data-testid="client-limit-error"
+        >
           {errorMessage}
+          {upgradeUrl ? (
+            <>
+              {" "}
+              <Link
+                href={upgradeUrl}
+                className="font-semibold underline underline-offset-2"
+              >
+                View pricing
+              </Link>
+            </>
+          ) : null}
         </p>
       ) : null}
 

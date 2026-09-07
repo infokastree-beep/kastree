@@ -782,19 +782,14 @@ Both fixes are in `backend/app/services/stripe_service.py` (commit `54ec7fe`).
 Four new tests in `backend/tests/test_webhooks_api.py` cover both cases and would
 have caught these bugs at review time.
 
-**What's missing — all of it:**
+**What's missing — remaining:**
 
-1. **Tier policy** — decide what each tier actually restricts (client count? AI
-   commentary access? export formats?). Revisit the original spec's rough tier
-   table and confirm it is still wanted.
-2. **Backend feature gating** — middleware or dependency layer that reads
-   `subscription_tier` (and `subscription_status`) and blocks/allows accordingly.
-   Never trust the frontend alone for this.
-3. **Pricing page** — a real public or authenticated pricing surface on the
-   frontend.
-4. **Stripe Checkout** — integration so someone can actually pay and land on the
-   correct tier.
+1. ~~**Tier policy**~~ — Done (2026-09-07): free=3, starter=10, pro(Growth)=30, scale(Practice)=75 client caps.
+2. ~~**Backend feature gating**~~ — Done for client create (`POST /clients` → 403 `CLIENT_LIMIT_REACHED`).
+3. ~~**Pricing page**~~ — Done (`/pricing`).
+4. **Stripe Checkout prices in Railway** — `POST /billing/checkout` is implemented; requires live `STRIPE_SECRET_KEY` + `STRIPE_PRICE_ID_STARTER|PRO|SCALE` (€69/€175/€349) configured in Railway. Webhook remains the sole writer of `subscription_tier` / `subscription_status`.
 
+Until Stripe Price IDs are set in Railway, Upgrade CTAs return 503; Free signup + client-limit enforcement still work.
 This is a genuinely separate, substantial piece of work — **not a quick fix**.
 Treat it as its own focused session.
 
