@@ -836,3 +836,49 @@ Low effort, real usability improvement. Not a new calculation engine — just a
 staleness indicator on top of the existing, correct regenerate-from-scratch
 behavior.
 
+## Performance granularity toggle — built, parked in UI
+
+**Status (2026-09-07):** Monthly / Quarterly / Yearly aggregation is
+**implemented and verified** (backend `aggregate_performance_periods`,
+`GET .../performance-overview?granularity=`, unit tests for flow-sum vs
+stock-last and prior-bucket growth). Live Berkshire proof confirmed correct
+math (e.g. Q3 revenue `3910400.00`, cash last-value `93500.00`).
+
+**UI decision:** the Dashboard Monthly/Quarterly/Yearly toggle is **hidden**
+for now. With history entirely inside one calendar quarter/year, Quarterly and
+Yearly look identical to each other and feel “broken” even though the math is
+right. The period dropdown alone is sufficient until real multi-quarter /
+multi-year customer data exists.
+
+**Preserve, don’t delete:** keep the endpoint, aggregation service, and tests.
+Frontend is locked to `granularity=monthly` with a comment pointing here.
+**Re-enable the UI control** once calendar-spanning data would show meaningful
+differentiation — no further backend work expected.
+
+## Product 3 (statutory reports) — planning notes
+
+Product sequencing lives in [`product-roadmap.md`](product-roadmap.md)
+(Product 3 — Full Statutory Annual Report, Ireland & UK). Capture hard gates
+here so they are not treated as optional polish after build starts.
+
+### Legal gate — “AI-assisted SaaS, not filer/signer of record” (upfront)
+
+**Before any development begins** on full statutory financial statement
+production, obtain **real legal counsel** (Ireland/UK) on:
+
+1. Whether framing Kastree as an **“AI-assisted SaaS platform, not the
+   filer/signer of record”** is a **legally sufficient** position for this
+   specific use case (drafting / assembling statutory-style annual report
+   content that could be filed or relied on externally).
+2. What **disclaimer and liability structure** would actually be required
+   (ToS, UI copy, engagement letters, professional-indemnity boundary) — not
+   what sounds reassuring in product docs.
+3. How this **differs from the already-settled Product 2 (working papers)
+   positioning**, which correctly stays **entirely internal** (no filing /
+   signing surface). Product 3 is a different liability category; Product 2’s
+   internal framing does **not** automatically transfer.
+
+This is a **real, upfront legal gate before building**, not a retrofit after
+UI exists. Internal confidence that “just an assistant” sounds reasonable is
+**not** confirmed legal grounding — counsel must say so for this use case.
+

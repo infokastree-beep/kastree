@@ -40,7 +40,10 @@ Medium items below assume those are shipped.
 - **Data visualization dashboard** — charts and graphs (trend lines, variance
   waterfalls, expense breakdowns) on top of existing statement / variance data.
 - **Multi-period trend views** — revenue / profit progression once multiple
-  trial balances exist per company.
+  trial balances exist per company. **Performance Monthly/Quarterly/Yearly
+  aggregation** is already built and tested on the backend; the Dashboard UI
+  toggle is parked until multi-quarter/year data would differentiate results
+  (see [`tracked-gaps.md`](tracked-gaps.md) — Performance granularity toggle).
 
 ### Conversational statement query ("Copilot")
 
@@ -78,6 +81,14 @@ Product 1.
 
 Different **liability category** from Products 1–2 — filing-capable output.
 Requires its own legal / ToS review before build, not just before launch.
+
+**Upfront legal gate (do not start build until cleared):** counsel must confirm
+whether “AI-assisted SaaS platform, not the filer/signer of record” is legally
+sufficient in Ireland/UK for this use case, what disclaimer/liability structure
+is actually required, and how that differs from settled Product 2 (working
+papers) internal-only positioning. Detail in
+[`tracked-gaps.md`](tracked-gaps.md) — Product 3 planning notes. Framing that
+merely *sounds* reasonable is not enough.
 
 - **Toggle-based note / disclosure content library** (Accurri-style pattern) —
   FRS 102 Section 1A first, matching actual target market.

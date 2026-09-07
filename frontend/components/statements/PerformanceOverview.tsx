@@ -53,14 +53,10 @@ const EXPENSE_LABELS: Record<PerformanceExpenseShare["code"], string> = {
   depreciation: "Depreciation",
 };
 
-const GRANULARITY_OPTIONS: {
-  value: PerformanceGranularity;
-  label: string;
-}[] = [
-  { value: "monthly", label: "Monthly" },
-  { value: "quarterly", label: "Quarterly" },
-  { value: "yearly", label: "Yearly" },
-];
+// Monthly/Quarterly/Yearly toggle: backend aggregation is built + tested
+// (`?granularity=` + `aggregate_performance_periods`). UI control is parked
+// until multi-quarter/year history exists — see tracked-gaps.md.
+const PERFORMANCE_GRANULARITY: PerformanceGranularity = "monthly";
 
 function shortPeriodLabel(isoDate: string): string {
   const d = new Date(`${isoDate}T00:00:00Z`);
@@ -263,8 +259,8 @@ export function PerformanceOverview({
   const { getToken } = useAuth();
   const router = useRouter();
   const [selectedTbId, setSelectedTbId] = useState<string>("");
-  const [granularity, setGranularity] =
-    useState<PerformanceGranularity>("monthly");
+  // Locked to monthly while the granularity toggle is hidden from the UI.
+  const granularity = PERFORMANCE_GRANULARITY;
 
   const overviewQuery = useQuery({
     queryKey: ["tb-performance-overview", tbId, granularity],
@@ -401,53 +397,9 @@ export function PerformanceOverview({
     code: item.code,
   }));
 
-  const granularityToggle =
-    previewData == null ? (
-      <div
-        className="inline-flex rounded-md border border-line bg-surface p-0.5"
-        role="group"
-        aria-label="Performance period granularity"
-        data-testid="performance-granularity-toggle"
-      >
-        {GRANULARITY_OPTIONS.map((option) => {
-          const active = granularity === option.value;
-          return (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => setGranularity(option.value)}
-              className={`rounded px-2.5 py-1 text-xs font-semibold transition-colors ${
-                active
-                  ? "bg-accent text-accent-foreground"
-                  : "text-ink-secondary hover:text-ink"
-              }`}
-              data-testid={`performance-granularity-${option.value}`}
-              aria-pressed={active}
-            >
-              {option.label}
-            </button>
-          );
-        })}
-      </div>
-    ) : null;
-
   const periodCountLabel = (() => {
-    if (activeGranularity === "quarterly") {
-      const n = data.period_count;
-      const sources = data.periods.reduce(
-        (sum, p) => sum + (p.source_period_count ?? 1),
-        0,
-      );
-      return `${n} quarter${n === 1 ? "" : "s"} (from ${sources} monthly statement${sources === 1 ? "" : "s"})`;
-    }
-    if (activeGranularity === "yearly") {
-      const n = data.period_count;
-      const sources = data.periods.reduce(
-        (sum, p) => sum + (p.source_period_count ?? 1),
-        0,
-      );
-      return `${n} year${n === 1 ? "" : "s"} (from ${sources} monthly statement${sources === 1 ? "" : "s"})`;
-    }
+    // Quarterly/yearly subtitle wording remains in git history; UI is monthly-only
+    // until the parked granularity toggle is re-enabled (tracked-gaps.md).
     if (!multiPeriod) {
       return "Single period — upload prior trial balances to unlock trends";
     }
@@ -523,7 +475,6 @@ export function PerformanceOverview({
               {priorSuffix}: {priorHintParts.join(" · ")}
             </p>
           ) : null}
-          {granularityToggle}
           <button
             type="button"
             onClick={onToggle}
@@ -562,7 +513,6 @@ export function PerformanceOverview({
                 Collapse
               </button>
             ) : null}
-            {granularityToggle}
           </div>
           <p className="mt-1 text-sm text-ink-secondary">{periodCountLabel}</p>
         </div>
