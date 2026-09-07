@@ -32,13 +32,18 @@ import type {
   PerformancePeriodMetrics,
   TrialBalanceListResponse,
 } from "@/types";
+import {
+  PerformanceKpiDrilldown,
+  type PerformanceKpiKey,
+} from "./PerformanceKpiDrilldown";
+import { useTbWorkspaceOptional } from "./TbWorkspaceProvider";
 
 const ACCENT = "#0f5c4c";
 const ACCENT_MUTED = "#7aa89a";
 const INK_SOFT = "#5c6b65";
 const EXPENSE_COLORS = ["#0f5c4c", "#3d7a6a", "#9bbdb2"];
 
-type KpiKey = "revenue" | "gross_profit" | "cash" | "net_profit";
+type KpiKey = PerformanceKpiKey;
 
 const KPI_CARDS: { key: KpiKey; label: string }[] = [
   { key: "revenue", label: "Revenue" },
@@ -258,9 +263,27 @@ export function PerformanceOverview({
 }) {
   const { getToken } = useAuth();
   const router = useRouter();
+  const workspace = useTbWorkspaceOptional();
   const [selectedTbId, setSelectedTbId] = useState<string>("");
+  const [drilldownKey, setDrilldownKey] = useState<KpiKey | null>(null);
   // Locked to monthly while the granularity toggle is hidden from the UI.
   const granularity = PERFORMANCE_GRANULARITY;
+
+  // Stacking rule: exclusive with Copilot — never two right sheets at once.
+  useEffect(() => {
+    if (workspace?.askOpen && drilldownKey != null) {
+      setDrilldownKey(null);
+    }
+  }, [workspace?.askOpen, drilldownKey]);
+
+  function openDrilldown(key: KpiKey) {
+    workspace?.closeAsk();
+    setDrilldownKey(key);
+  }
+
+  function closeDrilldown() {
+    setDrilldownKey(null);
+  }
 
   const overviewQuery = useQuery({
     queryKey: ["tb-performance-overview", tbId, granularity],
@@ -490,6 +513,7 @@ export function PerformanceOverview({
   }
 
   return (
+    <>
     <section
       className="space-y-5 rounded-md border border-line bg-surface-elevated p-5 sm:p-6"
       id="copilot-anchor-performance"
@@ -561,12 +585,21 @@ export function PerformanceOverview({
             ? toNumber(priorPeriod.metrics[card.key])
             : null;
           const pct = growthPct(value, priorValue);
+          const open = drilldownKey === card.key;
           return (
-            <div
+            <button
               key={card.key}
+              type="button"
               id={`copilot-anchor-performance-${card.key}`}
-              className="rounded-md border border-line bg-surface px-4 py-4"
+              className={`rounded-md border bg-surface px-4 py-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                open
+                  ? "border-accent ring-1 ring-accent"
+                  : "border-line hover:border-accent"
+              }`}
               data-testid={`performance-kpi-${card.key}`}
+              aria-haspopup="dialog"
+              aria-expanded={open}
+              onClick={() => openDrilldown(card.key)}
             >
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-soft">
                 {card.label}
@@ -586,7 +619,7 @@ export function PerformanceOverview({
               <div className="mt-3 border-t border-line/70 pt-2">
                 <Sparkline values={series} />
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -758,5 +791,20 @@ export function PerformanceOverview({
         </div>
       </div>
     </section>
+    {drilldownKey != null ? (
+      <PerformanceKpiDrilldown
+        open
+        metricKey={drilldownKey}
+        periods={data.periods}
+        selectedTbId={selectedPeriod.tb_id}
+        asOfPeriodEnd={data.period_end}
+        currencyCode={currencyCode}
+        priorSuffix={priorSuffix}
+        onClose={closeDrilldown}
+        onSelectPeriod={setSelectedTbId}
+        onNavigatePeriod={onNavPeriodChange}
+      />
+    ) : null}
+    </>
   );
 }

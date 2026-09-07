@@ -51,6 +51,11 @@ export function useTbWorkspace(): TbWorkspaceContextValue {
   return ctx;
 }
 
+/** Safe outside the workspace layout (e.g. performance preview pages). */
+export function useTbWorkspaceOptional(): TbWorkspaceContextValue | null {
+  return useContext(TbWorkspaceContext);
+}
+
 function pageFromPathname(pathname: string, tbId: string): CopilotCitePage {
   return pathname.startsWith(`${dashboardPath(tbId)}/statements`)
     ? "statements"
