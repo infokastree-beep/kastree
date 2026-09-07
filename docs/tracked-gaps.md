@@ -855,24 +855,38 @@ Frontend is locked to `granularity=monthly` with a comment pointing here.
 **Re-enable the UI control** once calendar-spanning data would show meaningful
 differentiation — no further backend work expected.
 
-## Statement line edit / formulae / add-line (deferred)
+## Statement line evidence drill-down (shipped) vs manual override (do not build)
 
-**Phase 1 shipped:** click any SOPL/SOFP/SOCIE face line → read-only slide-over
+**Shipped (read-only):** click any SOPL/SOFP/SOCIE face line → right slide-over
 of contributing TB accounts via
 `GET /trial-balances/{tb_id}/statements/lines/{line_id}/sources`
-(`source_account_ids` → `account_mappings` + parsed TB rows). Matches Product
-Spec “View Source” / evidence graph.
+(`source_account_ids` → `account_mappings` + parsed TB rows). Shows account
+code, name, and face amount. No editing. Same stacking pattern as Performance
+KPI drill-down (exclusive with Copilot).
 
-**Not built (product decision still open):**
+### Manual override — deliberately NOT surfaced
 
-| Capability | Why deferred |
-|------------|--------------|
-| Edit face amounts (`is_manual_override`) | Schema columns exist; no API/UI. Must keep Python as sole maths owner and write audit + original_amount. |
-| Spreadsheet-style formulae | Would invent a second calculation engine outside TB → mapping → statements. Violates Golden Rule unless scoped as audited overrides only. |
-| Add / delete statement lines | Changes face presentation without TB provenance; needs explicit product rules before UI. |
+`statement_line_items` schema already has `is_manual_override`,
+`original_amount`, and `overridden_by_user_id`. These fields exist but are
+**deliberately not being surfaced or built into any UI/API**.
 
-Do not ship edit/formulae without an override audit trail and a clear rule that
-regenerate from TB still wins unless the override is re-applied deliberately.
+**Reasoning:** an override, however carefully audited (visible flag, original
+value preserved, tracked in Copilot’s evidence pack), still introduces the one
+thing every other feature this product was built to prevent — a displayed
+statement figure that doesn’t match what the trial balance actually says.
+Correct re-mapping already handles the common case of a wrong figure.
+
+**Only revisit** if real practices, using the product with real clients,
+demonstrate a genuine, recurring need for a rare, legitimate out-of-system
+adjustment that re-mapping cannot solve — not speculatively, based on an unused
+schema field.
+
+Also not built (same bar — demand-gated, not speculative):
+
+| Capability | Notes |
+|------------|--------|
+| Spreadsheet-style formulae / variables | Second calculation engine outside TB → mapping → statements; violates Golden Rule. |
+| Add / delete statement lines | Face presentation without TB provenance. |
 
 ## Product 3 (statutory reports) — planning notes
 
