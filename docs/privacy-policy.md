@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last updated:** 3 September 2026  
+**Last updated:** 7 September 2026  
 **Contact:** [infokastree@gmail.com](mailto:infokastree@gmail.com)
 
 This policy describes how Kastree handles data on kastree.ie and in the Kastree
@@ -65,20 +65,15 @@ These providers process data only to run their part of Kastree:
 | **Railway** | Hosts the Kastree API, the PostgreSQL database, and a persistent volume used for uploaded trial-balance files |
 | **Vercel** | Hosts the kastree.ie frontend and provides Web Analytics |
 | **Cloudflare R2** | Stores **generated export files** (not the primary trial-balance upload store) |
-| **Resend** | Sends transactional email such as waitlist confirmation (from our configured Kastree sender address) |
+| **Resend** | Sends transactional email we trigger from the Kastree API (founder alerts on new Clerk organisation signup, and confirmation/founder alerts if a legacy waitlist submission is recorded). Authentication emails are sent by Clerk, not Resend. |
+| **Stripe** | Active payment processor and sub-processor for subscription billing on paid tiers (Checkout, customer and subscription records, and related billing webhooks) |
+| **OpenAI** | Currently used for AI-assisted account mapping and commentary generation. Core statement amounts are computed in our systems, not by the model. Prompts are designed not to include raw monetary amounts. |
 
-**OpenAI** may be used later for optional AI commentary or mapping assistance
-when that integration is enabled. Core statement generation does not require
-OpenAI. When used, our prompts are designed not to include raw monetary
-amounts. Stripe billing is designed in the product but is **not** active as a
-live payment processor on the current deployment.
-
-Some providers (notably Clerk, Resend, Vercel, Cloudflare, and OpenAI if
-enabled) may process data in the United States or other regions outside
-Ireland/the EEA. Where they do, we rely on their published contractual
-safeguards (including Standard Contractual Clauses where they provide them).
-We will maintain a formal sub-processor list and DPA pack as we onboard paying
-practices.
+Some providers (notably Clerk, Resend, Vercel, Cloudflare, Stripe, and OpenAI)
+may process data in the United States or other regions outside Ireland/the EEA.
+Where they do, we rely on their published contractual safeguards (including
+Standard Contractual Clauses where they provide them). We will maintain a formal
+sub-processor list and DPA pack as we onboard paying practices.
 
 We may disclose data if required by law or to protect the service against
 security threats or abuse.

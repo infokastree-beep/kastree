@@ -29,7 +29,7 @@ export default function PrivacyPage() {
       </header>
 
       <main className="mx-auto max-w-content px-6 py-section-sm sm:px-8 sm:py-section">
-        <p className="text-sm text-ink-secondary">Last updated: 6 September 2026</p>
+        <p className="text-sm text-ink-secondary">Last updated: 7 September 2026</p>
         <h1 className="mt-3 font-display text-heading-lg text-ink sm:text-[2.25rem]">
           Privacy Policy
         </h1>
@@ -164,23 +164,27 @@ export default function PrivacyPage() {
                 recorded). Authentication emails (verification, magic links,
                 password reset) are sent by Clerk, not Resend.
               </li>
+              <li>
+                <strong className="font-medium text-ink">Stripe</strong> —
+                active payment processor and sub-processor for subscription
+                billing on paid tiers (Checkout, customer and subscription
+                records, and related billing webhooks)
+              </li>
+              <li>
+                <strong className="font-medium text-ink">OpenAI</strong> —
+                currently used for AI-assisted account mapping and commentary
+                generation. Core statement amounts are computed in our systems,
+                not by the model. Prompts are designed not to include raw
+                monetary amounts.
+              </li>
             </ul>
             <p className="mt-3">
-              <strong className="font-medium text-ink">OpenAI</strong> may be used
-              later for optional AI commentary or mapping assistance when that
-              integration is enabled. Core statement generation does not require
-              OpenAI. When used, our prompts are designed not to include raw
-              monetary amounts. Stripe billing is designed in the product but is{" "}
-              <strong className="font-medium text-ink">not</strong> active as a
-              live payment processor on the current deployment.
-            </p>
-            <p className="mt-3">
-              Some providers (notably Clerk, Resend, Vercel, Cloudflare, and
-              OpenAI if enabled) may process data in the United States or other
-              regions outside Ireland/the EEA. Where they do, we rely on their
-              published contractual safeguards (including Standard Contractual
-              Clauses where they provide them). We will maintain a formal
-              sub-processor list and DPA pack as we onboard paying practices.
+              Some providers (notably Clerk, Resend, Vercel, Cloudflare, Stripe,
+              and OpenAI) may process data in the United States or other regions
+              outside Ireland/the EEA. Where they do, we rely on their published
+              contractual safeguards (including Standard Contractual Clauses
+              where they provide them). We will maintain a formal sub-processor
+              list and DPA pack as we onboard paying practices.
             </p>
             <p className="mt-3">
               We may disclose data if required by law or to protect the service
