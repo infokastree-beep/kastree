@@ -180,6 +180,8 @@ export interface StatementsResponse {
   prior_period_end?: string | null;
   functional_currency: string;
   statements: StatementBlock[];
+  /** True when company mappings were updated after these statements were generated. */
+  mappings_stale?: boolean;
 }
 
 /** Evidence-graph drill-down for one statement face line. */

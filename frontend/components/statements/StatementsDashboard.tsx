@@ -421,6 +421,31 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
         {DISCLAIMER_TEXT}
       </p>
 
+      {statementsData?.mappings_stale ? (
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3"
+          data-testid="stale-mapping-banner"
+          role="status"
+        >
+          <p className="text-sm text-amber-950">
+            <span className="font-semibold">Mappings have changed</span> since
+            these statements were generated. Figures may be out of date —
+            regenerate to refresh from the current mapping.
+          </p>
+          <button
+            type="button"
+            disabled={generateMutation.isPending}
+            onClick={() => generateMutation.mutate()}
+            className="shrink-0 rounded-md bg-accent px-3 py-2 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-50"
+            data-testid="stale-mapping-regenerate"
+          >
+            {generateMutation.isPending
+              ? "Regenerating…"
+              : "Regenerate Statements"}
+          </button>
+        </div>
+      ) : null}
+
       {statementsQuery.isLoading ? (
         <p className="text-sm text-soft">Loading statements…</p>
       ) : null}

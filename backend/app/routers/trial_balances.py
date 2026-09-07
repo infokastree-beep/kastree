@@ -189,6 +189,8 @@ class StatementsResponse(BaseModel):
     prior_period_end: date | None = None
     functional_currency: str
     statements: list[StatementBlockResponse]
+    # True when any company mapping was updated after these statements were generated.
+    mappings_stale: bool = False
 
 
 class StatementLineSourceAccount(BaseModel):
@@ -230,6 +232,7 @@ class StatementsGenerateResponse(BaseModel):
     status: str
     functional_currency: str
     statements: list[StatementBlockResponse]
+    mappings_stale: bool = False
 
 
 class TrialBalanceListItem(BaseModel):
@@ -1000,6 +1003,9 @@ async def generate_statements(
         status="complete",
         functional_currency=await _get_tb_functional_currency(session, tb=tb),
         statements=comparative,
+        mappings_stale=await _mappings_stale_for_statements(
+            session, company_id=tb.company_id, blocks=comparative
+        ),
     )
 
 
@@ -1037,6 +1043,9 @@ async def _generate_and_persist_statements(
                 tb_id=sync_tb.id,
                 statement_type=statement_type,
                 data={"lines": [_line_to_json(line) for line in lines]},
+                # Wall-clock generate time (not transaction now()) so
+                # mappings_stale clears correctly after regenerate.
+                generated_at=datetime.now(timezone.utc),
             )
             sync_session.add(fs)
             sync_session.flush()
@@ -1275,7 +1284,39 @@ async def get_statements(
         ),
         functional_currency=await _get_tb_functional_currency(session, tb=tb),
         statements=comparative,
+        mappings_stale=await _mappings_stale_for_statements(
+            session, company_id=tb.company_id, blocks=comparative
+        ),
     )
+
+
+async def _mappings_stale_for_statements(
+    session: AsyncSession,
+    *,
+    company_id: uuid.UUID,
+    blocks: list[StatementBlockResponse],
+) -> bool:
+    """True if any company mapping was updated after the oldest statement generate time."""
+    if not blocks:
+        return False
+    generated_ats = [block.generated_at for block in blocks]
+    # Use the earliest face statement — if any is older than mappings, figures may be stale.
+    statements_generated_at = min(generated_ats)
+    result = await session.execute(
+        select(func.max(AccountMapping.updated_at)).where(
+            AccountMapping.company_id == company_id
+        )
+    )
+    latest_mapping = result.scalar_one_or_none()
+    if latest_mapping is None:
+        return False
+
+    def _as_utc(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    return _as_utc(latest_mapping) > _as_utc(statements_generated_at)
 
 
 async def _resolve_statements_prior_tb(

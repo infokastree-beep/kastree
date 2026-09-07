@@ -9,7 +9,7 @@ from decimal import Decimal
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError
 
 from app.db import SyncSessionLocal, set_rls_org_id
@@ -367,11 +367,61 @@ async def test_full_happy_path_upload_to_statements(
     get_by_type = {b["statement_type"]: b for b in statements}
     get_sopl_codes = {line["line_item_code"] for line in get_by_type["SOPL"]["lines"]}
     assert get_sopl_codes == gen_sopl_codes
+    assert got.json()["mappings_stale"] is False
+
+    # Stale-mapping indicator: reset company mapping timestamps, then bump one
+    # to wall-clock now (after statement generate). Avoid future stamps — a
+    # regenerate that finishes before an artificial future bump would stay stale.
+    from datetime import datetime, timedelta, timezone
+
+    from app.models.account_mapping import AccountMapping
+
+    generated_ats = [
+        datetime.fromisoformat(block["generated_at"].replace("Z", "+00:00"))
+        for block in statements
+    ]
+    baseline = min(generated_ats) - timedelta(hours=1)
+    company_id = got.json()["company_id"]
+
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
+        mappings = list(
+            session.execute(
+                select(AccountMapping).where(AccountMapping.company_id == company_id)
+            ).scalars().all()
+        )
+        assert mappings
+        for mapping in mappings:
+            mapping.updated_at = baseline
+        mappings[0].updated_at = datetime.now(timezone.utc)
+        session.commit()
+
+    stale_got = await api_client.get(
+        f"/trial-balances/{tb_id}/statements", headers=headers
+    )
+    assert stale_got.status_code == 200, stale_got.text
+    assert stale_got.json()["mappings_stale"] is True
+
+    regen = await api_client.post(
+        f"/trial-balances/{tb_id}/statements", headers=headers
+    )
+    assert regen.status_code == 200, regen.text
+    assert regen.json()["mappings_stale"] is False
+
+    fresh = await api_client.get(
+        f"/trial-balances/{tb_id}/statements", headers=headers
+    )
+    assert fresh.status_code == 200, fresh.text
+    assert fresh.json()["mappings_stale"] is False
+    fresh_by_type = {
+        b["statement_type"]: b for b in fresh.json()["statements"]
+    }
 
     # Evidence-graph drill-down: revenue leaf must expose TB source accounts.
+    # Use post-regenerate line ids (regen replaces statement_line_items).
     revenue = next(
         line
-        for line in get_by_type["SOPL"]["lines"]
+        for line in fresh_by_type["SOPL"]["lines"]
         if line["line_item_code"] == "revenue"
     )
     assert len(revenue["source_account_ids"]) >= 1
