@@ -338,6 +338,12 @@ export function LandingPage() {
             >
               Privacy
             </Link>
+            <Link
+              href="/terms"
+              className="text-white/70 underline-offset-4 hover:text-white hover:underline"
+            >
+              Terms
+            </Link>
           </p>
         </div>
       </footer>
