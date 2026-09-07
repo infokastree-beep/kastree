@@ -89,11 +89,6 @@ function bucketChartLabel(period: PerformancePeriod): string {
   return shortPeriodLabel(period.period_end);
 }
 
-function bucketSelectLabel(period: PerformancePeriod, isLatest: boolean): string {
-  const base = bucketChartLabel(period);
-  return isLatest ? `${base} (current)` : base;
-}
-
 function priorGrowthSuffix(granularity: PerformanceGranularity): string {
   if (granularity === "quarterly") return "vs prior quarter";
   if (granularity === "yearly") return "vs prior year";
