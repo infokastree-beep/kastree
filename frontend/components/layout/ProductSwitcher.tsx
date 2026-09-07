@@ -18,7 +18,11 @@ type ProductSwitcherProps = {
   activeProductId?: string;
   /**
    * Destination for the brand/name control.
-   * Defaults to `/clients` (signed-in app home). Used on landing + dashboard.
+   *
+   * Dashboard must pass PRODUCT_HOME_HREF (`/clients`).
+   * Default is `/` (public-safe) so a missing prop never sends signed-out
+   * visitors into Clerk-protected routes. Public marketing pages should use
+   * MarketingBrandLink instead of this component.
    */
   homeHref?: string;
 };
@@ -26,7 +30,7 @@ type ProductSwitcherProps = {
 export function ProductSwitcher({
   products = PRODUCTS,
   activeProductId = products[0]?.id,
-  homeHref = PRODUCT_HOME_HREF,
+  homeHref = "/",
 }: ProductSwitcherProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);

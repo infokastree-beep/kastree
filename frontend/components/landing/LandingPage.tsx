@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { SignInNavLink } from "@/components/auth/SignInNavLink";
+import { MarketingBrandLink } from "@/components/landing/MarketingBrandLink";
 import { clerkReady } from "@/lib/clerk";
-import { ProductSwitcher } from "@/components/layout/ProductSwitcher";
 import { useAuth } from "@/hooks/useAuth";
 import { APP_NAME, DISCLAIMER_TEXT, POST_AUTH_PATH } from "@/lib/constants";
 
@@ -73,9 +73,7 @@ export function LandingPage() {
       <header className="border-b border-line/80 bg-surface-elevated/90 backdrop-blur-sm">
         <div className="mx-auto flex max-w-content items-center justify-between gap-4 px-6 py-5 sm:px-8">
           <div className="flex items-center gap-6">
-            {/* Marketing surfaces: brand goes to public homepage, not /clients
-                (Clerk would redirect signed-out /clients → sign-in). */}
-            <ProductSwitcher homeHref="/" />
+            <MarketingBrandLink />
             <Link
               href="/pricing"
               className="hidden text-sm font-medium text-ink-secondary underline-offset-4 transition-colors hover:text-accent hover:underline sm:inline"

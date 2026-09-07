@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
 import { AdminNavLink } from "@/components/layout/AdminNavLink";
-import { ProductSwitcher } from "@/components/layout/ProductSwitcher";
+import {
+  PRODUCT_HOME_HREF,
+  ProductSwitcher,
+} from "@/components/layout/ProductSwitcher";
 import { clerkReady } from "@/lib/clerk";
 
 export default function DashboardGroupLayout({
@@ -16,7 +19,7 @@ export default function DashboardGroupLayout({
       <header className="border-b border-line/80 bg-surface-elevated/95 backdrop-blur-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <div className="flex items-center gap-6">
-            <ProductSwitcher />
+            <ProductSwitcher homeHref={PRODUCT_HOME_HREF} />
             <nav className="flex gap-4 text-sm font-medium text-ink-secondary">
               <Link
                 href="/clients"
