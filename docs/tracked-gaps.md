@@ -581,9 +581,16 @@ bug.
 **Until agents habitually use `push_production_remotes.sh`:** any
 origin-only push will recreate this exact “Vercel silently behind” symptom.
 
-**Longer-term deploy plumbing:** `scripts/trigger_vercel_deploy.sh` (POST
-`VERCEL_DEPLOY_HOOK_URL`) remains useful when Git is connected but a build
-needs a kick. Prefer the dual-remote push + SHA guard as the default path.
+**Deploy hook — resolved (2026-09-07):** both paths that need
+`VERCEL_DEPLOY_HOOK_URL` are covered:
+
+| Path | Status |
+|------|--------|
+| GitHub Actions `secrets.VERCEL_DEPLOY_HOOK_URL` | Working — `verify-production-frontend.yml` POSTs the Production hook on `main` pushes (proven live). |
+| Cloud Agent / local `scripts/trigger_vercel_deploy.sh` | Working — same Production/`main` hook URL saved as a Cursor **My Secrets** entry (`VERCEL_DEPLOY_HOOK_URL`, applies to all repositories). Available to **new** Cloud Agent sessions going forward. |
+
+Prefer dual-remote push + SHA guard as the default path; the hook remains the
+kick when Git is connected but a build still needs a nudge.
 
 ## Production users table — placeholder Clerk emails
 
