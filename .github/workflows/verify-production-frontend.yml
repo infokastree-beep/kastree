@@ -32,11 +32,24 @@ jobs:
           if [ -z "${VERCEL_DEPLOY_HOOK_URL:-}" ]; then
             echo "VERCEL_DEPLOY_HOOK_URL secret not set — relying on Vercel Git auto-deploy."
             echo "skipped=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Vercel deploy hook"
+              echo "- Result: **skipped** (secret not set)"
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           status=$(curl -sSL -o /tmp/hook.json -w '%{http_code}' -X POST "$VERCEL_DEPLOY_HOOK_URL")
           echo "HTTP $status"
           cat /tmp/hook.json || true
+          job_id="$(python3 -c "import json; print(json.load(open('/tmp/hook.json')).get('job',{}).get('id',''))" 2>/dev/null || true)"
+          {
+            echo "### Vercel deploy hook"
+            echo "- Result: **fired**"
+            echo "- HTTP status: \`$status\`"
+            if [ -n "$job_id" ]; then
+              echo "- Vercel job id: \`$job_id\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
           if [[ ! "$status" =~ ^2 ]]; then
             echo "::warning::Deploy hook returned HTTP $status — verify job will still poll live site"
             exit 1
