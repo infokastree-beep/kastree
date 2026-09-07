@@ -35,8 +35,11 @@ clears).
 
 MVP is live in production. Core loop (upload → map → validate → statements →
 Variance / Risk / Commentary / Copilot / Export / Dashboard) is proven
-end-to-end and live-tested. Product 1 is a **finished sellable surface** —
-not a half-built platform waiting on the items in this document.
+end-to-end and live-tested. **Paywall is live:** public `/pricing`, free=3 /
+starter=10 / Growth=30 / Practice=75 client caps enforced on create, Stripe
+Checkout + webhook proven with a real test-mode payment (2026-09-07). Product 1
+is a **finished sellable surface** — not a half-built platform waiting on the
+items in this document.
 
 **Framing:** one platform for accounting practices doing **internal review and
 analysis**. A practice uses the features that matter for the engagement —
@@ -58,6 +61,7 @@ Registered in `products.ts` today as **FinDraft** (`id: "findraft"`).
 | **Business Health** summary | Done — built and live-tested 2026-09-07 |
 | **Export** (Excel / PDF / CSV) | Done — built and live-tested 2026-09-07 |
 | **Canonical lines expansion** | Done — built and live-tested 2026-09-07 |
+| **Paywall (pricing + Checkout)** | Done — `/pricing` live; client-limit enforcement live; Stripe Checkout + webhook proven with real test payment 2026-09-07 (`free` → `starter`) |
 
 ### Medium — shipped
 
@@ -168,7 +172,7 @@ Same rule for all rows: **do not build (or unhide) until Product 1 usage shows t
 
 | Track | State |
 |-------|--------|
-| **Product 1 (sellable)** | **Complete and ready to sell now.** Close, Medium, Copilot, evidence drill-down — live-tested 2026-09-07. |
+| **Product 1 (sellable)** | **Complete and ready to sell now.** Close, Medium, Copilot, evidence drill-down, **paywall** (pricing + tier limits + Stripe Checkout/webhook) — live-tested 2026-09-07. |
 | **Working Paper / Reconciliation Evidence** | First Product 1 build candidate **when** real customer signal appears. Contained scope on existing evidence anchors. |
 | **Product 2 (Statutory)** | Paused — legal consultation gate in [`tracked-gaps.md`](tracked-gaps.md). Only separate product. |
 | **Scenario / forecast / budget** | Captured; large architecture; internal-only; not casual. |

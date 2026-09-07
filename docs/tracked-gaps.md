@@ -747,54 +747,35 @@ owner as a safety measure before allowing the original account to leave.
 working state. Revisit only if genuinely necessary; no risk in leaving both as
 members indefinitely.
 
-## No actual paywall — subscription tiers exist in schema only
+## Paywall — DONE (2026-09-07)
 
-There is currently **no actual paywall**. Anyone can sign up and gets
-unrestricted access at the `"free"` tier indefinitely — no way to see pricing,
-no way to pay, and **no code anywhere that checks `subscription_tier` to gate
-features**.
+**Status: complete.** Pricing, client-limit enforcement, Stripe Checkout, and
+webhook tier updates are live and proven with a real Stripe test-mode payment.
 
-**What exists today:**
+**Shipped:**
 
-- Database schema supports tiers (`organisations.subscription_tier`,
-  `subscription_status`).
-- Stripe webhook correctly updates these fields when Stripe sends real events.
+- Pricing page live at `/pricing` (Starter €69/10, Growth €175/30, Practice €349/75).
+- Free tier = permanent free (3 clients, no card). Paid upgrades via Checkout.
+- Backend gating: `POST /clients` → 403 `CLIENT_LIMIT_REACHED` when over tier cap.
+- `POST /billing/checkout` creates Stripe subscription Checkout; webhook remains
+  the sole writer of `subscription_tier` / `subscription_status`.
+- Railway configured: `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID_STARTER|PRO|SCALE`,
+  `STRIPE_WEBHOOK_SECRET`, `FRONTEND_BASE_URL`.
+- End-to-end proof (2026-09-07): Upgrade to Starter → Checkout €69 → test card
+  `4242…` → `checkout.session.completed` webhook → org `free` → `starter`.
 
-**Stripe tier-update bugs — resolved (2026-09-03):** Two bugs caused tier/status
-changes to be silently dropped with no log output:
+**Earlier Stripe webhook hardening (still relevant):** Two bugs that could
+silently drop tier/status updates were fixed in commit `54ec7fe`
+(`stripe_service.py`) — unknown Stripe statuses no longer default to
+`"active"`, and unmapped `price_id` values log a `WARNING` instead of failing
+quietly. Covered by tests in `backend/tests/test_webhooks_api.py`.
 
-1. **Unknown Stripe status silently became `"active"`** — `_map_stripe_subscription_status`
-   used `mapping.get(stripe_status, "active")` as a fallback. Any unrecognised status
-   value (including a future Stripe status or a missing `status` field) overwrote the
-   org's real status with `"active"`. An org that was `past_due` could become `"active"`
-   without any payment having succeeded. **Fix:** returns `None` for unknown statuses;
-   `apply_organisation_billing_update` preserves the existing DB value and logs a
-   `WARNING` with the unrecognised status string.
+**Checkout API version (2026-09-07):** `stripe.api_version` pinned to
+`2025-03-31.basil` in `billing.py` so Session.create succeeds on accounts with
+Managed Payments (commit `f6a6e40`).
 
-2. **Unmapped `price_id` silently dropped the tier change** — when
-   `price_id_to_tier(price_id)` returned `None` (because `STRIPE_PRICE_ID_STARTER/PRO/SCALE`
-   env vars are not configured), the tier update was skipped with no log output. A real
-   Stripe payment would complete, the org's status would go `active`, but its tier
-   would stay on `"free"` forever. **Fix:** logs a `WARNING` with the unmapped
-   `price_id` so operators can see exactly which price needs a corresponding env var.
-
-Both fixes are in `backend/app/services/stripe_service.py` (commit `54ec7fe`).
-Four new tests in `backend/tests/test_webhooks_api.py` cover both cases and would
-have caught these bugs at review time.
-
-**What's missing — remaining:**
-
-1. ~~**Tier policy**~~ — Done (2026-09-07): free=3, starter=10, pro(Growth)=30, scale(Practice)=75 client caps.
-2. ~~**Backend feature gating**~~ — Done for client create (`POST /clients` → 403 `CLIENT_LIMIT_REACHED`).
-3. ~~**Pricing page**~~ — Done (`/pricing`).
-4. **Stripe Checkout prices in Railway** — `POST /billing/checkout` is implemented; requires live `STRIPE_SECRET_KEY` + `STRIPE_PRICE_ID_STARTER|PRO|SCALE` (€69/€175/€349) configured in Railway. Webhook remains the sole writer of `subscription_tier` / `subscription_status`.
-
-Until Stripe Price IDs are set in Railway, Upgrade CTAs return 503; Free signup + client-limit enforcement still work.
-This is a genuinely separate, substantial piece of work — **not a quick fix**.
-Treat it as its own focused session.
-
-**Not urgent** for a waitlist-stage product with no real users yet, but **must
-be resolved before onboarding any real, unvetted signups**.
+This gap is closed for Product 1 sellability. Remaining billing polish (Customer
+Portal, annual plans, invoices UI) is demand-gated — not a blocker.
 
 ## No uptime or error monitoring
 
