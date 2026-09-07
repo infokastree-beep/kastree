@@ -17,35 +17,38 @@ statements) proven end-to-end.
 
 Registered in `products.ts` today as **FinDraft** (`id: "findraft"`).
 
-### Close — same data, needs a screen (build next)
+### Close — shipped
 
-Backend work for these features is largely done; the gap is frontend surfaces
-on the statements dashboard.
+Originally “same data, needs a screen.” All Close items below are live in
+production.
 
-| Feature | Backend | Frontend gap |
-|---------|---------|--------------|
-| **Variance Analysis** tab | Done and tested | Prior-period upload field + results table |
-| **Materiality auto-suggestion** | Not built | Post-first-upload prompt suggesting benchmark-based thresholds from real statement figures. **Fast-follow alongside or immediately after Variance** — not a separate later task. Directly feeds Variance Analysis's "is this material?" flagging (Product Spec §4.3); a static generic threshold makes variance flagging inconsistently useful across companies of different sizes. Full target design: [`tracked-gaps.md`](tracked-gaps.md) (Materiality thresholds section). |
-| **Risk Flags** tab | Done and tested | Display table |
-| **AI Commentary** | Done and reviewed (no financial data sent to LLM) | UI for drafted text, editable, with reasoning tooltip + thumbs up/down (feedback endpoints exist) |
-| **Business Health** summary | Done | Dashboard placement for the 3-bullet AI summary |
-| **Export** (Excel / PDF / CSV) | Fully built and tested (incl. LibreOffice-verified currency formatting) | Dashboard export buttons |
-| **Canonical lines expansion** | Not built | Six new Appendix A lines + SOFP placement (confirmed via complex TB testing). Affects mapping accuracy and statement completeness. **Fast-follow after Variance / materiality.** Full design: [`canonical-lines-expansion.md`](canonical-lines-expansion.md). |
+| Feature | Status |
+|---------|--------|
+| **Variance Analysis** tab | Done — built and live-tested 2026-09-07 |
+| **Materiality auto-suggestion** | Done — built and live-tested 2026-09-07 |
+| **Risk Flags** tab | Done — built and live-tested 2026-09-07 |
+| **AI Commentary** | Done — built and live-tested 2026-09-07 |
+| **Business Health** summary | Done — built and live-tested 2026-09-07 |
+| **Export** (Excel / PDF / CSV) | Done — built and live-tested 2026-09-07 |
+| **Canonical lines expansion** | Done — built and live-tested 2026-09-07 |
 
-### Medium — new work, grounded in existing data
+### Medium — shipped
 
-**Sequence after Close** — including Variance UI and its materiality fast-follow.
-Medium items below assume those are shipped.
+Originally “new work, grounded in existing data,” sequenced after Close. All
+Medium items below are live in production.
 
-- **Data visualization dashboard** — charts and graphs (trend lines, variance
-  waterfalls, expense breakdowns) on top of existing statement / variance data.
-- **Multi-period trend views** — revenue / profit progression once multiple
-  trial balances exist per company. **Performance Monthly/Quarterly/Yearly
-  aggregation** is already built and tested on the backend; the Dashboard UI
-  toggle is parked until multi-quarter/year data would differentiate results
-  (see [`tracked-gaps.md`](tracked-gaps.md) — Performance granularity toggle).
+- **Data visualization dashboard** — Done — built and live-tested 2026-09-07
+  (Performance Overview charts / KPI cards / expense mix on Dashboard).
+- **Multi-period trend views** — Done — built and live-tested 2026-09-07
+  (period history, View period navigation, KPI drill-down). Backend
+  Monthly/Quarterly/Yearly aggregation remains available; Dashboard UI toggle
+  is parked until multi-quarter/year data would differentiate results (see
+  [`tracked-gaps.md`](tracked-gaps.md) — Performance granularity toggle).
 
 ### Conversational statement query ("Copilot")
+
+Done — built and live-tested 2026-09-07 (full 3-phase Copilot: Ask panel,
+evidence-grounded answers, citations, Dashboard/Statements navigation).
 
 Inspired by reviewing real reference screenshots (LucaNet's "Copilot"/"Message
 Luca" chat interface). A natural-language chat panel letting a user ask
@@ -53,12 +56,6 @@ questions like "summarize expense changes this quarter" or "what changed in
 gross margin over the last 2 years", answered from already-computed statement
 and variance data via the existing evidence graph -- NOT a new calculation
 engine, a query/answer layer sitting on top of data already proven correct.
-Natural extension once the Commentary display and Variance tab (both already
-planned, backend done) exist in the UI. Genuinely well-matched to the existing
-architecture (deterministic engine + evidence graph + AI narration-only
-principle already established). Sequence: after Commentary/Variance UI ships,
-not before -- there's nothing to query conversationally until those exist as
-real, viewable data.
 
 ---
 
@@ -160,16 +157,17 @@ demand before designing APIs, schemas, or sync jobs.
 
 ## Sequencing note
 
-**Product 1’s “Close” items are the actual next build priority**, with
-materiality auto-suggestion a **fast-follow to Variance** (not Medium-tier later
-work) and **canonical lines expansion** fast-follow after those (see
-[`canonical-lines-expansion.md`](canonical-lines-expansion.md)). Remaining
-Medium items (data viz, multi-period trends) come after Close is shipped.
+**Product 1 Close and Medium are complete** (including Variance, materiality,
+Risk, Commentary, Business Health, Export, canonical lines, Performance
+Overview / multi-period trends / KPI drill-down, and full 3-phase Copilot) —
+built and live-tested 2026-09-07.
 
-Products 2 and 3 are intentionally deferred until Product 1 has real customer
-signal. **Do not begin building Product 2 or 3 items without revisiting this
-document’s sequencing first.** Future considerations above are likewise
-deferred until demand is concrete.
+**Products 2 and 3 are now the next real, substantial work** — not a
+“revisit sequencing before starting” gate against unfinished Close/Medium.
+Product 2 stays inside the existing internal-review liability posture; Product 3
+still requires its upfront legal gate (see Product 3 section and
+[`tracked-gaps.md`](tracked-gaps.md)) before any statutory-report build starts.
+Future considerations above remain demand-gated.
 
 For granular technical debt, smaller fixes, and infrastructure gaps not captured
 at product level, see [`tracked-gaps.md`](tracked-gaps.md).
