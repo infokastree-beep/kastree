@@ -792,9 +792,121 @@ Managed Payments (commit `f6a6e40`).
 This gap is closed for Product 1 sellability. Remaining billing polish (Customer
 Portal, annual plans, invoices UI) is demand-gated — not a blocker.
 
+## Landing page copy — revision brief (high priority)
+
+**Status:** open, **high priority**. Product 1 capability is largely done; the
+genuinely open question left is whether the landing page **sells it in five
+seconds**. **Do not** ship a half-rewrite in a tired session — revise with a
+clear head against this brief. Implementation:
+`frontend/components/landing/LandingPage.tsx` (hero, “The problem”, “What you
+get”, “How it works”). Related but separate: [Public product demo without
+signup](#public-product-demo-without-signup-follow-up) (media) — media does not
+fix weak positioning on its own.
+
+### The bar: immediately obvious (5 seconds)
+
+Same standard as the best solo-founder SaaS marketing pages (**Bannerbear**,
+**Carrd**, **Photopea**): a stranger with **zero context** lands on `/` and,
+within about **five seconds**, understands (1) exactly what Kastree does and
+(2) why they’d want it — without reading secondary sections, without inferring
+from a feature grid, and without piecing a story together.
+
+**Immediately obvious** means:
+
+- One clearest possible statement of what happens, front and centre — not a
+  clever paraphrase.
+- The value is self-evident from that statement (time saved for accountants),
+  not deferred to “The problem” further down.
+- Anything that makes a first-time visitor **work** to understand the product
+  gets cut or demoted below the fold (process lists, stacked jargon, combined
+  tiles that hide the differentiator, hedging that softens the loop).
+
+Cold-read test: hand the URL to someone who has never heard of Kastree. If they
+cannot say “drop a trial balance in → get mapping, statements, variance,
+dashboard, and commentary out — and it saves accountants hours of spreadsheet
+rebuild” after a glance at the first viewport, the page has failed this brief.
+
+### What’s wrong with the live message today
+
+The page already *mentions* upload, mapping, statements, variance, and
+dashboard pieces — but a prospect still has to **assemble** the product from
+scattered sections. That fails the five-second bar:
+
+- **Hero** leads with outcome jargon (“Statements, variance, and risk out”)
+  rather than the single clearest action (“drop your trial balance in”). Mapping
+  is buried in the supporting sentence (“confirm account mappings”), not named
+  as a headline capability.
+- **“What you get”** opens with a combined “Upload & map” tile, then spreads
+  statements / performance / variance / Ask across a long grid. Mapping is not
+  a standout signal; it reads as step 1 of a checklist.
+- **“How it works”** is a six-step process list. Fine as depth later; it must
+  not be where a stranger first discovers that AI-assisted, per-client mapping
+  is a core differentiator — or where they first learn the full output loop.
+- **Time saved** is implied (“removes the mechanical steps… not copy-paste”)
+  but never stated as the central, concrete reason to care.
+
+Net: informative ≠ immediately obvious. The first viewport must carry the whole
+sell; lower sections only deepen or qualify.
+
+### Revision brief (acceptance criteria)
+
+When this is rewritten, the **first viewport alone** must pass the five-second
+cold-read test. Primary supporting copy under the hero may reinforce — it must
+not be required to understand the product. Specifically:
+
+1. **One clearest statement of what happens.**  
+   Lead with the concrete action: **drop your trial balance in** (.xlsx / .csv).
+   In the same breath (headline + one short line), name the full automatic
+   chain — no inference required: **mapping → statements (SOPL / SOFP / SOCIE)
+   → variance → dashboard / performance overview → AI commentary**. Risk flags,
+   Ask, and export stay secondary; they must not crowd or replace this loop in
+   the hero.
+
+2. **Mapping is a headline capability, not a buried step.**  
+   Name it **explicitly** among the primary things the product does — alongside
+   statements / variance / dashboard — not only as “step 2” of how-it-works.
+   Differentiated signal in plain language: **AI-assisted account mapping that
+   learns per client** (suggestions you confirm; remembered for the next TB).
+   Do not collapse into “Upload & map” or leave it only in FAQ.
+
+3. **Time saved for accountants is the why — concrete, central.**  
+   The five-second read must include *why they’d want it*: hours not spent
+   rebuilding TBs into P&L/BS lines, re-mapping similar client charts, or
+   drafting variance notes from a blank sheet. Vague “ready for review” /
+   “removes mechanical steps” is colour, not the spine. Answer: *why is
+   dropping a TB here faster than Excel today?*
+
+4. **Cut friction for first-time visitors.**  
+   Prefer one composition that states TB in → outputs out over scavenger-hunt
+   layouts. Demote or cut first-viewport copy that forces work: long process
+   lists, feature grids that bury the loop, hedging that softens the message.
+   Lower sections may qualify (internal review only, human confirms mappings,
+   deterministic math) — they must not be the first place the product becomes
+   understandable.
+
+### Out of scope for this brief
+
+- Visual redesign / new component library work (unless copy structure forces a
+  light layout tweak).
+- Pricing, waitlist, or auth flows.
+- Demo video / sample company (tracked separately below).
+- Inventing capabilities that are not live (do not promise auto-file,
+  GL sync, or unattended “push to client”).
+
+### Done when
+
+A zero-context stranger passes the **five-second cold-read test** on the first
+viewport alone: what happens (TB → mapping + statements + variance + dashboard
++ commentary) and why (concrete time saved for accountants) are immediately
+obvious; mapping is named as a standout; nothing essential requires scrolling
+or reassembling sections. Then mark this entry **Resolved** with ship date /
+commit.
+
 ## Public product demo without signup (follow-up)
 
-**Status:** not built; not blocking sellability.
+**Status:** not built; not blocking sellability. Complements the
+[landing page copy](#landing-page-copy--revision-brief-high-priority) brief —
+media does not replace sharper positioning.
 
 Prospects today see a **static** statements-dashboard screenshot on the landing
 page. There is no video walkthrough and no public read-only sample company.
