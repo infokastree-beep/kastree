@@ -1,8 +1,11 @@
 """Hybrid account mapper — Tiers 1–4 (exact, fuzzy, code-range, LLM).
 
 Tier 4 (LLM tie-breaker) runs only on accounts that fell through Tiers 1–3
-(method=None). On LLM outage after the mini→4o fallback chain, those accounts
-remain method=None rather than failing the whole mapping request.
+(method=None). That includes Appendix C code-range misses and name-vs-band
+contradictions (Option B): clear conflicts with the band default leave the
+account for Tier 4 instead of returning a confidently wrong line. On LLM
+outage after the mini→4o fallback chain, those accounts remain method=None
+rather than failing the whole mapping request.
 """
 
 from __future__ import annotations
@@ -34,7 +37,10 @@ MappingMethod = Literal["exact", "fuzzy", "code_range", "llm"]
 FUZZY_THRESHOLD = Decimal("0.85")
 # Absorb float noise from rapidfuzz so equal Levenshtein scores stay tied.
 FUZZY_RATIO_TIE_TOLERANCE = Decimal("1e-9")
-CODE_RANGE_CONFIDENCE = Decimal("0.65")
+# Provisional: Appendix C heuristics only. Lowered from 0.65 so code_range
+# suggestions read as weak priors (Option A). Name-vs-band contradictions
+# fall through to Tier 4 instead of returning a wrong line (Option B).
+CODE_RANGE_CONFIDENCE = Decimal("0.50")
 EXACT_CONFIDENCE = Decimal("1.00")
 
 LLM_PRIMARY_MODEL = "gpt-4o-mini"
@@ -293,16 +299,27 @@ def _tier3_code_range(source_code: str, source_name: str) -> MappingResult | Non
 
     for start, end, canonical_line in UNAMBIGUOUS_CODE_RANGES:
         if start <= code_int <= end:
-            resolved = canonical_line
+            band_default = canonical_line
+            resolved = band_default
+            specialised = False
             # Name carve-outs where a broad range default would mis-file a clear concept.
             if start == 7000 and end == 7999 and _name_suggests_amortisation(source_name):
                 resolved = "amortisation"
+                specialised = True
             elif start == 6000 and end == 6999 and _name_suggests_depreciation(source_name):
                 resolved = "depreciation"
+                specialised = True
             else:
                 interest_line = _interest_canonical_from_name(source_name)
                 if interest_line is not None:
                     resolved = interest_line
+                    specialised = True
+            # Option B: clear name-vs-band contradiction → leave for Tier 4.
+            # Do not invent an alternate line here; specialised carve-outs above win.
+            if not specialised and _name_contradicts_band_default(
+                band_default, source_name
+            ):
+                return None
             return MappingResult(
                 source_code=source_code,
                 source_name=source_name,
@@ -311,6 +328,96 @@ def _tier3_code_range(source_code: str, source_name: str) -> MappingResult | Non
                 method="code_range",
             )
     return None
+
+
+def _name_contradicts_band_default(band_default: str, source_name: str) -> bool:
+    """True when the account name clearly conflicts with the Appendix C band default.
+
+    Conservative: only fall through when the name is a clear other concept.
+    Ambiguous / empty names keep the band default (still at low confidence).
+    """
+    normalized = normalize_text(source_name)
+    if not normalized:
+        return False
+    if band_default == "revenue":
+        return _name_suggests_equity_or_dividends(normalized)
+    if band_default == "cost_of_sales":
+        return _name_suggests_revenue_not_cos(normalized)
+    if band_default == "operating_expenses":
+        return (
+            _name_suggests_cost_of_sales(normalized)
+            or _name_suggests_revenue_not_cos(normalized)
+            or _name_suggests_equity_or_dividends(normalized)
+        )
+    if band_default == "depreciation":
+        # Dep/amort/interest names are handled by carve-outs before this runs.
+        return (
+            _name_suggests_operating_expense(normalized)
+            or _name_suggests_cost_of_sales(normalized)
+            or _name_suggests_revenue_not_cos(normalized)
+            or _name_suggests_equity_or_dividends(normalized)
+        )
+    return False
+
+
+def _name_suggests_equity_or_dividends(normalized: str) -> bool:
+    return bool(
+        re.search(
+            r"\b("
+            r"share capital|called up share|share premium|revaluation reserve|"
+            r"retained earnings|capital contribution|dividends?"
+            r")\b",
+            normalized,
+        )
+    )
+
+
+def _name_suggests_cost_of_sales(normalized: str) -> bool:
+    return bool(
+        re.search(
+            r"\b("
+            r"cost of sales|purchases|materials|direct labou?r|subcontractors|"
+            r"freight outward|packaging"
+            r")\b",
+            normalized,
+        )
+    )
+
+
+def _name_suggests_revenue_not_cos(normalized: str) -> bool:
+    """Sales/revenue-like names, excluding 'cost of sales' phrasing."""
+    if re.search(r"\bcost of sales\b", normalized):
+        return False
+    return bool(
+        re.search(
+            r"\b("
+            r"sales|revenue|saas|subscription|royalt(?:y|ies)|commission income|"
+            r"other operating income"
+            r")\b",
+            normalized,
+        )
+    )
+
+
+def _name_suggests_operating_expense(normalized: str) -> bool:
+    """Clear opex names that must not stay on a depreciation band default."""
+    if re.search(r"\bdepreciation\b", normalized) or re.search(r"\bamort", normalized):
+        return False
+    return bool(
+        re.search(
+            r"\b("
+            r"rent|rates|wages|salar(?:y|ies)|staff|payroll|prsi|pension|training|"
+            r"marketing|advertising|insurance|utilities|electricity|gas|"
+            r"cleaning|security|travel|subsistence|recruitment|motor|"
+            r"telephone|communications|repairs?|maintenance|"
+            r"professional fees|legal|audit|tax advisory|consultancy|"
+            r"bank charges?|stationery|postage|entertainment|"
+            r"software licences|cloud hosting|helpdesk|bad debts?|"
+            r"foreign exchange|subscriptions?|memberships?|it costs?|expenses?"
+            r")\b",
+            normalized,
+        )
+    )
 
 
 def _name_suggests_amortisation(source_name: str) -> bool:

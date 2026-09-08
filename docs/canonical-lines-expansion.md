@@ -97,7 +97,7 @@ operating profit. Tier 3 code-range **7000–7999 defaults to `depreciation`**,
 but `_tier3_code_range` specialises names matching `\bamort` (amortisation /
 amortization) to `amortisation` so those rows are not locked to depreciation
 before Tier 4 can run. Accounts without an amort- cue in the name still map to
-`depreciation` at 0.65.
+`depreciation` at 0.50 (name-vs-band contradictions fall through to Tier 4).
 
 Migration `i9j0k1l2m3n4` remaps `account_mappings` where
 `canonical_line = 'depreciation'` and `source_name ILIKE '%amort%'` (P&L

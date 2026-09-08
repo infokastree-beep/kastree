@@ -165,7 +165,7 @@ def test_tier3_code_range_unambiguous_hits() -> None:
     results = map_accounts(accounts, prior_confirmed=[])
 
     assert [r.method for r in results] == ["code_range"] * 4
-    assert [r.confidence for r in results] == [Decimal("0.65")] * 4
+    assert [r.confidence for r in results] == [Decimal("0.50")] * 4
     assert [r.canonical_line for r in results] == [
         "revenue",
         "cost_of_sales",
@@ -187,7 +187,7 @@ def test_tier3_7000_range_routes_amortisation_names_separately() -> None:
     results = map_accounts(accounts, prior_confirmed=[])
 
     assert [r.method for r in results] == ["code_range"] * 5
-    assert [r.confidence for r in results] == [Decimal("0.65")] * 5
+    assert [r.confidence for r in results] == [Decimal("0.50")] * 5
     assert [r.canonical_line for r in results] == [
         "depreciation",
         "depreciation",
@@ -281,6 +281,37 @@ def test_tier3_6000_range_routes_depreciation_names_to_depreciation() -> None:
         "operating_expenses",
         "operating_expenses",
     ]
+
+
+def test_tier3_name_contradiction_falls_through_for_non_appendix_c_coa() -> None:
+    """Option B: clear name-vs-band conflict → method=None (Tier 4), not wrong line."""
+    accounts = [
+        FakeAccount(account_code="7100", account_name="Rent - Office Premises"),
+        FakeAccount(account_code="7600", account_name="Bank Charges & Transaction Fees"),
+        FakeAccount(account_code="4000", account_name="Called Up Share Capital - Ordinary"),
+        FakeAccount(account_code="4010", account_name="Share Premium Account"),
+        FakeAccount(account_code="4100", account_name="Retained Earnings - Brought Forward"),
+        FakeAccount(account_code="5000", account_name="Sales - Manufactured Goods Domestic"),
+        FakeAccount(account_code="6000", account_name="Cost of Sales - Materials Used"),
+        # Appendix-C-aligned controls in the same bands must still hit code_range:
+        FakeAccount(account_code="4200", account_name="Sales Revenue"),
+        FakeAccount(account_code="5500", account_name="Purchases"),
+        FakeAccount(account_code="6100", account_name="Rent & Rates"),
+        FakeAccount(account_code="7000", account_name="Depreciation - Buildings"),
+    ]
+
+    results = map_accounts(accounts, prior_confirmed=[])
+
+    assert [r.method for r in results[:7]] == [None] * 7
+    assert all(r.canonical_line is None for r in results[:7])
+    assert [r.method for r in results[7:]] == ["code_range"] * 4
+    assert [r.canonical_line for r in results[7:]] == [
+        "revenue",
+        "cost_of_sales",
+        "operating_expenses",
+        "depreciation",
+    ]
+    assert all(r.confidence == Decimal("0.50") for r in results[7:])
 
 
 def test_ambiguous_and_invalid_codes_fall_through_unmapped() -> None:
