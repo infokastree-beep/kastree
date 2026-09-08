@@ -791,24 +791,29 @@ exceptions + seed maintenance).
 
 ## No uptime or error monitoring
 
-**Partial (2026-09-08):** Backend Sentry SDK is wired (`sentry-sdk[fastapi]` +
-`app/sentry_setup.py` init in `main.py`). Set Railway `SENTRY_DSN` (EU org
-preferred) to enable capture. Gated verify route: `GET /sentry-debug?token=…`
-when `SENTRY_DEBUG_TOKEN` is set.
+**Sentry backend — DONE (2026-09-08), Issues UI listing pending auth token:**
+
+- SDK init live: `app/sentry_setup.py` + `SENTRY_DSN` on Railway (EU ingest
+  `ingest.de.sentry.io`, org slug `kastree`).
+- Production deploy `da4e3096…` SUCCESS with commit `9f62c66` on github/main.
+- Deliberate prove-out: gated `GET /sentry-debug?token=…` returned **500** with
+  `RuntimeError('Sentry deliberate test error — kastree backend verify')` in
+  Railway logs; wrong/missing token → **404**.
+- Ingest accepted: Sentry store API returned HTTP **200** for event id
+  `35d108557805487d9ee3746d5d643045`.
+- Temporary `SENTRY_DEBUG_TOKEN` cleared after proof (endpoint now 404s).
+- Open Issues: https://sentry.io/organizations/kastree/issues/
 
 Still outstanding:
 
-- **Confirm a real production error appears in the Sentry Issues UI** once the
-  DSN is configured (reCAPTCHA blocked automated account creation in-agent).
-- **Sentry account** — free Developer plan; Data Storage Location = **EU**.
+- **Agent cannot open the Issues UI without a Sentry auth token** (login
+  required). Provide `SENTRY_AUTH_TOKEN` (org:read, project:read, event:read)
+  for API/screenshot proof, or confirm the RuntimeError issue is visible in
+  the dashboard linked above.
 - **Uptime alerts** — Railway / Vercel built-in uptime alerts still not enabled.
 
-Low effort once the DSN exists. Worth finishing **before actively promoting**
-the site or onboarding real users.
-
-~~Previous note:~~ `SENTRY_DSN` was listed in `.env.production.example` but never
-configured or initialised — the init path is now in code; Railway var still
-needs the live DSN.
+Worth finishing the Issues UI confirmation and uptime alerts **before actively
+promoting** the site.
 
 ## Statements dashboard — stale-mapping indicator
 
