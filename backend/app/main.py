@@ -2,11 +2,12 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.logging_config import configure_logging
+from app.sentry_setup import init_sentry
 from app.routers import (
     admin,
     archived_records,
@@ -27,6 +28,10 @@ from app.routers import (
     waitlist,
     webhooks,
 )
+
+# Initialise before the FastAPI app so integrations wrap the ASGI stack.
+init_sentry()
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -72,3 +77,19 @@ app.include_router(archived_records.records_router)
 async def health_check() -> dict[str, str]:
     """Liveness probe. Git deploy source: infokastree-beep/kastree (auto-deploy check)."""
     return {"status": "ok"}
+
+
+@app.get("/sentry-debug")
+async def sentry_debug(
+    token: str | None = Query(default=None),
+) -> None:
+    """Deliberate unhandled error for verifying Sentry capture.
+
+    Disabled unless ``SENTRY_DEBUG_TOKEN`` is set and the ``token`` query
+    parameter matches. Returns 404 otherwise so the route is not a public
+    DoS/noise vector.
+    """
+    expected = (settings.sentry_debug_token or "").strip()
+    if not expected or token != expected:
+        raise HTTPException(status_code=404, detail="Not Found")
+    raise RuntimeError("Sentry deliberate test error — kastree backend verify")

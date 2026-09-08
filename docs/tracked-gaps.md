@@ -791,20 +791,24 @@ exceptions + seed maintenance).
 
 ## No uptime or error monitoring
 
-Nothing alerts if `kastree.ie` or the Railway backend goes down, or if the app
-throws real errors in production. Right now the only detection path is someone
-manually checking.
+**Partial (2026-09-08):** Backend Sentry SDK is wired (`sentry-sdk[fastapi]` +
+`app/sentry_setup.py` init in `main.py`). Set Railway `SENTRY_DSN` (EU org
+preferred) to enable capture. Gated verify route: `GET /sentry-debug?token=…`
+when `SENTRY_DEBUG_TOKEN` is set.
 
-**Worth adding:**
+Still outstanding:
 
-- **Sentry** (error tracking) — `SENTRY_DSN` is already listed as a supported
-  env var in `.env.production.example` but has never been configured.
-- **Railway / Vercel built-in uptime alerts** — simpler, no new service; just
-  enable in each platform's dashboard.
+- **Confirm a real production error appears in the Sentry Issues UI** once the
+  DSN is configured (reCAPTCHA blocked automated account creation in-agent).
+- **Sentry account** — free Developer plan; Data Storage Location = **EU**.
+- **Uptime alerts** — Railway / Vercel built-in uptime alerts still not enabled.
 
-Low effort, genuinely useful once there are real users. **Not urgent** for a
-waitlist-stage product with no signups yet, but should be set up **before
-actively promoting the site or onboarding real pilot users**.
+Low effort once the DSN exists. Worth finishing **before actively promoting**
+the site or onboarding real users.
+
+~~Previous note:~~ `SENTRY_DSN` was listed in `.env.production.example` but never
+configured or initialised — the init path is now in code; Railway var still
+needs the live DSN.
 
 ## Statements dashboard — stale-mapping indicator
 

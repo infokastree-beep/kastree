@@ -79,6 +79,13 @@ class Settings(BaseSettings):
     # permitted to access /admin in addition to require_roles("owner").
     platform_admin_emails: str = ""
 
+    # Observability — Sentry error tracking (optional; unset = disabled).
+    sentry_dsn: str | None = None
+    # Gated deliberate-error endpoint for verifying capture. When unset,
+    # GET /sentry-debug always 404s. Set temporarily on Railway for a proof,
+    # then clear.
+    sentry_debug_token: str | None = None
+
     class Config:
         env_file = ".env"
 
