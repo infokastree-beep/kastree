@@ -173,7 +173,7 @@ promising. All correctly demand-gated.** Same discipline as the rest of this
 roadmap: capture the idea so it is not lost; **do not build without real
 customer signal** from Product 1 usage. None of these are on a build schedule.
 
-#### Complete the intake cycle (unified initiative — if pursued)
+#### Complete the intake cycle (Intake Completion Initiative)
 
 Product 1’s proven engine starts at a **trial balance**:
 
@@ -184,35 +184,45 @@ Today only a clean **xlsx/csv TB** can enter that pipeline. Completing the
 intake cycle means a practice can start from **whatever raw data they actually
 have** — clean TB, PDF TB, GL export, or PDF GL — and always reach the same
 trusted path. That is one coherent expansion of the core promise, **not** a set
-of disconnected features. If pursued, treat it as a single **“complete the
-intake cycle”** initiative with two sequenced steps (both bigger, later work
-behind Product 1 validation):
+of disconnected features. Treat as a single **Intake Completion Initiative**
+(also called “complete the intake cycle”), already detailed in the companion
+**technical MVP spec** and **business proposal** (external to this roadmap).
 
-1. **PDF → Excel / structured rows** (for TB and, later, GL inputs) — a
-   **document extraction** problem. Opens eligibility when the only file is PDF.
-   PDF-TB alone is the right **first** slice (already-summarized account totals).
-2. **GL → TB conversion** (bucket transactions by GL code into account totals) —
-   a **real accounting-logic** problem. Needs careful design around period
-   cutoffs, opening balances (export includes starting balances vs period
-   movements only), and validation so mis-coded or inconsistent entries never
-   silently produce a wrong / unbalanced TB. **Materially bigger** than PDF-TB;
-   closer to a ledger-processing engine than an intake-format widener. See
-   [`tracked-gaps.md`](tracked-gaps.md) — Intake completeness.
+##### Customer signal (2026-09-08) — demand validated
 
-**Do not** build either step as speculative platform work. **Do** keep them
-named together so roadmap conversations do not split “PDF tools” from “GL
-tools” as unrelated tickets.
+**Real prospect request:** a prospect specifically asked for **PDF trial
+balance** and **general ledger** support. That elevates this initiative from
+speculative research to **validated demand**. It does **not** mean build in
+this session — captured here for **next session’s consideration**.
 
-Related funnel items below (PDF-TB, general PDF→Excel, bank-statement
-categorisation) remain individually demand-gated; PDF-only TBs,
-multi-document PDF conversion, bank-statement-only, or GL-only workflows — if
-early conversations confirm they are common — rise above typical future
-considerations. Validate by asking directly before prioritising.
+##### Confirmed next-build priority (when pursued)
+
+| Phase | Scope | Status |
+|-------|--------|--------|
+| **Phase 1** | **PDF trial balance extraction only** | **Confirmed next build** once this initiative is scheduled — smallest scope, real validated demand, immediately useful output (PDF TB → existing parse → map pipeline). |
+| **Phase 3** | **GL → TB conversion** (Excel and PDF GL) | **Bigger, later.** Do **not** start until Phase 1 has shipped **and** GL-specific demand is **separately confirmed**. Not implied by the PDF-TB ask alone. |
+
+(Phase numbering matches the companion specs; intermediate phases there, if any,
+are unchanged by this note.)
+
+**Mapping is not a standalone add-on.** Account mapping is **core subscription
+value** — part of the Product 1 loop, not sellable alone as an intake upsell.
+
+**Phase 3 monetization (if built — decide later):** **hybrid** — bundled into
+subscriptions, **plus** a separate **one-time-purchase standalone** offering for
+non-subscribers. Pricing and packaging deferred until Phase 3 is actually on
+the table.
+
+**Do not** collapse PDF tools and GL tools into unrelated tickets. **Do not**
+start Phase 3 as speculative platform work ahead of Phase 1.
+
+Related rows below stay demand-gated individually; Phase 1 is now the clear
+priority slice of this initiative when Product 1 next-build capacity opens.
 
 | Direction | Why it is promising | Gate / constraint |
 |-----------|---------------------|-------------------|
-| **PDF trial balance extraction (AI-assisted OCR/parsing)** | Practices whose only TB export is PDF **cannot use Kastree at all** today (xlsx/csv only). AI-assisted OCR/parsing into the **existing** parse → map pipeline would open that funnel without inventing a second product surface. Genuinely higher priority than typical future items **if** validated — addresses eligibility, not enrichment. **First slice** of the intake-cycle initiative (document extraction only). | **Ask early customers directly** whether PDF-only TBs are a real, common blocker. Keep Golden Rule: extraction yields structured TB rows for deterministic Python math; LLM assists layout/OCR only, never invents balances. Fail closed on low-confidence extracts; virus/macro posture for PDFs as for xlsx. |
-| **General Ledger → Trial Balance (Excel and PDF GL)** | Completes the intake cycle: raw ledger → TB → existing mapping/statements engine. Core mechanic is summing transactions by GL code into account totals. Lets practices who only have a GL export (or PDF GL) reach the same trusted pipeline. | **Materially bigger than PDF-TB** — demand-gate hard; design before build. Correctness stakes: period cutoffs, opening-balance semantics, and validation of mis-coded / inconsistent entries **before** an unbalanced or wrong TB is produced. PDF GL also needs extraction (step 1). Not a quick “sum by code” ship. Sequence **after** PDF-TB if either is pursued. Detail in [`tracked-gaps.md`](tracked-gaps.md). |
+| **PDF trial balance extraction (AI-assisted OCR/parsing) — Phase 1** | Practices whose only TB export is PDF **cannot use Kastree at all** today (xlsx/csv only). AI-assisted OCR/parsing into the **existing** parse → map pipeline opens that funnel without a second product surface. **Validated by real prospect ask (2026-09-08).** Smallest useful slice of the Intake Completion Initiative. | **Confirmed next-build priority when initiative is scheduled** (not this session). Golden Rule: extraction → structured TB rows for deterministic Python math; LLM assists layout/OCR only; fail closed on low confidence; virus/macro posture for PDFs as for xlsx. |
+| **General Ledger → Trial Balance (Excel and PDF GL) — Phase 3** | Completes the intake cycle: raw ledger → TB → existing mapping/statements engine. Core mechanic: sum transactions by GL code into account totals. Prospect interest in GL noted alongside PDF-TB, but **not** a licence to build Phase 3 yet. | **Later than Phase 1.** Start only after Phase 1 ships **and** GL-specific demand is separately confirmed. Correctness stakes: period cutoffs, opening-balance semantics, validation before a wrong/unbalanced TB. Monetization if built: hybrid (subscription-bundled + one-time standalone for non-subscribers) — decide later. Detail in [`tracked-gaps.md`](tracked-gaps.md). |
 | **General PDF→Excel for accounting documents** | User picks document type (trial balance, fixed asset register, AP statement, AR statement, GL, …); AI extracts and structures into Excel. Well-targeted at the **real accountant workflow** (not a generic PDF tool). Directly extends PDF-TB extraction to documents practices regularly convert manually — including GL PDFs as an extraction front-end to GL→TB. Real multi-document-type parsing is **meaningfully bigger** than single-format PDF-TB alone; prioritize highly **if** validated. | Confirm frequency of manual PDF→Excel conversion in early customer talks (which document types, how often). Prefer typed extractors over one opaque “convert anything”; fail closed on low confidence; never invent figures. TB path should still feed the existing mapping pipeline; GL path should feed GL→TB (not invent statement math). Other types may stop at downloadable Excel until a clear Product 1 hook exists. Scope and QA cost scale with each document type — ship TB first if funnel-blocked, then expand. |
 | **Bank statement → categorised transactions (upstream intake)** | Separate intake path: bank statements in → categorised transactions, with a natural **upsell into existing TB mapping** / review. Upstream of the current trial-balance loop — expands who arrives at Product 1 rather than only deepening it. Distinct from GL→TB (bank lines ≠ full GL). | Demand that bank-PDF / CSV statement workflows are how prospects work today. Treat as a **distinct pipeline** (not a silent TB substitute); categorisation ≠ TB integrity; keep org isolation and no cross-client training without opt-in. Upsell into mapping must stay optional and explicit. |
 | **AI Review Assistant** | Expand today’s deterministic Risk flags (and related Variance / Commentary surfaces) into a genuine *“why did this change?”* explainer for the accountant — narrative grounded in evidence already on the period, not a second calculation engine. Natural extension of Copilot + Risk + Commentary, still under Golden Rule (Python does the math; LLM does the narrative; no raw amounts in prompts). | Demand that Risk/Variance alone is not enough for review conversations; keep fail-soft if LLM is down. |
@@ -298,7 +308,7 @@ ideas.
 | **Product 2 (Statutory)** | Paused — legal consultation gate in [`tracked-gaps.md`](tracked-gaps.md). Only separate product. |
 | **Scenario / forecast / budget** | Captured; large architecture; internal-only; not casual. |
 | **Smaller items** | Captured in the table above; demand-gated. |
-| **Future considerations (research)** | Captured in §5; promising directions only — **no build without customer signal**. Intake-cycle vision (PDF→rows, GL→TB) captured as one initiative — still demand-gated. |
+| **Future considerations (research)** | Captured in §5. **Intake Completion Initiative:** prospect-validated (2026-09-08); **Phase 1 PDF-TB** is confirmed next-build priority when scheduled (not this session); **Phase 3 GL→TB** later after Phase 1 + separate GL demand. |
 
 **Nothing in “Future directions” is on an immediate build schedule.** Sell and
 learn from Product 1 first.

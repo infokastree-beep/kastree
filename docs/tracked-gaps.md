@@ -972,12 +972,16 @@ screen-recording of a real upload → map → statements → Ask flow on the lan
 “How it works” section. A guest/sample-company explorer is deferred (auth/RLS
 exceptions + seed maintenance).
 
-## Intake completeness — PDF-TB and GL→TB (future, demand-gated)
+## Intake completeness — PDF-TB and GL→TB (Intake Completion Initiative)
 
-**Status:** not built. Captured so the vision is not lost. Full product framing
-and sequencing live in [`product-roadmap.md`](product-roadmap.md) §5
-(“Complete the intake cycle”). Neither item is on a build schedule until
-Product 1 usage / customer talks prove the need.
+**Status:** not built this session. **Demand validated (2026-09-08):** a prospect
+specifically requested PDF trial balance and general ledger support. Full
+framing, Phase 1 vs Phase 3 priority, mapping-not-standalone, and Phase 3
+hybrid monetization notes live in
+[`product-roadmap.md`](product-roadmap.md) §5 (Intake Completion Initiative).
+Companion **technical MVP spec** and **business proposal** already detail the
+initiative. **Next session:** consider scheduling **Phase 1 (PDF-TB only)** —
+do not start Phase 3 until Phase 1 ships and GL demand is separately confirmed.
 
 The trusted Product 1 engine already starts at a **trial balance**. Practices
 do not always have a clean xlsx/csv TB. Two widening steps complete the path
