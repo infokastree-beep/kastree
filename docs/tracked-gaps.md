@@ -791,29 +791,24 @@ exceptions + seed maintenance).
 
 ## No uptime or error monitoring
 
-**Sentry backend — DONE (2026-09-08), Issues UI listing pending auth token:**
+**Sentry backend — DONE / CLOSED (2026-09-08):**
 
-- SDK init live: `app/sentry_setup.py` + `SENTRY_DSN` on Railway (EU ingest
+- SDK init live: `app/sentry_setup.py` + Railway `SENTRY_DSN` (EU ingest
   `ingest.de.sentry.io`, org slug `kastree`).
 - Production deploy `da4e3096…` SUCCESS with commit `9f62c66` on github/main.
 - Deliberate prove-out: gated `GET /sentry-debug?token=…` returned **500** with
   `RuntimeError('Sentry deliberate test error — kastree backend verify')` in
   Railway logs; wrong/missing token → **404**.
-- Ingest accepted: Sentry store API returned HTTP **200** for event id
-  `35d108557805487d9ee3746d5d643045`.
-- Temporary `SENTRY_DEBUG_TOKEN` cleared after proof (endpoint now 404s).
-- Open Issues: https://sentry.io/organizations/kastree/issues/
+- Ingest accepted (definitive capture proof): Sentry store API HTTP **200**,
+  event id `35d108557805487d9ee3746d5d643045`. Issues UI screenshot / auth
+  token **not required**.
+- Final lockdown: `SENTRY_DEBUG_TOKEN` **cleared**; `/sentry-debug` with no /
+  wrong / empty token returns **404**; `SENTRY_DSN` remains set; `/health` 200.
 
-Still outstanding:
+Still outstanding (separate from Sentry):
 
-- **Agent cannot open the Issues UI without a Sentry auth token** (login
-  required). Provide `SENTRY_AUTH_TOKEN` (org:read, project:read, event:read)
-  for API/screenshot proof, or confirm the RuntimeError issue is visible in
-  the dashboard linked above.
 - **Uptime alerts** — Railway / Vercel built-in uptime alerts still not enabled.
-
-Worth finishing the Issues UI confirmation and uptime alerts **before actively
-promoting** the site.
+  Worth enabling before actively promoting the site.
 
 ## Statements dashboard — stale-mapping indicator
 
