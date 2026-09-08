@@ -103,6 +103,12 @@ export function LandingPage() {
               >
                 Sign in
               </Link>
+              <Link
+                href="/pricing"
+                className="inline-flex rounded-md border border-line bg-surface-elevated px-6 py-3 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
+              >
+                See pricing
+              </Link>
               <a
                 href="#what-you-get"
                 className="text-sm font-medium text-ink-secondary underline-offset-4 transition-colors hover:text-accent hover:underline"
