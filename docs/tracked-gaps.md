@@ -930,6 +930,34 @@ follow-up); *why* (concrete time saved for accountants) is obvious; mapping is
 named as a standout; nothing essential requires scrolling or reassembling
 sections. Then mark this entry **Resolved** with ship date / commit.
 
+## LinkedIn ads — accountants / fractional CFOs (after hero is live)
+
+**Status:** not started. **Genuinely well-matched** paid channel once the
+[landing page hero revision](#landing-page-copy--revision-brief-high-priority)
+is live (five-second pitch must be in place first — ads that land on a muddy
+hero waste budget).
+
+**Why LinkedIn fits:** job-title and industry targeting reaches accounting
+practices and fractional CFOs directly — the same ICP as the eyebrow copy.
+Better match than broad search for a niche B2B tool.
+
+**How to run it (when ready):**
+
+- Start with a **small test budget (~€50–100)** to validate click-through and
+  signup conversion before scaling. Do not open a large monthly spend on the
+  first campaign.
+- Target by **job title / industry** (e.g. accountant, practice owner,
+  fractional CFO — refine from early click data).
+- Creative and landing must match: ads should echo the locked single-sentence
+  pitch, not a separate slogan.
+
+**Alongside, not instead of, direct outreach:** LinkedIn ads are a parallel
+channel. **Warm outreach to known contacts will likely convert faster** for the
+first users. Treat ads as paid validation of the public funnel; treat outreach
+as the quicker path to real conversations and early customers. Do both when
+promoting — do not wait on ads alone, and do not skip outreach because ads are
+running.
+
 ## Public product demo without signup (follow-up)
 
 **Status:** not built; not blocking sellability. Complements the
@@ -943,6 +971,58 @@ page. There is no video walkthrough and no public read-only sample company.
 screen-recording of a real upload → map → statements → Ask flow on the landing
 “How it works” section. A guest/sample-company explorer is deferred (auth/RLS
 exceptions + seed maintenance).
+
+## Intake completeness — PDF-TB and GL→TB (future, demand-gated)
+
+**Status:** not built. Captured so the vision is not lost. Full product framing
+and sequencing live in [`product-roadmap.md`](product-roadmap.md) §5
+(“Complete the intake cycle”). Neither item is on a build schedule until
+Product 1 usage / customer talks prove the need.
+
+The trusted Product 1 engine already starts at a **trial balance**. Practices
+do not always have a clean xlsx/csv TB. Two widening steps complete the path
+from whatever raw data they have into that same engine:
+
+### 1. PDF trial balance extraction (smaller — right first step)
+
+Practices whose only TB is PDF **cannot use Kastree today** (xlsx/csv only).
+AI-assisted OCR/parsing into the **existing** parse → map pipeline is an
+**intake-format** problem: the document is already summarized, balanced account
+totals — the hard part is reliable extraction, not inventing accounting logic.
+
+**Gate:** ask early customers whether PDF-only TBs are a real blocker. Golden
+Rule unchanged: extraction yields structured TB rows for deterministic Python
+math; fail closed on low confidence.
+
+### 2. General Ledger → Trial Balance (materially bigger — later)
+
+**Core mechanic:** sum transactions by GL code into account totals for a
+period — producing a TB that then feeds the existing mapping → statements →
+variance → commentary → dashboard pipeline. Accept **Excel and PDF** GL input
+(PDF GL implies PDF→structured rows first; see roadmap intake cycle).
+
+**This is a MATERIALLY BIGGER undertaking than PDF-TB extraction.** A trial
+balance is already summarized and (ideally) balanced. A general ledger is
+**raw transaction-level data**. Producing a correct TB from it is closer to a
+**bookkeeping / ledger-processing engine** than an intake-format widener — not
+“just another upload type.”
+
+**Real complexity is not the summation itself** (bucket-by-code is
+straightforward). Correctness around it is the product risk:
+
+- **Period cutoffs** — which transactions belong in the period; no silent
+  inclusion of adjacent dates.
+- **Opening balance handling** — does the export include starting balances, or
+  only period movements? Wrong assumption → wrong closing TB, every time.
+- **Data validation** — catch mis-coded or inconsistent entries **before** they
+  silently produce a wrong or unbalanced TB. Kastree’s trust proposition is
+  that numbers are always correct; a GL→TB path that fails soft into bad totals
+  would undermine the whole product.
+
+**Design carefully before building** — not a quick “sum by code” ship. Still
+correctly sequenced **after** PDF-TB extraction if either is pursued: PDF-TB is
+the genuine smaller intake-format step; GL→TB adds accounting-logic risk on top
+of (for PDF GLs) extraction.
 
 ## No uptime or error monitoring
 
