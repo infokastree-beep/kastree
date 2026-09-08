@@ -181,8 +181,66 @@ customer signal** from Product 1 usage. None of these are on a build schedule.
 | **Management accounts packs** | Recurring monthly/quarterly management-accounts bundle (formatted SOPL/SOFP/SOCIE + commentary + KPIs) aimed at fractional CFOs / practice MA workflows. Distinct from Product 2 statutory filing output. | Demand for recurring MA delivery; stay internal-review framing — not filing-capable. |
 | **Industry benchmarking** | Compare a company’s ratios/trends to anonymised peer cohorts (sector, size). High client value; hard data and privacy requirements. | Meaningful cohort size + anonymisation design; no fake benchmarks from thin data. |
 | **AI tax-review prompts (not advice)** | Prompted checklists / questions that help an accountant *review* tax-sensitive lines (e.g. unusual tax account movements) using period evidence — explicitly **not** tax advice, computation, or filing. | Counsel-ready disclaimer; never compute tax or recommend elections; Product 1 internal-review posture only. |
-| **Compliance deadline calendar + live Google Calendar sync** | Encode **standard, publicly known** filing-deadline rules per jurisdiction (e.g. CRO annual return, VAT periods, corporation-tax windows) as fixed formulas from year-end / incorporation date — **not** client-specific legal research. Apply automatically to each client’s existing company data. Deliver a **live, subscribable `.ics` feed per organisation** (not a one-time download): Google Calendar natively re-syncs subscribed feeds, so new clients, updated deadlines, or rule changes appear with **zero ongoing user action**. Genuinely well-scoped and more tractable than typical future items (real rule set, reuses existing client data, correct delivery mechanism). A contained early slice of the “practice OS” vision without building task management or a client portal. | **Still demand-gated:** build only when real customers show this specific gap matters to them. Maintain rule-source attribution; never present as personalised tax/legal advice; auth-protect the feed URL; keep Product 2 filing liability out of scope (reminders ≠ filing). |
+| **Compliance deadline calendar + live Google Calendar sync** | Encode **standard, publicly known** filing-deadline rules per jurisdiction (Irish Revenue / CRO first) as fixed formulas — **not** client-specific legal research. Deliver a **live, subscribable `.ics` feed per organisation** (Google Calendar re-syncs subscribed feeds). Contained early wedge of the “practice OS” vision. **Parked 2026-09-08** after a full IE rule × company-data audit (see subsection below) — almost no company-specific deadlines are derivable from today’s schema without new optional fields; do not guess. | **Still demand-gated:** resume only when real customers need this gap closed. Never present as personalised tax/legal advice; token-protect the feed URL; reminders ≠ filing (Product 2 liability stays out). |
 | **Practice operating system (longer-term vision)** | Broader practice workflow layer: filing deadlines, task management, client portal — Kastree as the operating hub around financial intelligence rather than a single TB→statements tool. | Only after Product 1 is deeply embedded; large scope; treat as a multi-year vision, not a feature ticket. Client portal and deadline tooling have their own auth, liability, and ops costs. The compliance `.ics` feed above is the preferred first wedge **if** demand appears — not a licence to build the full OS. |
+
+#### Compliance calendar — IE rule × data-field audit (parked 2026-09-08)
+
+Diagnosis against the live `companies` model at park time (name, currency,
+company_number, industry, company_type, materiality only — **no** incorporation,
+ARD, year-end, VAT/PAYE schedules, CT size, or opt-in flags).
+
+**Company fields already present that help:** none for deadline math. Existing
+identity fields do not unlock any IE filing date. Resume work must add optional
+nullable compliance fields and **never guess** unset schedules.
+
+**New company fields that would be required to schedule (all optional /
+nullable; unset = rule blocked, not invented):**
+
+| Field | Purpose |
+|-------|---------|
+| `incorporation_date` | CRO first Annual Return (B1) |
+| `annual_return_date` (ARD) | CRO subsequent B1 (ARD + 56 days) |
+| `accounting_year_end_month` / `accounting_year_end_day` | CT prelim, CT1, Form 8-2, iXBRL |
+| `vat_filing_frequency` (`monthly` / `bi_monthly` / `quarterly` / `none`) | VAT 3 + RTD |
+| `vat_bimonth_end_even` | Bi-monthly VAT period alignment |
+| `paye_filing_frequency` (`monthly` / `quarterly` / `none`) | PAYE/PRSI/USC/LPT + DWT; RCT quarterly vs monthly |
+| `ct_size_class` (`small` / `large`) | Large vs small CT preliminary tax rules |
+| `rct_applicable` (bool, default false) | RCT monthly/quarterly — opt-in only |
+| `oss_ioss_applicable` (bool, default false) | OSS/IOSS — opt-in only |
+| `form11_relevant` (bool, default false) | Director/individual Form 11 / CGT / CAT track |
+| `compliance_jurisdiction` (e.g. `IE`) | Gate Irish rules; do not assume |
+
+**Org field for live feed:** `compliance_calendar_token` (rotatable secret) for
+`GET …/compliance/calendar.ics?org_id=…&token=…` (subscribe URL; no Clerk cookie).
+
+**Rule matrix (Irish rules from the product brief):**
+
+| Rule | Buildable now? | Status | Required data |
+|------|----------------|--------|---------------|
+| PAYE/PRSI/USC/LPT monthly (14th; ROS 23rd) + DWT | No | **Blocked** | `paye_filing_frequency=monthly` |
+| PAYE quarterly (14th/23rd) small employers | No | **Blocked** | `paye_filing_frequency=quarterly` |
+| VAT 3 monthly (19th) + RTD when period ends | No | **Blocked** | `vat_filing_frequency=monthly` |
+| VAT 3 bi-monthly / quarterly (19th; ROS often 23rd) | No | **Blocked** | `vat_filing_frequency` (+ `vat_bimonth_end_even` for bi-monthly) |
+| RCT monthly (23rd) / quarterly | No | **Blocked** | `rct_applicable=true` (+ quarterly PAYE for RCT quarterly) |
+| OSS/IOSS (last day of month after quarter) | No | **Blocked** | `oss_ioss_applicable=true` (rare for ICP) |
+| CT prelim 1 (large) — 23rd of 6th month of AP | No | **Blocked** | year-end + `ct_size_class=large` |
+| CT prelim 2 / small single instalment — 23rd of 11th month of AP | No | **Blocked** | year-end + `ct_size_class` |
+| CT1 + balancing payment — 23rd of 9th month after YE | No | **Blocked** | year-end month/day |
+| Form 8-2 — last day of 9th month after YE | No | **Blocked** | year-end month/day |
+| iXBRL — 3 months after CT1 due | No | **Blocked** | year-end month/day |
+| CRO first B1 — 6 months from incorporation | No | **Blocked** | `incorporation_date` |
+| CRO subsequent B1 — within 56 days of ARD | No | **Blocked** | `annual_return_date` |
+| Form 11 / CGT return / CAT IT38 (31 Oct; ROS mid-Nov) | No | **Blocked** | `form11_relevant=true` |
+| CGT payment 15 Dec (Jan–Nov) / 31 Jan (Dec disposals) | No | **Blocked** | `form11_relevant=true` |
+| Pillar Two (MNE >€750m) | n/a | **Out of scope** | Not for Kastree ICP — flag only, do not build |
+
+**Intended slice when resumed (not built):** pure-Python IE rule engine
+(emit `scheduled` only when required fields present; otherwise
+`blocked_missing_data`); JSON deadlines API + tokenised live `.ics` per org;
+Compliance Calendar section on Clients page (upcoming + missing-data panel +
+subscribe URL); optional compliance fields on company create/edit. No
+implementation was shipped — design only.
 
 **Explicit non-goals until demand proves otherwise:** do not start any row above
 as speculative platform work, do not dilute Product 1 sellability chasing them,
