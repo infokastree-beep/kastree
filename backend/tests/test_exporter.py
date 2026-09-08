@@ -634,6 +634,49 @@ def test_empty_business_health_omitted_from_exports() -> None:
     assert "Business Health" not in workbook.sheetnames
 
 
+def test_empty_risk_flags_show_dashboard_empty_message_in_excel_and_pdf() -> None:
+    """Empty risk list must not render a bare header-only table.
+
+    Copy matches frontend RiskFlagsPanel after a clean analysis run.
+    """
+    from app.services.exporter import RISK_FLAGS_EMPTY_MESSAGE
+
+    assert (
+        RISK_FLAGS_EMPTY_MESSAGE
+        == "No risk flags were raised for this trial balance."
+    )
+    base = _package()
+    package = ExportPackage(
+        sopl=base.sopl,
+        sofp=base.sofp,
+        socie=base.socie,
+        variance=base.variance,
+        risk_flags=[],
+        mappings=base.mappings,
+    )
+
+    html = render_pdf_html(_branding(), package, organisation=_Org("pro"))
+    assert RISK_FLAGS_EMPTY_MESSAGE in html
+    assert "<h2>Risk Flags</h2>" in html
+    # No empty data table for the risk section.
+    assert (
+        "<h2>Risk Flags</h2><table><thead><tr><th>Rule</th>" not in html
+    )
+
+    workbook = load_workbook(
+        io.BytesIO(build_excel(_branding(), package, organisation=_Org("pro")))
+    )
+    risk = workbook["Risk"]
+    flat = [
+        str(cell.value)
+        for row in risk.iter_rows(max_col=4)
+        for cell in row
+        if cell.value is not None
+    ]
+    assert RISK_FLAGS_EMPTY_MESSAGE in flat
+    assert "Rule" not in flat  # no header-only table when empty
+
+
 
 def test_comparative_period_columns_on_excel_pdf_and_csv() -> None:
     """S1 comparative face: dated columns, em dash for missing side, both periods."""
