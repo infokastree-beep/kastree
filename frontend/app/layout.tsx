@@ -18,7 +18,15 @@ const display = Fraunces({
 
 export const metadata: Metadata = {
   title: "Kastree",
+  applicationName: "Kastree",
   description: "Financial intelligence for accounting practices",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon.png", type: "image/png", sizes: "32x32" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
   other: {
     // Public, unauthenticated marker for CI: curl www.kastree.ie | grep kastree-git-sha
     "kastree-git-sha": process.env.NEXT_PUBLIC_GIT_SHA ?? "dev",
