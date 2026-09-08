@@ -82,13 +82,14 @@ export function LandingPage() {
               For accounting practices &amp; fractional CFOs
             </p>
             <h1 className="landing-fade-up-delay font-display mt-6 max-w-3xl text-display-lg text-ink sm:text-display-xl">
-              Trial balance in. Statements, variance, and risk out — ready for
-              review.
+              Upload a trial balance, get mapped accounts, statements, variance,
+              and AI commentary — automatically.
             </h1>
             <p className="landing-fade-up-delay mt-6 max-w-2xl text-lg leading-relaxed text-ink-secondary sm:text-xl">
-              Upload a trial balance, confirm account mappings, and review SOPL,
-              SOFP, SOCIE, performance, variance, and risk in one place — with an
-              Ask panel grounded in this period&apos;s evidence.
+              Built for accountants who still rebuild management packs in Excel.
+              AI suggests account mappings and remembers them per client; you
+              confirm, then statements, variance, and commentary generate so you
+              spend time on review — not reformatting.
             </p>
             <div className="landing-fade-up-delay mt-10 flex flex-wrap items-center gap-4">
               <Link
@@ -127,9 +128,8 @@ export function LandingPage() {
               height={900}
             />
             <p className="mt-4 text-sm text-soft">
-              The statements dashboard — performance and business health above;
-              SOPL, SOFP, SOCIE, Variance, and Risk below. Ask opens a grounded
-              Q&amp;A panel for this period.
+              After upload: AI-assisted mapping you confirm, then SOPL, SOFP,
+              SOCIE, variance, and commentary on the dashboard.
             </p>
           </div>
         </section>
