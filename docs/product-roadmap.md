@@ -173,8 +173,16 @@ promising. All correctly demand-gated.** Same discipline as the rest of this
 roadmap: capture the idea so it is not lost; **do not build without real
 customer signal** from Product 1 usage. None of these are on a build schedule.
 
+Two intake items below (PDF trial balances; bank-statement categorisation) are
+flagged as **potential funnel blockers** — they affect *who can use Kastree at
+all*, not only what existing users get. If early customer conversations confirm
+PDF-only TBs (or bank-statement-only workflows) are common, those rise above
+typical future considerations; validate by asking directly before prioritising.
+
 | Direction | Why it is promising | Gate / constraint |
 |-----------|---------------------|-------------------|
+| **PDF trial balance extraction (AI-assisted OCR/parsing)** | Practices whose only TB export is PDF **cannot use Kastree at all** today (xlsx/csv only). AI-assisted OCR/parsing into the **existing** parse → map pipeline would open that funnel without inventing a second product surface. Genuinely higher priority than typical future items **if** validated — addresses eligibility, not enrichment. | **Ask early customers directly** whether PDF-only TBs are a real, common blocker. Keep Golden Rule: extraction yields structured TB rows for deterministic Python math; LLM assists layout/OCR only, never invents balances. Fail closed on low-confidence extracts; virus/macro posture for PDFs as for xlsx. |
+| **Bank statement → categorised transactions (upstream intake)** | Separate intake path: bank statements in → categorised transactions, with a natural **upsell into existing TB mapping** / review. Upstream of the current trial-balance loop — expands who arrives at Product 1 rather than only deepening it. | Demand that bank-PDF / CSV statement workflows are how prospects work today. Treat as a **distinct pipeline** (not a silent TB substitute); categorisation ≠ TB integrity; keep org isolation and no cross-client training without opt-in. Upsell into mapping must stay optional and explicit. |
 | **AI Review Assistant** | Expand today’s deterministic Risk flags (and related Variance / Commentary surfaces) into a genuine *“why did this change?”* explainer for the accountant — narrative grounded in evidence already on the period, not a second calculation engine. Natural extension of Copilot + Risk + Commentary, still under Golden Rule (Python does the math; LLM does the narrative; no raw amounts in prompts). | Demand that Risk/Variance alone is not enough for review conversations; keep fail-soft if LLM is down. |
 | **Firm-wide mapping intelligence** | Learn mapping patterns across a practice’s clients (with strict org isolation) so new companies inherit better Tier 1–4 suggestions. Biggest lever for cutting manual mapping time once Tier 4 is proven with a real key. | Only after real multi-client volume; never cross-org leakage; no training on customer data without explicit contractual opt-in (see privacy / DPA posture). |
 | **Client meeting pack generation** | One-click pack for a client meeting: statements, variance highlights, risk flags, business-health bullets, optional Ask excerpts — exportable PDF/Deck-style pack. Reuses existing evidence; packaging, not new math. | Clear request from practices that already run Product 1 end-to-end before meetings. |
