@@ -43,6 +43,9 @@ function CompanyTrialBalances({ company }: { company: ICompany }) {
   const { getToken } = useAuth();
   const queryClient = useQueryClient();
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleteSuccessMessage, setDeleteSuccessMessage] = useState<string | null>(
+    null,
+  );
   const [confirmDeleteCompany, setConfirmDeleteCompany] = useState(false);
   const [editingCompany, setEditingCompany] = useState(false);
 
@@ -61,8 +64,11 @@ function CompanyTrialBalances({ company }: { company: ICompany }) {
         method: "DELETE",
         getToken,
       }),
-    onSuccess: () => {
+    onSuccess: (deleted) => {
       setPendingDeleteId(null);
+      setDeleteSuccessMessage(
+        `Deleted trial balance for period ending ${formatDate(deleted.period_end)}. You can upload again for that period.`,
+      );
       void queryClient.invalidateQueries({ queryKey: ["trial-balances", company.id] });
     },
   });
@@ -96,6 +102,7 @@ function CompanyTrialBalances({ company }: { company: ICompany }) {
 
   const trialBalances = trialBalancesQuery.data?.items ?? [];
   const hasTrialBalances = trialBalances.length > 0;
+  const pendingDeleteTb = trialBalances.find((tb) => tb.id === pendingDeleteId);
   const editError =
     editCompanyMutation.error instanceof Error
       ? editCompanyMutation.error.message
@@ -232,6 +239,36 @@ function CompanyTrialBalances({ company }: { company: ICompany }) {
 
       <CompanyMaterialitySettings company={company} />
 
+      {deleteSuccessMessage ? (
+        <p
+          className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950"
+          data-testid="tb-delete-success"
+          role="status"
+        >
+          {deleteSuccessMessage}{" "}
+          <button
+            type="button"
+            className="font-medium underline"
+            onClick={() => setDeleteSuccessMessage(null)}
+          >
+            Dismiss
+          </button>
+        </p>
+      ) : null}
+
+      {pendingDeleteTb ? (
+        <p
+          className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+          data-testid="tb-delete-pending-banner"
+          role="status"
+        >
+          Delete not finished — period ending{" "}
+          <span className="font-medium">{formatDate(pendingDeleteTb.period_end)}</span>{" "}
+          is still active. Click <span className="font-medium">Confirm</span> to
+          remove it, or Cancel.
+        </p>
+      ) : null}
+
       {deleteMutation.error ? (
         <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
           {deleteMutation.error instanceof Error
@@ -273,34 +310,53 @@ function CompanyTrialBalances({ company }: { company: ICompany }) {
               </tr>
             </thead>
             <tbody>
-              {trialBalances.map((tb) => (
-                <tr key={tb.id} className="border-b border-stone-100">
+              {trialBalances.map((tb) => {
+                const isPendingDelete = pendingDeleteId === tb.id;
+                return (
+                <tr
+                  key={tb.id}
+                  className={
+                    isPendingDelete
+                      ? "border-b border-amber-200 bg-amber-50"
+                      : "border-b border-stone-100"
+                  }
+                  data-testid={
+                    isPendingDelete ? "tb-row-pending-delete" : "tb-row"
+                  }
+                >
                   <td className="p-0">
                     <Link
                       href={trialBalanceHref(tb)}
-                      className="block px-3 py-2 font-medium hover:bg-stone-50"
+                      className="block px-3 py-2 font-medium hover:bg-stone-50/80"
                     >
                       {formatDate(tb.period_end)}
                     </Link>
                   </td>
                   <td className="px-3 py-2">
-                    <span className="rounded bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-700">
-                      {tb.status}
-                    </span>
+                    {isPendingDelete ? (
+                      <span className="rounded bg-amber-200 px-2 py-0.5 text-xs font-medium text-amber-950">
+                        Pending confirm
+                      </span>
+                    ) : (
+                      <span className="rounded bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-700">
+                        {tb.status}
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-stone-600">
                     {formatDateTime(tb.created_at)}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    {pendingDeleteId === tb.id ? (
+                    {isPendingDelete ? (
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         <button
                           type="button"
                           disabled={deleteMutation.isPending}
                           onClick={() => deleteMutation.mutate(tb.id)}
                           className="rounded bg-red-800 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
+                          data-testid="tb-delete-confirm"
                         >
-                          {deleteMutation.isPending ? "Deleting…" : "Confirm"}
+                          {deleteMutation.isPending ? "Deleting…" : "Confirm delete"}
                         </button>
                         <button
                           type="button"
@@ -310,6 +366,7 @@ function CompanyTrialBalances({ company }: { company: ICompany }) {
                             deleteMutation.reset();
                           }}
                           className="rounded border border-stone-200 px-2 py-1 text-xs font-medium text-stone-700"
+                          data-testid="tb-delete-cancel"
                         >
                           Cancel
                         </button>
@@ -317,15 +374,21 @@ function CompanyTrialBalances({ company }: { company: ICompany }) {
                     ) : (
                       <button
                         type="button"
-                        onClick={() => setPendingDeleteId(tb.id)}
+                        onClick={() => {
+                          setDeleteSuccessMessage(null);
+                          deleteMutation.reset();
+                          setPendingDeleteId(tb.id);
+                        }}
                         className="rounded border border-red-200 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-50"
+                        data-testid="tb-delete"
                       >
                         Delete
                       </button>
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
