@@ -165,6 +165,21 @@ prompts must stay aligned.
 [`canonical-lines-expansion.md`](canonical-lines-expansion.md). Sequenced on the
 [product roadmap](product-roadmap.md) as fast-follow after Variance / materiality.
 
+## `capital_contribution` canonical line (low priority)
+
+Stress-test / Irish equity packs: accounts named like **Capital Contribution
+Reserve** land as Tier 4 **`unmapped` by design** — Appendix A has
+`share_capital`, `share_premium`, `retained_earnings`, `revaluation_reserve`,
+and `dividends`, but no `capital_contribution`. That is **correct conservative
+behaviour**, not a mapper bug.
+
+**Low priority / product completeness:** either add a `capital_contribution`
+canonical line (SOFP equity + SOCIE + validator/`EQUITY_COMPONENT_LINES` +
+dropdown + Tier 4 allow-list, same discipline as prior expansions), **or**
+document that capital contributions should map to `share_premium` (or another
+chosen leaf) so practices have an explicit house rule. Not urgent — real users
+can map manually until demand appears.
+
 ## Equity total — duplicated inline formulas (structural drift risk)
 
 **Resolved.** Total equity is no longer hand-summed in four places. A single
