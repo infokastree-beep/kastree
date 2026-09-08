@@ -365,6 +365,7 @@ def test_sofp_groups_accounts_computes_subtotals_and_provenance() -> None:
         "total_liabilities",
         "share_capital",
         "share_premium",
+        "capital_contribution",
         "retained_earnings",
         "revaluation_reserve",
         "dividends",
@@ -504,6 +505,7 @@ def test_sofp_current_non_current_segmentation_golden_fixture() -> None:
         "total_liabilities",
         "share_capital",
         "share_premium",
+        "capital_contribution",
         "retained_earnings",
         "revaluation_reserve",
         "dividends",
@@ -670,6 +672,50 @@ def test_socie_reconciles_with_sofp_when_share_premium_and_revaluation_reserve_p
     assert total_equity_closing.amount == _by_code(sofp_lines, "total_equity").amount
 
 
+def test_socie_reconciles_with_sofp_when_capital_contribution_present() -> None:
+    """capital_contribution is an EQUITY_COMPONENT_LINES leaf — SOFP + SOCIE + validator.
+
+    Face order: after share_premium, before retained_earnings. Not share_premium —
+    non-statutory shareholder contribution without new shares.
+    """
+    accounts = [
+        _acct("1000", net_balance="10000.00", canonical_line="cash"),
+        _acct("2000", net_balance="-2500.00", canonical_line="trade_payables"),
+        _acct("3000", net_balance="-3000.00", canonical_line="share_capital"),
+        _acct("3050", net_balance="-500.00", canonical_line="share_premium"),
+        _acct("3070", net_balance="-1200.00", canonical_line="capital_contribution"),
+        _acct("3100", net_balance="-2800.00", canonical_line="retained_earnings"),
+    ]
+
+    _sopl, sofp_lines, socie_lines = build_statements(accounts)
+    sofp_codes = [line.line_item_code for line in sofp_lines]
+
+    assert _by_code(sofp_lines, "capital_contribution").amount == Decimal("1200.00")
+    assert _by_code(sofp_lines, "capital_contribution").line_item_name == (
+        "Capital contribution reserve"
+    )
+    assert sofp_codes.index("capital_contribution") > sofp_codes.index("share_premium")
+    assert sofp_codes.index("retained_earnings") > sofp_codes.index(
+        "capital_contribution"
+    )
+    assert _by_code(sofp_lines, "total_equity").amount == Decimal("7500.00")
+    assert _by_code(socie_lines, "total_equity_closing").amount == Decimal("7500.00")
+
+    mapped = [
+        SimpleMappedAccount(
+            account_code=a.account_code,
+            account_name=a.account_code,
+            debit=a.net_balance if a.net_balance >= 0 else Decimal("0"),
+            credit=(-a.net_balance) if a.net_balance < 0 else Decimal("0"),
+            net_balance=a.net_balance,
+            canonical_line=a.canonical_line,
+        )
+        for a in accounts
+    ]
+    assert _total_equity_sofp(mapped) == Decimal("7500.00")
+    assert _total_equity_balance_sheet(mapped) == Decimal("7500.00")
+
+
 def test_compute_net_profit_matches_sopl_and_socie_profit_for_period() -> None:
     """Shared profit function is the single source for SOPL, SOCIE, and validator."""
     accounts = [
@@ -806,6 +852,7 @@ def test_nil_face_lines_omitted_and_empty_sofp_section_subtotal_hidden() -> None
     assert "investments" not in sofp_codes
     assert "loans" not in sofp_codes
     assert "share_premium" not in sofp_codes
+    assert "capital_contribution" not in sofp_codes
     assert _by_code(sofp, "total_assets").amount == Decimal("1000.00")
     assert _by_code(sofp, "total_liabilities").amount == Decimal("200.00")
     assert _by_code(sofp, "retained_earnings").amount == Decimal("900.00")
@@ -828,15 +875,17 @@ def test_compute_total_equity_sums_every_equity_component_line() -> None:
     amounts = {
         "share_capital": Decimal("2000.00"),
         "share_premium": Decimal("1000.00"),
+        "capital_contribution": Decimal("250.00"),
         "retained_earnings": Decimal("5500.00"),
         "revaluation_reserve": Decimal("500.00"),
         "dividends": Decimal("999.00"),  # must be ignored
     }
-    assert compute_total_equity(amounts) == Decimal("9000.00")
+    assert compute_total_equity(amounts) == Decimal("9250.00")
     assert compute_total_equity({}) == Decimal("0")
     assert set(EQUITY_COMPONENT_LINES) == {
         "share_capital",
         "share_premium",
+        "capital_contribution",
         "retained_earnings",
         "revaluation_reserve",
     }
@@ -926,6 +975,7 @@ def test_new_equity_canonical_line_cannot_diverge_across_four_call_sites(
         {
             "share_capital": Decimal("3000.00"),
             "share_premium": Decimal("0"),
+            "capital_contribution": Decimal("0"),
             "retained_earnings": Decimal("4600.00"),  # 2600 opening + 2000 profit
             "revaluation_reserve": Decimal("0"),
             "other_reserves": Decimal("400.00"),

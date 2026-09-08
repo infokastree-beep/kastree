@@ -32,6 +32,7 @@ CANONICAL_LINES: list[str] = [
     "total_liabilities",
     "share_capital",
     "share_premium",
+    "capital_contribution",
     "retained_earnings",
     "revaluation_reserve",
     "dividends",

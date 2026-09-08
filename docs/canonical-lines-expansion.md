@@ -61,6 +61,7 @@ as its own line again and new `deferred_income`).
 | `taxes_payable` | Liability | VAT Control, corporation tax payable, and similar tax liabilities |
 | `social_security_payable` | Liability | PAYE/NI and similar employment-tax control accounts |
 | `share_premium` | Equity | Share premium — distinct from `share_capital` |
+| `capital_contribution` | Equity | Capital contribution reserve — shareholder contribution without new shares; **not** `share_premium` |
 | `revaluation_reserve` | Equity | Revaluation reserve — distinct equity reserve |
 
 (`accruals` existed before this expansion; it is listed because the mid-build
@@ -72,6 +73,10 @@ rename+split restored it as a first-class line alongside new `deferred_income`.)
 
 **Liabilities** (after provisions, before loans): `accruals`, `deferred_income`,
 `taxes_payable`, `social_security_payable`.
+
+**Equity** (SOFP face): `share_capital`, `share_premium`, `capital_contribution`,
+`retained_earnings`, `revaluation_reserve` — then presentation-only `dividends`
+and `total_equity`. SOPL is unchanged (equity is balance-sheet only).
 
 ---
 

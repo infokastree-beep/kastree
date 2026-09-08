@@ -32,6 +32,7 @@ NEW_BALANCE_SHEET_LINES: tuple[str, ...] = (
     "taxes_payable",
     "social_security_payable",
     "share_premium",
+    "capital_contribution",
     "revaluation_reserve",
 )
 
@@ -112,6 +113,7 @@ def test_validator_line_sets_include_split_balance_sheet_lines() -> None:
     assert "taxes_payable" in LIABILITY_LINES
     assert "social_security_payable" in LIABILITY_LINES
     assert "share_premium" in EQUITY_LINES_SOFP
+    assert "capital_contribution" in EQUITY_LINES_SOFP
     assert "revaluation_reserve" in EQUITY_LINES_SOFP
     for withdrawn in WITHDRAWN_COMBINED_LINES:
         assert withdrawn not in ASSET_LINES
@@ -165,6 +167,7 @@ def test_sofp_places_split_lines_in_expected_positions() -> None:
         _acct("2300", net_balance="-500.00", canonical_line="loans"),
         _acct("3000", net_balance="-1000.00", canonical_line="share_capital"),
         _acct("3050", net_balance="-200.00", canonical_line="share_premium"),
+        _acct("3070", net_balance="-75.00", canonical_line="capital_contribution"),
         _acct("3100", net_balance="-600.00", canonical_line="retained_earnings", account_id=re_id),
         _acct("3150", net_balance="-150.00", canonical_line="revaluation_reserve"),
     ]
@@ -189,6 +192,8 @@ def test_sofp_places_split_lines_in_expected_positions() -> None:
     assert codes.index("non_current_liabilities") < codes.index("current_liabilities")
     assert codes.index("current_liabilities") < codes.index("total_liabilities")
     assert codes.index("share_premium") > codes.index("share_capital")
+    assert codes.index("capital_contribution") > codes.index("share_premium")
+    assert codes.index("retained_earnings") > codes.index("capital_contribution")
     assert codes.index("revaluation_reserve") > codes.index("retained_earnings")
 
     assert next(line for line in lines if line.line_item_code == "non_current_assets").amount == Decimal(
@@ -205,7 +210,7 @@ def test_sofp_places_split_lines_in_expected_positions() -> None:
     ).amount == Decimal("625.00")  # 400 + 100 + 40 + 10 + 50 + 25
 
     total_equity = next(line for line in lines if line.line_item_code == "total_equity")
-    assert total_equity.amount == Decimal("1950.00")  # 1000 + 200 + 600 + 150
+    assert total_equity.amount == Decimal("2025.00")  # 1000 + 200 + 75 + 600 + 150
 
 
 def test_compute_net_profit_unchanged_by_new_balance_sheet_lines() -> None:

@@ -1196,7 +1196,8 @@ CANONICAL_LINES = [
   "trade_receivables", "prepayments", "accrued_income", "cash", "total_assets",  # calculated
   "trade_payables", "provisions", "accruals", "deferred_income",
   "taxes_payable", "social_security_payable", "loans", "total_liabilities",  # calculated
-  "share_capital", "share_premium", "retained_earnings", "revaluation_reserve",
+  "share_capital", "share_premium", "capital_contribution", "retained_earnings",
+  "revaluation_reserve",
   "dividends", "total_equity",  # calculated
   "unmapped",
 ]

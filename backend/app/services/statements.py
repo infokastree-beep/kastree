@@ -102,6 +102,7 @@ LINE_ITEM_NAMES: dict[str, str] = {
     "total_liabilities": "Total liabilities",
     "share_capital": "Share capital",
     "share_premium": "Share premium",
+    "capital_contribution": "Capital contribution reserve",
     "retained_earnings": "Retained earnings",
     "revaluation_reserve": "Revaluation reserve",
     "dividends": "Dividends",
@@ -229,6 +230,7 @@ SOFP_LIABILITY_ORDER: tuple[str, ...] = (
 EQUITY_COMPONENT_LINES: tuple[str, ...] = (
     "share_capital",
     "share_premium",
+    "capital_contribution",
     "retained_earnings",
     "revaluation_reserve",
 )

@@ -165,27 +165,27 @@ prompts must stay aligned.
 [`canonical-lines-expansion.md`](canonical-lines-expansion.md). Sequenced on the
 [product roadmap](product-roadmap.md) as fast-follow after Variance / materiality.
 
-## `capital_contribution` canonical line (low priority)
+## `capital_contribution` canonical line
 
-Stress-test / Irish equity packs: accounts named like **Capital Contribution
-Reserve** land as Tier 4 **`unmapped` by design** — Appendix A has
-`share_capital`, `share_premium`, `retained_earnings`, `revaluation_reserve`,
-and `dividends`, but no `capital_contribution`. That is **correct conservative
-behaviour**, not a mapper bug.
+**Resolved.** Capital Contribution Reserve is common enough in Irish/UK FRS 102
+filings (especially group subsidiaries and parent funding without share issue)
+to warrant its own equity leaf. Mapping it to `share_premium` is **not**
+sufficient: capital contribution is non-statutory equity and is not legally
+equivalent to share premium (Companies Act / TECH distributable-profits
+guidance; Irish filed accounts present it as a separate face line).
 
-**Low priority / product completeness:** either add a `capital_contribution`
-canonical line (SOFP equity + SOCIE + validator/`EQUITY_COMPONENT_LINES` +
-dropdown + Tier 4 allow-list, same discipline as prior expansions), **or**
-document that capital contributions should map to `share_premium` (or another
-chosen leaf) so practices have an explicit house rule. Not urgent — real users
-can map manually until demand appears.
+Added `capital_contribution` to `EQUITY_COMPONENT_LINES` (SOFP face after
+`share_premium`, before `retained_earnings`), frontend dropdown, Tier 4
+allow-list / mapping-tie-breaker-v5 prompt, Appendix A, and shared constants.
+SOCIE/validator totals pick it up via `compute_total_equity`. SOPL unchanged.
 
 ## Equity total — duplicated inline formulas (structural drift risk)
 
 **Resolved.** Total equity is no longer hand-summed in four places. A single
 shared `compute_total_equity(amounts_by_line)` in `backend/app/services/statements.py`
 sums every entry of `EQUITY_COMPONENT_LINES` (`share_capital`, `share_premium`,
-`retained_earnings`, `revaluation_reserve`). All four former drift sites call it:
+`capital_contribution`, `retained_earnings`, `revaluation_reserve`). All four
+former drift sites call it:
 
 - `build_sofp` → SOFP `total_equity`
 - `_compute_socie_rollforward` / `build_socie` → SOCIE `total_equity_closing`
