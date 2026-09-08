@@ -166,6 +166,28 @@ Statement.
 
 Same rule for all rows: **do not build (or unhide) until Product 1 usage shows the need.**
 
+### 5. Future considerations (external research — demand-gated)
+
+Consolidated directions from external product/research input. **All genuinely
+promising. All correctly demand-gated.** Same discipline as the rest of this
+roadmap: capture the idea so it is not lost; **do not build without real
+customer signal** from Product 1 usage. None of these are on a build schedule.
+
+| Direction | Why it is promising | Gate / constraint |
+|-----------|---------------------|-------------------|
+| **AI Review Assistant** | Expand today’s deterministic Risk flags (and related Variance / Commentary surfaces) into a genuine *“why did this change?”* explainer for the accountant — narrative grounded in evidence already on the period, not a second calculation engine. Natural extension of Copilot + Risk + Commentary, still under Golden Rule (Python does the math; LLM does the narrative; no raw amounts in prompts). | Demand that Risk/Variance alone is not enough for review conversations; keep fail-soft if LLM is down. |
+| **Firm-wide mapping intelligence** | Learn mapping patterns across a practice’s clients (with strict org isolation) so new companies inherit better Tier 1–4 suggestions. Biggest lever for cutting manual mapping time once Tier 4 is proven with a real key. | Only after real multi-client volume; never cross-org leakage; no training on customer data without explicit contractual opt-in (see privacy / DPA posture). |
+| **Client meeting pack generation** | One-click pack for a client meeting: statements, variance highlights, risk flags, business-health bullets, optional Ask excerpts — exportable PDF/Deck-style pack. Reuses existing evidence; packaging, not new math. | Clear request from practices that already run Product 1 end-to-end before meetings. |
+| **Management accounts packs** | Recurring monthly/quarterly management-accounts bundle (formatted SOPL/SOFP/SOCIE + commentary + KPIs) aimed at fractional CFOs / practice MA workflows. Distinct from Product 2 statutory filing output. | Demand for recurring MA delivery; stay internal-review framing — not filing-capable. |
+| **Industry benchmarking** | Compare a company’s ratios/trends to anonymised peer cohorts (sector, size). High client value; hard data and privacy requirements. | Meaningful cohort size + anonymisation design; no fake benchmarks from thin data. |
+| **AI tax-review prompts (not advice)** | Prompted checklists / questions that help an accountant *review* tax-sensitive lines (e.g. unusual tax account movements) using period evidence — explicitly **not** tax advice, computation, or filing. | Counsel-ready disclaimer; never compute tax or recommend elections; Product 1 internal-review posture only. |
+| **Practice operating system (longer-term vision)** | Broader practice workflow layer: filing deadlines, task management, client portal — Kastree as the operating hub around financial intelligence rather than a single TB→statements tool. | Only after Product 1 is deeply embedded; large scope; treat as a multi-year vision, not a feature ticket. Client portal and deadline tooling have their own auth, liability, and ops costs. |
+
+**Explicit non-goals until demand proves otherwise:** do not start any row above
+as speculative platform work, do not dilute Product 1 sellability chasing them,
+and do not blur Product 2’s statutory legal gate into these Product 1–adjacent
+ideas.
+
 ---
 
 ## Sequencing note
@@ -177,6 +199,7 @@ Same rule for all rows: **do not build (or unhide) until Product 1 usage shows t
 | **Product 2 (Statutory)** | Paused — legal consultation gate in [`tracked-gaps.md`](tracked-gaps.md). Only separate product. |
 | **Scenario / forecast / budget** | Captured; large architecture; internal-only; not casual. |
 | **Smaller items** | Captured in the table above; demand-gated. |
+| **Future considerations (research)** | Captured in §5; promising directions only — **no build without customer signal**. |
 
 **Nothing in “Future directions” is on an immediate build schedule.** Sell and
 learn from Product 1 first.
