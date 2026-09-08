@@ -803,39 +803,66 @@ get”, “How it works”). Related but separate: [Public product demo without
 signup](#public-product-demo-without-signup-follow-up) (media) — media does not
 fix weak positioning on its own.
 
+### Core principle: the bank-statement-converter benchmark
+
+The revision standard is not “clearer than today.” It is the bar hit by real
+solo SaaS products that reach ARR **because the pitch is complete in one
+line**. Canonical example: a bank-statement converter whose name *is* the
+pitch — **“convert bank statements to Excel.”** No follow-up sentence required.
+A stranger understands the product from that alone.
+
+**Kastree’s equivalent single-sentence pitch (source of truth for the hero):**
+
+> Upload a trial balance, get mapped accounts, statements, variance, and AI
+> commentary — automatically.
+
+That sentence is the product. The **hero headline must be built around hitting
+this exact same immediate-clarity bar**: direct **input → output**, no jargon,
+no “platform,” no abstraction, no clever paraphrase that needs decoding. Same
+job as “convert bank statements to Excel” — if the headline needs a second
+sentence to explain what Kastree does, it has failed.
+
+Supporting lines may add *why* (time saved for accountants) and *how mapping
+is special* (AI-assisted, learns per client). They must not be required to
+decode the input→output loop; that loop lives in the headline itself.
+
 ### The bar: immediately obvious (5 seconds)
 
 Same standard as the best solo-founder SaaS marketing pages (**Bannerbear**,
-**Carrd**, **Photopea**): a stranger with **zero context** lands on `/` and,
-within about **five seconds**, understands (1) exactly what Kastree does and
-(2) why they’d want it — without reading secondary sections, without inferring
-from a feature grid, and without piecing a story together.
+**Carrd**, **Photopea**) and the bank-statement-converter benchmark above: a
+stranger with **zero context** lands on `/` and, within about **five seconds**,
+understands (1) exactly what Kastree does and (2) why they’d want it — without
+reading secondary sections, without inferring from a feature grid, and without
+piecing a story together.
 
 **Immediately obvious** means:
 
-- One clearest possible statement of what happens, front and centre — not a
-  clever paraphrase.
+- One clearest possible statement of what happens, front and centre — the
+  single-sentence pitch above (or an equally direct paraphrase that still needs
+  no follow-up), not a clever abstraction.
 - The value is self-evident from that statement (time saved for accountants),
   not deferred to “The problem” further down.
 - Anything that makes a first-time visitor **work** to understand the product
-  gets cut or demoted below the fold (process lists, stacked jargon, combined
-  tiles that hide the differentiator, hedging that softens the loop).
+  gets cut or demoted below the fold (process lists, stacked jargon, “platform”
+  language, combined tiles that hide the differentiator, hedging that softens
+  the loop).
 
 Cold-read test: hand the URL to someone who has never heard of Kastree. If they
-cannot say “drop a trial balance in → get mapping, statements, variance,
-dashboard, and commentary out — and it saves accountants hours of spreadsheet
-rebuild” after a glance at the first viewport, the page has failed this brief.
+cannot recite the equivalent of the single-sentence pitch (TB in → mapped
+accounts, statements, variance, commentary out — automatically) **and** why
+(saves accountants hours of spreadsheet rebuild) after a glance at the first
+viewport, the page has failed this brief.
 
 ### What’s wrong with the live message today
 
 The page already *mentions* upload, mapping, statements, variance, and
 dashboard pieces — but a prospect still has to **assemble** the product from
-scattered sections. That fails the five-second bar:
+scattered sections. That fails the five-second / bank-statement-converter bar:
 
 - **Hero** leads with outcome jargon (“Statements, variance, and risk out”)
-  rather than the single clearest action (“drop your trial balance in”). Mapping
-  is buried in the supporting sentence (“confirm account mappings”), not named
-  as a headline capability.
+  rather than a complete input→output sentence like the pitch above. Mapping is
+  buried in the supporting sentence (“confirm account mappings”), not named in
+  the headline loop.
 - **“What you get”** opens with a combined “Upload & map” tile, then spreads
   statements / performance / variance / Ask across a long grid. Mapping is not
   a standout signal; it reads as step 1 of a checklist.
@@ -854,20 +881,21 @@ When this is rewritten, the **first viewport alone** must pass the five-second
 cold-read test. Primary supporting copy under the hero may reinforce — it must
 not be required to understand the product. Specifically:
 
-1. **One clearest statement of what happens.**  
-   Lead with the concrete action: **drop your trial balance in** (.xlsx / .csv).
-   In the same breath (headline + one short line), name the full automatic
-   chain — no inference required: **mapping → statements (SOPL / SOFP / SOCIE)
-   → variance → dashboard / performance overview → AI commentary**. Risk flags,
-   Ask, and export stay secondary; they must not crowd or replace this loop in
-   the hero.
+1. **Hero = the single-sentence pitch (bank-statement-converter bar).**  
+   Build the headline around: **Upload a trial balance, get mapped accounts,
+   statements, variance, and AI commentary — automatically.** Direct
+   input→output only — no jargon, no “platform,” no abstraction. Dashboard /
+   performance overview belongs in that same loop (as “dashboard” or equivalent
+   plain language) if space allows; risk / Ask / export stay secondary and must
+   not replace or obscure the core sentence. If a stranger needs a follow-up
+   line to learn what Kastree does, rewrite the headline.
 
 2. **Mapping is a headline capability, not a buried step.**  
-   Name it **explicitly** among the primary things the product does — alongside
-   statements / variance / dashboard — not only as “step 2” of how-it-works.
-   Differentiated signal in plain language: **AI-assisted account mapping that
-   learns per client** (suggestions you confirm; remembered for the next TB).
-   Do not collapse into “Upload & map” or leave it only in FAQ.
+   “Mapped accounts” is in the pitch for a reason — keep it explicit among the
+   primary outputs, not only as “step 2” of how-it-works. Differentiated signal
+   in supporting copy: **AI-assisted account mapping that learns per client**
+   (suggestions you confirm; remembered for the next TB). Do not collapse into
+   “Upload & map” or leave it only in FAQ.
 
 3. **Time saved for accountants is the why — concrete, central.**  
    The five-second read must include *why they’d want it*: hours not spent
@@ -877,12 +905,12 @@ not be required to understand the product. Specifically:
    dropping a TB here faster than Excel today?*
 
 4. **Cut friction for first-time visitors.**  
-   Prefer one composition that states TB in → outputs out over scavenger-hunt
-   layouts. Demote or cut first-viewport copy that forces work: long process
-   lists, feature grids that bury the loop, hedging that softens the message.
-   Lower sections may qualify (internal review only, human confirms mappings,
-   deterministic math) — they must not be the first place the product becomes
-   understandable.
+   Prefer one composition that states the pitch over scavenger-hunt layouts.
+   Demote or cut first-viewport copy that forces work: long process lists,
+   feature grids that bury the loop, hedging or “platform” language that softens
+   the message. Lower sections may qualify (internal review only, human confirms
+   mappings, deterministic math) — they must not be the first place the product
+   becomes understandable.
 
 ### Out of scope for this brief
 
@@ -896,11 +924,11 @@ not be required to understand the product. Specifically:
 ### Done when
 
 A zero-context stranger passes the **five-second cold-read test** on the first
-viewport alone: what happens (TB → mapping + statements + variance + dashboard
-+ commentary) and why (concrete time saved for accountants) are immediately
-obvious; mapping is named as a standout; nothing essential requires scrolling
-or reassembling sections. Then mark this entry **Resolved** with ship date /
-commit.
+viewport alone: the hero hits the bank-statement-converter bar (the
+single-sentence pitch, or an equally complete input→output line that needs no
+follow-up); *why* (concrete time saved for accountants) is obvious; mapping is
+named as a standout; nothing essential requires scrolling or reassembling
+sections. Then mark this entry **Resolved** with ship date / commit.
 
 ## Public product demo without signup (follow-up)
 
