@@ -6,6 +6,35 @@ Review this list before claiming a feature area is complete.
 For product-level sequencing (three-product roadmap, what to build next vs defer),
 see [`product-roadmap.md`](product-roadmap.md).
 
+## Next-session priorities
+
+**Order matters.** Technical confidence first (validate), then go-to-market
+(scale). Do not invert this — same discipline as the rest of the build.
+
+### Technical confidence (do these first)
+
+1. **Further adversarial stress testing — GL and TB, Excel and PDF.** Continue
+   the pattern that found the Tier 3 mapping bug. Push more complex cases than
+   tonight’s tests across all four intake surfaces (TB Excel/CSV, TB PDF, GL
+   Excel/CSV, GL PDF). Goal: find the next silent correctness failure before a
+   client does.
+2. **One real Live-mode Stripe payment.** Test-mode Checkout + webhook is
+   proven ([Paywall](#paywall--done-2026-09-07)); the final unverified link is
+   webhook-driven paid status on a genuine Live charge. Complete one end-to-end
+   Live payment and confirm org tier/status updates from the Live webhook.
+
+### Go-to-market (after technical confidence)
+
+3. **Socials setup and content.** Profiles, basics, and a small set of posts
+   that match the live product pitch — not a content machine before outreach.
+4. **Direct outreach to prospective clients.** Highest-priority, most-deferred
+   action across this entire session. Warm conversations beat polished channels;
+   start this as soon as (1)–(2) are closed, in parallel with light socials.
+5. **Paid advertising (LinkedIn, accountants)** — only once outreach is moving
+   and there is initial signal. See
+   [LinkedIn ads](#linkedin-ads--accountants--fractional-cfos-after-hero-is-live).
+   Ads validate the public funnel; they do not replace (4).
+
 ## Archival write paths
 
 Clients, companies, and trial balances soft-delete write to `archived_records`. See
