@@ -199,15 +199,18 @@ messy, and OCR-fallback paths), and safety-proven (mandatory review step
 confirmed unbypassable via API and UI). Commit `d01f513` on origin + github;
 production frontend SHA verified.
 
-**Phase 3 (GL → TB conversion) remains correctly unscheduled**, pending a
-**separate** real GL demand signal — not implied by the PDF-TB ask alone.
+**Phase 3 (GL → TB conversion) — demand separately confirmed (2026-09-09).**
+Client (own words): GL dump in PDF or Excel → Excel + trial balance, quickly.
+Design draft (period cutoffs + opening-balance modes A/B/C, debit=credit gate,
+review-before-pipeline; free in-flow only): [`gl-to-tb-design.md`](gl-to-tb-design.md).
+**No implementation until design approval.** Standalone Convert remains TB-only.
 
 ##### Phase status
 
 | Phase | Scope | Status |
 |-------|--------|--------|
 | **Phase 1** | **PDF trial balance extraction only** | **DONE** — built, tested (clean / messy / OCR-fallback), safety-proven (review unbypassable via API + UI). Upload selector → `pdfplumber` + OCR → review table → CSV into existing upload/mapping pipeline. |
-| **Phase 3** | **GL → TB conversion** (Excel and PDF GL) | **Unscheduled.** Do **not** start until GL-specific demand is **separately confirmed**. Not implied by the PDF-TB ask alone. |
+| **Phase 3** | **GL → TB conversion** (Excel and PDF GL) | **Demand confirmed (2026-09-09).** Design draft in [`gl-to-tb-design.md`](gl-to-tb-design.md). Free, in-flow Upload only — not Convert. **Awaiting design approval before code.** |
 
 (Phase numbering matches the companion specs; intermediate phases there, if any,
 are unchanged by this note.)
