@@ -192,15 +192,22 @@ of disconnected features. Treat as a single **Intake Completion Initiative**
 
 **Real prospect request:** a prospect specifically asked for **PDF trial
 balance** and **general ledger** support. That elevates this initiative from
-speculative research to **validated demand**. **Phase 1 (PDF-TB) is shipped**;
-Phase 3 remains deferred until GL demand is separately confirmed.
+speculative research to **validated demand**.
 
-##### Confirmed next-build priority (when pursued)
+**Phase 1 (PDF trial balance extraction) = DONE** — built, tested (clean,
+messy, and OCR-fallback paths), and safety-proven (mandatory review step
+confirmed unbypassable via API and UI). Commit `d01f513` on origin + github;
+production frontend SHA verified.
+
+**Phase 3 (GL → TB conversion) remains correctly unscheduled**, pending a
+**separate** real GL demand signal — not implied by the PDF-TB ask alone.
+
+##### Phase status
 
 | Phase | Scope | Status |
 |-------|--------|--------|
-| **Phase 1** | **PDF trial balance extraction only** | **Shipped** — Upload “What are you uploading?” → extract (`pdfplumber` + OCR fallback) → review table → CSV into existing upload/mapping pipeline. |
-| **Phase 3** | **GL → TB conversion** (Excel and PDF GL) | **Bigger, later.** Do **not** start until Phase 1 has shipped **and** GL-specific demand is **separately confirmed**. Not implied by the PDF-TB ask alone. |
+| **Phase 1** | **PDF trial balance extraction only** | **DONE** — built, tested (clean / messy / OCR-fallback), safety-proven (review unbypassable via API + UI). Upload selector → `pdfplumber` + OCR → review table → CSV into existing upload/mapping pipeline. |
+| **Phase 3** | **GL → TB conversion** (Excel and PDF GL) | **Unscheduled.** Do **not** start until GL-specific demand is **separately confirmed**. Not implied by the PDF-TB ask alone. |
 
 (Phase numbering matches the companion specs; intermediate phases there, if any,
 are unchanged by this note.)
@@ -214,15 +221,15 @@ non-subscribers. Pricing and packaging deferred until Phase 3 is actually on
 the table.
 
 **Do not** collapse PDF tools and GL tools into unrelated tickets. **Do not**
-start Phase 3 as speculative platform work ahead of Phase 1.
+start Phase 3 as speculative platform work — Phase 1 is done; Phase 3 stays
+parked until separate GL demand is confirmed.
 
-Related rows below stay demand-gated individually; Phase 1 is now the clear
-priority slice of this initiative when Product 1 next-build capacity opens.
+Related rows below stay demand-gated individually.
 
 | Direction | Why it is promising | Gate / constraint |
 |-----------|---------------------|-------------------|
-| **PDF trial balance extraction (AI-assisted OCR/parsing) — Phase 1** | Practices whose only TB export is PDF **cannot use Kastree at all** today (xlsx/csv only). AI-assisted OCR/parsing into the **existing** parse → map pipeline opens that funnel without a second product surface. **Validated by real prospect ask (2026-09-08).** Smallest useful slice of the Intake Completion Initiative. | **Shipped.** Golden Rule: extraction → structured TB rows for deterministic Python math; LLM not used for amounts; fail closed on low confidence; review-before-pipeline required. |
-| **General Ledger → Trial Balance (Excel and PDF GL) — Phase 3** | Completes the intake cycle: raw ledger → TB → existing mapping/statements engine. Core mechanic: sum transactions by GL code into account totals. Prospect interest in GL noted alongside PDF-TB, but **not** a licence to build Phase 3 yet. | **Later than Phase 1.** Start only after Phase 1 ships **and** GL-specific demand is separately confirmed. Correctness stakes: period cutoffs, opening-balance semantics, validation before a wrong/unbalanced TB. Monetization if built: hybrid (subscription-bundled + one-time standalone for non-subscribers) — decide later. Detail in [`tracked-gaps.md`](tracked-gaps.md). |
+| **PDF trial balance extraction (AI-assisted OCR/parsing) — Phase 1** | Practices whose only TB export is PDF **cannot use Kastree at all** today (xlsx/csv only). AI-assisted OCR/parsing into the **existing** parse → map pipeline opens that funnel without a second product surface. **Validated by real prospect ask (2026-09-08).** Smallest useful slice of the Intake Completion Initiative. | **DONE** — built, tested (clean / messy / OCR-fallback), safety-proven (mandatory review unbypassable via API + UI). Golden Rule: extraction → structured TB rows for deterministic Python math; LLM not used for amounts; fail closed on low confidence. |
+| **General Ledger → Trial Balance (Excel and PDF GL) — Phase 3** | Completes the intake cycle: raw ledger → TB → existing mapping/statements engine. Core mechanic: sum transactions by GL code into account totals. Prospect interest in GL noted alongside PDF-TB, but **not** a licence to build Phase 3 yet. | **Unscheduled.** Start only after separate GL demand is confirmed. Correctness stakes: period cutoffs, opening-balance semantics, validation before a wrong/unbalanced TB. Monetization if built: hybrid (subscription-bundled + one-time standalone for non-subscribers) — decide later. Detail in [`tracked-gaps.md`](tracked-gaps.md). |
 | **General PDF→Excel for accounting documents** | User picks document type (trial balance, fixed asset register, AP statement, AR statement, GL, …); AI extracts and structures into Excel. Well-targeted at the **real accountant workflow** (not a generic PDF tool). Directly extends PDF-TB extraction to documents practices regularly convert manually — including GL PDFs as an extraction front-end to GL→TB. Real multi-document-type parsing is **meaningfully bigger** than single-format PDF-TB alone; prioritize highly **if** validated. | Confirm frequency of manual PDF→Excel conversion in early customer talks (which document types, how often). Prefer typed extractors over one opaque “convert anything”; fail closed on low confidence; never invent figures. TB path should still feed the existing mapping pipeline; GL path should feed GL→TB (not invent statement math). Other types may stop at downloadable Excel until a clear Product 1 hook exists. Scope and QA cost scale with each document type — ship TB first if funnel-blocked, then expand. |
 | **Bank statement → categorised transactions (upstream intake)** | Separate intake path: bank statements in → categorised transactions, with a natural **upsell into existing TB mapping** / review. Upstream of the current trial-balance loop — expands who arrives at Product 1 rather than only deepening it. Distinct from GL→TB (bank lines ≠ full GL). | Demand that bank-PDF / CSV statement workflows are how prospects work today. Treat as a **distinct pipeline** (not a silent TB substitute); categorisation ≠ TB integrity; keep org isolation and no cross-client training without opt-in. Upsell into mapping must stay optional and explicit. |
 | **AI Review Assistant** | Expand today’s deterministic Risk flags (and related Variance / Commentary surfaces) into a genuine *“why did this change?”* explainer for the accountant — narrative grounded in evidence already on the period, not a second calculation engine. Natural extension of Copilot + Risk + Commentary, still under Golden Rule (Python does the math; LLM does the narrative; no raw amounts in prompts). | Demand that Risk/Variance alone is not enough for review conversations; keep fail-soft if LLM is down. |
@@ -308,7 +315,7 @@ ideas.
 | **Product 2 (Statutory)** | Paused — legal consultation gate in [`tracked-gaps.md`](tracked-gaps.md). Only separate product. |
 | **Scenario / forecast / budget** | Captured; large architecture; internal-only; not casual. |
 | **Smaller items** | Captured in the table above; demand-gated. |
-| **Future considerations (research)** | Captured in §5. **Intake Completion Initiative:** prospect-validated (2026-09-08); **Phase 1 PDF-TB shipped**; **Phase 3 GL→TB** later after separate GL demand. |
+| **Future considerations (research)** | Captured in §5. **Intake Completion Initiative:** prospect-validated (2026-09-08); **Phase 1 PDF-TB = DONE** (built, tested clean/messy/OCR, review gate safety-proven); **Phase 3 GL→TB remains unscheduled** pending separate real GL demand. |
 
 **Nothing in “Future directions” is on an immediate build schedule.** Sell and
 learn from Product 1 first.

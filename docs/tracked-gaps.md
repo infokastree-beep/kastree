@@ -974,35 +974,46 @@ exceptions + seed maintenance).
 
 ## Intake completeness — PDF-TB and GL→TB (Intake Completion Initiative)
 
-**Status:** **Phase 1 (PDF-TB) shipped** (upload selector → `POST /trial-balances/extract-pdf`
-→ editable review → CSV handoff into unchanged `/upload`). Extraction:
-`pdfplumber` (native-text tables) + OCR fallback (PyMuPDF render + Tesseract).
+**Status:** **Phase 1 (PDF trial balance extraction) = DONE** — built, tested
+(clean native-text, messy/imperfect formatting, and OCR-fallback image-only
+paths), and safety-proven (mandatory review step confirmed unbypassable via API
+and UI). Live on `main` at commit `d01f513` (origin + github; production
+frontend SHA match verified).
+
+**What shipped:** Upload “What are you uploading?” → PDF →
+`POST /trial-balances/extract-pdf` → editable **Review extracted data** →
+confirmed CSV handoff into unchanged `/upload` → mapping/statements pipeline.
+Extraction: `pdfplumber` (native-text tables / words) + OCR fallback (PyMuPDF
+render + Tesseract). Clean extract never creates a `trial_balances` row;
+`/upload` rejects `.pdf` even when extraction would succeed.
+
 **Demand validated (2026-09-08).** Full framing, Phase 1 vs Phase 3 priority,
 mapping-not-standalone, and Phase 3 hybrid monetization notes live in
 [`product-roadmap.md`](product-roadmap.md) §5 (Intake Completion Initiative).
-**Do not start Phase 3** until GL demand is separately confirmed.
+
+**Phase 3 (GL → TB conversion) remains correctly unscheduled** — pending a
+**separate** real GL demand signal. Do **not** start Phase 3 on the PDF-TB ask
+alone.
 
 The trusted Product 1 engine already starts at a **trial balance**. Practices
 do not always have a clean xlsx/csv TB. Two widening steps complete the path
 from whatever raw data they have into that same engine:
 
-### 1. PDF trial balance extraction (smaller — right first step)
+### 1. PDF trial balance extraction — DONE
 
-Practices whose only TB is PDF **cannot use Kastree today** (xlsx/csv only).
-AI-assisted OCR/parsing into the **existing** parse → map pipeline is an
-**intake-format** problem: the document is already summarized, balanced account
-totals — the hard part is reliable extraction, not inventing accounting logic.
+**DONE.** Practices can upload a PDF TB, extract (`pdfplumber` + OCR fallback),
+review/edit rows, then confirm into the existing parse → map pipeline. Tested
+on clean native-text, messy/imperfect formatting, and image-only OCR paths.
+Mandatory review is unbypassable: extract creates no TB; `/upload` rejects
+`.pdf`; UI only uploads confirmed CSV.
 
-**Gate:** ask early customers whether PDF-only TBs are a real blocker. Golden
-Rule unchanged: extraction yields structured TB rows for deterministic Python
-math; fail closed on low confidence.
+Golden Rule unchanged: extraction yields structured TB rows for deterministic
+Python math; fail closed on low confidence.
 
-### 2. General Ledger → Trial Balance (materially bigger — later)
+### 2. General Ledger → Trial Balance (materially bigger — unscheduled)
 
-**Core mechanic:** sum transactions by GL code into account totals for a
-period — producing a TB that then feeds the existing mapping → statements →
-variance → commentary → dashboard pipeline. Accept **Excel and PDF** GL input
-(PDF GL implies PDF→structured rows first; see roadmap intake cycle).
+**Unscheduled.** Pending a **separate** real GL demand signal. Do not start on
+the PDF-TB ask alone.
 
 **This is a MATERIALLY BIGGER undertaking than PDF-TB extraction.** A trial
 balance is already summarized and (ideally) balanced. A general ledger is
