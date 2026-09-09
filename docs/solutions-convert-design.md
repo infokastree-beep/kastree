@@ -1,7 +1,8 @@
 # Kastree Convert — standalone product design
 
-Status: **design locked for build** (2026-09-09). Subscriber Upload flow is
-**out of scope** and must remain untouched.
+Status: **BUILT** (2026-09-09). Subscriber Upload flow remains untouched.
+Live routes: `/solutions/convert`, success/cancel; API `/solutions/convert/*`.
+Price: **€19** one-time (`STRIPE_PRICE_ID_CONVERT`).
 
 ## Problem / shape
 
