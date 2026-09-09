@@ -605,13 +605,9 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
         }`}
       >
         <p className="text-sm font-medium">
-          {uploadKind === "pdf"
-            ? "Drag and drop a .pdf trial balance"
-            : uploadKind === "gl_pdf"
-              ? "Drag and drop a .pdf general ledger"
-              : uploadKind === "gl_excel"
-                ? "Drag and drop a .xlsx or .csv general ledger"
-                : "Drag and drop .xlsx or .csv"}
+          {uploadKind === "pdf" || uploadKind === "gl_pdf"
+            ? "Drag and drop .pdf"
+            : "Drag and drop .xlsx or .csv"}
         </p>
         <p className="mt-1 text-xs text-stone-500">or</p>
         <label className="mt-3 inline-block cursor-pointer rounded bg-stone-900 px-3 py-2 text-sm font-medium text-white">
