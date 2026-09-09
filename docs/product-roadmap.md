@@ -218,29 +218,25 @@ are unchanged by this note.)
 **Mapping is not a standalone add-on.** Account mapping is **core subscription
 value** — part of the Product 1 loop, not sellable alone as an intake upsell.
 
-**Eventual hybrid monetization (built for Convert TB slice):** two surfaces,
-not one:
+**Eventual hybrid monetization — updated 2026-09-09:**
 
-1. **In-flow (subscribers)** — today’s Upload-path integration (PDF-TB extract →
-   review → existing pipeline; later GL→TB if Phase 3 ships). Stays as-is for
-   subscribers; do **not** rip it out or replace it with a separate product UX.
-2. **Standalone product (non-subscribers / one-time buyers)** — **Kastree
-   Convert** at `/solutions/convert`: own **Solutions** header entry, own
-   **one-time Stripe Checkout (€19)**, own Excel download delivery. Reuses Phase 1
-   extraction; does not create `trial_balances`. Design:
-   [`solutions-convert-design.md`](solutions-convert-design.md).
-
-GL→TB inside Convert remains **out of scope** (Convert stays TB-only).
+1. **In-flow (subscribers)** — Upload-path integration (PDF-TB extract → review →
+   existing pipeline; GL→TB when Phase 3 is in production). Stays as-is for
+   subscribers.
+2. **Standalone Convert (public Solutions product)** — **REMOVED (2026-09-09).**
+   `/solutions/convert`, Solutions nav, and one-time Checkout are gone from the
+   public site. See [`solutions-convert-design.md`](solutions-convert-design.md).
+   Do not reintroduce without an explicit product decision.
 
 **Do not** collapse PDF tools and GL tools into unrelated tickets. Phase 3
-in-flow build waits on design approval of [`gl-to-tb-design.md`](gl-to-tb-design.md).
+in-flow build is specified in [`gl-to-tb-design.md`](gl-to-tb-design.md).
 
 Related rows below stay demand-gated individually.
 
 | Direction | Why it is promising | Gate / constraint |
 |-----------|---------------------|-------------------|
 | **PDF trial balance extraction (AI-assisted OCR/parsing) — Phase 1** | Practices whose only TB export is PDF **cannot use Kastree at all** today (xlsx/csv only). AI-assisted OCR/parsing into the **existing** parse → map pipeline opens that funnel without a second product surface. **Validated by real prospect ask (2026-09-08).** Smallest useful slice of the Intake Completion Initiative. | **DONE** — built, tested (clean / messy / OCR-fallback), safety-proven (mandatory review unbypassable via API + UI). Golden Rule: extraction → structured TB rows for deterministic Python math; LLM not used for amounts; fail closed on low confidence. |
-| **General Ledger → Trial Balance (Excel and PDF GL) — Phase 3** | Completes the intake cycle: raw ledger → TB → existing mapping/statements engine. Core mechanic: sum transactions by GL code into account totals. Prospect interest in GL noted alongside PDF-TB, but **not** a licence to build Phase 3 yet. | **Unscheduled.** Start only after separate GL demand is confirmed. Correctness stakes: period cutoffs, opening-balance semantics, validation before a wrong/unbalanced TB. Monetization if built: **hybrid** — subscriber in-flow Upload stays; eventual standalone Solutions product (own one-time Checkout + delivery) is a distinct later build requiring separate commercial infrastructure. |
+| **General Ledger → Trial Balance (Excel and PDF GL) — Phase 3** | Completes the intake cycle: raw ledger → TB → existing mapping/statements engine. Core mechanic: sum transactions by GL code into account totals. | **BUILT (in-flow, 2026-09-09)** — Modes A/B/C, hard debit=credit gate, review-before-pipeline. Free for subscribers inside Upload. Public Convert product removed. Design: [`gl-to-tb-design.md`](gl-to-tb-design.md). |
 | **General PDF→Excel for accounting documents** | User picks document type (trial balance, fixed asset register, AP statement, AR statement, GL, …); AI extracts and structures into Excel. Well-targeted at the **real accountant workflow** (not a generic PDF tool). Directly extends PDF-TB extraction to documents practices regularly convert manually — including GL PDFs as an extraction front-end to GL→TB. Real multi-document-type parsing is **meaningfully bigger** than single-format PDF-TB alone; prioritize highly **if** validated. | Confirm frequency of manual PDF→Excel conversion in early customer talks (which document types, how often). Prefer typed extractors over one opaque “convert anything”; fail closed on low confidence; never invent figures. TB path should still feed the existing mapping pipeline; GL path should feed GL→TB (not invent statement math). Other types may stop at downloadable Excel until a clear Product 1 hook exists. Scope and QA cost scale with each document type — ship TB first if funnel-blocked, then expand. |
 | **Bank statement → categorised transactions (upstream intake)** | Separate intake path: bank statements in → categorised transactions, with a natural **upsell into existing TB mapping** / review. Upstream of the current trial-balance loop — expands who arrives at Product 1 rather than only deepening it. Distinct from GL→TB (bank lines ≠ full GL). | Demand that bank-PDF / CSV statement workflows are how prospects work today. Treat as a **distinct pipeline** (not a silent TB substitute); categorisation ≠ TB integrity; keep org isolation and no cross-client training without opt-in. Upsell into mapping must stay optional and explicit. |
 | **AI Review Assistant** | Expand today’s deterministic Risk flags (and related Variance / Commentary surfaces) into a genuine *“why did this change?”* explainer for the accountant — narrative grounded in evidence already on the period, not a second calculation engine. Natural extension of Copilot + Risk + Commentary, still under Golden Rule (Python does the math; LLM does the narrative; no raw amounts in prompts). | Demand that Risk/Variance alone is not enough for review conversations; keep fail-soft if LLM is down. |

@@ -16,7 +16,6 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import SyncSessionLocal, set_rls_org_id
-from app.services.standalone_convert import CONVERT_PRODUCT, mark_paid_by_session
 from app.services.stripe_service import (
     apply_organisation_billing_update,
     insert_subscription_event,
@@ -105,30 +104,6 @@ async def stripe_webhook(
             event_type=event_type,
             detail=f"Unhandled event type: {event_type}",
         )
-
-    # Standalone Convert (one-time payment) — no organisation / subscription write.
-    if event_type == "checkout.session.completed":
-        metadata = event_data_object.get("metadata") or {}
-        if isinstance(metadata, dict) and metadata.get("product") == CONVERT_PRODUCT:
-            session_id = str(event_data_object.get("id") or "")
-            if not session_id:
-                raise HTTPException(status_code=400, detail="Missing Checkout session id")
-            updated = mark_paid_by_session(session_id)
-            if updated is None:
-                logger.warning(
-                    "convert_webhook_unknown_session",
-                    extra={"session_id": session_id},
-                )
-                return StripeWebhookResponse(
-                    status="ignored",
-                    event_type=event_type,
-                    detail="Convert session not found locally (may be expired)",
-                )
-            return StripeWebhookResponse(
-                status="processed",
-                event_type=event_type,
-                detail=f"Convert paid: {updated.get('id')}",
-            )
 
     with SyncSessionLocal() as session:
         try:

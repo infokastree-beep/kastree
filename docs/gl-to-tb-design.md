@@ -22,8 +22,8 @@ Phase 1 PDF-TB (`Upload` selector → extract/convert → review → existing pi
 
 **Explicitly out of this build:**
 
-- Standalone Kastree Convert (`/solutions/convert`) does **not** gain GL→TB.
-  Convert remains TB-only for non-subscribers.
+- Public standalone Convert is **removed** from the site (2026-09-09); GL→TB is
+  in-app subscribers only.
 - No LLM math. Python `Decimal` only for all amounts.
 - No silent “best guess” on opening balances or cutoffs.
 

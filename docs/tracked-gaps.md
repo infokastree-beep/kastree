@@ -991,16 +991,14 @@ render + Tesseract). Clean extract never creates a `trial_balances` row;
 mapping-not-standalone, and Phase 3 hybrid monetization notes live in
 [`product-roadmap.md`](product-roadmap.md) §5 (Intake Completion Initiative).
 
-**Status:** Phase 1 PDF-TB intake **DONE**. Standalone **Kastree Convert**
-(Solutions → Convert, €19 one-time Checkout, Excel download) is the parallel
-commercial surface — see [`solutions-convert-design.md`](solutions-convert-design.md).
-Subscriber Upload remains untouched. **Phase 3 (GL → TB): demand confirmed
-(2026-09-09)** — design draft [`gl-to-tb-design.md`](gl-to-tb-design.md);
-awaiting approval before code. Free in-flow only; Convert stays TB-only.
+**Status:** Phase 1 PDF-TB intake **DONE**. Public standalone **Kastree Convert**
+(**REMOVED 2026-09-09** — no Solutions nav, no `/solutions/convert`). See
+[`solutions-convert-design.md`](solutions-convert-design.md). Subscriber Upload
+(PDF-TB + GL→TB) remains the only conversion surface. **Phase 3 (GL → TB): built
+in-flow** — [`gl-to-tb-design.md`](gl-to-tb-design.md).
 
-**Hybrid surfaces (unchanged):** Subscriber **Upload-flow** for PDF-TB (and
-GL→TB when built). Standalone Convert remains non-subscriber / one-time **TB**
-conversion only.
+**Surfaces:** Subscriber **Upload-flow** only for PDF-TB and GL→TB. No public
+paid Convert product.
 
 The trusted Product 1 engine already starts at a **trial balance**. Practices
 do not always have a clean xlsx/csv TB. Two widening steps complete the path
@@ -1020,8 +1018,9 @@ Python math; fail closed on low confidence.
 ### 2. General Ledger → Trial Balance (materially bigger — demand confirmed)
 
 **Demand confirmed (2026-09-09)** in the client’s own words (GL dump PDF/Excel →
-Excel + TB, quickly). **Design draft:** [`gl-to-tb-design.md`](gl-to-tb-design.md).
-**No code until design approval** (especially opening-balance modes).
+Excel + TB, quickly). **BUILT** — see [`gl-to-tb-design.md`](gl-to-tb-design.md)
+and `POST /trial-balances/convert-gl` (Modes A/B/C, hard balance fail, review
+before Upload pipeline). Free in-flow only; Convert stays TB-only.
 
 **This is a MATERIALLY BIGGER undertaking than PDF-TB extraction.** A trial
 balance is already summarized and (ideally) balanced. A general ledger is
