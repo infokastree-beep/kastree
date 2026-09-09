@@ -995,6 +995,14 @@ mapping-not-standalone, and Phase 3 hybrid monetization notes live in
 **separate** real GL demand signal. Do **not** start Phase 3 on the PDF-TB ask
 alone.
 
+**Eventual design (already the roadmap intent — not built now):** hybrid
+surfaces. Subscriber **Upload-flow** integration stays as-is. A genuinely
+**separate standalone product** (own **Solutions** header entry, own one-time
+Checkout, own delivery) is the correct later commercial shape for non-subscriber
+/ one-time PDF or GL conversion — it needs separate commercial infrastructure
+beyond today’s extraction engine. See [`product-roadmap.md`](product-roadmap.md)
+§5 Phase 3 monetization notes.
+
 The trusted Product 1 engine already starts at a **trial balance**. Practices
 do not always have a clean xlsx/csv TB. Two widening steps complete the path
 from whatever raw data they have into that same engine:
