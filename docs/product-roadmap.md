@@ -311,6 +311,56 @@ as speculative platform work, do not dilute Product 1 sellability chasing them,
 and do not blur Product 2’s statutory legal gate into these Product 1–adjacent
 ideas.
 
+### 6. Long-term — transaction-level GL risk / fraud analytics (NOT intake; NOT next)
+
+**Status:** captured as a **distinct, long-term future consideration only**.
+**Not** scheduled. **Not** a natural follow-on to demand-validated GL→TB
+intake ([§5 Phase 3](#phase-status)). Do not fold this into Upload, Convert,
+or “messy GL” hardening work.
+
+**What it would be (if ever pursued):** genuine **audit / forensic-accounting**
+capability over transaction-level general-ledger data — for example:
+
+- Timing anomalies (weekend / period-end / unusual-hour posting patterns)
+- Benford’s Law digit analysis
+- Duplicate / near-duplicate transaction detection
+- Keyword screening on narratives
+- Statistical outliers on amount / velocity / account pairs
+- ML risk scoring across those signals
+
+That is a **real, substantial, specialized** product surface — analysis of
+*transactions for risk and fraud indicators* — not “another mode” of GL→TB
+conversion (which only buckets movements into a closing trial balance for the
+existing Product 1 engine).
+
+**Why it is separated from GL→TB:**
+
+| GL → TB (intake, §5 Phase 3) | Transaction-level risk / fraud analytics (this §) |
+|------------------------------|---------------------------------------------------|
+| Demand-validated conversion into a TB | Forensic / audit-style investigation tooling |
+| Deterministic bucketing + balance gate | Statistical / ML judgement over raw lines |
+| Feeds Product 1 internal-review statements | Implies assurance / fraud-detection posture |
+| Free in-flow Upload for subscribers | Would be its own capability (and liability) |
+
+**Liability boundary (same care held all session):** Kastree is explicitly
+positioned as **not an audit tool**. Shipping fraud / forensic analytics
+crosses that boundary — same class of risk already protected for Product 2
+(statutory) and for any “assurance-sounding” Product 1 language. Treating
+this as a polish item on GL intake would be a category error.
+
+**Hard gate before any design work:** **dedicated legal review** of its own
+(not reused Product 1 disclaimers, not the Product 2 filing gate by
+analogy). Counsel must address whether — and under what framing,
+disclaimers, and liability structure — a SaaS product may offer
+transaction-level risk / fraud analytics to accounting practices without
+being held out as an audit or forensic tool. **No wireframes, schemas, or
+spikes until that review exists.**
+
+**Sequencing:** correctly placed **well behind** (1) Product 1 sell-and-learn
+validation with real customers, and (2) even Product 2 (statutory reports)
+after its own legal gate. Do not pull forward because GL files are now in
+the product.
+
 ---
 
 ## Sequencing note
@@ -322,7 +372,8 @@ ideas.
 | **Product 2 (Statutory)** | Paused — legal consultation gate in [`tracked-gaps.md`](tracked-gaps.md). Only separate product. |
 | **Scenario / forecast / budget** | Captured; large architecture; internal-only; not casual. |
 | **Smaller items** | Captured in the table above; demand-gated. |
-| **Future considerations (research)** | Captured in §5. **Intake Completion Initiative:** prospect-validated (2026-09-08); **Phase 1 PDF-TB = DONE** (built, tested clean/messy/OCR, review gate safety-proven); **Phase 3 GL→TB remains unscheduled** pending separate real GL demand. |
+| **Future considerations (research)** | Captured in §5. **Intake Completion Initiative:** prospect-validated (2026-09-08); **Phase 1 PDF-TB = DONE** (built, tested clean/messy/OCR, review gate safety-proven); **Phase 3 GL→TB** built in-flow (2026-09-09) — conversion only, not analytics. |
+| **GL risk / fraud analytics (§6)** | **Long-term only.** Distinct from GL→TB. Forensic/audit territory; **dedicated legal review before any design.** Behind Product 1 validation and Product 2. |
 
 **Nothing in “Future directions” is on an immediate build schedule.** Sell and
 learn from Product 1 first.
