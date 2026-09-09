@@ -60,12 +60,17 @@ class Settings(BaseSettings):
     stripe_price_id_starter: str | None = None
     stripe_price_id_pro: str | None = None
     stripe_price_id_scale: str | None = None
+    # One-time Kastree Convert (€19) — optional; Checkout falls back to price_data.
+    stripe_price_id_convert: str | None = None
 
     # Public site origin for Stripe Checkout success/cancel redirects.
     frontend_base_url: str = "https://www.kastree.ie"
 
     # Public POST /waitlist — per-IP cap (in-memory, process-local).
     waitlist_rate_limit_per_ip_per_hour: int = 10
+    # Public Convert tool rate limits (stricter extract — OCR cost).
+    convert_extract_rate_limit_per_ip_per_hour: int = 5
+    convert_checkout_rate_limit_per_ip_per_hour: int = 10
 
     # Resend — waitlist confirmation + founder notification emails (optional).
     resend_api_key: str | None = None

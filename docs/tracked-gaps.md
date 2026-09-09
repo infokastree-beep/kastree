@@ -991,17 +991,15 @@ render + Tesseract). Clean extract never creates a `trial_balances` row;
 mapping-not-standalone, and Phase 3 hybrid monetization notes live in
 [`product-roadmap.md`](product-roadmap.md) §5 (Intake Completion Initiative).
 
-**Phase 3 (GL → TB conversion) remains correctly unscheduled** — pending a
-**separate** real GL demand signal. Do **not** start Phase 3 on the PDF-TB ask
-alone.
+**Status:** Phase 1 PDF-TB intake **DONE**. Standalone **Kastree Convert**
+(Solutions → Convert, €19 one-time Checkout, Excel download) is the parallel
+commercial surface — see [`solutions-convert-design.md`](solutions-convert-design.md).
+Subscriber Upload remains untouched. **Phase 3 (GL → TB) remains unscheduled.**
 
-**Eventual design (already the roadmap intent — not built now):** hybrid
-surfaces. Subscriber **Upload-flow** integration stays as-is. A genuinely
-**separate standalone product** (own **Solutions** header entry, own one-time
-Checkout, own delivery) is the correct later commercial shape for non-subscriber
-/ one-time PDF or GL conversion — it needs separate commercial infrastructure
-beyond today’s extraction engine. See [`product-roadmap.md`](product-roadmap.md)
-§5 Phase 3 monetization notes.
+**Eventual design:** hybrid surfaces. Subscriber **Upload-flow** integration
+stays as-is. Standalone Convert (own **Solutions** entry, own one-time Checkout,
+own delivery) is the separate commercial shape for non-subscriber / one-time
+PDF TB conversion.
 
 The trusted Product 1 engine already starts at a **trial balance**. Practices
 do not always have a clean xlsx/csv TB. Two widening steps complete the path

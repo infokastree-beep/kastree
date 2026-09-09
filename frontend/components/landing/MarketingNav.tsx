@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { SignInNavLink } from "@/components/auth/SignInNavLink";
 import { MarketingBrandLink } from "@/components/landing/MarketingBrandLink";
 import { clerkReady } from "@/lib/clerk";
@@ -13,8 +14,32 @@ const NAV_LINKS = [
   { href: "/contact", label: "Contact" },
 ] as const;
 
+const SOLUTIONS_LINKS = [
+  { href: "/solutions/convert", label: "Convert" },
+] as const;
+
 export function MarketingNav() {
   const { isSignedIn } = useAuth();
+  const [solutionsOpen, setSolutionsOpen] = useState(false);
+  const solutionsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!solutionsOpen) return;
+    const onPointer = (event: MouseEvent) => {
+      if (!solutionsRef.current?.contains(event.target as Node)) {
+        setSolutionsOpen(false);
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSolutionsOpen(false);
+    };
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [solutionsOpen]);
 
   return (
     <header className="border-b border-line/80 bg-surface-elevated/90 backdrop-blur-sm">
@@ -22,6 +47,35 @@ export function MarketingNav() {
         <div className="flex items-center gap-6">
           <MarketingBrandLink />
           <nav className="hidden items-center gap-5 sm:flex">
+            <div className="relative" ref={solutionsRef}>
+              <button
+                type="button"
+                className="text-sm font-medium text-ink-secondary underline-offset-4 transition-colors hover:text-accent hover:underline"
+                aria-expanded={solutionsOpen}
+                aria-haspopup="menu"
+                onClick={() => setSolutionsOpen((open) => !open)}
+              >
+                Solutions
+              </button>
+              {solutionsOpen ? (
+                <div
+                  role="menu"
+                  className="absolute left-0 top-full z-20 mt-2 min-w-[11rem] rounded border border-line bg-surface-elevated py-1 shadow-sm"
+                >
+                  {SOLUTIONS_LINKS.map((link) => (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      role="menuitem"
+                      className="block px-3 py-2 text-sm text-ink-secondary hover:bg-surface hover:text-accent"
+                      onClick={() => setSolutionsOpen(false)}
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
+                </div>
+              ) : null}
+            </div>
             {NAV_LINKS.map((link) => (
               <Link
                 key={link.href}
@@ -35,6 +89,12 @@ export function MarketingNav() {
         </div>
         {clerkReady ? (
           <div className="flex items-center gap-4 text-sm">
+            <Link
+              href="/solutions/convert"
+              className="font-medium text-ink-secondary underline-offset-4 transition-colors hover:text-accent hover:underline sm:hidden"
+            >
+              Convert
+            </Link>
             <Link
               href="/pricing"
               className="font-medium text-ink-secondary underline-offset-4 transition-colors hover:text-accent hover:underline sm:hidden"

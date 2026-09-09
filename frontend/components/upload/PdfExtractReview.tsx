@@ -16,6 +16,8 @@ type PdfExtractReviewProps = {
   method: string;
   warnings: string[];
   busy?: boolean;
+  confirmLabel?: string;
+  busyLabel?: string;
   onConfirm: (rows: EditableExtractedRow[]) => void;
   onCancel: () => void;
 };
@@ -64,6 +66,8 @@ export function PdfExtractReview({
   method,
   warnings,
   busy = false,
+  confirmLabel = "Confirm and continue",
+  busyLabel = "Uploading…",
   onConfirm,
   onCancel,
 }: PdfExtractReviewProps) {
@@ -204,7 +208,7 @@ export function PdfExtractReview({
           onClick={() => onConfirm(draft)}
           data-testid="pdf-extract-confirm"
         >
-          {busy ? "Uploading…" : "Confirm and continue"}
+          {busy ? busyLabel : confirmLabel}
         </button>
       </div>
     </div>

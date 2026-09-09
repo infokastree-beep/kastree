@@ -215,22 +215,19 @@ are unchanged by this note.)
 **Mapping is not a standalone add-on.** Account mapping is **core subscription
 value** — part of the Product 1 loop, not sellable alone as an intake upsell.
 
-**Eventual hybrid monetization (if / when built — not now):** two surfaces,
+**Eventual hybrid monetization (built for Convert TB slice):** two surfaces,
 not one:
 
 1. **In-flow (subscribers)** — today’s Upload-path integration (PDF-TB extract →
    review → existing pipeline; later GL→TB if Phase 3 ships). Stays as-is for
    subscribers; do **not** rip it out or replace it with a separate product UX.
-2. **Standalone product (non-subscribers / one-time buyers)** — genuinely
-   separate commercial surface: own entry point under a **Solutions** header,
-   own **one-time Stripe Checkout**, own delivery (downloadable structured
-   output), leaving the subscriber Upload flow untouched. Requires real,
-   separate commercial infrastructure beyond today’s proven extraction engine —
-   not a thin wrapper on `/upload`.
+2. **Standalone product (non-subscribers / one-time buyers)** — **Kastree
+   Convert** at `/solutions/convert`: own **Solutions** header entry, own
+   **one-time Stripe Checkout (€19)**, own Excel download delivery. Reuses Phase 1
+   extraction; does not create `trial_balances`. Design:
+   [`solutions-convert-design.md`](solutions-convert-design.md).
 
-Pricing, packaging, and Solutions IA deferred until there is separate commercial
-demand to justify that infrastructure. **Do not build the standalone Checkout /
-delivery path now.**
+GL→TB inside Convert remains Phase 3 / unscheduled.
 
 **Do not** collapse PDF tools and GL tools into unrelated tickets. **Do not**
 start Phase 3 as speculative platform work — Phase 1 is done; Phase 3 stays
