@@ -974,14 +974,13 @@ exceptions + seed maintenance).
 
 ## Intake completeness — PDF-TB and GL→TB (Intake Completion Initiative)
 
-**Status:** not built this session. **Demand validated (2026-09-08):** a prospect
-specifically requested PDF trial balance and general ledger support. Full
-framing, Phase 1 vs Phase 3 priority, mapping-not-standalone, and Phase 3
-hybrid monetization notes live in
+**Status:** **Phase 1 (PDF-TB) shipped** (upload selector → `POST /trial-balances/extract-pdf`
+→ editable review → CSV handoff into unchanged `/upload`). Extraction:
+`pdfplumber` (native-text tables) + OCR fallback (PyMuPDF render + Tesseract).
+**Demand validated (2026-09-08).** Full framing, Phase 1 vs Phase 3 priority,
+mapping-not-standalone, and Phase 3 hybrid monetization notes live in
 [`product-roadmap.md`](product-roadmap.md) §5 (Intake Completion Initiative).
-Companion **technical MVP spec** and **business proposal** already detail the
-initiative. **Next session:** consider scheduling **Phase 1 (PDF-TB only)** —
-do not start Phase 3 until Phase 1 ships and GL demand is separately confirmed.
+**Do not start Phase 3** until GL demand is separately confirmed.
 
 The trusted Product 1 engine already starts at a **trial balance**. Practices
 do not always have a clean xlsx/csv TB. Two widening steps complete the path

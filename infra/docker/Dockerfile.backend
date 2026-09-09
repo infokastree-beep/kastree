@@ -3,7 +3,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# WeasyPrint PDF export (libcairo, Pango, GDK-Pixbuf).
+# WeasyPrint PDF export (libcairo, Pango, GDK-Pixbuf) + Phase 1 PDF-TB OCR.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2 \
     libpango-1.0-0 \
@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgdk-pixbuf-2.0-0 \
     libffi-dev \
     shared-mime-info \
+    tesseract-ocr \
+    tesseract-ocr-eng \
  && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt .

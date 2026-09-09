@@ -26,7 +26,8 @@ sudo apt-get install -y -qq \
   postgresql postgresql-contrib \
   python3-venv python3-pip \
   libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 \
-  libffi-dev shared-mime-info
+  libffi-dev shared-mime-info \
+  tesseract-ocr tesseract-ocr-eng
 
 # Detect the installed PostgreSQL major version (e.g. 16).
 PG_VER="$(ls /usr/lib/postgresql/ | sort -n | tail -1)"

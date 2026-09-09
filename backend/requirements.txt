@@ -20,6 +20,9 @@ openai==1.57.4
 # Excel / PDF
 openpyxl==3.1.5
 weasyprint==63.1
+pdfplumber==0.11.10
+pymupdf==1.26.7
+pytesseract==0.3.13
 
 # Auth
 clerk-backend-api==1.7.0

@@ -20,10 +20,16 @@ import {
   writePreferredPriorTbId,
 } from "@/lib/prior-period";
 import { estimateCsvRowCount, formatBytes, formatDate } from "@/lib/utils";
+import {
+  extractedRowsToCsvFile,
+  PdfExtractReview,
+  type EditableExtractedRow,
+} from "@/components/upload/PdfExtractReview";
 import type {
   ClientListResponse,
   CompanyListResponse,
   ICompany,
+  PdfTbExtractResponse,
   PriorPeriodPreview,
   TrialBalanceListResponse,
   UploadAcceptedResponse,
@@ -34,8 +40,13 @@ const NEW_COMPANY_VALUE = "__new_company__";
 /** Sentinel: follow auto-detected prior (most recent period before period end). */
 const PRIOR_AUTO_VALUE = "__auto__";
 
-function isAcceptedFile(file: File): boolean {
+type UploadSourceKind = "excel_csv" | "pdf";
+
+function isAcceptedFile(file: File, kind: UploadSourceKind): boolean {
   const lower = file.name.toLowerCase();
+  if (kind === "pdf") {
+    return lower.endsWith(".pdf");
+  }
   return ACCEPTED_UPLOAD_EXTENSIONS.some((ext) => lower.endsWith(ext));
 }
 
@@ -71,6 +82,8 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
 
   const [file, setFile] = useState<File | null>(null);
   const [rowCount, setRowCount] = useState<number | null>(null);
+  const [uploadKind, setUploadKind] = useState<UploadSourceKind>("excel_csv");
+  const [pdfExtract, setPdfExtract] = useState<PdfTbExtractResponse | null>(null);
   const [periodEnd, setPeriodEnd] = useState(() => {
     const d = new Date();
     d.setDate(0);
@@ -268,11 +281,12 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
   });
 
   const uploadMutation = useMutation({
-    mutationFn: async () => {
-      if (!file) throw new Error("Choose a .xlsx or .csv file first");
+    mutationFn: async (uploadFile?: File) => {
+      const nextFile = uploadFile ?? file;
+      if (!nextFile) throw new Error("Choose a file first");
       if (!companyId) throw new Error("Select a company before uploading");
       const form = new FormData();
-      form.append("file", file);
+      form.append("file", nextFile);
       form.append("company_id", companyId);
       form.append("period_end", periodEnd);
       form.append("currency", currency);
@@ -291,27 +305,52 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
     },
   });
 
-  const onPickFile = useCallback(async (next: File | null) => {
-    setLocalError(null);
-    setRowCount(null);
-    if (!next) {
-      setFile(null);
-      return;
-    }
-    if (!isAcceptedFile(next)) {
-      setLocalError("Only .xlsx and .csv files are accepted.");
-      setFile(null);
-      return;
-    }
-    if (next.size > MAX_UPLOAD_BYTES) {
-      setLocalError("File exceeds the 50MB limit.");
-      setFile(null);
-      return;
-    }
-    setFile(next);
-    const estimated = await estimateCsvRowCount(next);
-    setRowCount(estimated);
-  }, []);
+  const extractPdfMutation = useMutation({
+    mutationFn: async (pdfFile: File) => {
+      const form = new FormData();
+      form.append("file", pdfFile);
+      return apiFetch<PdfTbExtractResponse>("/trial-balances/extract-pdf", {
+        method: "POST",
+        getToken,
+        body: form,
+      });
+    },
+    onSuccess: (data) => {
+      setPdfExtract(data);
+    },
+  });
+
+  const onPickFile = useCallback(
+    async (next: File | null) => {
+      setLocalError(null);
+      setRowCount(null);
+      setPdfExtract(null);
+      if (!next) {
+        setFile(null);
+        return;
+      }
+      if (!isAcceptedFile(next, uploadKind)) {
+        setLocalError(
+          uploadKind === "pdf"
+            ? "Only .pdf files are accepted for PDF trial balances."
+            : "Only .xlsx and .csv files are accepted.",
+        );
+        setFile(null);
+        return;
+      }
+      if (next.size > MAX_UPLOAD_BYTES) {
+        setLocalError("File exceeds the 50MB limit.");
+        setFile(null);
+        return;
+      }
+      setFile(next);
+      if (uploadKind === "excel_csv") {
+        const estimated = await estimateCsvRowCount(next);
+        setRowCount(estimated);
+      }
+    },
+    [uploadKind],
+  );
 
   const onDrop = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
@@ -386,20 +425,83 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
     (uploadMutation.error instanceof Error
       ? uploadMutation.error.message
       : null) ||
+    (extractPdfMutation.error instanceof Error
+      ? extractPdfMutation.error.message
+      : null) ||
     (clientsQuery.error instanceof Error ? clientsQuery.error.message : null) ||
     (initialCompanyQuery.error instanceof Error
       ? initialCompanyQuery.error.message
       : null);
+
+  const onConfirmPdfExtract = (rows: EditableExtractedRow[]) => {
+    const csvFile = extractedRowsToCsvFile(rows);
+    setFile(csvFile);
+    setPdfExtract(null);
+    setUploadKind("excel_csv");
+    uploadMutation.mutate(csvFile);
+  };
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Upload trial balance</h1>
         <p className="mt-1 text-sm text-stone-600">
-          Drop an Excel or CSV file, then parse and map accounts.
+          Upload Excel/CSV, or a PDF trial balance for review before mapping.
         </p>
       </div>
 
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium text-stone-800">
+          What are you uploading?
+        </legend>
+        <div className="flex flex-col gap-2 sm:flex-row sm:gap-6">
+          <label className="flex items-center gap-2 text-sm text-stone-700">
+            <input
+              type="radio"
+              name="upload-kind"
+              checked={uploadKind === "excel_csv"}
+              onChange={() => {
+                setUploadKind("excel_csv");
+                setFile(null);
+                setPdfExtract(null);
+                setLocalError(null);
+                setRowCount(null);
+              }}
+            />
+            Trial balance (Excel/CSV)
+          </label>
+          <label className="flex items-center gap-2 text-sm text-stone-700">
+            <input
+              type="radio"
+              name="upload-kind"
+              checked={uploadKind === "pdf"}
+              onChange={() => {
+                setUploadKind("pdf");
+                setFile(null);
+                setPdfExtract(null);
+                setLocalError(null);
+                setRowCount(null);
+              }}
+            />
+            Trial balance (PDF)
+          </label>
+        </div>
+      </fieldset>
+
+      {pdfExtract ? (
+        <PdfExtractReview
+          rows={pdfExtract.rows}
+          method={pdfExtract.method}
+          warnings={pdfExtract.warnings}
+          busy={uploadMutation.isPending}
+          onConfirm={onConfirmPdfExtract}
+          onCancel={() => {
+            setPdfExtract(null);
+            extractPdfMutation.reset();
+          }}
+        />
+      ) : (
+        <>
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -411,13 +513,21 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
           dragOver ? "border-stone-900 bg-stone-100" : "border-stone-300 bg-white"
         }`}
       >
-        <p className="text-sm font-medium">Drag and drop .xlsx or .csv</p>
+        <p className="text-sm font-medium">
+          {uploadKind === "pdf"
+            ? "Drag and drop a .pdf trial balance"
+            : "Drag and drop .xlsx or .csv"}
+        </p>
         <p className="mt-1 text-xs text-stone-500">or</p>
         <label className="mt-3 inline-block cursor-pointer rounded bg-stone-900 px-3 py-2 text-sm font-medium text-white">
           Choose file
           <input
             type="file"
-            accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+            accept={
+              uploadKind === "pdf"
+                ? ".pdf,application/pdf"
+                : ".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+            }
             className="hidden"
             onChange={(e) => void onPickFile(e.target.files?.[0] ?? null)}
           />
@@ -437,14 +547,22 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
                 Row count
               </dt>
               <dd>
-                {rowCount !== null
-                  ? rowCount
-                  : "Available after parse (xlsx)"}
+                {uploadKind === "pdf"
+                  ? "After extraction review"
+                  : rowCount !== null
+                    ? rowCount
+                    : "Available after parse (xlsx)"}
               </dd>
             </div>
             <div>
               <dt className="text-xs uppercase tracking-wide text-stone-400">Type</dt>
-              <dd>{file.name.toLowerCase().endsWith(".csv") ? "CSV" : "Excel"}</dd>
+              <dd>
+                {uploadKind === "pdf"
+                  ? "PDF"
+                  : file.name.toLowerCase().endsWith(".csv")
+                    ? "CSV"
+                    : "Excel"}
+              </dd>
             </div>
           </dl>
         </div>
@@ -642,12 +760,32 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
 
       <button
         type="button"
-        disabled={!file || !companyId || uploadMutation.isPending}
-        onClick={() => uploadMutation.mutate()}
+        disabled={
+          !file ||
+          !companyId ||
+          uploadMutation.isPending ||
+          extractPdfMutation.isPending
+        }
+        onClick={() => {
+          if (uploadKind === "pdf") {
+            if (!file) return;
+            extractPdfMutation.mutate(file);
+            return;
+          }
+          uploadMutation.mutate(undefined);
+        }}
         className="rounded bg-stone-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {uploadMutation.isPending ? "Uploading…" : "Upload and Parse"}
+        {uploadKind === "pdf"
+          ? extractPdfMutation.isPending
+            ? "Extracting…"
+            : "Extract and review"
+          : uploadMutation.isPending
+            ? "Uploading…"
+            : "Upload and Parse"}
       </button>
+        </>
+      )}
     </div>
   );
 }

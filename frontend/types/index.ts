@@ -97,6 +97,23 @@ export interface UploadAcceptedResponse {
   message: string;
 }
 
+/** Phase 1 PDF-TB extract — review UI before normal upload. */
+export interface ExtractedTbRow {
+  account_code: string;
+  account_name: string;
+  debit: string;
+  credit: string;
+  row_index: number;
+}
+
+export interface PdfTbExtractResponse {
+  rows: ExtractedTbRow[];
+  method: "pdfplumber_table" | "pdfplumber_words" | "ocr_tesseract";
+  page_count: number;
+  warnings: string[];
+  message: string;
+}
+
 /** Read-only preview of which prior TB variance auto-detection would pick. */
 export interface PriorPeriodPreview {
   company_id: string;

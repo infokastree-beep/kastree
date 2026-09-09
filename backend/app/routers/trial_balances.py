@@ -46,8 +46,10 @@ from app.services.statements import (
 from app.services.comparative_statements import merge_comparative_face_lines
 from app.services.archival import archive_trial_balance_user_deleted
 from app.schemas.materiality import MaterialitySuggestionResponse
+from app.schemas.pdf_extract import ExtractedTbRowOut, PdfTbExtractResponse
 from app.services.materiality import suggest_materiality
 from app.services.ownership import get_owned_company
+from app.services.pdf_tb_extract import PdfTbExtractError, extract_trial_balance_from_pdf
 from app.services.performance import (
     METRIC_CODES,
     aggregate_performance_periods,
@@ -402,6 +404,54 @@ def _progress_for_tb(tb: TrialBalance, jobs: list[ProcessingJob]) -> tuple[int, 
 
 
 # --- routes ------------------------------------------------------------------
+
+
+@router.post(
+    "/extract-pdf",
+    status_code=status.HTTP_200_OK,
+    response_model=PdfTbExtractResponse,
+)
+async def extract_pdf_trial_balance(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    file: Annotated[UploadFile, File()],
+) -> PdfTbExtractResponse:
+    """Phase 1: extract TB rows from a PDF for review — does not create a TB.
+
+    Auth required (same as upload). No company/period yet — the user confirms
+    the table in the UI, then submits a generated CSV through ``/upload``.
+    """
+    del auth  # auth gate only — extraction is not org-scoped until upload
+    filename = file.filename or "trial-balance.pdf"
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only .pdf files are accepted on this endpoint",
+        )
+    content = await file.read()
+    if len(content) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File exceeds 50MB limit")
+    try:
+        result = extract_trial_balance_from_pdf(content)
+    except PdfTbExtractError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    return PdfTbExtractResponse(
+        rows=[
+            ExtractedTbRowOut(
+                account_code=row.account_code,
+                account_name=row.account_name,
+                debit=row.debit,
+                credit=row.credit,
+                row_index=row.row_index,
+            )
+            for row in result.rows
+        ],
+        method=result.method,
+        page_count=result.page_count,
+        warnings=result.warnings,
+    )
 
 
 @router.post(
