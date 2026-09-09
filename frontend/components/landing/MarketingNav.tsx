@@ -46,12 +46,18 @@ export function MarketingNav() {
   }, [solutionsOpen]);
 
   return (
-    // Same stacking class as CopilotPanel vs Statements switcher: backdrop-blur
-    // creates a stacking context. Without an explicit z-index the whole header
-    // (including the overflowing Solutions menu) sits under later page layers
-    // (hero `position:relative`), so menu text looks frosted/blurred.
-    <header className="relative z-50 border-b border-line/80 bg-surface-elevated/90 backdrop-blur-sm">
-      <div className="mx-auto flex max-w-content items-center justify-between gap-4 px-6 py-5 sm:px-8">
+    // Same stacking class as CopilotPanel vs Statements switcher:
+    // 1) Header needs an explicit z-index so the overflowing menu sits above
+    //    later page layers (hero `position:relative`).
+    // 2) backdrop-blur must NOT wrap the menu — Chrome composites overflowing
+    //    descendants of a backdrop-filter element as a frosted smear. Keep blur
+    //    on a clipped inset layer; interactive chrome (and the menu) stay outside.
+    <header className="relative z-50 border-b border-line/80">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-surface-elevated/90 backdrop-blur-sm"
+      />
+      <div className="relative z-10 mx-auto flex max-w-content items-center justify-between gap-4 px-6 py-5 sm:px-8">
         <div className="flex items-center gap-6">
           <MarketingBrandLink />
           <nav className="hidden items-center gap-5 sm:flex">
