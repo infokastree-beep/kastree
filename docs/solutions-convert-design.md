@@ -130,10 +130,11 @@ that denies normal app roles (service role / backend-only access).
 
 | Surface | Funnel behaviour |
 |---------|------------------|
-| Marketing nav/footer | May link **into** Convert (`Solutions → Convert`) |
+| Marketing nav/footer | May link **into** Convert (`Solutions → Convert Trial Balance (PDF to Excel)`) |
 | Convert page (during flow) | Small links to `/` (home) and `/pricing` so visitors discover the platform before paying |
 | Convert success (after pay + download) | Soft upsell to `/sign-up` only — no forced account |
 | Dashboard `/upload` | **Must not** link to Convert — subscribers already have the integrated, free extract path |
+| Solutions → Financial Intelligence Platform | Links to `/` (product landing), not `/pricing` — Pricing stays its own top-level nav item |
 
 Success copy:
 

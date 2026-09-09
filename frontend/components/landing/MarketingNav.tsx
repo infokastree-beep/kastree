@@ -16,10 +16,13 @@ const NAV_LINKS = [
 
 const SOLUTIONS_LINKS = [
   {
-    href: "/pricing",
+    href: "/",
     label: "Financial Intelligence Platform",
   },
-  { href: "/solutions/convert", label: "Convert" },
+  {
+    href: "/solutions/convert",
+    label: "Convert Trial Balance (PDF to Excel)",
+  },
 ] as const;
 
 export function MarketingNav() {
@@ -74,7 +77,7 @@ export function MarketingNav() {
               {solutionsOpen ? (
                 <div
                   role="menu"
-                  className="absolute left-0 top-full z-50 mt-2 min-w-[18rem] rounded border border-line bg-surface-elevated py-1 shadow-sm"
+                  className="absolute left-0 top-full z-50 mt-2 min-w-[20rem] rounded border border-line bg-surface-elevated py-1 shadow-sm"
                 >
                   {SOLUTIONS_LINKS.map((link) => (
                     <Link
@@ -107,7 +110,7 @@ export function MarketingNav() {
               href="/solutions/convert"
               className="font-medium text-ink-secondary underline-offset-4 transition-colors hover:text-accent hover:underline sm:hidden"
             >
-              Convert
+              Convert TB
             </Link>
             <Link
               href="/pricing"

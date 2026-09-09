@@ -2,7 +2,7 @@ import Link from "next/link";
 import { APP_NAME, DISCLAIMER_TEXT } from "@/lib/constants";
 
 const FOOTER_LINKS = [
-  { href: "/solutions/convert", label: "Convert" },
+  { href: "/solutions/convert", label: "Convert Trial Balance" },
   { href: "/privacy", label: "Privacy" },
   { href: "/terms", label: "Terms" },
   { href: "/pricing", label: "Pricing" },

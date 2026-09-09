@@ -145,10 +145,10 @@ export function ConvertTool() {
     <div className="mx-auto max-w-3xl space-y-8 px-6 py-12 sm:px-8">
       <div>
         <p className="text-sm font-medium uppercase tracking-wide text-ink-secondary">
-          Solutions · Convert
+          Solutions · Convert Trial Balance
         </p>
         <h1 className="mt-2 font-display text-3xl tracking-tight text-ink sm:text-4xl">
-          Convert a trial balance
+          Convert trial balance (PDF to Excel)
         </h1>
         <p className="mt-3 max-w-2xl text-base text-ink-secondary">
           Upload a PDF trial balance, review the extracted rows, pay once (€19),

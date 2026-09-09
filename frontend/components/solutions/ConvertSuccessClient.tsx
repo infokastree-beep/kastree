@@ -108,7 +108,7 @@ export function ConvertSuccessClient() {
         ) : null}
         <p className="text-sm">
           <Link href="/solutions/convert" className="underline">
-            Convert another file
+            Convert another trial balance
           </Link>
         </p>
       </main>

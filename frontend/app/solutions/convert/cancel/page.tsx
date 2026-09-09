@@ -15,15 +15,15 @@ export default function ConvertCancelPage() {
       <main className="mx-auto max-w-xl space-y-4 px-6 py-16 sm:px-8">
         <h1 className="font-display text-3xl tracking-tight">Checkout cancelled</h1>
         <p className="text-ink-secondary">
-          No charge was made. You can return to Convert and try again whenever
-          you are ready.
+          No charge was made. You can return to Convert Trial Balance and try
+          again whenever you are ready.
         </p>
         <div className="flex flex-wrap items-center gap-4">
           <Link
             href="/solutions/convert"
             className="inline-block rounded bg-accent px-4 py-2 text-sm font-medium text-accent-foreground"
           >
-            Back to Convert
+            Back to Convert Trial Balance
           </Link>
           <Link
             href="/pricing"

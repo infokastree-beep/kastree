@@ -5,7 +5,7 @@ import { ConvertTool } from "@/components/solutions/ConvertTool";
 import { APP_NAME } from "@/lib/constants";
 
 export const metadata: Metadata = {
-  title: `Convert trial balance — ${APP_NAME}`,
+  title: `Convert trial balance (PDF to Excel) — ${APP_NAME}`,
   description:
     "One-time PDF trial balance conversion to Excel. Review extracted rows, pay €19, download. No account required.",
 };
