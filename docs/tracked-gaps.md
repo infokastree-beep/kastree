@@ -1033,10 +1033,10 @@ straightforward). Correctness around it is the product risk:
   that numbers are always correct; a GL→TB path that fails soft into bad totals
   would undermine the whole product.
 
-**Design carefully before building** — not a quick “sum by code” ship. Still
-correctly sequenced **after** PDF-TB extraction if either is pursued: PDF-TB is
-the genuine smaller intake-format step; GL→TB adds accounting-logic risk on top
-of (for PDF GLs) extraction.
+**Design carefully before building** — not a quick “sum by code” ship. Phase 1
+(PDF-TB) is **DONE**; Phase 3 stays **unscheduled** until separate GL demand is
+confirmed. If built later, GL→TB still adds accounting-logic risk on top of
+(for PDF GLs) extraction.
 
 ## No uptime or error monitoring
 
