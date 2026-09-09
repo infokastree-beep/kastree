@@ -92,19 +92,17 @@ export function ConvertSuccessClient() {
               Download Excel
             </a>
             <div className="rounded border border-line bg-surface-elevated px-4 py-4 text-sm text-ink-secondary">
-              <p className="font-medium text-ink">
-                Want this to go straight into full statements?
+              <p>
+                Want this to go straight into full statements, variance, and AI
+                commentary?{" "}
+                <Link
+                  href="/sign-up"
+                  className="font-medium text-accent underline underline-offset-2"
+                >
+                  Create a free Kastree account
+                </Link>
+                .
               </p>
-              <p className="mt-1">
-                Create a free Kastree account to map accounts, generate SOPL /
-                SOFP, variance, and AI commentary.
-              </p>
-              <Link
-                href="/sign-up"
-                className="mt-3 inline-block font-medium text-accent underline"
-              >
-                Create a Kastree account
-              </Link>
             </div>
           </div>
         ) : null}

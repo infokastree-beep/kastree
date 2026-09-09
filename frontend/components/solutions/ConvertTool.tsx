@@ -155,6 +155,22 @@ export function ConvertTool() {
           and download structured Excel. No Kastree account required. General
           ledger conversion is coming later.
         </p>
+        <p className="mt-3 text-sm text-ink-secondary">
+          Looking for the full Financial Intelligence Platform?{" "}
+          <Link
+            href="/pricing"
+            className="font-medium text-accent underline underline-offset-2"
+          >
+            See pricing
+          </Link>
+          {" · "}
+          <Link
+            href="/"
+            className="font-medium text-accent underline underline-offset-2"
+          >
+            Kastree home
+          </Link>
+        </p>
       </div>
 
       {step === "upload" || step === "redirecting" ? (
@@ -222,11 +238,9 @@ export function ConvertTool() {
           </button>
 
           <p className="text-xs text-ink-secondary">
-            Subscribers: the in-app{" "}
-            <Link href="/upload" className="underline">
-              Upload
-            </Link>{" "}
-            flow is unchanged — Convert is a separate one-time tool.
+            Already a Kastree subscriber? Use the in-app Upload flow — PDF
+            extract and statements are included there at no extra charge.
+            Convert is a separate one-time tool for visitors without an account.
           </p>
         </>
       ) : null}

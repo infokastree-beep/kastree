@@ -18,12 +18,20 @@ export default function ConvertCancelPage() {
           No charge was made. You can return to Convert and try again whenever
           you are ready.
         </p>
-        <Link
-          href="/solutions/convert"
-          className="inline-block rounded bg-accent px-4 py-2 text-sm font-medium text-accent-foreground"
-        >
-          Back to Convert
-        </Link>
+        <div className="flex flex-wrap items-center gap-4">
+          <Link
+            href="/solutions/convert"
+            className="inline-block rounded bg-accent px-4 py-2 text-sm font-medium text-accent-foreground"
+          >
+            Back to Convert
+          </Link>
+          <Link
+            href="/pricing"
+            className="text-sm font-medium text-accent underline underline-offset-2"
+          >
+            See Kastree pricing
+          </Link>
+        </div>
       </main>
       <MarketingFooter />
     </div>

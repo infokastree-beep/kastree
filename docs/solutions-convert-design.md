@@ -124,11 +124,20 @@ that denies normal app roles (service role / backend-only access).
 - Max upload 50MB; PDF magic check; same Phase 1 fail-closed extract errors.  
 - Paid download: Stripe session must be `paid` and bound to conversion id.
 
-## Soft upsell (post-download)
+## Soft upsell & one-way funnel
 
-Copy on success page only — no forced account:
+**Direction:** Convert → Financial Intelligence Platform. Not the reverse.
 
-> Want this to go straight into mapped accounts, statements, and variance?
+| Surface | Funnel behaviour |
+|---------|------------------|
+| Marketing nav/footer | May link **into** Convert (`Solutions → Convert`) |
+| Convert page (during flow) | Small links to `/` (home) and `/pricing` so visitors discover the platform before paying |
+| Convert success (after pay + download) | Soft upsell to `/sign-up` only — no forced account |
+| Dashboard `/upload` | **Must not** link to Convert — subscribers already have the integrated, free extract path |
+
+Success copy:
+
+> Want this to go straight into full statements, variance, and AI commentary?
 > [Create a free Kastree account](/sign-up)
 
 ## Test plan (this session)
@@ -139,3 +148,4 @@ Copy on success page only — no forced account:
 3. E2E: realistic TB PDF → review → Stripe **test-mode** Checkout with
    `4242…` → download xlsx.  
 4. Confirm `UploadForm` / `/trial-balances/extract-pdf` auth path unchanged.
+5. Confirm Upload has no Convert outbound link; Convert success links `/sign-up`.
