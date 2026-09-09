@@ -284,6 +284,12 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
     mutationFn: async (uploadFile?: File) => {
       const nextFile = uploadFile ?? file;
       if (!nextFile) throw new Error("Choose a file first");
+      // Defence in depth: PDFs never enter /upload — only confirmed CSV from review.
+      if (nextFile.name.toLowerCase().endsWith(".pdf")) {
+        throw new Error(
+          "PDF trial balances must be extracted and confirmed in the review step before upload.",
+        );
+      }
       if (!companyId) throw new Error("Select a company before uploading");
       const form = new FormData();
       form.append("file", nextFile);
@@ -767,9 +773,16 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
           extractPdfMutation.isPending
         }
         onClick={() => {
+          // PDF path: extract only. Upload is exclusively via PdfExtractReview confirm.
           if (uploadKind === "pdf") {
             if (!file) return;
             extractPdfMutation.mutate(file);
+            return;
+          }
+          if (file?.name.toLowerCase().endsWith(".pdf")) {
+            setLocalError(
+              "PDF trial balances must be extracted and confirmed before upload.",
+            );
             return;
           }
           uploadMutation.mutate(undefined);

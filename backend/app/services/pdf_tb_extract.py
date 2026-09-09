@@ -35,6 +35,9 @@ MIN_EXTRACTED_ROWS = 3
 # Below this many alphabetic/printable chars across the doc → likely scanned.
 MIN_NATIVE_TEXT_CHARS = 20
 OCR_RENDER_DPI = 200
+# Tesseract degrades on extremely large bitmaps (blank / garbage). Cap the
+# longest side before OCR; scanned A4 at 200dpi is ~1700px wide.
+OCR_MAX_IMAGE_SIDE = 2000
 
 ExtractMethod = Literal["pdfplumber_table", "pdfplumber_words", "ocr_tesseract"]
 
@@ -115,7 +118,7 @@ def extract_trial_balance_from_pdf(content: bytes) -> PdfTbExtractResult:
         ) from exc
 
     warnings.append("Little native text detected — used OCR (scanned PDF fallback).")
-    ocr_rows = _extract_via_ocr(content)
+    ocr_rows, ocr_pages = _extract_via_ocr(content)
     if len(ocr_rows) < MIN_EXTRACTED_ROWS:
         raise PdfTbExtractError(
             "OCR could not find enough trial-balance rows. "
@@ -124,7 +127,7 @@ def extract_trial_balance_from_pdf(content: bytes) -> PdfTbExtractResult:
     return PdfTbExtractResult(
         rows=ocr_rows,
         method="ocr_tesseract",
-        page_count=max(1, len(ocr_rows) // 50),
+        page_count=ocr_pages,
         warnings=warnings,
     )
 
@@ -317,7 +320,13 @@ def _extract_via_words(pages: list[Page]) -> list[ExtractedTBRow]:
     return _rows_from_text_lines(lines)
 
 
-def _extract_via_ocr(content: bytes) -> list[ExtractedTBRow]:
+def _extract_via_ocr(content: bytes) -> tuple[list[ExtractedTBRow], int]:
+    """Render pages and OCR. Returns (rows, page_count).
+
+    Uses Tesseract ``--psm 4`` (single column of variable-size text) first —
+    default OSD often splits Debit/Credit into vertical columns and shreds
+    amounts. Falls back to ``--psm 6`` then word-box line reconstruction.
+    """
     try:
         import fitz  # PyMuPDF
         import pytesseract
@@ -327,20 +336,58 @@ def _extract_via_ocr(content: bytes) -> list[ExtractedTBRow]:
             "OCR dependencies are not installed on this server."
         ) from exc
 
-    lines: list[str] = []
     try:
         doc = fitz.open(stream=content, filetype="pdf")
     except Exception as exc:  # noqa: BLE001
         raise PdfTbExtractError("Could not open PDF for OCR.") from exc
+
+    page_count = len(doc)
+    best_rows: list[ExtractedTBRow] = []
+    best_score = (-1, -1)
+
+    def _consider(rows: list[ExtractedTBRow]) -> None:
+        nonlocal best_rows, best_score
+        coded = sum(1 for row in rows if row.account_code)
+        score = (len(rows), coded)
+        if score > best_score:
+            best_score = score
+            best_rows = rows
+
     try:
         for page in doc:
             pix = page.get_pixmap(dpi=OCR_RENDER_DPI)
             image = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-            text = pytesseract.image_to_string(image)
-            lines.extend(text.splitlines())
+            longest = max(image.size)
+            if longest > OCR_MAX_IMAGE_SIDE:
+                scale = OCR_MAX_IMAGE_SIDE / float(longest)
+                image = image.resize(
+                    (max(1, int(image.width * scale)), max(1, int(image.height * scale))),
+                    Image.Resampling.LANCZOS,
+                )
+            for config in ("--psm 4", "--psm 6"):
+                text = pytesseract.image_to_string(image, config=config)
+                _consider(_rows_from_text_lines(text.splitlines()))
+            # Reconstruct lines from word boxes (handles column-wise OCR).
+            data = pytesseract.image_to_data(
+                image, config="--psm 4", output_type=pytesseract.Output.DICT
+            )
+            buckets: dict[int, list[tuple[int, str]]] = {}
+            n = len(data["text"])
+            for i in range(n):
+                word = str(data["text"][i] or "").strip()
+                if not word:
+                    continue
+                top = int(round(int(data["top"][i]) / 10.0) * 10)
+                left = int(data["left"][i])
+                buckets.setdefault(top, []).append((left, word))
+            reconstructed = [
+                " ".join(w for _, w in sorted(items))
+                for _, items in sorted(buckets.items())
+            ]
+            _consider(_rows_from_text_lines(reconstructed))
     finally:
         doc.close()
-    return _rows_from_text_lines(lines)
+    return best_rows, page_count
 
 
 def _rows_from_text_lines(lines: list[str]) -> list[ExtractedTBRow]:
@@ -348,6 +395,8 @@ def _rows_from_text_lines(lines: list[str]) -> list[ExtractedTBRow]:
     row_index = 0
     for line in lines:
         cleaned = " ".join(line.split())
+        # OCR often inserts a space in decimals: "25000. 00" → "25000.00"
+        cleaned = re.sub(r"(\d)\.\s+(\d{1,2})\b", r"\1.\2", cleaned)
         if not cleaned or _looks_like_totals_row([cleaned]):
             continue
         lower = cleaned.lower()
@@ -376,6 +425,12 @@ _AMOUNT_TOKEN = re.compile(
     r"^\(?-?[£€$]?\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?\)?$|"
     r"^\(?-?[£€$]?\d+(?:\.\d{1,2})?\)?$"
 )
+# Strong money: currency, thousands separator, decimal, or parentheses —
+# excludes bare account codes like "1000".
+_STRONG_MONEY = re.compile(
+    r"[£€$,]|^\(?-?\d+\.\d{1,2}\)?$|^\(.*\)$"
+)
+_LEADING_ACCOUNT_CODE = re.compile(r"^[A-Za-z0-9./-]{2,20}$")
 
 
 def rows_to_csv_bytes(rows: list[ExtractedTBRow]) -> bytes:
@@ -394,6 +449,13 @@ def _csv_escape(value: str) -> str:
     return value
 
 
+def _is_strong_money_token(token: str) -> bool:
+    cleaned = token.replace(" ", "")
+    if not _AMOUNT_TOKEN.match(cleaned):
+        return False
+    return bool(_STRONG_MONEY.search(cleaned))
+
+
 def _parse_text_line(
     line: str,
 ) -> tuple[str, str, Decimal, Decimal] | None:
@@ -401,14 +463,44 @@ def _parse_text_line(
     tokens = line.split()
     if len(tokens) < 2:
         return None
-    amounts: list[tuple[int, Decimal]] = []
-    for i, token in enumerate(tokens):
-        if not _AMOUNT_TOKEN.match(token.replace(" ", "")):
+
+    # Peel a leading account code before amount detection so "1000" is not
+    # mistaken for a monetary amount.
+    code = ""
+    body = tokens
+    if _LEADING_ACCOUNT_CODE.match(tokens[0]) and re.search(r"\d", tokens[0]):
+        if not _is_strong_money_token(tokens[0]):
+            code = tokens[0]
+            body = tokens[1:]
+    if not body:
+        return None
+
+    strong: list[tuple[int, Decimal]] = []
+    weak: list[tuple[int, Decimal]] = []
+    for i, token in enumerate(body):
+        cleaned = token.replace(" ", "")
+        if not _AMOUNT_TOKEN.match(cleaned):
             continue
         try:
-            amounts.append((i, parse_monetary(token)))
+            value = parse_monetary(token)
         except ParseError:
             continue
+        if _is_strong_money_token(token):
+            strong.append((i, value))
+        else:
+            weak.append((i, value))
+
+    # After peeling the account code, bare integers in the body are amounts
+    # (e.g. OCR reading "0.00" as "0000"). Prefer strong money, but fill from
+    # weak so debit/credit pairs still form when OCR is imperfect.
+    if len(strong) >= 2:
+        amounts = strong
+    elif len(strong) == 1:
+        before = [item for item in weak if item[0] < strong[0][0]]
+        after = [item for item in weak if item[0] > strong[0][0]]
+        amounts = before + strong + after
+    else:
+        amounts = weak
     if not amounts:
         return None
     # Use last one or two amount tokens.
@@ -422,16 +514,14 @@ def _parse_text_line(
             debit, credit = balance, Decimal("0")
         else:
             debit, credit = Decimal("0"), abs(balance)
-    head = tokens[:cut]
-    if not head:
-        return None
-    code = ""
-    name_tokens = head
-    if re.match(r"^[A-Za-z0-9./-]{2,20}$", head[0]) and not _AMOUNT_TOKEN.match(head[0]):
-        # Likely account code when alphanumeric and short.
-        if re.search(r"\d", head[0]) or len(head) > 1:
-            code = head[0]
-            name_tokens = head[1:]
+    name_tokens = body[:cut]
+    if not code and name_tokens:
+        if _LEADING_ACCOUNT_CODE.match(name_tokens[0]) and re.search(
+            r"\d", name_tokens[0]
+        ):
+            if not _is_strong_money_token(name_tokens[0]):
+                code = name_tokens[0]
+                name_tokens = name_tokens[1:]
     name = " ".join(name_tokens).strip() or code
     if not name:
         return None
