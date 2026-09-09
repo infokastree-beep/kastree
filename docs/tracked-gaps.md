@@ -18,6 +18,26 @@ see [`product-roadmap.md`](product-roadmap.md).
    tonight’s tests across all four intake surfaces (TB Excel/CSV, TB PDF, GL
    Excel/CSV, GL PDF). Goal: find the next silent correctness failure before a
    client does.
+
+   **Highest-priority sub-case (do this before broader messy-data sweeps):
+   code-normalization safety.** Live probes showed the GL→TB engine can produce
+   a TB that **passes the balance check but is silently mis-bucketed** — the
+   failure mode current safeguards cannot catch, because the arithmetic is
+   correct even when the classification is wrong (same risk shape as the Tier 3
+   mapping bug). Confirmed shapes:
+
+   - **Padding / whitespace variants:** `"1000"` vs `"01000"` (and similar)
+     stay as **separate accounts**; whitespace around codes is stripped today,
+     but zero-padding is not normalized.
+   - **Missing-code splitting:** blank codes become unique `UNCODED-{row}` per
+     line, so the same account name with no code does **not** merge — one real
+     account can shatter into many balanced-looking rows.
+
+   **Priority work before wider messy-data testing:** (a) normalize account
+   codes consistently (strip whitespace / padding rules decided and tested);
+   (b) reconsider whether same-name / missing-code rows should merge (or fail
+   closed for review) instead of silent `UNCODED-N` splits. Only then expand
+   into inconsistent naming, mixed dates, duplicates, rounding, encodings.
 2. **One real Live-mode Stripe payment.** Test-mode Checkout + webhook is
    proven ([Paywall](#paywall--done-2026-09-07)); the final unverified link is
    webhook-driven paid status on a genuine Live charge. Complete one end-to-end
