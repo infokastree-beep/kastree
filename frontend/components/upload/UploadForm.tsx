@@ -28,6 +28,7 @@ import {
 import type {
   ClientListResponse,
   CompanyListResponse,
+  GlConvertResponse,
   ICompany,
   PdfTbExtractResponse,
   PriorPeriodPreview,
@@ -40,14 +41,19 @@ const NEW_COMPANY_VALUE = "__new_company__";
 /** Sentinel: follow auto-detected prior (most recent period before period end). */
 const PRIOR_AUTO_VALUE = "__auto__";
 
-type UploadSourceKind = "excel_csv" | "pdf";
+type UploadSourceKind = "excel_csv" | "pdf" | "gl_excel" | "gl_pdf";
+type OpeningBalanceMode = "A" | "B" | "C";
 
 function isAcceptedFile(file: File, kind: UploadSourceKind): boolean {
   const lower = file.name.toLowerCase();
-  if (kind === "pdf") {
+  if (kind === "pdf" || kind === "gl_pdf") {
     return lower.endsWith(".pdf");
   }
   return ACCEPTED_UPLOAD_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+function isGlKind(kind: UploadSourceKind): boolean {
+  return kind === "gl_excel" || kind === "gl_pdf";
 }
 
 function currencyForCompany(company: ICompany | undefined): string {
@@ -84,6 +90,14 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
   const [rowCount, setRowCount] = useState<number | null>(null);
   const [uploadKind, setUploadKind] = useState<UploadSourceKind>("excel_csv");
   const [pdfExtract, setPdfExtract] = useState<PdfTbExtractResponse | null>(null);
+  const [glConvert, setGlConvert] = useState<GlConvertResponse | null>(null);
+  const [periodStart, setPeriodStart] = useState(() => {
+    const d = new Date();
+    d.setMonth(0, 1);
+    return d.toISOString().slice(0, 10);
+  });
+  const [openingBalanceMode, setOpeningBalanceMode] =
+    useState<OpeningBalanceMode>("C");
   const [periodEnd, setPeriodEnd] = useState(() => {
     const d = new Date();
     d.setDate(0);
@@ -322,7 +336,27 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
       });
     },
     onSuccess: (data) => {
+      setGlConvert(null);
       setPdfExtract(data);
+    },
+  });
+
+  const convertGlMutation = useMutation({
+    mutationFn: async (glFile: File) => {
+      const form = new FormData();
+      form.append("file", glFile);
+      form.append("period_start", periodStart);
+      form.append("period_end", periodEnd);
+      form.append("opening_balance_mode", openingBalanceMode);
+      return apiFetch<GlConvertResponse>("/trial-balances/convert-gl", {
+        method: "POST",
+        getToken,
+        body: form,
+      });
+    },
+    onSuccess: (data) => {
+      setPdfExtract(null);
+      setGlConvert(data);
     },
   });
 
@@ -331,14 +365,15 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
       setLocalError(null);
       setRowCount(null);
       setPdfExtract(null);
+      setGlConvert(null);
       if (!next) {
         setFile(null);
         return;
       }
       if (!isAcceptedFile(next, uploadKind)) {
         setLocalError(
-          uploadKind === "pdf"
-            ? "Only .pdf files are accepted for PDF trial balances."
+          uploadKind === "pdf" || uploadKind === "gl_pdf"
+            ? "Only .pdf files are accepted for this upload type."
             : "Only .xlsx and .csv files are accepted.",
         );
         setFile(null);
@@ -350,7 +385,7 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
         return;
       }
       setFile(next);
-      if (uploadKind === "excel_csv") {
+      if (uploadKind === "excel_csv" || uploadKind === "gl_excel") {
         const estimated = await estimateCsvRowCount(next);
         setRowCount(estimated);
       }
@@ -434,6 +469,9 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
     (extractPdfMutation.error instanceof Error
       ? extractPdfMutation.error.message
       : null) ||
+    (convertGlMutation.error instanceof Error
+      ? convertGlMutation.error.message
+      : null) ||
     (clientsQuery.error instanceof Error ? clientsQuery.error.message : null) ||
     (initialCompanyQuery.error instanceof Error
       ? initialCompanyQuery.error.message
@@ -443,16 +481,41 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
     const csvFile = extractedRowsToCsvFile(rows);
     setFile(csvFile);
     setPdfExtract(null);
+    setGlConvert(null);
     setUploadKind("excel_csv");
     uploadMutation.mutate(csvFile);
   };
+
+  const onConfirmGlConvert = (rows: EditableExtractedRow[]) => {
+    const csvFile = extractedRowsToCsvFile(rows, "converted-trial-balance.csv");
+    setFile(csvFile);
+    setGlConvert(null);
+    setPdfExtract(null);
+    setUploadKind("excel_csv");
+    uploadMutation.mutate(csvFile);
+  };
+
+  const resetKind = (kind: UploadSourceKind) => {
+    setUploadKind(kind);
+    setFile(null);
+    setPdfExtract(null);
+    setGlConvert(null);
+    setLocalError(null);
+    setRowCount(null);
+  };
+
+  const reviewBusy =
+    uploadMutation.isPending ||
+    extractPdfMutation.isPending ||
+    convertGlMutation.isPending;
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Upload trial balance</h1>
         <p className="mt-1 text-sm text-stone-600">
-          Upload Excel/CSV, or a PDF trial balance for review before mapping.
+          Upload a trial balance, or convert a general ledger (Excel/PDF) into a
+          trial balance for review before mapping — included in your subscription.
         </p>
       </div>
 
@@ -460,19 +523,13 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
         <legend className="text-sm font-medium text-stone-800">
           What are you uploading?
         </legend>
-        <div className="flex flex-col gap-2 sm:flex-row sm:gap-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-x-6 sm:gap-y-2">
           <label className="flex items-center gap-2 text-sm text-stone-700">
             <input
               type="radio"
               name="upload-kind"
               checked={uploadKind === "excel_csv"}
-              onChange={() => {
-                setUploadKind("excel_csv");
-                setFile(null);
-                setPdfExtract(null);
-                setLocalError(null);
-                setRowCount(null);
-              }}
+              onChange={() => resetKind("excel_csv")}
             />
             Trial balance (Excel/CSV)
           </label>
@@ -481,15 +538,27 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
               type="radio"
               name="upload-kind"
               checked={uploadKind === "pdf"}
-              onChange={() => {
-                setUploadKind("pdf");
-                setFile(null);
-                setPdfExtract(null);
-                setLocalError(null);
-                setRowCount(null);
-              }}
+              onChange={() => resetKind("pdf")}
             />
             Trial balance (PDF)
+          </label>
+          <label className="flex items-center gap-2 text-sm text-stone-700">
+            <input
+              type="radio"
+              name="upload-kind"
+              checked={uploadKind === "gl_excel"}
+              onChange={() => resetKind("gl_excel")}
+            />
+            General ledger (Excel/CSV)
+          </label>
+          <label className="flex items-center gap-2 text-sm text-stone-700">
+            <input
+              type="radio"
+              name="upload-kind"
+              checked={uploadKind === "gl_pdf"}
+              onChange={() => resetKind("gl_pdf")}
+            />
+            General ledger (PDF)
           </label>
         </div>
       </fieldset>
@@ -499,11 +568,27 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
           rows={pdfExtract.rows}
           method={pdfExtract.method}
           warnings={pdfExtract.warnings}
-          busy={uploadMutation.isPending}
+          busy={reviewBusy}
           onConfirm={onConfirmPdfExtract}
           onCancel={() => {
             setPdfExtract(null);
             extractPdfMutation.reset();
+          }}
+        />
+      ) : glConvert ? (
+        <PdfExtractReview
+          rows={glConvert.rows}
+          method={`gl_mode_${glConvert.mode}`}
+          warnings={[
+            ...glConvert.warnings,
+            `Period ${glConvert.period_start} → ${glConvert.period_end}; included ${glConvert.included_count}, excluded ${glConvert.excluded_count}, openings ${glConvert.opening_count}.`,
+          ]}
+          busy={reviewBusy}
+          confirmLabel="Confirm and continue to mapping"
+          onConfirm={onConfirmGlConvert}
+          onCancel={() => {
+            setGlConvert(null);
+            convertGlMutation.reset();
           }}
         />
       ) : (
@@ -522,7 +607,11 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
         <p className="text-sm font-medium">
           {uploadKind === "pdf"
             ? "Drag and drop a .pdf trial balance"
-            : "Drag and drop .xlsx or .csv"}
+            : uploadKind === "gl_pdf"
+              ? "Drag and drop a .pdf general ledger"
+              : uploadKind === "gl_excel"
+                ? "Drag and drop a .xlsx or .csv general ledger"
+                : "Drag and drop .xlsx or .csv"}
         </p>
         <p className="mt-1 text-xs text-stone-500">or</p>
         <label className="mt-3 inline-block cursor-pointer rounded bg-stone-900 px-3 py-2 text-sm font-medium text-white">
@@ -530,7 +619,7 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
           <input
             type="file"
             accept={
-              uploadKind === "pdf"
+              uploadKind === "pdf" || uploadKind === "gl_pdf"
                 ? ".pdf,application/pdf"
                 : ".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
             }
@@ -622,6 +711,46 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
             ) : null}
           </select>
         </label>
+
+        {isGlKind(uploadKind) ? (
+          <>
+            <label className="block text-sm">
+              <span className="mb-1 block text-stone-600">Period start</span>
+              <input
+                type="date"
+                className="w-full rounded border border-stone-300 px-3 py-2"
+                value={periodStart}
+                onChange={(e) => setPeriodStart(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm sm:col-span-2">
+              <span className="mb-1 block text-stone-600">
+                Opening balances (required)
+              </span>
+              <select
+                className="w-full rounded border border-stone-300 bg-white px-3 py-2"
+                value={openingBalanceMode}
+                onChange={(e) =>
+                  setOpeningBalanceMode(e.target.value as OpeningBalanceMode)
+                }
+              >
+                <option value="C">
+                  C — Year-to-date / full ledger through period end (recommended)
+                </option>
+                <option value="A">
+                  A — File includes opening / brought-forward rows
+                </option>
+                <option value="B">
+                  B — Period movements only (needs prior closing TB — API)
+                </option>
+              </select>
+              <span className="mt-1 block text-xs text-stone-500">
+                Wrong mode produces a wrong closing trial balance. Mode B cannot
+                enter the statements pipeline without a prior closing TB.
+              </span>
+            </label>
+          </>
+        ) : null}
 
         <label className="block text-sm">
           <span className="mb-1 block text-stone-600">Period end</span>
@@ -770,13 +899,23 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
           !file ||
           !companyId ||
           uploadMutation.isPending ||
-          extractPdfMutation.isPending
+          extractPdfMutation.isPending ||
+          convertGlMutation.isPending ||
+          (isGlKind(uploadKind) && (!periodStart || !periodEnd))
         }
         onClick={() => {
-          // PDF path: extract only. Upload is exclusively via PdfExtractReview confirm.
           if (uploadKind === "pdf") {
             if (!file) return;
             extractPdfMutation.mutate(file);
+            return;
+          }
+          if (isGlKind(uploadKind)) {
+            if (!file) return;
+            if (periodStart > periodEnd) {
+              setLocalError("Period start must be on or before period end.");
+              return;
+            }
+            convertGlMutation.mutate(file);
             return;
           }
           if (file?.name.toLowerCase().endsWith(".pdf")) {
@@ -793,9 +932,13 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
           ? extractPdfMutation.isPending
             ? "Extracting…"
             : "Extract and review"
-          : uploadMutation.isPending
-            ? "Uploading…"
-            : "Upload and Parse"}
+          : isGlKind(uploadKind)
+            ? convertGlMutation.isPending
+              ? "Converting…"
+              : "Convert GL and review"
+            : uploadMutation.isPending
+              ? "Uploading…"
+              : "Upload and Parse"}
       </button>
         </>
       )}

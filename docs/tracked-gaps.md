@@ -1017,10 +1017,11 @@ Mandatory review is unbypassable: extract creates no TB; `/upload` rejects
 Golden Rule unchanged: extraction yields structured TB rows for deterministic
 Python math; fail closed on low confidence.
 
-### 2. General Ledger → Trial Balance (materially bigger — unscheduled)
+### 2. General Ledger → Trial Balance (materially bigger — demand confirmed)
 
-**Unscheduled.** Pending a **separate** real GL demand signal. Do not start on
-the PDF-TB ask alone.
+**Demand confirmed (2026-09-09)** in the client’s own words (GL dump PDF/Excel →
+Excel + TB, quickly). **Design draft:** [`gl-to-tb-design.md`](gl-to-tb-design.md).
+**No code until design approval** (especially opening-balance modes).
 
 **This is a MATERIALLY BIGGER undertaking than PDF-TB extraction.** A trial
 balance is already summarized and (ideally) balanced. A general ledger is
@@ -1029,21 +1030,19 @@ balance is already summarized and (ideally) balanced. A general ledger is
 “just another upload type.”
 
 **Real complexity is not the summation itself** (bucket-by-code is
-straightforward). Correctness around it is the product risk:
+straightforward). Correctness around it is the product risk — now specified in
+the design draft:
 
-- **Period cutoffs** — which transactions belong in the period; no silent
-  inclusion of adjacent dates.
-- **Opening balance handling** — does the export include starting balances, or
-  only period movements? Wrong assumption → wrong closing TB, every time.
-- **Data validation** — catch mis-coded or inconsistent entries **before** they
-  silently produce a wrong or unbalanced TB. Kastree’s trust proposition is
-  that numbers are always correct; a GL→TB path that fails soft into bad totals
-  would undermine the whole product.
+- **Period cutoffs** — inclusive `period_start`…`period_end`; no silent
+  inclusion of adjacent dates; excluded counts shown.
+- **Opening balance handling** — explicit modes A (OB rows in file), B
+  (movements-only; pipeline blocked without prior TB), C (YTD/FY-to-date,
+  recommended). Wrong assumption → wrong closing TB; never infer silently.
+- **Data validation** — mandatory Σ debit = Σ credit within €0.01 before
+  review-confirm; fail closed into no pipeline entry.
 
-**Design carefully before building** — not a quick “sum by code” ship. Phase 1
-(PDF-TB) is **DONE**; Phase 3 stays **unscheduled** until separate GL demand is
-confirmed. If built later, GL→TB still adds accounting-logic risk on top of
-(for PDF GLs) extraction.
+**Build shape:** free, in-flow Upload (same as PDF-TB). **Not** standalone
+Convert. Phase 1 PDF-TB remains **DONE**.
 
 ## No uptime or error monitoring
 

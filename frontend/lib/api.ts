@@ -26,13 +26,14 @@ function extractErrorDetail(body: unknown, status: number): string {
   if (typeof detail === "string") {
     return detail;
   }
-  if (
-    typeof detail === "object" &&
-    detail !== null &&
-    "message" in detail &&
-    typeof (detail as { message: unknown }).message === "string"
-  ) {
-    return (detail as { message: string }).message;
+  if (typeof detail === "object" && detail !== null) {
+    const obj = detail as Record<string, unknown>;
+    if (typeof obj.detail === "string") {
+      return obj.detail;
+    }
+    if (typeof obj.message === "string") {
+      return obj.message;
+    }
   }
   return `API ${status}`;
 }

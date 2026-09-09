@@ -114,6 +114,22 @@ export interface PdfTbExtractResponse {
   message: string;
 }
 
+/** Phase 3 GL → TB convert — review UI before normal upload. */
+export interface GlConvertResponse {
+  rows: ExtractedTbRow[];
+  mode: "A" | "B" | "C";
+  period_start: string;
+  period_end: string;
+  included_count: number;
+  excluded_count: number;
+  opening_count: number;
+  total_debits: string;
+  total_credits: string;
+  pipeline_eligible: boolean;
+  warnings: string[];
+  message: string;
+}
+
 /** Read-only preview of which prior TB variance auto-detection would pick. */
 export interface PriorPeriodPreview {
   company_id: string;

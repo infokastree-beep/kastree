@@ -1,6 +1,6 @@
 # Phase 3 — General Ledger → Trial Balance (design)
 
-Status: **DESIGN DRAFT** (2026-09-09). **No implementation yet.**  
+Status: **BUILT** (2026-09-09) — free in-flow Upload path.  
 Demand: **confirmed** (client, own words) — GL dump (PDF or Excel) → Excel + trial balance, quickly.
 
 > “sometimes all I have is a general ledger dump of transactions in either PDF

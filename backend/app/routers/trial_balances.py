@@ -47,9 +47,18 @@ from app.services.comparative_statements import merge_comparative_face_lines
 from app.services.archival import archive_trial_balance_user_deleted
 from app.schemas.materiality import MaterialitySuggestionResponse
 from app.schemas.pdf_extract import ExtractedTbRowOut, PdfTbExtractResponse
+from app.schemas.gl_convert import GlConvertResponse
 from app.services.materiality import suggest_materiality
 from app.services.ownership import get_owned_company
 from app.services.pdf_tb_extract import PdfTbExtractError, extract_trial_balance_from_pdf
+from app.services.gl_to_tb import (
+    GlImbalanceError,
+    GlToTbError,
+    ModeBRequiresPriorError,
+    OpeningBalanceMode,
+    PriorTbSeed,
+    convert_gl_file_to_tb,
+)
 from app.services.performance import (
     METRIC_CODES,
     aggregate_performance_periods,
@@ -452,6 +461,145 @@ async def extract_pdf_trial_balance(
         page_count=result.page_count,
         warnings=result.warnings,
     )
+
+
+@router.post(
+    "/convert-gl",
+    status_code=status.HTTP_200_OK,
+    response_model=GlConvertResponse,
+)
+async def convert_general_ledger_to_tb(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    file: Annotated[UploadFile, File()],
+    period_start: Annotated[date, Form()],
+    period_end: Annotated[date, Form()],
+    opening_balance_mode: Annotated[str, Form()],
+    prior_tb_csv: Annotated[UploadFile | None, File()] = None,
+) -> GlConvertResponse:
+    """Phase 3: GL → TB for review — does not create a TrialBalance.
+
+    Modes A/B/C per docs/gl-to-tb-design.md. Unbalanced results return 422.
+    Mode B requires ``prior_tb_csv`` (four-column closing TB).
+    """
+    del auth  # auth gate only — org scoping begins at /upload after review
+    mode_raw = opening_balance_mode.strip().upper()
+    if mode_raw not in {"A", "B", "C"}:
+        raise HTTPException(
+            status_code=400,
+            detail="opening_balance_mode must be A, B, or C",
+        )
+    mode: OpeningBalanceMode = mode_raw  # type: ignore[assignment]
+
+    filename = file.filename or "general-ledger.xlsx"
+    lower = filename.lower()
+    if not (
+        lower.endswith(".xlsx")
+        or lower.endswith(".csv")
+        or lower.endswith(".pdf")
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="GL convert accepts .xlsx, .csv, or .pdf only",
+        )
+    content = await file.read()
+    if len(content) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File exceeds 50MB limit")
+
+    prior_seeds: list[PriorTbSeed] | None = None
+    if prior_tb_csv is not None:
+        prior_name = prior_tb_csv.filename or "prior.csv"
+        prior_bytes = await prior_tb_csv.read()
+        prior_seeds = _prior_seeds_from_csv(prior_bytes, prior_name)
+
+    try:
+        result = convert_gl_file_to_tb(
+            content,
+            filename,
+            period_start=period_start,
+            period_end=period_end,
+            mode=mode,
+            prior_tb=prior_seeds,
+        )
+    except ModeBRequiresPriorError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "GL_MODE_B_REQUIRES_PRIOR",
+                "detail": str(exc),
+            },
+        ) from exc
+    except GlImbalanceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "GL_TB_UNBALANCED",
+                "detail": str(exc),
+                "total_debits": format(exc.total_debits, "f"),
+                "total_credits": format(exc.total_credits, "f"),
+                "difference": format(exc.difference, "f"),
+                "mode": exc.mode,
+                "included_count": exc.included_count,
+                "excluded_count": exc.excluded_count,
+                "top_accounts": [
+                    {
+                        "account_code": code,
+                        "account_name": name,
+                        "net": format(net, "f"),
+                    }
+                    for code, name, net in exc.top_accounts
+                ],
+            },
+        ) from exc
+    except GlToTbError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    return GlConvertResponse(
+        rows=[
+            ExtractedTbRowOut(
+                account_code=row.account_code,
+                account_name=row.account_name,
+                debit=row.debit,
+                credit=row.credit,
+                row_index=row.row_index,
+            )
+            for row in result.rows
+        ],
+        mode=result.mode,
+        period_start=result.period_start,
+        period_end=result.period_end,
+        included_count=result.included_count,
+        excluded_count=result.excluded_count,
+        opening_count=result.opening_count,
+        total_debits=result.total_debits,
+        total_credits=result.total_credits,
+        pipeline_eligible=result.pipeline_eligible,
+        warnings=result.warnings,
+    )
+
+
+def _prior_seeds_from_csv(content: bytes, filename: str) -> list[PriorTbSeed]:
+    """Parse a four-column prior closing TB CSV into Mode B seeds."""
+    from app.services.parser import parse_tb_file
+
+    try:
+        rows = parse_tb_file(content, filename=filename)
+    except Exception as exc:  # noqa: BLE001 — map any parse failure
+        raise HTTPException(
+            status_code=422,
+            detail=f"Could not parse prior closing TB: {exc}",
+        ) from exc
+    return [
+        PriorTbSeed(
+            account_code=row.account_code,
+            account_name=row.account_name,
+            debit=row.debit,
+            credit=row.credit,
+        )
+        for row in rows
+    ]
 
 
 @router.post(

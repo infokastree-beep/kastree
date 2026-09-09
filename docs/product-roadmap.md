@@ -210,7 +210,7 @@ review-before-pipeline; free in-flow only): [`gl-to-tb-design.md`](gl-to-tb-desi
 | Phase | Scope | Status |
 |-------|--------|--------|
 | **Phase 1** | **PDF trial balance extraction only** | **DONE** — built, tested (clean / messy / OCR-fallback), safety-proven (review unbypassable via API + UI). Upload selector → `pdfplumber` + OCR → review table → CSV into existing upload/mapping pipeline. |
-| **Phase 3** | **GL → TB conversion** (Excel and PDF GL) | **Demand confirmed (2026-09-09).** Design draft in [`gl-to-tb-design.md`](gl-to-tb-design.md). Free, in-flow Upload only — not Convert. **Awaiting design approval before code.** |
+| **Phase 3** | **GL → TB conversion** (Excel and PDF GL) | **BUILT (2026-09-09)** — Modes A/B/C, debit=credit hard fail, review-before-pipeline. Free in-flow Upload (`POST /trial-balances/convert-gl`). Design: [`gl-to-tb-design.md`](gl-to-tb-design.md). Convert stays TB-only. |
 
 (Phase numbering matches the companion specs; intermediate phases there, if any,
 are unchanged by this note.)
