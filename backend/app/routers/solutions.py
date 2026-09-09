@@ -196,6 +196,9 @@ async def convert_checkout(
     }
     if email:
         params["customer_email"] = email
+    # Automated E2E only: apply a 100% coupon when configured (never set in normal prod).
+    if settings.convert_e2e_coupon_id:
+        params["discounts"] = [{"coupon": settings.convert_e2e_coupon_id}]
 
     try:
         session = stripe.checkout.Session.create(**params)

@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     stripe_price_id_scale: str | None = None
     # One-time Kastree Convert (€19) — optional; Checkout falls back to price_data.
     stripe_price_id_convert: str | None = None
+    # Optional 100% Stripe coupon id for automated Convert E2E only — leave unset in prod.
+    convert_e2e_coupon_id: str | None = None
 
     # Public site origin for Stripe Checkout success/cancel redirects.
     frontend_base_url: str = "https://www.kastree.ie"
