@@ -199,6 +199,8 @@ async def convert_checkout(
     # Automated E2E only: apply a 100% coupon when configured (never set in normal prod).
     if settings.convert_e2e_coupon_id:
         params["discounts"] = [{"coupon": settings.convert_e2e_coupon_id}]
+        # €0 total — allow completing Checkout without collecting a card.
+        params["payment_method_collection"] = "if_required"
 
     try:
         session = stripe.checkout.Session.create(**params)
