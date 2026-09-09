@@ -15,6 +15,10 @@ const NAV_LINKS = [
 ] as const;
 
 const SOLUTIONS_LINKS = [
+  {
+    href: "/pricing",
+    label: "Financial Intelligence Platform",
+  },
   { href: "/solutions/convert", label: "Convert" },
 ] as const;
 
@@ -42,7 +46,11 @@ export function MarketingNav() {
   }, [solutionsOpen]);
 
   return (
-    <header className="border-b border-line/80 bg-surface-elevated/90 backdrop-blur-sm">
+    // Same stacking class as CopilotPanel vs Statements switcher: backdrop-blur
+    // creates a stacking context. Without an explicit z-index the whole header
+    // (including the overflowing Solutions menu) sits under later page layers
+    // (hero `position:relative`), so menu text looks frosted/blurred.
+    <header className="relative z-50 border-b border-line/80 bg-surface-elevated/90 backdrop-blur-sm">
       <div className="mx-auto flex max-w-content items-center justify-between gap-4 px-6 py-5 sm:px-8">
         <div className="flex items-center gap-6">
           <MarketingBrandLink />
@@ -60,7 +68,7 @@ export function MarketingNav() {
               {solutionsOpen ? (
                 <div
                   role="menu"
-                  className="absolute left-0 top-full z-20 mt-2 min-w-[11rem] rounded border border-line bg-surface-elevated py-1 shadow-sm"
+                  className="absolute left-0 top-full z-50 mt-2 min-w-[18rem] rounded border border-line bg-surface-elevated py-1 shadow-sm"
                 >
                   {SOLUTIONS_LINKS.map((link) => (
                     <Link
