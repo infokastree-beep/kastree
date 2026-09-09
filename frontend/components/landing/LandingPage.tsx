@@ -7,36 +7,40 @@ import { APP_NAME } from "@/lib/constants";
 
 const WHAT_YOU_GET = [
   {
-    title: "Upload & map",
-    body: "Upload a trial balance, then review suggested account → line mappings and confirm before anything generates.",
+    title: "Upload",
+    body: "Bring the period in as Excel/CSV trial balance, PDF trial balance, or general ledger (PDF or Excel). Extraction and review stay in the same upload flow.",
+  },
+  {
+    title: "AI-assisted mapping",
+    body: "Suggested account → line mappings you confirm before anything generates. Remembered per client for the next period.",
   },
   {
     title: "Statements",
-    body: "SOPL, SOFP, and SOCIE generate in the browser — switch tabs, review line amounts, regenerate when mappings change.",
+    body: "SOPL, SOFP, and SOCIE from confirmed mappings — amounts from the deterministic engine, not the model.",
   },
   {
-    title: "Performance overview",
-    body: "KPIs, trend charts, and expense mix for the period so you see the shape of the numbers before diving into line detail.",
-  },
-  {
-    title: "Business health",
-    body: "A short executive read grounded in this period’s evidence — trends and ratios, not a spreadsheet dump.",
-  },
-  {
-    title: "Variance",
-    body: "Period-on-period movements when a prior trial balance exists for the same company, ready for review.",
+    title: "Variance & AI commentary",
+    body: "Period-on-period movements when a prior TB exists, plus narrative commentary grounded in those movements (no invented numbers).",
   },
   {
     title: "Risk flags",
-    body: "Deterministic checks (for example negative cash or anomalous balances) surfaced alongside the statements.",
+    body: "Deterministic checks (for example negative cash or anomalous balances) surfaced with the statements.",
   },
   {
-    title: "Ask",
-    body: "Ask questions answered only from this period’s evidence, with citations back to performance, variance, or risk.",
+    title: "Business Health",
+    body: "A short executive read from this period’s evidence — trends and ratios, not a spreadsheet dump.",
+  },
+  {
+    title: "Performance Overview",
+    body: "KPIs, trends, and expense mix so you see the shape of the numbers before line detail.",
+  },
+  {
+    title: "Ask Copilot",
+    body: "Questions answered only from this period’s evidence, with citations back to performance, variance, or risk.",
   },
   {
     title: "Export",
-    body: "Download Excel, PDF, or CSV packs with the statements — currency formatting and tier-aware watermarking included.",
+    body: "Excel, PDF, or CSV packs — currency formatting and tier-aware watermarking included.",
   },
 ] as const;
 
@@ -171,6 +175,11 @@ export function LandingPage() {
             <h2 className="font-display text-heading-lg text-ink sm:text-[2.25rem]">
               What you get
             </h2>
+            <p className="mt-4 max-w-2xl text-[0.95rem] leading-relaxed text-ink-secondary sm:text-base">
+              Everything below is included in one Kastree subscription — one
+              platform from intake through export. No add-ons, no standalone
+              conversion tools.
+            </p>
             <ul className="mt-12 grid gap-x-12 gap-y-10 sm:grid-cols-2">
               {WHAT_YOU_GET.map((item) => (
                 <li key={item.title} className="border-t border-line pt-5">
