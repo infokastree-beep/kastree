@@ -230,11 +230,10 @@ not one:
    extraction; does not create `trial_balances`. Design:
    [`solutions-convert-design.md`](solutions-convert-design.md).
 
-GL→TB inside Convert remains Phase 3 / unscheduled.
+GL→TB inside Convert remains **out of scope** (Convert stays TB-only).
 
-**Do not** collapse PDF tools and GL tools into unrelated tickets. **Do not**
-start Phase 3 as speculative platform work — Phase 1 is done; Phase 3 stays
-parked until separate GL demand is confirmed.
+**Do not** collapse PDF tools and GL tools into unrelated tickets. Phase 3
+in-flow build waits on design approval of [`gl-to-tb-design.md`](gl-to-tb-design.md).
 
 Related rows below stay demand-gated individually.
 

@@ -994,12 +994,13 @@ mapping-not-standalone, and Phase 3 hybrid monetization notes live in
 **Status:** Phase 1 PDF-TB intake **DONE**. Standalone **Kastree Convert**
 (Solutions → Convert, €19 one-time Checkout, Excel download) is the parallel
 commercial surface — see [`solutions-convert-design.md`](solutions-convert-design.md).
-Subscriber Upload remains untouched. **Phase 3 (GL → TB) remains unscheduled.**
+Subscriber Upload remains untouched. **Phase 3 (GL → TB): demand confirmed
+(2026-09-09)** — design draft [`gl-to-tb-design.md`](gl-to-tb-design.md);
+awaiting approval before code. Free in-flow only; Convert stays TB-only.
 
-**Eventual design:** hybrid surfaces. Subscriber **Upload-flow** integration
-stays as-is. Standalone Convert (own **Solutions** entry, own one-time Checkout,
-own delivery) is the separate commercial shape for non-subscriber / one-time
-PDF TB conversion.
+**Hybrid surfaces (unchanged):** Subscriber **Upload-flow** for PDF-TB (and
+GL→TB when built). Standalone Convert remains non-subscriber / one-time **TB**
+conversion only.
 
 The trusted Product 1 engine already starts at a **trial balance**. Practices
 do not always have a clean xlsx/csv TB. Two widening steps complete the path
