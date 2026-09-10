@@ -287,10 +287,31 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
       createCompanyEntity(clientId, values, getToken),
     onSuccess: (company) => {
       setShowAddCompany(false);
-      void queryClient.invalidateQueries({ queryKey: ["companies", clientId] });
-      void queryClient.invalidateQueries({ queryKey: ["clients"] });
+      // Seed the companies cache BEFORE setCompanyId. Otherwise the orphan-clear
+      // effect sees a companyId that is not yet in companyOptions (stale cache
+      // still listing only pre-create companies) and wipes the selection —
+      // especially when the client already had ≥1 company. Upload kind is
+      // irrelevant: all four kinds share this selector.
+      queryClient.setQueryData<CompanyListResponse>(
+        ["companies", clientId],
+        (previous) => {
+          if (!previous) {
+            return { client_id: clientId, items: [company], total: 1 };
+          }
+          if (previous.items.some((item) => item.id === company.id)) {
+            return previous;
+          }
+          return {
+            ...previous,
+            items: [...previous.items, company],
+            total: previous.total + 1,
+          };
+        },
+      );
       setCompanyId(company.id);
       setCurrency(company.functional_currency);
+      void queryClient.invalidateQueries({ queryKey: ["companies", clientId] });
+      void queryClient.invalidateQueries({ queryKey: ["clients"] });
     },
   });
 
