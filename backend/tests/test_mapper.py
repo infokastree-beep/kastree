@@ -230,9 +230,14 @@ def test_tier3_accumulated_depreciation_maps_to_ppe_not_depreciation() -> None:
         FakeAccount(account_code="1460", account_name="Accumulated Depreciation"),
         FakeAccount(account_code="7000", account_name="Depreciation - Buildings"),
         FakeAccount(account_code="1450", account_name="Provision for Depreciation"),
-        # Abbreviation hole: "Accum." must still hit the BS-contra path (not P&L).
+        # Abbreviation variants that must still hit the BS-contra path (not P&L).
         FakeAccount(account_code="1210", account_name="Motor Vehicles - Accum. Depreciation"),
         FakeAccount(account_code="1110", account_name="Plant & Machinery - Accum. Depreciation"),
+        FakeAccount(account_code="1210", account_name="Accum Depreciation - Vehicles"),
+        FakeAccount(account_code="1210", account_name="Accum. Depn - Vehicles"),
+        FakeAccount(account_code="1210", account_name="Acc. Depreciation - Motor Vehicles"),
+        FakeAccount(account_code="1210", account_name="A/Depn"),
+        FakeAccount(account_code="1210", account_name="A/Depreciation"),
     ]
 
     results = map_accounts(accounts, prior_confirmed=[])
@@ -244,11 +249,34 @@ def test_tier3_accumulated_depreciation_maps_to_ppe_not_depreciation() -> None:
         "property_plant_equipment",
         "property_plant_equipment",
         "property_plant_equipment",
+        "property_plant_equipment",
+        "property_plant_equipment",
+        "property_plant_equipment",
+        "property_plant_equipment",
+        "property_plant_equipment",
     ]
     assert results[0].method == "code_range"
     assert results[2].method == "code_range"
     assert results[4].method == "code_range"
-    assert results[5].method == "code_range"
+    assert results[9].method == "code_range"
+
+
+def test_bare_depreciation_charge_is_not_treated_as_bs_contra() -> None:
+    """P&L depreciation/depn charges must not match the Accum/Acc/A-slash contra cues."""
+    accounts = [
+        FakeAccount(account_code="7000", account_name="Depreciation"),
+        FakeAccount(account_code="7020", account_name="Depreciation - Motor Vehicles"),
+        FakeAccount(account_code="7020", account_name="Depn - Vehicles"),
+        FakeAccount(account_code="7100", account_name="Amortisation - Software"),
+    ]
+    results = map_accounts(accounts, prior_confirmed=[])
+    assert results[0].canonical_line == "depreciation"
+    assert results[1].canonical_line == "depreciation"
+    # Bare Depn with no 7000–7999 specialisation beyond band default
+    assert results[2].canonical_line == "depreciation"
+    assert results[3].canonical_line == "amortisation"
+    assert all(r.canonical_line != "property_plant_equipment" for r in results)
+    assert all(r.canonical_line != "intangible_assets" for r in results)
 
 
 def test_tier3_accumulated_amortisation_maps_to_intangibles_not_amortisation() -> None:
@@ -266,6 +294,45 @@ def test_tier3_accumulated_amortisation_maps_to_intangibles_not_amortisation() -
         "amortisation",
         "intangible_assets",
     ]
+
+
+def test_allowance_for_doubtful_debts_nets_trade_receivables() -> None:
+    """Same contra-name bug class as Accum. Dep → PPE; leaf is trade_receivables."""
+    accounts = [
+        FakeAccount(account_code="1610", account_name="Allowance for Doubtful Debts"),
+        FakeAccount(account_code="1610", account_name="Provision for Doubtful Debts"),
+        FakeAccount(account_code="1610", account_name="Provision for Bad Debts"),
+        FakeAccount(account_code="1610", account_name="Allowance for Expected Credit Losses"),
+        FakeAccount(account_code="1600", account_name="Trade Debtors"),
+        FakeAccount(account_code="6500", account_name="Bad Debts Written Off"),
+        FakeAccount(account_code="6500", account_name="Bad Debt Expense"),
+    ]
+
+    results = map_accounts(accounts, prior_confirmed=[])
+
+    assert [r.canonical_line for r in results] == [
+        "trade_receivables",
+        "trade_receivables",
+        "trade_receivables",
+        "trade_receivables",
+        None,  # 1000–3999 SOFP cost/debtor rows fall through without Tier 4
+        "operating_expenses",
+        "operating_expenses",
+    ]
+    assert all(r.method == "code_range" for r in results[:4])
+    assert all(r.canonical_line != "trade_receivables" for r in results[5:])
+
+
+def test_vat_recoverable_stays_unmapped_not_taxes_payable() -> None:
+    """VAT Recoverable is a genuine asset gap — not a contra-name bug; leave unmapped."""
+    accounts = [
+        FakeAccount(account_code="1800", account_name="VAT Recoverable"),
+        FakeAccount(account_code="1800", account_name="VAT Receivable"),
+        FakeAccount(account_code="2200", account_name="VAT Payable"),
+    ]
+    results = map_accounts(accounts, prior_confirmed=[])
+    assert all(r.canonical_line is None for r in results)
+    assert all(r.method is None for r in results)
 
 
 def test_tier3_6000_range_routes_depreciation_names_to_depreciation() -> None:

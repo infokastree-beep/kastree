@@ -191,6 +191,9 @@ LLM:
 - Deferred Revenue
 - Provisions — Warranty
 - VAT Control Account
+- **VAT Recoverable / VAT receivable** (asset owed *to* the entity — distinct from
+  VAT Payable / `taxes_payable`; do **not** force `taxes_payable` or `prepayments`;
+  leave unmapped until a dedicated leaf or `other_current_assets` exists)
 - PAYE/NI Control Account
 - Revaluation Reserve
 

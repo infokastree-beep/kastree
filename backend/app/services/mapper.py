@@ -436,26 +436,62 @@ def _name_suggests_depreciation(source_name: str) -> bool:
 
 
 def _contra_asset_canonical_from_name(source_name: str) -> str | None:
-    """Map Accumulated Depreciation/Amortisation (and provision-for forms) to the asset leaf.
+    """Map BS contra-asset accounts to the asset leaf they net against.
 
     Credit balances on these accounts correctly reduce the debit-normal SOFP leaf
     via existing ``_statement_amount`` netting. Returning None leaves P&L charges alone.
 
-    Also matches common abbreviations (``Accum.`` / ``Accum``) — without that,
-    names like ``Motor Vehicles - Accum. Depreciation`` miss the BS-contra path
-    and can be mis-filed onto the P&L ``depreciation`` line.
+    Two families (same bug class — name cue must hit, or the row can be mis-filed
+    onto a P&L line or left unmapped):
+
+    1. PP&E / intangibles
+       - Accumulated Depreciation / Amortisation (full)
+       - Accum. / Accum / Acc. / Acc + Depreciation / Depn / Amortisation
+       - A/Depreciation, A/Depn
+       - Provision for Depreciation / Amortisation / Depn
+    2. Trade receivables
+       - Allowance / Provision for Doubtful or Bad Debts
+       - Doubtful Debts (provision)
+       - Allowance for Expected Credit Losses / ECL
+       - Explicitly NOT bare P&L ``Bad Debt Expense`` / write-offs
+
+    Bare P&L charges (``Depreciation``, ``Depn - Vehicles``, ``Amortisation``,
+    ``Bad Debt Expense``) have no contra cue and correctly return None.
     """
     normalized = normalize_text(source_name)
-    is_contra = bool(
+
+    # --- Trade receivables contra (allowance / doubtful / ECL) ---
+    # Exclude P&L expense / write-off wording so charges stay off the asset leaf.
+    if not re.search(r"\b(expense|written off|write[- ]?offs?|charge)\b", normalized):
+        if re.search(
+            r"\b("
+            r"allowance for (doubtful|bad|expected credit)|"
+            r"provision for (doubtful|bad)|"
+            r"doubtful debts?|"
+            r"bad debts? (allowance|provision)|"
+            r"expected credit losses?"
+            r")\b",
+            normalized,
+        ):
+            return "trade_receivables"
+
+    # --- PP&E / intangible contra (accumulated / Acc. / A/Depn / provision-for) ---
+    has_contra_cue = bool(
         re.search(r"\baccumulat", normalized)
         or re.search(r"\baccum\.?\b", normalized)
-        or re.search(r"\bprovision for (depreciation|amort)", normalized)
+        or re.search(r"\bacc\.?\b", normalized)
+        or re.search(r"\ba\s*/\s*dep", normalized)
+        # No trailing \b after amort — "amortisation" must match the amort stem.
+        or re.search(r"\bprovision for (depreciation|amort|depn)", normalized)
     )
-    if not is_contra:
+    if not has_contra_cue:
         return None
     if re.search(r"\bamort", normalized):
         return "intangible_assets"
-    if re.search(r"\bdepreciation\b", normalized):
+    if re.search(r"\bdepreciation\b", normalized) or re.search(r"\bdepn\b", normalized):
+        return "property_plant_equipment"
+    # A/Dep… cue already implies depreciation when no amort token present
+    if re.search(r"\ba\s*/\s*dep", normalized):
         return "property_plant_equipment"
     return None
 

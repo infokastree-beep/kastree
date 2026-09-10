@@ -286,6 +286,25 @@ def test_sofp_intangibles_nets_accumulated_amortisation_contra() -> None:
     assert set(intangibles.source_account_ids) == {cost.id, accum.id}
 
 
+def test_sofp_receivables_nets_allowance_for_doubtful_debts_contra() -> None:
+    """Allowance for Doubtful Debts on trade_receivables reduces SOFP debtors."""
+    debtors = _acct("1600", net_balance="50000.00", canonical_line="trade_receivables")
+    allowance = _acct(
+        "1610", net_balance="-2500.00", canonical_line="trade_receivables"
+    )
+    re = _acct("3100", net_balance="-1000.00", canonical_line="retained_earnings")
+    sc = _acct("3000", net_balance="-46500.00", canonical_line="share_capital")
+
+    sofp = build_sofp(
+        [debtors, allowance, re, sc],
+        retained_earnings_closing=Decimal("1000.00"),
+        retained_earnings_source_ids=[re.id],
+    )
+    receivables = _by_code(sofp, "trade_receivables")
+    assert receivables.amount == Decimal("47500.00")
+    assert set(receivables.source_account_ids) == {debtors.id, allowance.id}
+
+
 def test_sofp_groups_accounts_computes_subtotals_and_provenance() -> None:
     ppe_a = _acct("1100", net_balance="4000.00", canonical_line="property_plant_equipment")
     ppe_b = _acct("1200", net_balance="1000.00", canonical_line="property_plant_equipment")
