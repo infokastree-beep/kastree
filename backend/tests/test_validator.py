@@ -433,13 +433,12 @@ def test_comparatives_available_true_and_false() -> None:
     assert _by_name(with_prior, "comparatives_available").passed is True
 
 
-def test_balance_sheet_passes_but_net_assets_fails_with_dividends_on_tb() -> None:
-    """Trigger-critical fixture: BS equation holds, net_assets fails on open dividends.
+def test_net_assets_passes_with_open_dividends_on_tb() -> None:
+    """Open Dividends must not block Check 4 / statement generation.
 
-    Zero P&L → period profit = 0. Check 4 equity = SC 5_000 + opening RE 3_000
-    + profit 0 = 8_000 (dividends still excluded). Net assets = 7_000 after the
-    cash dividend. Difference = 1_000 = open Dividends. Check 2 still passes
-    because it nets Dividends as contra-equity.
+    Zero P&L → period profit = 0. Equity = SC 5_000 + opening RE 3_000 + profit 0
+    − dividends 1_000 = 7_000, matching net assets after the cash dividend.
+    Same contra-equity treatment as Check 2 and SOFP closing RE.
     """
     accounts = [
         _acct("1000", "Cash", debit="10000.00", canonical_line="cash"),
@@ -456,20 +455,15 @@ def test_balance_sheet_passes_but_net_assets_fails_with_dividends_on_tb() -> Non
 
     assert integrity.passed is True
     assert balance_sheet.passed is True
-    assert net_assets.passed is False
+    assert net_assets.passed is True
     assert net_assets.severity == "error"
-    assert net_assets.details == {
-        "net_assets": "7000.00",
-        "total_equity": "8000.00",
-        "difference": "1000.00",
-    }
+    assert results.can_generate_statements is True
     # Both structural checks are present independently (no short-circuit).
     assert [c.check_name for c in results.checks].count("balance_sheet_balance") == 1
     assert [c.check_name for c in results.checks].count("net_assets") == 1
-    # Ready for trial_balances.validation_results JSONB + DB trigger.
     payload = results.to_jsonb()
     assert isinstance(payload["checks"], list)
     assert any(
-        item["check_name"] == "net_assets" and item["passed"] is False
+        item["check_name"] == "net_assets" and item["passed"] is True
         for item in payload["checks"]
     )

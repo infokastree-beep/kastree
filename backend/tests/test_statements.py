@@ -571,12 +571,12 @@ def test_sofp_current_non_current_segmentation_golden_fixture() -> None:
 
 
 def test_sofp_total_equity_excludes_dividends_matching_validator_fixture() -> None:
-    """SOFP with opening RE on face matches Check 4 when profit is zero.
+    """SOFP face total_equity uses EQUITY_COMPONENT_LINES only (not the dividends leaf).
 
-    Validator Check 4 builds equity as SC + opening RE + profit (still excluding
-    dividends). With zero P&L this fixture's Check 4 equity equals SOFP
-    total_equity = SC 5_000 + opening RE 3_000 = 8_000 when closing RE is
-    passed explicitly as the TB opening balance (no roll-forward deduction).
+    When closing RE is passed as the TB opening balance (no roll-forward deduction),
+    total_equity = SC 5_000 + opening RE 3_000 = 8_000. Dividends still appear as
+    their own face line. Check 4 / ``build_statements`` deduct dividends via closing
+    RE — covered by ``test_socie_reconciles_with_sofp_on_dividends_fixture``.
     """
     accounts = [
         _acct("1000", net_balance="10000.00", canonical_line="cash"),
@@ -607,17 +607,14 @@ def test_sofp_total_equity_excludes_dividends_matching_validator_fixture() -> No
 
 
 def test_socie_reconciles_with_sofp_on_dividends_fixture() -> None:
-    """Trigger-critical dividends fixture with correct opening RE from current TB.
+    """Dividends fixture: SOCIE/SOFP closing path and Check 4 all land at 7_000.
 
     Cash 10_000 | Payables 3_000 | SC 5_000 | RE 3_000 | Dividends 1_000.
     No P&L accounts → profit_for_period = 0.
     retained_earnings_opening = 3_000 (TB RE account, not zero).
     retained_earnings_closing = 3_000 + 0 − 1_000 = 2_000.
-    total_equity_closing = 5_000 + 2_000 = 7_000 on both SOCIE and SOFP.
-
-    Note: validator Check 4 still fails this fixture (equity 8_000 vs net assets
-    7_000) because it excludes open dividends; SOCIE/SOFP closing path deducts
-    them and therefore reconciles at 7_000.
+    total_equity_closing = 5_000 + 2_000 = 7_000 on SOCIE and SOFP.
+    Validator Check 4 nets open dividends the same way → also 7_000.
     """
     accounts = [
         _acct("1000", net_balance="10000.00", canonical_line="cash"),
@@ -662,6 +659,19 @@ def test_socie_reconciles_with_sofp_on_dividends_fixture() -> None:
     assert total_equity_closing.amount == Decimal("7000.00")
     assert total_equity_closing.is_subtotal is True
     assert total_equity_closing.amount == _by_code(sofp_lines, "total_equity").amount
+
+    mapped = [
+        SimpleMappedAccount(
+            account_code=a.account_code,
+            account_name=a.account_code,
+            debit=a.net_balance if a.net_balance >= 0 else Decimal("0"),
+            credit=(-a.net_balance) if a.net_balance < 0 else Decimal("0"),
+            net_balance=a.net_balance,
+            canonical_line=a.canonical_line,
+        )
+        for a in accounts
+    ]
+    assert validate_trial_balance(mapped).can_generate_statements is True
 
 
 def test_socie_reconciles_with_sofp_when_share_premium_and_revaluation_reserve_present() -> None:

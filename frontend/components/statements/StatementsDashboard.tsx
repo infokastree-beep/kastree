@@ -15,6 +15,7 @@ import type {
   StatementLine,
   StatementsResponse,
   TrialBalanceListResponse,
+  ValidationResponse,
 } from "@/types";
 import { ExportButton } from "./ExportButton";
 import { MaterialitySuggestionBanner } from "./MaterialitySuggestionBanner";
@@ -285,6 +286,37 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
   });
 
   const statementsData = statementsQuery.data ?? generateMutation.data ?? null;
+
+  const validationQuery = useQuery({
+    queryKey: ["tb-validation", tbId],
+    enabled: !statementsQuery.isLoading && statementsQuery.data === null,
+    queryFn: async () => {
+      try {
+        return await apiFetch<ValidationResponse>(
+          `/trial-balances/${tbId}/validation`,
+          { getToken },
+        );
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) {
+          return null;
+        }
+        throw err;
+      }
+    },
+  });
+
+  const blockingFailures = useMemo(() => {
+    const checks = validationQuery.data?.checks ?? [];
+    return checks.filter(
+      (check) =>
+        !check.passed &&
+        check.severity === "error" &&
+        (check.check_name === "tb_integrity" ||
+          check.check_name === "balance_sheet_balance" ||
+          check.check_name === "net_assets"),
+    );
+  }, [validationQuery.data?.checks]);
+
   const currencyCode = statementsData?.functional_currency ?? "GBP";
   const isStatementTab = STATEMENT_TABS.includes(tab);
   const block = isStatementTab
@@ -463,6 +495,30 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
           <p className="text-sm text-ink-secondary">
             Statements have not been generated yet for this trial balance.
           </p>
+          {blockingFailures.length > 0 ? (
+            <div
+              className="space-y-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              data-testid="statements-blocking-validation"
+            >
+              <p className="font-semibold">
+                Blocking validation checks have not passed
+              </p>
+              <ul className="list-disc space-y-1 pl-5">
+                {blockingFailures.map((check) => (
+                  <li key={check.check_name}>{check.message}</li>
+                ))}
+              </ul>
+              <p>
+                <Link
+                  href={`/mapping/${tbId}`}
+                  className="font-medium underline"
+                >
+                  Review mapping
+                </Link>
+                {" — then confirm again to re-run validation."}
+              </p>
+            </div>
+          ) : null}
           {generateMutation.error ? (
             <div className="space-y-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
               <p>
@@ -487,7 +543,11 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
           ) : null}
           <button
             type="button"
-            disabled={generateMutation.isPending}
+            disabled={
+              generateMutation.isPending ||
+              (validationQuery.data != null &&
+                !validationQuery.data.can_generate_statements)
+            }
             onClick={() => generateMutation.mutate()}
             className="rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-50"
           >

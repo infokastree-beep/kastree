@@ -125,7 +125,7 @@ If step 2 finds more than one distinct symbol across the scanned cells, log the 
 | 1 | TB Integrity | Total debits = total credits within €0.01 (or functional currency equivalent) | Error | Yes |
 | 2 | Balance Sheet Balance | Total assets = total liabilities + total equity within €0.01 | Error | Yes |
 | 3 | Retained Earnings Roll-forward | If prior period provided: closing RE prior + current period profit = closing RE current within €0.01 | Warning | No |
-| 4 | Net Assets Check | Net assets (assets − liabilities) = share capital + opening retained earnings + current-period profit within €0.01. Opening RE is the TB retained_earnings balance; period profit is the same SOPL net_profit figure (see statements.compute_net_profit). Un-closed Dividends are deliberately excluded from this equity total so the check stays independent of Balance Sheet Balance — open Dividends fail net_assets by exactly the dividend amount. | Error | Yes |
+| 4 | Net Assets Check | Net assets (assets − liabilities) = equity components + current-period profit − open dividends within €0.01. Opening RE is the TB retained_earnings balance; period profit is the same SOPL net_profit figure (see statements.compute_net_profit). Open Dividends are treated as contra-equity (same as Balance Sheet Balance / SOFP closing RE) so a balanced TB with interim dividends can generate statements. | Error | Yes |
 | 5 | Negative Cash/Bank | Any cash/bank account with net_balance < 0 | Warning | No |
 | 6 | Comparatives Available (Status Flag, not validation) | Prior period TB exists for this client | Info | No |
 

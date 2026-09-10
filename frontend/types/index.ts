@@ -186,6 +186,21 @@ export interface MappingConfirmResponse {
   status: string;
 }
 
+export interface ValidationCheck {
+  check_name: string;
+  passed: boolean;
+  severity: "error" | "warning" | "info";
+  message: string;
+  details?: Record<string, string> | null;
+}
+
+export interface ValidationResponse {
+  tb_id: string;
+  all_passed: boolean;
+  can_generate_statements: boolean;
+  checks: ValidationCheck[];
+}
+
 export interface StatementLine {
   id: string;
   line_item_code: string;
