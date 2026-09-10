@@ -260,7 +260,15 @@ def _parse_dataframe(
         body = working.reset_index(drop=True)
         body.columns = [f"col_{index}" for index in range(len(body.columns))]
 
-    column_map, tb_format = _detect_columns(list(body.columns))
+    try:
+        column_map, tb_format = _detect_columns(list(body.columns))
+    except ParseError as exc:
+        if _dataframe_looks_like_general_ledger(working):
+            raise ParseError(
+                "This looks like a general ledger, not a trial balance — "
+                "try the General ledger option instead."
+            ) from exc
+        raise
     default_currency, per_row_currency = _detect_currency(
         body,
         column_map=column_map,
@@ -366,6 +374,33 @@ def _make_unique_columns(headers: list[str], *, width: int) -> list[str]:
         seen[header] = count + 1
         unique.append(header if count == 0 else f"{header}_{count}")
     return unique
+
+
+def _header_row_matches_gl_pattern(headers: list[str]) -> bool:
+    """True when a header row looks like a transaction GL, not a summarised TB."""
+    joined = " ".join(headers)
+    has_date = any(
+        token in joined
+        for token in ("date", "txn date", "transaction date", "posting date")
+    )
+    has_code = any(
+        token in joined for token in ("account code", "acct code", "gl code", "a/c")
+    ) or ("code" in joined and "account" in joined)
+    has_name = any(
+        token in joined
+        for token in ("account name", "description", "particulars", "narrative")
+    ) or ("name" in joined and "account" in joined)
+    has_amounts = ("debit" in joined or "credit" in joined) or "amount" in joined
+    return has_date and has_code and has_name and has_amounts
+
+
+def _dataframe_looks_like_general_ledger(dataframe: pd.DataFrame) -> bool:
+    """Scan the first rows for a Date + Account Code/Name + Debit/Credit header."""
+    for index in range(min(15, len(dataframe))):
+        headers = [_normalize_header(value) for value in dataframe.iloc[index].tolist()]
+        if _header_row_matches_gl_pattern(headers):
+            return True
+    return False
 
 
 def _detect_columns(columns: list[str]) -> tuple[dict[str, str], TBFormat]:

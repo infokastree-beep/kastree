@@ -257,3 +257,69 @@ def test_parse_uses_explicit_currency_column() -> None:
 
     assert rows[0].currency == "USD"
     assert rows[1].currency == "USD"
+
+
+def test_tb_path_hints_when_file_looks_like_general_ledger() -> None:
+    """GL-shaped workbooks on the TB path get a redirect hint, not a generic miss."""
+
+    def build(ws) -> None:
+        ws.append(["Apex Manufacturing Limited"])
+        # Decoy blurb: substring "balanced"+"accounts" can steal TB header detection
+        # away from the real GL header row (same shape as the Apex sample).
+        ws.append(
+            [
+                "Complex sample with 50 balanced journal lines across 12 TB accounts."
+            ]
+        )
+        ws.append([])
+        ws.append(
+            ["Date", "Account Code", "Account Name", "Debit", "Credit", "Narrative"]
+        )
+        ws.append(["2025-01-02", "1900", "Bank", "100.00", "0.00", "Receipt"])
+        ws.append(["2025-01-02", "4000", "Sales", "0.00", "100.00", "Receipt"])
+
+    with pytest.raises(ParseError) as exc_info:
+        parse_tb_file(_xlsx_bytes(build), filename="gl.xlsx", functional_currency="EUR")
+
+    message = str(exc_info.value)
+    assert "general ledger" in message.lower()
+    assert "trial balance" in message.lower()
+    assert "Could not detect account code and account name columns." not in message
+
+
+def test_tb_path_keeps_generic_message_for_unrecognisable_layout() -> None:
+    def build(ws) -> None:
+        # Debit/Credit trigger a header hit, but no account code/name and no Date
+        # → generic miss, not the GL redirect hint.
+        ws.append(["Ref", "Label", "Debit", "Credit"])
+        ws.append(["1", "x", "10.00", "0.00"])
+        ws.append(["2", "y", "0.00", "10.00"])
+
+    with pytest.raises(ParseError) as exc_info:
+        parse_tb_file(_xlsx_bytes(build), filename="mystery.xlsx", functional_currency="GBP")
+
+    assert str(exc_info.value) == (
+        "Could not detect account code and account name columns."
+    )
+
+
+def test_apex_manufacturing_gl_xlsx_on_tb_path_shows_gl_hint() -> None:
+    from pathlib import Path
+
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "frontend"
+        / "public"
+        / "samples"
+        / "apex-manufacturing-gl-2025.xlsx"
+    )
+    assert path.is_file(), path
+    with pytest.raises(ParseError) as exc_info:
+        parse_tb_file(
+            path.read_bytes(),
+            filename="apex-manufacturing-gl-2025.xlsx",
+            functional_currency="EUR",
+        )
+    message = str(exc_info.value)
+    assert "This looks like a general ledger, not a trial balance" in message
+    assert "General ledger option" in message
