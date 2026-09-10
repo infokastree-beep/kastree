@@ -3,358 +3,358 @@
     {
       "account_code": "1000",
       "account_name": "Freehold Property",
-      "debit": 455000.0,
-      "credit": 0.0,
+      "debit": "455000",
+      "credit": "0",
       "row_index": 1
     },
     {
       "account_code": "1100",
       "account_name": "Plant & Machinery - Cost",
-      "debit": 185000.0,
-      "credit": 0.0,
+      "debit": "185000",
+      "credit": "0",
       "row_index": 2
     },
     {
       "account_code": "1110",
       "account_name": "Plant & Machinery - Accum. Depreciation",
-      "debit": 0.0,
-      "credit": 18500.0,
+      "debit": "0",
+      "credit": "18500",
       "row_index": 3
     },
     {
       "account_code": "1200",
       "account_name": "Motor Vehicles - Cost",
-      "debit": 68000.0,
-      "credit": 0.0,
+      "debit": "68000",
+      "credit": "0",
       "row_index": 4
     },
     {
       "account_code": "1210",
       "account_name": "Motor Vehicles - Accum. Depreciation",
-      "debit": 0.0,
-      "credit": 13600.0,
+      "debit": "0",
+      "credit": "13600",
       "row_index": 5
     },
     {
       "account_code": "1300",
       "account_name": "Computer Equipment - Cost",
-      "debit": 24500.0,
-      "credit": 0.0,
+      "debit": "24500",
+      "credit": "0",
       "row_index": 6
     },
     {
       "account_code": "1310",
       "account_name": "Computer Equipment - Accum. Depreciation",
-      "debit": 0.0,
-      "credit": 6125.0,
+      "debit": "0",
+      "credit": "6125",
       "row_index": 7
     },
     {
       "account_code": "1400",
       "account_name": "Intangible Assets - Software Licences",
-      "debit": 18000.0,
-      "credit": 0.0,
+      "debit": "18000",
+      "credit": "0",
       "row_index": 8
     },
     {
       "account_code": "1500",
       "account_name": "Inventory - Raw Materials",
-      "debit": 140420.0,
-      "credit": 0.0,
+      "debit": "140420",
+      "credit": "0",
       "row_index": 9
     },
     {
       "account_code": "1510",
       "account_name": "Inventory - Work in Progress",
-      "debit": 4300.0,
-      "credit": 0.0,
+      "debit": "4300",
+      "credit": "0",
       "row_index": 10
     },
     {
       "account_code": "1520",
       "account_name": "Inventory - Finished Goods",
-      "debit": 12700.0,
-      "credit": 0.0,
+      "debit": "12700",
+      "credit": "0",
       "row_index": 11
     },
     {
       "account_code": "1600",
       "account_name": "Trade Receivables",
-      "debit": 231562.26,
-      "credit": 0.0,
+      "debit": "231562.26",
+      "credit": "0",
       "row_index": 12
     },
     {
       "account_code": "1610",
       "account_name": "Allowance for Doubtful Debts",
-      "debit": 0.0,
-      "credit": 4800.0,
+      "debit": "0",
+      "credit": "4800",
       "row_index": 13
     },
     {
       "account_code": "1700",
       "account_name": "Prepayments",
-      "debit": 4650.0,
-      "credit": 0.0,
+      "debit": "4650",
+      "credit": "0",
       "row_index": 14
     },
     {
       "account_code": "1800",
       "account_name": "VAT Recoverable",
-      "debit": 92805.0,
-      "credit": 0.0,
+      "debit": "92805",
+      "credit": "0",
       "row_index": 15
     },
     {
       "account_code": "1900",
       "account_name": "Bank Current Account - AIB",
-      "debit": 0.0,
-      "credit": 301081.76,
+      "debit": "0",
+      "credit": "301081.76",
       "row_index": 16
     },
     {
       "account_code": "1910",
       "account_name": "Bank Deposit Account - BOI",
-      "debit": 83070.0,
-      "credit": 0.0,
+      "debit": "83070",
+      "credit": "0",
       "row_index": 17
     },
     {
       "account_code": "1920",
       "account_name": "Petty Cash",
-      "debit": 1050.0,
-      "credit": 0.0,
+      "debit": "1050",
+      "credit": "0",
       "row_index": 18
     },
     {
       "account_code": "2000",
       "account_name": "Trade Payables",
-      "debit": 0.0,
-      "credit": 301301.5,
+      "debit": "0",
+      "credit": "301301.5",
       "row_index": 19
     },
     {
       "account_code": "2200",
       "account_name": "VAT Payable",
-      "debit": 0.0,
-      "credit": 240557.0,
+      "debit": "0",
+      "credit": "240557",
       "row_index": 21
     },
     {
       "account_code": "2300",
       "account_name": "PAYE/PRSI Control",
-      "debit": 50400.0,
-      "credit": 0.0,
+      "debit": "50400.00",
+      "credit": "0",
       "row_index": 22
     },
     {
       "account_code": "2400",
       "account_name": "Corporation Tax Payable",
-      "debit": 0.0,
-      "credit": 28500.0,
+      "debit": "0",
+      "credit": "28500",
       "row_index": 23
     },
     {
       "account_code": "2500",
       "account_name": "Bank Loan - Current Portion",
-      "debit": 60000.0,
-      "credit": 0.0,
+      "debit": "60000",
+      "credit": "0",
       "row_index": 24
     },
     {
       "account_code": "2600",
       "account_name": "Bank Loan - Non-Current",
-      "debit": 0.0,
-      "credit": 180000.0,
+      "debit": "0",
+      "credit": "180000",
       "row_index": 25
     },
     {
       "account_code": "2700",
       "account_name": "Deferred Revenue",
-      "debit": 0.0,
-      "credit": 12000.0,
+      "debit": "0",
+      "credit": "12000",
       "row_index": 26
     },
     {
       "account_code": "3000",
       "account_name": "Share Capital - Ordinary",
-      "debit": 0.0,
-      "credit": 250000.0,
+      "debit": "0",
+      "credit": "250000",
       "row_index": 27
     },
     {
       "account_code": "3100",
       "account_name": "Share Premium",
-      "debit": 0.0,
-      "credit": 50000.0,
+      "debit": "0",
+      "credit": "50000",
       "row_index": 28
     },
     {
       "account_code": "3300",
       "account_name": "Revaluation Reserve",
-      "debit": 0.0,
-      "credit": 35000.0,
+      "debit": "0",
+      "credit": "35000",
       "row_index": 29
     },
     {
       "account_code": "4000",
       "account_name": "Revenue - Product Sales",
-      "debit": 0.0,
-      "credit": 843300.0,
+      "debit": "0",
+      "credit": "843300",
       "row_index": 30
     },
     {
       "account_code": "4100",
       "account_name": "Revenue - Service Contracts",
-      "debit": 0.0,
-      "credit": 211600.0,
+      "debit": "0",
+      "credit": "211600",
       "row_index": 31
     },
     {
       "account_code": "4200",
       "account_name": "Other Operating Income",
-      "debit": 0.0,
-      "credit": 5300.0,
+      "debit": "0",
+      "credit": "5300",
       "row_index": 32
     },
     {
       "account_code": "5000",
       "account_name": "Cost of Sales - Materials",
-      "debit": 379080.0,
-      "credit": 0.0,
+      "debit": "379080",
+      "credit": "0",
       "row_index": 33
     },
     {
       "account_code": "5100",
       "account_name": "Cost of Sales - Direct Labour",
-      "debit": 144000.0,
-      "credit": 0.0,
+      "debit": "144000",
+      "credit": "0",
       "row_index": 34
     },
     {
       "account_code": "5200",
       "account_name": "Cost of Sales - Subcontractors",
-      "debit": 64700.0,
-      "credit": 0.0,
+      "debit": "64700",
+      "credit": "0",
       "row_index": 35
     },
     {
       "account_code": "6000",
       "account_name": "Wages & Salaries - Admin",
-      "debit": 222000.0,
-      "credit": 0.0,
+      "debit": "222000",
+      "credit": "0",
       "row_index": 36
     },
     {
       "account_code": "6100",
       "account_name": "Employer PRSI",
-      "debit": 24753.0,
-      "credit": 0.0,
+      "debit": "24753.00",
+      "credit": "0",
       "row_index": 37
     },
     {
       "account_code": "6200",
       "account_name": "Rent & Rates",
-      "debit": 55550.0,
-      "credit": 0.0,
+      "debit": "55550",
+      "credit": "0",
       "row_index": 38
     },
     {
       "account_code": "6300",
       "account_name": "Utilities - Electricity & Gas",
-      "debit": 22200.0,
-      "credit": 0.0,
+      "debit": "22200",
+      "credit": "0",
       "row_index": 39
     },
     {
       "account_code": "6400",
       "account_name": "Insurance",
-      "debit": 11040.0,
-      "credit": 0.0,
+      "debit": "11040",
+      "credit": "0",
       "row_index": 40
     },
     {
       "account_code": "6500",
       "account_name": "Motor Expenses",
-      "debit": 8880.0,
-      "credit": 0.0,
+      "debit": "8880",
+      "credit": "0",
       "row_index": 41
     },
     {
       "account_code": "6600",
       "account_name": "Marketing & Advertising",
-      "debit": 25200.0,
-      "credit": 0.0,
+      "debit": "25200",
+      "credit": "0",
       "row_index": 42
     },
     {
       "account_code": "6700",
       "account_name": "Professional Fees - Legal & Audit",
-      "debit": 18000.0,
-      "credit": 0.0,
+      "debit": "18000",
+      "credit": "0",
       "row_index": 43
     },
     {
       "account_code": "6800",
       "account_name": "IT Subscriptions & Software",
-      "debit": 10680.0,
-      "credit": 0.0,
+      "debit": "10680",
+      "credit": "0",
       "row_index": 44
     },
     {
       "account_code": "6900",
       "account_name": "Office Supplies & Postage",
-      "debit": 4170.0,
-      "credit": 0.0,
+      "debit": "4170",
+      "credit": "0",
       "row_index": 45
     },
     {
       "account_code": "7000",
       "account_name": "Depreciation - Plant",
-      "debit": 18500.0,
-      "credit": 0.0,
+      "debit": "18500",
+      "credit": "0",
       "row_index": 46
     },
     {
       "account_code": "7010",
       "account_name": "Depreciation - Vehicles",
-      "debit": 13600.0,
-      "credit": 0.0,
+      "debit": "13600",
+      "credit": "0",
       "row_index": 47
     },
     {
       "account_code": "7020",
       "account_name": "Depreciation - Computers",
-      "debit": 6125.0,
-      "credit": 0.0,
+      "debit": "6125",
+      "credit": "0",
       "row_index": 48
     },
     {
       "account_code": "7100",
       "account_name": "Bad Debt Expense",
-      "debit": 4800.0,
-      "credit": 0.0,
+      "debit": "4800",
+      "credit": "0",
       "row_index": 49
     },
     {
       "account_code": "8000",
       "account_name": "Interest Income",
-      "debit": 0.0,
-      "credit": 3070.0,
+      "debit": "0",
+      "credit": "3070",
       "row_index": 50
     },
     {
       "account_code": "8100",
       "account_name": "Interest Expense",
-      "debit": 11500.0,
-      "credit": 0.0,
+      "debit": "11500",
+      "credit": "0",
       "row_index": 51
     },
     {
       "account_code": "9000",
       "account_name": "Corporation Tax Charge",
-      "debit": 28500.0,
-      "credit": 0.0,
+      "debit": "28500",
+      "credit": "0",
       "row_index": 52
     }
   ],
