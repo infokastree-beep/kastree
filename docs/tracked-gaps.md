@@ -1096,6 +1096,32 @@ the design draft:
 **Build shape:** free, in-flow Upload (same as PDF-TB). **Not** standalone
 Convert. Phase 1 PDF-TB remains **DONE**.
 
+### Future refinements to the existing GL→TB engine (non-urgent)
+
+Improvements to the **already-built, proven** GL→TB engine — not new products
+and not competing work. Revisit only if real client GL data surfaces these as
+actual, recurring issues in use.
+
+1. **Duplicate / near-duplicate transaction detection.** Today the engine
+   correctly **sums** lines that share an account (by design). Worth adding a
+   review flag for suspiciously similar entries (same amount, same date, same
+   account) so the user can check before confirm — rather than silently folding
+   true duplicates into the TB. Real idea; priority depends on whether client
+   GLs commonly contain accidental double-posts.
+
+2. **Multi-currency GL handling.** Confirm current behaviour (engine treats
+   amounts as a single functional currency — no FX conversion or per-line
+   currency column). If real client ledgers mix currencies in one export,
+   decide whether to fail closed, require a currency filter, or support
+   conversion. Do not invent multi-currency math until a real case needs it.
+
+3. **Fiscal year vs calendar year period cutoffs.** Period logic is already an
+   inclusive `period_start`…`period_end` date window (not hard-coded Jan–Dec),
+   so non-calendar fiscal years should work when the user sets those dates
+   correctly. Worth an explicit confirmation / regression case (e.g. FY 1 Apr–
+   31 Mar) against a real multi-month GL so Mode C YTD/FY-to-date assumptions
+   stay trustworthy for non-calendar practices.
+
 ## No uptime or error monitoring
 
 **Sentry backend — DONE / CLOSED (2026-09-08):**
