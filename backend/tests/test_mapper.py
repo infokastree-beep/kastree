@@ -323,16 +323,20 @@ def test_allowance_for_doubtful_debts_nets_trade_receivables() -> None:
     assert all(r.canonical_line != "trade_receivables" for r in results[5:])
 
 
-def test_vat_recoverable_stays_unmapped_not_taxes_payable() -> None:
-    """VAT Recoverable is a genuine asset gap — not a contra-name bug; leave unmapped."""
+def test_vat_recoverable_maps_to_other_receivables_not_taxes_payable() -> None:
+    """VAT Recoverable → other_receivables; VAT Payable stays for Tier 4 / taxes."""
     accounts = [
         FakeAccount(account_code="1800", account_name="VAT Recoverable"),
         FakeAccount(account_code="1800", account_name="VAT Receivable"),
         FakeAccount(account_code="2200", account_name="VAT Payable"),
     ]
     results = map_accounts(accounts, prior_confirmed=[])
-    assert all(r.canonical_line is None for r in results)
-    assert all(r.method is None for r in results)
+    assert [r.canonical_line for r in results] == [
+        "other_receivables",
+        "other_receivables",
+        None,
+    ]
+    assert [r.method for r in results] == ["code_range", "code_range", None]
 
 
 def test_tier3_6000_range_routes_depreciation_names_to_depreciation() -> None:

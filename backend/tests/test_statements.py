@@ -99,6 +99,7 @@ def test_sopl_groups_accounts_computes_subtotals_and_provenance() -> None:
 
     assert [line.line_item_code for line in lines] == [
         "revenue",
+        "other_revenue",
         "cost_of_sales",
         "gross_profit",
         "operating_expenses",
@@ -111,7 +112,7 @@ def test_sopl_groups_accounts_computes_subtotals_and_provenance() -> None:
         "tax",
         "net_profit",
     ]
-    assert [line.display_order for line in lines] == list(range(1, 13))
+    assert [line.display_order for line in lines] == list(range(1, 14))
 
     revenue = _by_code(lines, "revenue")
     assert revenue.amount == Decimal("10000.00")
@@ -131,6 +132,9 @@ def test_sopl_groups_accounts_computes_subtotals_and_provenance() -> None:
         cos_a.id,
         cos_b.id,
     }
+
+    other_revenue = _by_code(lines, "other_revenue")
+    assert other_revenue.amount == Decimal("0.00")
 
     operating_expenses = _by_code(lines, "operating_expenses")
     assert operating_expenses.amount == Decimal("2000.00")
@@ -367,6 +371,7 @@ def test_sofp_groups_accounts_computes_subtotals_and_provenance() -> None:
         "non_current_assets",
         "inventory",
         "trade_receivables",
+        "other_receivables",
         "prepayments",
         "accrued_income",
         "cash",
@@ -375,6 +380,7 @@ def test_sofp_groups_accounts_computes_subtotals_and_provenance() -> None:
         "loans",
         "non_current_liabilities",
         "trade_payables",
+        "other_payables",
         "provisions",
         "accruals",
         "deferred_income",
@@ -507,6 +513,7 @@ def test_sofp_current_non_current_segmentation_golden_fixture() -> None:
         "non_current_assets",
         "inventory",
         "trade_receivables",
+        "other_receivables",
         "prepayments",
         "accrued_income",
         "cash",
@@ -515,6 +522,7 @@ def test_sofp_current_non_current_segmentation_golden_fixture() -> None:
         "loans",
         "non_current_liabilities",
         "trade_payables",
+        "other_payables",
         "provisions",
         "accruals",
         "deferred_income",

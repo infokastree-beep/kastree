@@ -1188,13 +1188,13 @@ If FinDraft ever pulls live bank feeds or transaction histories directly from a 
 ```python
 # From shared/canonical_accounts.py
 CANONICAL_LINES = [
-  "revenue", "cost_of_sales", "gross_profit",  # calculated
+  "revenue", "other_revenue", "cost_of_sales", "gross_profit",  # calculated
   "operating_expenses", "depreciation", "amortisation", "operating_profit",  # calculated
   "interest_income", "interest_expense", "profit_before_tax",  # calculated
   "tax", "net_profit",  # calculated
   "property_plant_equipment", "intangible_assets", "investments", "inventory",
-  "trade_receivables", "prepayments", "accrued_income", "cash", "total_assets",  # calculated
-  "trade_payables", "provisions", "accruals", "deferred_income",
+  "trade_receivables", "other_receivables", "prepayments", "accrued_income", "cash", "total_assets",  # calculated
+  "trade_payables", "other_payables", "provisions", "accruals", "deferred_income",
   "taxes_payable", "social_security_payable", "loans", "total_liabilities",  # calculated
   "share_capital", "share_premium", "capital_contribution", "retained_earnings",
   "revaluation_reserve",

@@ -18,15 +18,18 @@ from app.services.statements import (
     SOFP_ASSET_ORDER,
     SOFP_LIABILITY_ORDER,
     build_sofp,
+    build_sopl,
     compute_net_profit,
 )
 from app.services.validator import ASSET_LINES, EQUITY_LINES_SOFP, LIABILITY_LINES
 
-# Balance-sheet / equity expansion lines (excludes amortisation — that is P&L).
+# Balance-sheet / equity expansion lines (excludes amortisation / other_revenue — P&L).
 NEW_BALANCE_SHEET_LINES: tuple[str, ...] = (
     "investments",
     "prepayments",
     "accrued_income",
+    "other_receivables",
+    "other_payables",
     "provisions",
     "deferred_income",
     "taxes_payable",
@@ -36,7 +39,10 @@ NEW_BALANCE_SHEET_LINES: tuple[str, ...] = (
     "revaluation_reserve",
 )
 
-NEW_CANONICAL_LINES: tuple[str, ...] = NEW_BALANCE_SHEET_LINES + ("amortisation",)
+NEW_CANONICAL_LINES: tuple[str, ...] = NEW_BALANCE_SHEET_LINES + (
+    "amortisation",
+    "other_revenue",
+)
 
 WITHDRAWN_COMBINED_LINES: tuple[str, ...] = (
     "prepayments_and_accrued_income",
@@ -58,6 +64,10 @@ def _acct(
         net_balance=Decimal(net_balance),
         canonical_line=canonical_line,
     )
+
+
+def _by_code(lines: list, code: str):
+    return next(line for line in lines if line.line_item_code == code)
 
 
 @pytest.mark.parametrize("line", NEW_CANONICAL_LINES)
@@ -88,6 +98,7 @@ def test_sofp_display_order_includes_split_lines() -> None:
         "investments",
         "inventory",
         "trade_receivables",
+        "other_receivables",
         "prepayments",
         "accrued_income",
         "cash",
@@ -95,6 +106,7 @@ def test_sofp_display_order_includes_split_lines() -> None:
     assert SOFP_LIABILITY_ORDER == (
         "loans",
         "trade_payables",
+        "other_payables",
         "provisions",
         "accruals",
         "deferred_income",
@@ -155,10 +167,12 @@ def test_sofp_places_split_lines_in_expected_positions() -> None:
         _acct("1250", net_balance="800.00", canonical_line="investments"),
         _acct("1300", net_balance="200.00", canonical_line="inventory"),
         _acct("1400", net_balance="300.00", canonical_line="trade_receivables"),
+        _acct("1420", net_balance="150.00", canonical_line="other_receivables"),
         _acct("1450", net_balance="100.00", canonical_line="prepayments"),
         _acct("1460", net_balance="50.00", canonical_line="accrued_income"),
         _acct("1500", net_balance="250.00", canonical_line="cash"),
         _acct("2100", net_balance="-400.00", canonical_line="trade_payables"),
+        _acct("2120", net_balance="-80.00", canonical_line="other_payables"),
         _acct("2150", net_balance="-100.00", canonical_line="provisions"),
         _acct("2200", net_balance="-40.00", canonical_line="accruals"),
         _acct("2210", net_balance="-10.00", canonical_line="deferred_income"),
@@ -180,12 +194,14 @@ def test_sofp_places_split_lines_in_expected_positions() -> None:
 
     codes = [line.line_item_code for line in lines]
     assert codes.index("investments") < codes.index("inventory")
-    assert codes.index("prepayments") > codes.index("trade_receivables")
+    assert codes.index("other_receivables") > codes.index("trade_receivables")
+    assert codes.index("prepayments") > codes.index("other_receivables")
     assert codes.index("accrued_income") > codes.index("prepayments")
     assert codes.index("non_current_assets") < codes.index("current_assets")
     assert codes.index("current_assets") < codes.index("total_assets")
     assert codes.index("loans") < codes.index("trade_payables")
-    assert codes.index("provisions") > codes.index("trade_payables")
+    assert codes.index("other_payables") > codes.index("trade_payables")
+    assert codes.index("provisions") > codes.index("other_payables")
     assert codes.index("deferred_income") > codes.index("accruals")
     assert codes.index("taxes_payable") > codes.index("deferred_income")
     assert codes.index("social_security_payable") > codes.index("taxes_payable")
@@ -200,14 +216,14 @@ def test_sofp_places_split_lines_in_expected_positions() -> None:
         "2300.00"
     )  # 1000 + 500 + 800
     assert next(line for line in lines if line.line_item_code == "current_assets").amount == Decimal(
-        "900.00"
-    )  # 200 + 300 + 100 + 50 + 250
+        "1050.00"
+    )  # 200 + 300 + 150 + 100 + 50 + 250
     assert next(
         line for line in lines if line.line_item_code == "non_current_liabilities"
     ).amount == Decimal("500.00")  # loans
     assert next(
         line for line in lines if line.line_item_code == "current_liabilities"
-    ).amount == Decimal("625.00")  # 400 + 100 + 40 + 10 + 50 + 25
+    ).amount == Decimal("705.00")  # 400 + 80 + 100 + 40 + 10 + 50 + 25
 
     total_equity = next(line for line in lines if line.line_item_code == "total_equity")
     assert total_equity.amount == Decimal("2025.00")  # 1000 + 200 + 75 + 600 + 150
@@ -225,11 +241,42 @@ def test_compute_net_profit_unchanged_by_new_balance_sheet_lines() -> None:
     assert compute_net_profit(accounts) == Decimal("600.00")
 
 
-def test_amortisation_in_profit_and_loss_and_not_balance_sheet_sets() -> None:
-    assert "amortisation" in PROFIT_AND_LOSS_LINES
-    assert "amortisation" not in ASSET_LINES
-    assert "amortisation" not in LIABILITY_LINES
-    assert "amortisation" not in EQUITY_LINES_SOFP
+def test_other_revenue_included_in_gross_profit() -> None:
+    accounts = [
+        _acct("4000", net_balance="-1000.00", canonical_line="revenue"),
+        _acct("4100", net_balance="-50.00", canonical_line="other_revenue"),
+        _acct("5000", net_balance="400.00", canonical_line="cost_of_sales"),
+    ]
+    lines = build_sopl(accounts)
+    assert _by_code(lines, "other_revenue").amount == Decimal("50.00")
+    assert _by_code(lines, "gross_profit").amount == Decimal("650.00")
+    assert compute_net_profit(accounts) == Decimal("650.00")
+
+
+def test_other_receivables_face_line_on_sofp() -> None:
+    vat = _acct("1800", net_balance="120.00", canonical_line="other_receivables")
+    cash = _acct("1500", net_balance="880.00", canonical_line="cash")
+    sc = _acct("3000", net_balance="-1000.00", canonical_line="share_capital")
+    lines = build_sofp(
+        [vat, cash, sc],
+        retained_earnings_closing=Decimal("0.00"),
+        retained_earnings_source_ids=[],
+    )
+    codes = [line.line_item_code for line in lines]
+    assert "trade_receivables" not in codes or codes.index("other_receivables") > codes.index(
+        "trade_receivables"
+    )
+    assert codes.index("other_receivables") < codes.index("cash")
+    assert _by_code(lines, "other_receivables").amount == Decimal("120.00")
+    assert _by_code(lines, "current_assets").amount == Decimal("1000.00")
+
+
+def test_validator_line_sets_include_misc_canonical_lines() -> None:
+    assert "other_receivables" in ASSET_LINES
+    assert "other_payables" in LIABILITY_LINES
+    assert "other_revenue" in PROFIT_AND_LOSS_LINES
+    assert "other_revenue" not in ASSET_LINES
+    assert "other_revenue" not in LIABILITY_LINES
 
 
 def test_amortisation_migration_remaps_named_rows_without_touching_depreciation(

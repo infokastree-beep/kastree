@@ -2,6 +2,7 @@
 
 CANONICAL_LINES: list[str] = [
     "revenue",
+    "other_revenue",
     "cost_of_sales",
     "gross_profit",
     "operating_expenses",
@@ -18,11 +19,13 @@ CANONICAL_LINES: list[str] = [
     "investments",
     "inventory",
     "trade_receivables",
+    "other_receivables",
     "prepayments",
     "accrued_income",
     "cash",
     "total_assets",
     "trade_payables",
+    "other_payables",
     "provisions",
     "accruals",
     "deferred_income",

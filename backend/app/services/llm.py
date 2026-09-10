@@ -1,11 +1,11 @@
 """LLM prompt templates and helpers.
 
-Prompt versions: mapping-tie-breaker-v7, variance-commentary-v2, business-health-v1
+Prompt versions: mapping-tie-breaker-v8, variance-commentary-v2, business-health-v1
 """
 
 from __future__ import annotations
 
-# Prompt version: mapping-tie-breaker-v7
+# Prompt version: mapping-tie-breaker-v8
 # Source: .cursorrules Section 7.2 safety rules unchanged (no monetary amounts,
 # conservative, unmapped if unclear, structured JSON). v2 added self-reported
 # confidence. v3 adds prefer-specific guidance so VAT / PAYE-NI control accounts
@@ -16,10 +16,12 @@ from __future__ import annotations
 # v6: Accum. abbreviation must still map as BS contra (not P&L depreciation).
 # v7: Allowance/Provision for Doubtful Debts → trade_receivables (BS contra);
 # VAT Recoverable (asset) ≠ taxes_payable — prefer unmapped over wrong leaf.
+# v8: other_receivables / other_payables / other_revenue for genuine misc only
+# (VAT Recoverable → other_receivables; not a dump for investment_property etc.).
 MAPPING_TIE_BREAKER_SYSTEM = """You are an accounting assistant. Map each account to exactly one canonical category.
-Available: revenue, cost_of_sales, operating_expenses, depreciation, amortisation, interest_income, interest_expense,
-tax, property_plant_equipment, intangible_assets, investments, inventory, trade_receivables,
-prepayments, accrued_income, cash, trade_payables, provisions, accruals, deferred_income,
+Available: revenue, other_revenue, cost_of_sales, operating_expenses, depreciation, amortisation, interest_income, interest_expense,
+tax, property_plant_equipment, intangible_assets, investments, inventory, trade_receivables, other_receivables,
+prepayments, accrued_income, cash, trade_payables, other_payables, provisions, accruals, deferred_income,
 taxes_payable, social_security_payable, loans, share_capital, share_premium, capital_contribution,
 retained_earnings, revaluation_reserve, dividends, unmapped.
 Prefer the most specific matching line when several could fit. Liability distinctions:
@@ -33,7 +35,9 @@ Prefer the most specific matching line when several could fit. Liability distinc
 - property_plant_equipment: fixed-asset cost AND Accumulated Depreciation / Accum. Depreciation / Acc. Depreciation / A/Depn / provision for depreciation (BS contra-asset — never depreciation).
 - intangible_assets: intangible cost AND Accumulated Amortisation / Accum. Amortisation / provision for amortisation (BS contra-asset — never amortisation).
 - trade_receivables: trade debtors/receivables AND Allowance / Provision for Doubtful or Bad Debts / Expected Credit Losses (BS contra-asset — never bad-debt expense).
-- VAT Recoverable / VAT receivable (asset owed TO the entity): prefer unmapped — not taxes_payable, not prepayments.
+- other_receivables: genuine miscellaneous current assets that are not trade debtors (e.g. VAT Recoverable / VAT receivable). Not a dump for items that deserve a specific line (investment property, deferred tax asset, etc.).
+- other_payables: genuine miscellaneous current liabilities that are not trade creditors. Not for deferred tax liability or other named lines.
+- other_revenue: genuine miscellaneous income that is not trading revenue or interest_income.
 - depreciation (P&L): period depreciation charge only — not accumulated / Accum. / Acc. / A/Depn / provision-for depreciation.
 - amortisation (P&L): period amortisation charge only — not accumulated / Accum. / provision-for amortisation.
 - share_premium: premium on issue of shares only — not capital contribution / capital contribution reserve.
@@ -95,6 +99,7 @@ Rules: No £/€/$ amounts. Mention trends (improving, stable, declining). Flag 
 MAPPING_TIE_BREAKER_CANONICAL_LINES: frozenset[str] = frozenset(
     {
         "revenue",
+        "other_revenue",
         "cost_of_sales",
         "operating_expenses",
         "depreciation",
@@ -107,10 +112,12 @@ MAPPING_TIE_BREAKER_CANONICAL_LINES: frozenset[str] = frozenset(
         "investments",
         "inventory",
         "trade_receivables",
+        "other_receivables",
         "prepayments",
         "accrued_income",
         "cash",
         "trade_payables",
+        "other_payables",
         "provisions",
         "accruals",
         "deferred_income",

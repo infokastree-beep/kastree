@@ -192,8 +192,9 @@ LLM:
 - Provisions — Warranty
 - VAT Control Account
 - **VAT Recoverable / VAT receivable** (asset owed *to* the entity — distinct from
-  VAT Payable / `taxes_payable`; do **not** force `taxes_payable` or `prepayments`;
-  leave unmapped until a dedicated leaf or `other_current_assets` exists)
+  VAT Payable / `taxes_payable`) — **resolved** via `other_receivables` (misc
+  current asset leaf; name cue + dropdown + LLM allowlist). Do **not** force
+  `taxes_payable` or `trade_receivables`.
 - PAYE/NI Control Account
 - Revaluation Reserve
 
@@ -1205,4 +1206,63 @@ production, obtain **real legal counsel** (Ireland/UK) on:
 This is a **real, upfront legal gate before building**, not a retrofit after
 UI exists. Internal confidence that “just an assistant” sounds reasonable is
 **not** confirmed legal grounding — counsel must say so for this use case.
+
+### Model evaluation when Product 2 is scheduled (do not pre-select now)
+
+When Product 2 (statutory report drafting) eventually begins, run a **real,
+direct model evaluation at that time** — compare then-current leading models
+specifically on the narrow task needed: structured FRS 102 disclosure text
+generation and reliable, schema-conformant output.
+
+Do **not** pre-select a model months before the build. The field moves too
+fast for an early pick to remain correct. General “computer use” capability is
+a different requirement than Product 2 actually has — evaluate the drafting /
+schema task, not agentic browsing. Revisit when Product 2 is scheduled, not
+before.
+
+## OpenAI Astra (Excel AI assistant) — evaluated, not a Product 1 pivot
+
+**Evaluated:** OpenAI Astra is a general-purpose spreadsheet automation /
+editing assistant. It is **not** a domain-specific accounting engine.
+
+It does **not** replace Kastree’s Product 1 core value:
+
+- deterministic statement engine (Python does the math)
+- canonical-line mapping with per-client memory
+- RLS isolation and audit trail
+- automated, provably-correct statement generation from TB
+
+Astra solves a different problem: helping a human edit spreadsheets faster.
+Worth evaluating later as a possible **component for Product 2/3**
+(statutory report drafting / formatting) **if/when** that work begins and
+Astra offers a real API — not a reason to pivot or abandon Product 1.
+
+## External UX / positioning review (high-value, not urgent)
+
+Captured from external review for future consideration. Revisit once Product 1
+has real users to validate against — high-value, not urgent.
+
+1. **Trust statement under the heading:** “Nothing is generated until you
+   review and confirm the mappings.”
+2. **Visual workflow indicator:** Upload → AI Parse → Confirm Mapping →
+   Statements → Commentary → Export.
+3. **CTA wording reconsideration:** “Parse Trial Balance” vs “Upload and
+   Parse”.
+4. **Explain the GL option** with one clarifying sentence for first-time
+   users.
+5. **“Try with demo data” button** — real, worth prioritizing; lowers
+   first-upload friction significantly.
+6. **Post-parse confidence summary** (“1,286 lines imported, 247 accounts
+   detected, balances, 6 need review, ~2 min”) — flagged as the **single
+   highest-value** suggestion.
+7. **Sharper landing pain-point language** (“turn a 2-hour workflow into 10
+   minutes”).
+8. **Real social proof once available** (client count, time saved, founder
+   credibility — “Built by an ACA Chartered Accountant”).
+9. **Explicit “why not just use ChatGPT” differentiation on the landing page**
+   — deterministic engine, persistent per-client mapping memory, audit trail,
+   RLS isolation — the actual moat, worth stating directly rather than
+   assumed.
+10. **Long-term positioning reframe worth considering:** “AI Management
+    Accounts Analyst” rather than “software.”
 

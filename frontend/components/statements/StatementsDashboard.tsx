@@ -248,6 +248,14 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
 
   const statementsQuery = useQuery({
     queryKey: ["tb-statements", tbId],
+    refetchInterval: (query) => {
+      // After mapping confirm the TB may still be validating/generating —
+      // poll until statements appear or a hard error lands.
+      if (query.state.data == null && query.state.error == null) {
+        return 1500;
+      }
+      return false;
+    },
     queryFn: async () => {
       try {
         return await apiFetch<StatementsResponse>(

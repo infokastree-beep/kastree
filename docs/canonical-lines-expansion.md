@@ -63,20 +63,29 @@ as its own line again and new `deferred_income`).
 | `share_premium` | Equity | Share premium — distinct from `share_capital` |
 | `capital_contribution` | Equity | Capital contribution reserve — shareholder contribution without new shares; **not** `share_premium` |
 | `revaluation_reserve` | Equity | Revaluation reserve — distinct equity reserve |
+| `other_receivables` | Current asset | Genuine misc current assets (e.g. VAT Recoverable) — **not** a dump for investment property / deferred tax asset |
+| `other_payables` | Current liability | Genuine misc current liabilities — **not** deferred tax liability or other named lines |
+| `other_revenue` | P&L income | Genuine misc income not fitting `revenue` / `interest_income`; included in gross profit |
 
 (`accruals` existed before this expansion; it is listed because the mid-build
 rename+split restored it as a first-class line alongside new `deferred_income`.)
 
-### SOFP display order (new lines)
+### SOFP / SOPL display order (misc leaves)
 
-**Assets** (after receivables, before cash): `prepayments`, then `accrued_income`.
+**Assets** (after trade receivables, before prepayments): `other_receivables`.
 
-**Liabilities** (after provisions, before loans): `accruals`, `deferred_income`,
-`taxes_payable`, `social_security_payable`.
+**Liabilities** (after trade payables, before provisions): `other_payables`.
+
+**SOPL** (after revenue, before cost of sales): `other_revenue` — included in
+gross profit (`GP = revenue + other_revenue − CoS`).
 
 **Equity** (SOFP face): `share_capital`, `share_premium`, `capital_contribution`,
 `retained_earnings`, `revaluation_reserve` — then presentation-only `dividends`
-and `total_equity`. SOPL is unchanged (equity is balance-sheet only).
+and `total_equity`.
+
+**Not dumping grounds:** items that deserve their own leaf later
+(`investment_property`, `deferred_tax_liability`, related-party balances, etc.)
+stay out of these three misc lines.
 
 ---
 

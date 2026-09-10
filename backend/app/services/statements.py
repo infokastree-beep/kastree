@@ -68,6 +68,7 @@ class SocieSofpEquityMismatchError(Exception):
 
 LINE_ITEM_NAMES: dict[str, str] = {
     "revenue": "Revenue",
+    "other_revenue": "Other revenue",
     "cost_of_sales": "Cost of sales",
     "gross_profit": "Gross profit",
     "operating_expenses": "Operating expenses",
@@ -84,6 +85,7 @@ LINE_ITEM_NAMES: dict[str, str] = {
     "investments": "Investments",
     "inventory": "Inventory",
     "trade_receivables": "Trade receivables",
+    "other_receivables": "Other receivables",
     "prepayments": "Prepayments",
     "accrued_income": "Accrued income",
     "cash": "Cash",
@@ -91,6 +93,7 @@ LINE_ITEM_NAMES: dict[str, str] = {
     "current_assets": "Current assets",
     "total_assets": "Total assets",
     "trade_payables": "Trade payables",
+    "other_payables": "Other payables",
     "provisions": "Provisions",
     "accruals": "Accruals",
     "deferred_income": "Deferred income",
@@ -127,6 +130,7 @@ _DEBIT_NORMAL_LINES: frozenset[str] = frozenset(
         "investments",
         "inventory",
         "trade_receivables",
+        "other_receivables",
         "prepayments",
         "accrued_income",
         "cash",
@@ -139,6 +143,7 @@ _DEBIT_NORMAL_LINES: frozenset[str] = frozenset(
 PROFIT_AND_LOSS_LINES: frozenset[str] = frozenset(
     {
         "revenue",
+        "other_revenue",
         "cost_of_sales",
         "operating_expenses",
         "depreciation",
@@ -161,8 +166,8 @@ def compute_net_profit(accounts: Sequence[NetProfitAccount]) -> Decimal:
     """SOPL net profit from mapped P&L accounts (Decimal only).
 
     Equivalent to:
-    revenue − cost_of_sales − operating_expenses − depreciation − amortisation
-    + interest_income − interest_expense − tax.
+    revenue + other_revenue − cost_of_sales − operating_expenses − depreciation
+    − amortisation + interest_income − interest_expense − tax.
 
     Sign convention: credit-normal lines contribute ``-net_balance``;
     debit-normal expense/tax lines also contribute ``-net_balance`` (a debit
@@ -202,6 +207,7 @@ SOFP_NON_CURRENT_ASSET_ORDER: tuple[str, ...] = (
 SOFP_CURRENT_ASSET_ORDER: tuple[str, ...] = (
     "inventory",
     "trade_receivables",
+    "other_receivables",
     "prepayments",
     "accrued_income",
     "cash",
@@ -209,6 +215,7 @@ SOFP_CURRENT_ASSET_ORDER: tuple[str, ...] = (
 SOFP_NON_CURRENT_LIABILITY_ORDER: tuple[str, ...] = ("loans",)
 SOFP_CURRENT_LIABILITY_ORDER: tuple[str, ...] = (
     "trade_payables",
+    "other_payables",
     "provisions",
     "accruals",
     "deferred_income",
@@ -239,6 +246,7 @@ SOFP_EQUITY_TOTAL_LINES: frozenset[str] = frozenset(EQUITY_COMPONENT_LINES)
 # Canonical face order for comparative merge (must match builder display order).
 SOPL_FACE_ORDER: tuple[str, ...] = (
     "revenue",
+    "other_revenue",
     "cost_of_sales",
     "gross_profit",
     "operating_expenses",
@@ -335,12 +343,22 @@ def build_sopl(accounts: Sequence[StatementAccount]) -> list[StatementLineItemRe
     order += 1
     lines.append(revenue)
 
+    other_revenue = _leaf_line("other_revenue", grouped, order)
+    order += 1
+    lines.append(other_revenue)
+
     cost_of_sales = _leaf_line("cost_of_sales", grouped, order)
     order += 1
     lines.append(cost_of_sales)
 
-    gross_profit_amount = revenue.amount - cost_of_sales.amount
-    gross_profit_ids = _merge_ids(revenue.source_account_ids, cost_of_sales.source_account_ids)
+    # Other revenue is miscellaneous income included in arriving at gross profit
+    # (not interest income, which sits below operating profit).
+    gross_profit_amount = revenue.amount + other_revenue.amount - cost_of_sales.amount
+    gross_profit_ids = _merge_ids(
+        revenue.source_account_ids,
+        other_revenue.source_account_ids,
+        cost_of_sales.source_account_ids,
+    )
     lines.append(
         _subtotal_line("gross_profit", gross_profit_amount, order, gross_profit_ids)
     )

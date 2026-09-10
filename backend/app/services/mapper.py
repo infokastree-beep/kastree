@@ -297,6 +297,17 @@ def _tier3_code_range(source_code: str, source_name: str) -> MappingResult | Non
             method="code_range",
         )
 
+    # Genuine misc current asset (e.g. VAT Recoverable) — not trade debtors,
+    # not taxes_payable. No Tier 3 code-range band owns this; name cue only.
+    if _other_receivables_from_name(source_name) is not None:
+        return MappingResult(
+            source_code=source_code,
+            source_name=source_name,
+            canonical_line="other_receivables",
+            confidence=CODE_RANGE_CONFIDENCE,
+            method="code_range",
+        )
+
     for start, end, canonical_line in UNAMBIGUOUS_CODE_RANGES:
         if start <= code_int <= end:
             band_default = canonical_line
@@ -493,6 +504,23 @@ def _contra_asset_canonical_from_name(source_name: str) -> str | None:
     # A/Dep… cue already implies depreciation when no amort token present
     if re.search(r"\ba\s*/\s*dep", normalized):
         return "property_plant_equipment"
+    return None
+
+
+def _other_receivables_from_name(source_name: str) -> str | None:
+    """Map clear miscellaneous receivable names to ``other_receivables``.
+
+    VAT Recoverable / VAT receivable is the confirmed live gap: an asset owed
+    *to* the entity that must not become ``taxes_payable`` or be forced into
+    ``trade_receivables``. Returns None for VAT Payable / VAT control liability.
+    """
+    normalized = normalize_text(source_name)
+    if re.search(r"\bvat\s+(recoverable|receivable)\b", normalized):
+        return "other_receivables"
+    if re.search(r"\binput\s+vat\b", normalized) and not re.search(
+        r"\b(payable|control|liability)\b", normalized
+    ):
+        return "other_receivables"
     return None
 
 

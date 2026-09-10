@@ -1079,6 +1079,37 @@ def run_validation_job(
             job.completed_at = datetime.now(timezone.utc)
             job.step = "Validation complete"
             session.commit()
+
+            # After successful blocking checks, generate statements in-process so
+            # the TB does not stay stuck at status=validating with an empty
+            # statements page (confirm mapping already redirected the user there).
+            if results.can_generate_statements:
+                set_rls_org_id(session, org_id)
+                tb = session.get(TrialBalance, tb_id)
+                assert tb is not None
+                tb.status = "generating"
+                statements_job = ProcessingJob(
+                    tb_id=tb.id,
+                    job_type="statements",
+                    status="running",
+                    step="Generating SOPL/SOFP/SOCIE",
+                    progress_pct=50,
+                    started_at=datetime.now(timezone.utc),
+                )
+                session.add(statements_job)
+                session.commit()
+
+                set_rls_org_id(session, org_id)
+                tb = session.get(TrialBalance, tb_id)
+                statements_job = session.get(ProcessingJob, statements_job.id)
+                assert tb is not None and statements_job is not None
+                _persist_statements_for_tb(session, tb)
+                statements_job.status = "complete"
+                statements_job.progress_pct = 100
+                statements_job.completed_at = datetime.now(timezone.utc)
+                statements_job.step = "Statements complete"
+                tb.status = "complete"
+                session.commit()
         except Exception as exc:
             session.rollback()
             with SyncSessionLocal() as err_session:
@@ -1218,75 +1249,86 @@ async def _generate_and_persist_statements(
         set_rls_org_id(sync_session, org_id)
         sync_tb = sync_session.get(TrialBalance, tb.id)
         assert sync_tb is not None
-        accounts = _statement_accounts(sync_session, sync_tb)
-        sopl, sofp, socie = build_statements(accounts)
-
-        # Replace prior statements for this TB.
-        existing = list(
-            sync_session.scalars(
-                select(FinancialStatement).where(FinancialStatement.tb_id == sync_tb.id)
-            ).all()
-        )
-        for statement in existing:
-            sync_session.delete(statement)
-        sync_session.flush()
-
-        blocks: list[StatementBlockResponse] = []
-        for statement_type, lines in (
-            ("SOPL", sopl),
-            ("SOFP", sofp),
-            ("SOCIE", socie),
-        ):
-            fs = FinancialStatement(
-                tb_id=sync_tb.id,
-                statement_type=statement_type,
-                data={"lines": [_line_to_json(line) for line in lines]},
-                # Wall-clock generate time (not transaction now()) so
-                # mappings_stale clears correctly after regenerate.
-                generated_at=datetime.now(timezone.utc),
-            )
-            sync_session.add(fs)
-            sync_session.flush()
-            # Persist the full skeleton (including nil leaves) for audit/evidence.
-            # Response face lines match GET/export: omit nil leaves / empty sections.
-            persisted: list[StatementLineResponse] = []
-            for line in lines:
-                sli = StatementLineItem(
-                    statement_id=fs.id,
-                    line_item_code=line.line_item_code,
-                    line_item_name=line.line_item_name,
-                    amount=line.amount,
-                    is_subtotal=line.is_subtotal,
-                    display_order=line.display_order,
-                    source_account_ids=line.source_account_ids or None,
-                )
-                sync_session.add(sli)
-                sync_session.flush()
-                persisted.append(
-                    StatementLineResponse(
-                        id=sli.id,
-                        line_item_code=sli.line_item_code,
-                        line_item_name=sli.line_item_name,
-                        amount=str(sli.amount),
-                        prior_amount=None,
-                        is_subtotal=sli.is_subtotal,
-                        display_order=sli.display_order,
-                        source_account_ids=list(sli.source_account_ids or []),
-                    )
-                )
-            display_lines = iter_nil_filtered_face_lines(persisted)
-            blocks.append(
-                StatementBlockResponse(
-                    statement_type=statement_type,  # type: ignore[arg-type]
-                    generated_at=fs.generated_at,
-                    lines=[
-                        line.model_copy(update={"display_order": index})
-                        for index, line in enumerate(display_lines, start=1)
-                    ],
-                )
-            )
+        blocks = _persist_statements_for_tb(sync_session, sync_tb)
         sync_session.commit()
         return blocks
+
+
+def _persist_statements_for_tb(
+    session: Session, tb: TrialBalance
+) -> list[StatementBlockResponse]:
+    """Build and replace SOFP/SOPL/SOCIE for ``tb`` on an open sync session.
+
+    Caller owns the commit. Used by the async generate endpoint and by
+    ``run_validation_job`` auto-generate after successful validation.
+    """
+    accounts = _statement_accounts(session, tb)
+    sopl, sofp, socie = build_statements(accounts)
+
+    existing = list(
+        session.scalars(
+            select(FinancialStatement).where(FinancialStatement.tb_id == tb.id)
+        ).all()
+    )
+    for statement in existing:
+        session.delete(statement)
+    session.flush()
+
+    blocks: list[StatementBlockResponse] = []
+    for statement_type, lines in (
+        ("SOPL", sopl),
+        ("SOFP", sofp),
+        ("SOCIE", socie),
+    ):
+        fs = FinancialStatement(
+            tb_id=tb.id,
+            statement_type=statement_type,
+            data={"lines": [_line_to_json(line) for line in lines]},
+            # Wall-clock generate time (not transaction now()) so
+            # mappings_stale clears correctly after regenerate.
+            generated_at=datetime.now(timezone.utc),
+        )
+        session.add(fs)
+        session.flush()
+        # Persist the full skeleton (including nil leaves) for audit/evidence.
+        # Response face lines match GET/export: omit nil leaves / empty sections.
+        persisted: list[StatementLineResponse] = []
+        for line in lines:
+            sli = StatementLineItem(
+                statement_id=fs.id,
+                line_item_code=line.line_item_code,
+                line_item_name=line.line_item_name,
+                amount=line.amount,
+                is_subtotal=line.is_subtotal,
+                display_order=line.display_order,
+                source_account_ids=line.source_account_ids or None,
+            )
+            session.add(sli)
+            session.flush()
+            persisted.append(
+                StatementLineResponse(
+                    id=sli.id,
+                    line_item_code=sli.line_item_code,
+                    line_item_name=sli.line_item_name,
+                    amount=str(sli.amount),
+                    prior_amount=None,
+                    is_subtotal=sli.is_subtotal,
+                    display_order=sli.display_order,
+                    source_account_ids=list(sli.source_account_ids or []),
+                )
+            )
+        display_lines = iter_nil_filtered_face_lines(persisted)
+        blocks.append(
+            StatementBlockResponse(
+                statement_type=statement_type,  # type: ignore[arg-type]
+                generated_at=fs.generated_at,
+                lines=[
+                    line.model_copy(update={"display_order": index})
+                    for index, line in enumerate(display_lines, start=1)
+                ],
+            )
+        )
+    return blocks
 
 
 def _line_to_json(line: StatementLineItemRecord) -> dict[str, Any]:

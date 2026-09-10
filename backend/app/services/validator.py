@@ -26,6 +26,7 @@ ASSET_LINES: frozenset[str] = frozenset(
         "investments",
         "inventory",
         "trade_receivables",
+        "other_receivables",
         "prepayments",
         "accrued_income",
         "cash",
@@ -34,6 +35,7 @@ ASSET_LINES: frozenset[str] = frozenset(
 LIABILITY_LINES: frozenset[str] = frozenset(
     {
         "trade_payables",
+        "other_payables",
         "provisions",
         "accruals",
         "deferred_income",
