@@ -230,6 +230,9 @@ def test_tier3_accumulated_depreciation_maps_to_ppe_not_depreciation() -> None:
         FakeAccount(account_code="1460", account_name="Accumulated Depreciation"),
         FakeAccount(account_code="7000", account_name="Depreciation - Buildings"),
         FakeAccount(account_code="1450", account_name="Provision for Depreciation"),
+        # Abbreviation hole: "Accum." must still hit the BS-contra path (not P&L).
+        FakeAccount(account_code="1210", account_name="Motor Vehicles - Accum. Depreciation"),
+        FakeAccount(account_code="1110", account_name="Plant & Machinery - Accum. Depreciation"),
     ]
 
     results = map_accounts(accounts, prior_confirmed=[])
@@ -239,9 +242,13 @@ def test_tier3_accumulated_depreciation_maps_to_ppe_not_depreciation() -> None:
         "property_plant_equipment",
         "depreciation",
         "property_plant_equipment",
+        "property_plant_equipment",
+        "property_plant_equipment",
     ]
     assert results[0].method == "code_range"
     assert results[2].method == "code_range"
+    assert results[4].method == "code_range"
+    assert results[5].method == "code_range"
 
 
 def test_tier3_accumulated_amortisation_maps_to_intangibles_not_amortisation() -> None:

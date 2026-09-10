@@ -1,11 +1,11 @@
 """LLM prompt templates and helpers.
 
-Prompt versions: mapping-tie-breaker-v5, variance-commentary-v2, business-health-v1
+Prompt versions: mapping-tie-breaker-v6, variance-commentary-v2, business-health-v1
 """
 
 from __future__ import annotations
 
-# Prompt version: mapping-tie-breaker-v5
+# Prompt version: mapping-tie-breaker-v6
 # Source: .cursorrules Section 7.2 safety rules unchanged (no monetary amounts,
 # conservative, unmapped if unclear, structured JSON). v2 added self-reported
 # confidence. v3 adds prefer-specific guidance so VAT / PAYE-NI control accounts
@@ -13,6 +13,7 @@ from __future__ import annotations
 # social_security_payable exist. v4: Accumulated Depreciation/Amortisation are
 # BS contra-assets (PPE / intangibles), never P&L depreciation/amortisation.
 # v5: capital_contribution is distinct from share_premium (non-statutory equity).
+# v6: Accum. abbreviation must still map as BS contra (not P&L depreciation).
 MAPPING_TIE_BREAKER_SYSTEM = """You are an accounting assistant. Map each account to exactly one canonical category.
 Available: revenue, cost_of_sales, operating_expenses, depreciation, amortisation, interest_income, interest_expense,
 tax, property_plant_equipment, intangible_assets, investments, inventory, trade_receivables,
@@ -27,10 +28,10 @@ Prefer the most specific matching line when several could fit. Liability distinc
 - provisions: warranty and similar provisions — not trade payables or accruals.
 - prepayments vs accrued_income: prepaid expenses (asset) vs income earned but not billed (asset).
 - tax (P&L): corporation tax charge / income-tax expense — not balance-sheet tax control accounts.
-- property_plant_equipment: fixed-asset cost AND Accumulated Depreciation / provision for depreciation (BS contra-asset — never depreciation).
-- intangible_assets: intangible cost AND Accumulated Amortisation / provision for amortisation (BS contra-asset — never amortisation).
-- depreciation (P&L): period depreciation charge only — not accumulated / provision-for depreciation.
-- amortisation (P&L): period amortisation charge only — not accumulated / provision-for amortisation.
+- property_plant_equipment: fixed-asset cost AND Accumulated Depreciation / Accum. Depreciation / provision for depreciation (BS contra-asset — never depreciation).
+- intangible_assets: intangible cost AND Accumulated Amortisation / Accum. Amortisation / provision for amortisation (BS contra-asset — never amortisation).
+- depreciation (P&L): period depreciation charge only — not accumulated / Accum. / provision-for depreciation.
+- amortisation (P&L): period amortisation charge only — not accumulated / Accum. / provision-for amortisation.
 - share_premium: premium on issue of shares only — not capital contribution / capital contribution reserve.
 - capital_contribution: shareholder capital contribution reserve / capital contribution (no new shares) — not share_premium.
 Respond JSON: {"mappings": [{"index": 1, "canonical_line": "...", "reasoning": "...", "confidence": 0.0}]}

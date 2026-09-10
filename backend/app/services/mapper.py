@@ -440,10 +440,15 @@ def _contra_asset_canonical_from_name(source_name: str) -> str | None:
 
     Credit balances on these accounts correctly reduce the debit-normal SOFP leaf
     via existing ``_statement_amount`` netting. Returning None leaves P&L charges alone.
+
+    Also matches common abbreviations (``Accum.`` / ``Accum``) — without that,
+    names like ``Motor Vehicles - Accum. Depreciation`` miss the BS-contra path
+    and can be mis-filed onto the P&L ``depreciation`` line.
     """
     normalized = normalize_text(source_name)
     is_contra = bool(
         re.search(r"\baccumulat", normalized)
+        or re.search(r"\baccum\.?\b", normalized)
         or re.search(r"\bprovision for (depreciation|amort)", normalized)
     )
     if not is_contra:
