@@ -19,11 +19,35 @@ type PdfExtractReviewProps = {
   busy?: boolean;
   confirmLabel?: string;
   busyLabel?: string;
+  /** Override the default “Review extracted data” heading. */
+  title?: string;
+  /** Override the supporting copy under the heading. */
+  description?: string;
+  /** ISO date (YYYY-MM-DD) — when set with periodEnd, shown prominently. */
+  periodStart?: string;
+  periodEnd?: string;
   /** Standalone download filename — must end in .xlsx (real OOXML). */
   downloadFilename?: string;
   onConfirm: (rows: EditableExtractedRow[]) => void;
   onCancel: () => void;
 };
+
+function formatPeriodDate(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
+  if (!match) {
+    return iso;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.toLocaleDateString("en-IE", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
 
 function toEditable(rows: ExtractedTbRow[]): EditableExtractedRow[] {
   return rows.map((row, index) => ({
@@ -106,11 +130,16 @@ export function PdfExtractReview({
   busy = false,
   confirmLabel = "Confirm and continue",
   busyLabel = "Uploading…",
+  title = "Review extracted data",
+  description = "Correct any cells before continuing. You can download a standalone Excel copy for your records, or confirm to build a CSV and run the normal upload → mapping pipeline — extraction does not invent statement figures.",
+  periodStart,
+  periodEnd,
   downloadFilename = "extracted-trial-balance.xlsx",
   onConfirm,
   onCancel,
 }: PdfExtractReviewProps) {
   const [draft, setDraft] = useState(() => toEditable(rows));
+  const hasPeriod = Boolean(periodStart && periodEnd);
 
   const update = (key: string, field: keyof EditableExtractedRow, value: string) => {
     setDraft((prev) =>
@@ -146,17 +175,19 @@ export function PdfExtractReview({
       data-testid="pdf-extract-review"
     >
       <div>
-        <h2 className="text-base font-semibold text-stone-900">
-          Review extracted data
-        </h2>
-        <p className="mt-1 text-sm text-stone-600">
-          Correct any cells before continuing. You can download a standalone
-          Excel copy for your records, or confirm to build a CSV and run the
-          normal upload → mapping pipeline — extraction does not invent
-          statement figures.
-        </p>
+        <h2 className="text-base font-semibold text-stone-900">{title}</h2>
+        {hasPeriod ? (
+          <p
+            className="mt-2 rounded border border-stone-300 bg-stone-50 px-3 py-2 text-sm font-medium text-stone-900"
+            data-testid="tb-period-banner"
+          >
+            Trial balance for {formatPeriodDate(periodStart!)} to{" "}
+            {formatPeriodDate(periodEnd!)}
+          </p>
+        ) : null}
+        <p className="mt-2 text-sm text-stone-600">{description}</p>
         <p className="mt-1 text-xs text-stone-500">
-          Extracted via {method.replaceAll("_", " ")}
+          {hasPeriod ? "Generated" : "Extracted"} via {method.replaceAll("_", " ")}
         </p>
       </div>
 

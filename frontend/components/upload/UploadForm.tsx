@@ -601,9 +601,13 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
         <PdfExtractReview
           rows={glConvert.rows}
           method={`gl_mode_${glConvert.mode}`}
+          title="Review generated trial balance"
+          description="These are the real computed closing balances from your general ledger for the period below — not a preview or sample. Check them carefully before continuing to mapping."
+          periodStart={glConvert.period_start}
+          periodEnd={glConvert.period_end}
           warnings={[
             ...glConvert.warnings,
-            `Period ${glConvert.period_start} → ${glConvert.period_end}; included ${glConvert.included_count}, excluded ${glConvert.excluded_count}, openings ${glConvert.opening_count}.`,
+            `Included ${glConvert.included_count} ledger lines, excluded ${glConvert.excluded_count}, openings ${glConvert.opening_count}.`,
           ]}
           busy={reviewBusy}
           confirmLabel="Confirm and continue to mapping"
