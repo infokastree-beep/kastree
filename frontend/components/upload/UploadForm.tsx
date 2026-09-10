@@ -569,6 +569,7 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
           method={pdfExtract.method}
           warnings={pdfExtract.warnings}
           busy={reviewBusy}
+          downloadFilename="extracted-trial-balance.xlsx"
           onConfirm={onConfirmPdfExtract}
           onCancel={() => {
             setPdfExtract(null);
@@ -585,6 +586,7 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
           ]}
           busy={reviewBusy}
           confirmLabel="Confirm and continue to mapping"
+          downloadFilename="extracted-general-ledger.xlsx"
           onConfirm={onConfirmGlConvert}
           onCancel={() => {
             setGlConvert(null);

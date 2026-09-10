@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { buildXlsxBlob } from "@/lib/buildXlsx";
 import type { ExtractedTbRow } from "@/types";
 
 export type EditableExtractedRow = {
@@ -18,6 +19,8 @@ type PdfExtractReviewProps = {
   busy?: boolean;
   confirmLabel?: string;
   busyLabel?: string;
+  /** Standalone download filename — must end in .xlsx (real OOXML). */
+  downloadFilename?: string;
   onConfirm: (rows: EditableExtractedRow[]) => void;
   onCancel: () => void;
 };
@@ -62,54 +65,28 @@ export function extractedRowsToCsvFile(
 }
 
 /**
- * SpreadsheetML .xls that Excel opens natively — standalone copy of the
- * review table without a round-trip or extra npm dependency.
+ * Real OOXML .xlsx (ZIP package) — not SpreadsheetML XML renamed to .xls.
+ * SpreadsheetML + `.xls` is exactly what triggers Excel's format/extension warning.
  */
 export function extractedRowsToExcelFile(
   rows: EditableExtractedRow[],
-  filename = "extracted-trial-balance.xls",
+  filename = "extracted-trial-balance.xlsx",
 ): File {
-  const escapeXml = (value: string) =>
-    value
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-
-  const cell = (value: string, type: "String" | "Number") =>
-    `<Cell><Data ss:Type="${type}">${escapeXml(value)}</Data></Cell>`;
-
-  const bodyRows = rows
-    .map((row) => {
-      const debit = row.debit.trim() || "0";
-      const credit = row.credit.trim() || "0";
-      return `<Row>${cell(row.account_code.trim(), "String")}${cell(
-        row.account_name.trim(),
-        "String",
-      )}${cell(debit, "Number")}${cell(credit, "Number")}</Row>`;
-    })
-    .join("");
-
-  const xml = `<?xml version="1.0"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
- <Worksheet ss:Name="Trial Balance">
-  <Table>
-   <Row>${cell("Account Code", "String")}${cell("Account Name", "String")}${cell(
-     "Debit",
-     "String",
-   )}${cell("Credit", "String")}</Row>
-   ${bodyRows}
-  </Table>
- </Worksheet>
-</Workbook>`;
-
-  const blob = new Blob([xml], {
-    type: "application/vnd.ms-excel;charset=utf-8",
-  });
-  return new File([blob], filename, {
-    type: "application/vnd.ms-excel",
+  const safeName = filename.toLowerCase().endsWith(".xlsx")
+    ? filename
+    : `${filename.replace(/\.xls$/i, "")}.xlsx`;
+  const grid = [
+    ["Account Code", "Account Name", "Debit", "Credit"],
+    ...rows.map((row) => [
+      row.account_code.trim(),
+      row.account_name.trim(),
+      Number(row.debit.trim() || "0"),
+      Number(row.credit.trim() || "0"),
+    ]),
+  ];
+  const blob = buildXlsxBlob(grid);
+  return new File([blob], safeName, {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
 }
 
@@ -129,6 +106,7 @@ export function PdfExtractReview({
   busy = false,
   confirmLabel = "Confirm and continue",
   busyLabel = "Uploading…",
+  downloadFilename = "extracted-trial-balance.xlsx",
   onConfirm,
   onCancel,
 }: PdfExtractReviewProps) {
@@ -158,7 +136,7 @@ export function PdfExtractReview({
   };
 
   const downloadExcel = () => {
-    const file = extractedRowsToExcelFile(draft);
+    const file = extractedRowsToExcelFile(draft, downloadFilename);
     triggerBrowserDownload(file);
   };
 
