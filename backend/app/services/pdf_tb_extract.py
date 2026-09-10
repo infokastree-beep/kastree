@@ -301,23 +301,179 @@ def _looks_like_totals_row(cells: list[str]) -> bool:
 
 
 def _extract_via_words(pages: list[Page]) -> list[ExtractedTBRow]:
-    """Fallback: cluster words into lines, then split code / name / amounts."""
-    lines: list[str] = []
+    """Fallback: cluster words into lines; use Debit/Credit x-anchors when present.
+
+    Many TB PDFs omit blank Debit/Credit cells (sparse layout). Flattening the
+    line to text then loses column identity — a lone credit amount is mis-read
+    as a positive balance → Debit. When header words expose Debit/Credit
+    x-positions, assign each amount by horizontal proximity instead.
+    """
+    out: list[ExtractedTBRow] = []
+    plain_lines: list[str] = []
+    used_anchors = False
     for page in pages:
         words = page.extract_words(use_text_flow=True) or []
         if not words:
             text = page.extract_text() or ""
-            lines.extend(text.splitlines())
+            plain_lines.extend(text.splitlines())
             continue
-        # Group by rounded top coordinate.
+        anchors = _detect_amount_column_anchors(words)
+        if anchors is not None:
+            used_anchors = True
+            out.extend(_rows_from_anchored_words(words, anchors))
+            continue
         buckets: dict[int, list[dict[str, object]]] = {}
         for word in words:
             top = int(round(float(word["top"]) / 3.0) * 3)
             buckets.setdefault(top, []).append(word)
         for top in sorted(buckets):
             ordered = sorted(buckets[top], key=lambda w: float(w["x0"]))
-            lines.append(" ".join(str(w["text"]) for w in ordered))
-    return _rows_from_text_lines(lines)
+            plain_lines.append(" ".join(str(w["text"]) for w in ordered))
+    if used_anchors and len(out) >= MIN_EXTRACTED_ROWS:
+        return [
+            ExtractedTBRow(
+                account_code=row.account_code,
+                account_name=row.account_name,
+                debit=row.debit,
+                credit=row.credit,
+                row_index=i,
+            )
+            for i, row in enumerate(out, start=1)
+        ]
+    # No usable anchors (or too few anchored rows) — plain text-line fallback.
+    plain_rows = _rows_from_text_lines(plain_lines)
+    if len(out) >= len(plain_rows):
+        return out
+    return plain_rows
+
+
+def _detect_amount_column_anchors(
+    words: list[dict[str, object]],
+) -> tuple[float, float] | None:
+    """Return (debit_x, credit_x) midpoints from a header line, or None."""
+    buckets: dict[int, list[dict[str, object]]] = {}
+    for word in words:
+        top = int(round(float(word["top"]) / 3.0) * 3)
+        buckets.setdefault(top, []).append(word)
+
+    best: tuple[float, float] | None = None
+    for top in sorted(buckets):
+        ordered = sorted(buckets[top], key=lambda w: float(w["x0"]))
+        debit_word: dict[str, object] | None = None
+        credit_word: dict[str, object] | None = None
+        for word in ordered:
+            text = str(word["text"]).strip().lower().rstrip(".")
+            if text in {"debit", "dr"}:
+                debit_word = word
+            elif text in {"credit", "cr"}:
+                credit_word = word
+        if debit_word is None or credit_word is None:
+            continue
+        debit_x = (float(debit_word["x0"]) + float(debit_word["x1"])) / 2.0
+        credit_x = (float(credit_word["x0"]) + float(credit_word["x1"])) / 2.0
+        if credit_x <= debit_x:
+            continue
+        best = (debit_x, credit_x)
+        # Prefer the first header-like row (usually the column titles).
+        break
+    return best
+
+
+def _rows_from_anchored_words(
+    words: list[dict[str, object]],
+    anchors: tuple[float, float],
+) -> list[ExtractedTBRow]:
+    """Build TB rows using Debit/Credit column x-midpoints to place amounts."""
+    debit_x, credit_x = anchors
+    boundary = (debit_x + credit_x) / 2.0
+    buckets: dict[int, list[dict[str, object]]] = {}
+    for word in words:
+        top = int(round(float(word["top"]) / 3.0) * 3)
+        buckets.setdefault(top, []).append(word)
+
+    out: list[ExtractedTBRow] = []
+    row_index = 0
+    for top in sorted(buckets):
+        ordered = sorted(buckets[top], key=lambda w: float(w["x0"]))
+        texts = [str(w["text"]) for w in ordered]
+        joined = " ".join(texts)
+        if not joined.strip() or _looks_like_totals_row([joined]):
+            continue
+        lower = joined.lower()
+        if any(
+            h in lower
+            for h in ("account code", "account name", "trial balance")
+        ) and ("debit" in lower or "credit" in lower):
+            continue
+        if lower.strip() in {"debit", "credit", "dr", "cr"}:
+            continue
+
+        amount_words: list[tuple[dict[str, object], Decimal]] = []
+        for word in ordered:
+            token = str(word["text"]).replace(" ", "")
+            if not _AMOUNT_TOKEN.match(token):
+                continue
+            # Skip bare account codes (e.g. 1000) sitting in the code column.
+            if not _is_strong_money_token(str(word["text"])):
+                # Allow weak money only when clearly in an amount column.
+                mid = (float(word["x0"]) + float(word["x1"])) / 2.0
+                if mid < debit_x - 40:
+                    continue
+            try:
+                value = parse_monetary(str(word["text"]))
+            except ParseError:
+                continue
+            amount_words.append((word, value))
+
+        if not amount_words:
+            continue
+
+        debit = Decimal("0")
+        credit = Decimal("0")
+        amount_x0s: list[float] = []
+        for word, value in amount_words:
+            mid = (float(word["x0"]) + float(word["x1"])) / 2.0
+            amount_x0s.append(float(word["x0"]))
+            # Sparse PDFs omit the empty side; place the amount by column.
+            if mid >= boundary:
+                credit = abs(value)
+            else:
+                debit = abs(value)
+
+        # Rebuild name/code from words left of the leftmost amount.
+        leftmost_amount_x = min(amount_x0s)
+        label_words = [
+            str(w["text"]) for w in ordered if float(w["x0"]) < leftmost_amount_x - 1.0
+        ]
+        if not label_words:
+            continue
+        code = ""
+        name_tokens = label_words
+        if _LEADING_ACCOUNT_CODE.match(label_words[0]) and re.search(
+            r"\d", label_words[0]
+        ):
+            if not _is_strong_money_token(label_words[0]):
+                code = label_words[0]
+                name_tokens = label_words[1:]
+        name = " ".join(name_tokens).strip() or code
+        if not name:
+            continue
+        # Anchored extraction is for coded TB lines. Skip narrative / title
+        # lines that happen to carry a money-like token near the amount columns
+        # (e.g. "Debits = Credits = 2,504,735.26" in the subtitle).
+        if not code:
+            continue
+        row_index += 1
+        out.append(
+            ExtractedTBRow(
+                account_code=code,
+                account_name=name,
+                debit=debit,
+                credit=credit,
+                row_index=row_index,
+            )
+        )
+    return out
 
 
 def _extract_via_ocr(content: bytes) -> tuple[list[ExtractedTBRow], int]:
@@ -441,6 +597,31 @@ def rows_to_csv_bytes(rows: list[ExtractedTBRow]) -> bytes:
         name = _csv_escape(row.account_name)
         lines.append(f"{code},{name},{row.debit},{row.credit}")
     return ("\n".join(lines) + "\n").encode("utf-8")
+
+
+def rows_to_xlsx_bytes(rows: list[ExtractedTBRow]) -> bytes:
+    """Serialize extracted rows to a four-column .xlsx for standalone download."""
+    from io import BytesIO
+
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    sheet = workbook.active
+    assert sheet is not None
+    sheet.title = "Trial Balance"
+    sheet.append(["Account Code", "Account Name", "Debit", "Credit"])
+    for row in rows:
+        sheet.append(
+            [
+                row.account_code,
+                row.account_name,
+                row.debit,
+                row.credit,
+            ]
+        )
+    buffer = BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
 
 
 def _csv_escape(value: str) -> str:

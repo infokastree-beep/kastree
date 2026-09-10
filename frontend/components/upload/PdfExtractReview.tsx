@@ -61,6 +61,67 @@ export function extractedRowsToCsvFile(
   return new File([blob], filename, { type: "text/csv" });
 }
 
+/**
+ * SpreadsheetML .xls that Excel opens natively — standalone copy of the
+ * review table without a round-trip or extra npm dependency.
+ */
+export function extractedRowsToExcelFile(
+  rows: EditableExtractedRow[],
+  filename = "extracted-trial-balance.xls",
+): File {
+  const escapeXml = (value: string) =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+
+  const cell = (value: string, type: "String" | "Number") =>
+    `<Cell><Data ss:Type="${type}">${escapeXml(value)}</Data></Cell>`;
+
+  const bodyRows = rows
+    .map((row) => {
+      const debit = row.debit.trim() || "0";
+      const credit = row.credit.trim() || "0";
+      return `<Row>${cell(row.account_code.trim(), "String")}${cell(
+        row.account_name.trim(),
+        "String",
+      )}${cell(debit, "Number")}${cell(credit, "Number")}</Row>`;
+    })
+    .join("");
+
+  const xml = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Worksheet ss:Name="Trial Balance">
+  <Table>
+   <Row>${cell("Account Code", "String")}${cell("Account Name", "String")}${cell(
+     "Debit",
+     "String",
+   )}${cell("Credit", "String")}</Row>
+   ${bodyRows}
+  </Table>
+ </Worksheet>
+</Workbook>`;
+
+  const blob = new Blob([xml], {
+    type: "application/vnd.ms-excel;charset=utf-8",
+  });
+  return new File([blob], filename, {
+    type: "application/vnd.ms-excel",
+  });
+}
+
+function triggerBrowserDownload(file: File) {
+  const url = URL.createObjectURL(file);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = file.name;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 export function PdfExtractReview({
   rows,
   method,
@@ -96,6 +157,11 @@ export function PdfExtractReview({
     ]);
   };
 
+  const downloadExcel = () => {
+    const file = extractedRowsToExcelFile(draft);
+    triggerBrowserDownload(file);
+  };
+
   return (
     <div
       className="space-y-4 rounded border border-stone-200 bg-white p-4"
@@ -106,8 +172,9 @@ export function PdfExtractReview({
           Review extracted data
         </h2>
         <p className="mt-1 text-sm text-stone-600">
-          Correct any cells before continuing. Confirming builds a CSV and runs
-          the normal upload → mapping pipeline — extraction does not invent
+          Correct any cells before continuing. You can download a standalone
+          Excel copy for your records, or confirm to build a CSV and run the
+          normal upload → mapping pipeline — extraction does not invent
           statement figures.
         </p>
         <p className="mt-1 text-xs text-stone-500">
@@ -192,6 +259,15 @@ export function PdfExtractReview({
           disabled={busy}
         >
           Add row
+        </button>
+        <button
+          type="button"
+          className="rounded border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-800 disabled:opacity-50"
+          onClick={downloadExcel}
+          disabled={busy || draft.length === 0}
+          data-testid="pdf-extract-download-excel"
+        >
+          Download as Excel
         </button>
         <button
           type="button"

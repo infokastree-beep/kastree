@@ -156,6 +156,48 @@ def test_extract_realistic_native_text_tb_pdf() -> None:
     assert total_debits == total_credits == Decimal("42250.50")
 
 
+def test_extract_sparse_debit_credit_columns_uses_x_anchors() -> None:
+    """Regression: blank Debit/Credit cells must not dump credits into Debit.
+
+    Real Apex Manufacturing sample PDF omits empty amount cells. Flattening
+    text lines previously treated every lone amount as a positive balance →
+    Debit, doubling the debit total (2 × 2,504,735.26 = 5,009,470.52) with
+    Credit = 0. Column x-anchors must restore the credit side.
+    """
+    from pathlib import Path
+
+    sample = (
+        Path(__file__).resolve().parents[2]
+        / "frontend"
+        / "public"
+        / "samples"
+        / "apex-manufacturing-tb-2025-12-31.pdf"
+    )
+    assert sample.is_file(), f"missing sample PDF: {sample}"
+    result = extract_trial_balance_from_pdf(sample.read_bytes())
+    assert result.method == "pdfplumber_words"
+    assert len(result.rows) == 51
+
+    by_code = {row.account_code: row for row in result.rows}
+    assert by_code["1000"].debit == Decimal("455000.00")
+    assert by_code["1000"].credit == Decimal("0")
+    assert by_code["1110"].debit == Decimal("0")
+    assert by_code["1110"].credit == Decimal("18500.00")
+    assert by_code["3000"].debit == Decimal("0")
+    assert by_code["3000"].credit == Decimal("250000.00")
+    assert by_code["4000"].debit == Decimal("0")
+    assert by_code["4000"].credit == Decimal("843300.00")
+    assert by_code["5000"].debit == Decimal("379080.00")
+    assert by_code["5000"].credit == Decimal("0")
+
+    total_debits = sum((r.debit for r in result.rows), Decimal("0"))
+    total_credits = sum((r.credit for r in result.rows), Decimal("0"))
+    assert total_debits == total_credits == Decimal("2504735.26")
+    # Guard the exact failure signature from the live upload.
+    assert total_debits != Decimal("5009470.52")
+    assert total_credits != Decimal("0")
+
+
 def test_extract_messy_native_text_without_table_grid() -> None:
     content = _messy_native_text_pdf_bytes()
     result = extract_trial_balance_from_pdf(content)
