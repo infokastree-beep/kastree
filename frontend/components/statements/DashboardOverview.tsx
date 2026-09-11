@@ -6,6 +6,7 @@
  */
 
 import { BusinessHealthPanel } from "./BusinessHealthPanel";
+import { ExportButton } from "./ExportButton";
 import { PerformanceOverview } from "./PerformanceOverview";
 import { useTbWorkspace } from "./TbWorkspaceProvider";
 
@@ -26,14 +27,18 @@ export function DashboardOverview({
             analytics surface that grows with new metrics and charts.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={openAsk}
-          className="flex items-center gap-1.5 rounded-md border border-line bg-surface-elevated px-3 py-1.5 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
-          data-testid="copilot-ask-button"
-        >
-          Ask Copilot
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={openAsk}
+            className="flex items-center gap-1.5 rounded-md border border-line bg-surface-elevated px-3 py-1.5 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
+            data-testid="copilot-ask-button"
+          >
+            Ask Copilot
+          </button>
+          {/* Same export pack as Statements — available here so reviewers need not switch pages. */}
+          <ExportButton tbId={tbId} />
+        </div>
       </div>
 
       <div className="space-y-4" data-testid="dashboard-analytics">
