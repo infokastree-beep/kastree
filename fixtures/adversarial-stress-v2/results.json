@@ -1,0 +1,1173 @@
+{
+  "environment": {
+    "production_api": "https://kastree-production-5658.up.railway.app",
+    "production_auth": "BLOCKED \u2014 CLERK_SECRET_KEY / CLERK_PUBLISHABLE_KEY missing",
+    "executed_against": "local ASGI HTTP API (same routes as production) + service layer",
+    "fixtures": "/workspace/fixtures/adversarial-stress-v2"
+  },
+  "cases": {
+    "1a_mixed_currency_iso_column": {
+      "classification": "GAP_LIKELY_BUG",
+      "direct_parse": {
+        "outcome": "ACCEPTED_BY_PARSER",
+        "currencies": [
+          "EUR",
+          "GBP",
+          "USD"
+        ],
+        "row_count": 15,
+        "sample": [
+          {
+            "code": "1000",
+            "name": "Cash \u2014 EUR operating",
+            "ccy": "EUR",
+            "d": "125000",
+            "c": "0"
+          },
+          {
+            "code": "1010",
+            "name": "Cash \u2014 USD sweep",
+            "ccy": "USD",
+            "d": "48000",
+            "c": "0"
+          },
+          {
+            "code": "1020",
+            "name": "Cash \u2014 GBP treasury",
+            "ccy": "GBP",
+            "d": "32000",
+            "c": "0"
+          },
+          {
+            "code": "1100",
+            "name": "Trade receivables EUR",
+            "ccy": "EUR",
+            "d": "85000",
+            "c": "0"
+          },
+          {
+            "code": "1110",
+            "name": "Trade receivables USD",
+            "ccy": "USD",
+            "d": "22000",
+            "c": "0"
+          }
+        ]
+      },
+      "http_upload": {
+        "status_code": 202,
+        "body": {
+          "tb_id": "a99ca942-c7b7-424a-b8ec-615e739c447a",
+          "job_id": "f7bcb4c4-f581-4b8c-9e79-e8a83e0649c9",
+          "status": "pending",
+          "message": "Upload accepted. Processing will begin shortly."
+        },
+        "tb_id": "a99ca942-c7b7-424a-b8ec-615e739c447a",
+        "poll": {
+          "tb_id": "a99ca942-c7b7-424a-b8ec-615e739c447a",
+          "status": "mapping",
+          "progress_pct": 40,
+          "current_step": "Mapping complete \u2014 ready for review",
+          "error_message": null,
+          "jobs": [
+            {
+              "job_type": "parse",
+              "status": "complete",
+              "started_at": "2026-09-11T16:41:28.855122Z",
+              "completed_at": "2026-09-11T16:41:28.869927Z"
+            },
+            {
+              "job_type": "map",
+              "status": "complete",
+              "started_at": "2026-09-11T16:41:28.874674Z",
+              "completed_at": "2026-09-11T16:41:28.888686Z"
+            }
+          ]
+        }
+      },
+      "detail": "ISO Currency column with EUR+USD+GBP. If parser/pipeline accept, amounts are treated as one functional currency \u2014 silent FX mix."
+    },
+    "1b_same_account_two_currencies": {
+      "classification": "GAP_LIKELY_BUG",
+      "outcome": "ACCEPTED_BY_PARSER",
+      "currencies": [
+        "EUR",
+        "USD"
+      ],
+      "codes": [
+        "1000",
+        "1000",
+        "3000"
+      ],
+      "rows": [
+        {
+          "code": "1000",
+          "ccy": "EUR",
+          "d": "10000",
+          "c": "0"
+        },
+        {
+          "code": "1000",
+          "ccy": "USD",
+          "d": "5000",
+          "c": "0"
+        },
+        {
+          "code": "3000",
+          "ccy": "EUR",
+          "d": "0",
+          "c": "15000"
+        }
+      ],
+      "detail": "Same account code with EUR and USD rows both accepted."
+    },
+    "1c_mixed_symbol_gl": {
+      "classification": "BUG",
+      "http_status": 200,
+      "body": {
+        "rows": [
+          {
+            "account_code": "1000",
+            "account_name": "Bank",
+            "debit": "10000.00",
+            "credit": "0",
+            "row_index": 1
+          },
+          {
+            "account_code": "3000",
+            "account_name": "Capital",
+            "debit": "0",
+            "credit": "10000.00",
+            "row_index": 2
+          }
+        ],
+        "mode": "C",
+        "period_start": "2025-01-01",
+        "period_end": "2025-12-31",
+        "included_count": 2,
+        "excluded_count": 0,
+        "opening_count": 0,
+        "total_debits": "10000.00",
+        "total_credits": "10000.00",
+        "pipeline_eligible": true,
+        "warnings": [
+          "Mode C: summed all lines dated from period_start through period_end (YTD / full-ledger assumption)."
+        ],
+        "message": "Review and correct the converted trial balance rows, then confirm to continue with the normal upload pipeline."
+      },
+      "detail": "GL /convert-gl silently stripped \u20ac and \u00a3 and accepted the file as a balanced single-currency TB. TB parser correctly raises AmbiguousCurrencyError for the same symbol mix \u2014 asymmetric handling is a genuine bug."
+    },
+    "2_duplicate_near_duplicate_gl": {
+      "classification": "AS_DESIGNED_WITH_GAP",
+      "http_status": 200,
+      "included_count": 18,
+      "excluded_count": 0,
+      "totals": {
+        "D": "116200",
+        "C": "116200"
+      },
+      "rows_by_code": {
+        "1000": {
+          "name": "Cash at bank",
+          "debit": "95095",
+          "credit": "0"
+        },
+        "1100": {
+          "name": "Trade receivables",
+          "debit": "16200",
+          "credit": "0"
+        },
+        "3000": {
+          "name": "Share capital",
+          "debit": "0",
+          "credit": "100000"
+        },
+        "4000": {
+          "name": "Sales",
+          "debit": "0",
+          "credit": "16200"
+        },
+        "6000": {
+          "name": "Rent expense",
+          "debit": "4800",
+          "credit": "0"
+        },
+        "6100": {
+          "name": "Bank charges",
+          "debit": "105",
+          "credit": "0"
+        }
+      },
+      "expected_if_summed": {
+        "1100_receivables": "16200.00",
+        "4000_sales": "16200.00",
+        "6000_rent": "4800.00",
+        "6100_bank_charges": "105.00"
+      },
+      "warnings": [
+        "Mode C: summed all lines dated from period_start through period_end (YTD / full-ledger assumption)."
+      ],
+      "duplicate_warning_present": false,
+      "detail": "Exact duplicates + near-duplicates + triple bank fee. Design sums all lines in period; no duplicate-review flag.",
+      "body_excerpt": {
+        "mode": "C",
+        "pipeline_eligible": true,
+        "period_start": "2025-04-01",
+        "period_end": "2026-03-31"
+      }
+    },
+    "3_holding_company_group_structure": {
+      "classification": "GAP_WITH_BUGGY_HEURISTICS",
+      "total_accounts": 28,
+      "needs_manual_or_llm_count": 21,
+      "needs_manual_or_llm": [
+        {
+          "code": "1000",
+          "name": "Cash at bank",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "1100",
+          "name": "Trade and other receivables",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "1200",
+          "name": "Investment in Subsidiary Alpha Ltd (100%)",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "1210",
+          "name": "Investment in Subsidiary Beta Ltd (75%)",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "1220",
+          "name": "Investment in Associate Gamma Ltd (30%)",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "1230",
+          "name": "Goodwill on acquisition of Beta",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "1300",
+          "name": "Intercompany loan receivable \u2014 Alpha",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "1310",
+          "name": "Intercompany loan receivable \u2014 Beta",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "1400",
+          "name": "Deferred tax asset",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "2000",
+          "name": "Trade payables",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "2100",
+          "name": "Intercompany loan payable \u2014 Alpha",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "2200",
+          "name": "Bank loan \u2014 parent",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "2300",
+          "name": "Deferred tax liability",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "2400",
+          "name": "Non-controlling interest \u2014 Beta Ltd",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "3000",
+          "name": "Called up share capital",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "3100",
+          "name": "Share premium account",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "3200",
+          "name": "Merger reserve",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "3300",
+          "name": "Foreign currency translation reserve",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "3400",
+          "name": "Retained earnings brought forward",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "4000",
+          "name": "Dividend income from Alpha",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "4010",
+          "name": "Dividend income from Beta",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        }
+      ],
+      "dangerous_mappings": [
+        {
+          "code": "4200",
+          "name": "Share of profit of associate Gamma",
+          "canonical": "revenue",
+          "method": "code_range",
+          "confidence": "0.50"
+        },
+        {
+          "code": "5000",
+          "name": "Impairment of investment in Beta",
+          "canonical": "cost_of_sales",
+          "method": "code_range",
+          "confidence": "0.50"
+        },
+        {
+          "code": "5100",
+          "name": "Impairment of goodwill \u2014 Beta",
+          "canonical": "cost_of_sales",
+          "method": "code_range",
+          "confidence": "0.50"
+        },
+        {
+          "code": "6100",
+          "name": "Interest receivable \u2014 intercompany",
+          "canonical": "interest_expense",
+          "method": "code_range",
+          "confidence": "0.50"
+        }
+      ],
+      "all_mappings": [
+        {
+          "code": "1000",
+          "name": "Cash at bank",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "1100",
+          "name": "Trade and other receivables",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "1200",
+          "name": "Investment in Subsidiary Alpha Ltd (100%)",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "1210",
+          "name": "Investment in Subsidiary Beta Ltd (75%)",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "1220",
+          "name": "Investment in Associate Gamma Ltd (30%)",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "1230",
+          "name": "Goodwill on acquisition of Beta",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "1300",
+          "name": "Intercompany loan receivable \u2014 Alpha",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "1310",
+          "name": "Intercompany loan receivable \u2014 Beta",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "1400",
+          "name": "Deferred tax asset",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "2000",
+          "name": "Trade payables",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "2100",
+          "name": "Intercompany loan payable \u2014 Alpha",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "2200",
+          "name": "Bank loan \u2014 parent",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "2300",
+          "name": "Deferred tax liability",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "2400",
+          "name": "Non-controlling interest \u2014 Beta Ltd",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "3000",
+          "name": "Called up share capital",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "3100",
+          "name": "Share premium account",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "3200",
+          "name": "Merger reserve",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "3300",
+          "name": "Foreign currency translation reserve",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "3400",
+          "name": "Retained earnings brought forward",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "4000",
+          "name": "Dividend income from Alpha",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "4010",
+          "name": "Dividend income from Beta",
+          "canonical": null,
+          "method": null,
+          "confidence": null
+        },
+        {
+          "code": "4100",
+          "name": "Management charge income \u2014 group",
+          "canonical": "revenue",
+          "method": "code_range",
+          "confidence": "0.50"
+        },
+        {
+          "code": "4200",
+          "name": "Share of profit of associate Gamma",
+          "canonical": "revenue",
+          "method": "code_range",
+          "confidence": "0.50"
+        },
+        {
+          "code": "5000",
+          "name": "Impairment of investment in Beta",
+          "canonical": "cost_of_sales",
+          "method": "code_range",
+          "confidence": "0.50"
+        },
+        {
+          "code": "5100",
+          "name": "Impairment of goodwill \u2014 Beta",
+          "canonical": "cost_of_sales",
+          "method": "code_range",
+          "confidence": "0.50"
+        },
+        {
+          "code": "6000",
+          "name": "Administrative expenses \u2014 parent",
+          "canonical": "operating_expenses",
+          "method": "code_range",
+          "confidence": "0.50"
+        },
+        {
+          "code": "6100",
+          "name": "Interest receivable \u2014 intercompany",
+          "canonical": "interest_expense",
+          "method": "code_range",
+          "confidence": "0.50"
+        },
+        {
+          "code": "6200",
+          "name": "Interest payable \u2014 bank and IC",
+          "canonical": "interest_expense",
+          "method": "code_range",
+          "confidence": "0.50"
+        }
+      ],
+      "http_upload": {
+        "status_code": 202,
+        "tb_id": "fbee4022-83fe-4867-894f-c89876cf6ac1",
+        "poll": {
+          "tb_id": "fbee4022-83fe-4867-894f-c89876cf6ac1",
+          "status": "mapping",
+          "progress_pct": 40,
+          "current_step": "Mapping complete \u2014 ready for review",
+          "error_message": null,
+          "jobs": [
+            {
+              "job_type": "parse",
+              "status": "complete",
+              "started_at": "2026-09-11T16:41:29.047813Z",
+              "completed_at": "2026-09-11T16:41:29.060828Z"
+            },
+            {
+              "job_type": "map",
+              "status": "complete",
+              "started_at": "2026-09-11T16:41:29.064958Z",
+              "completed_at": "2026-09-11T16:41:29.076808Z"
+            }
+          ]
+        },
+        "mapping_http": {
+          "tb_id": "fbee4022-83fe-4867-894f-c89876cf6ac1",
+          "mapping_rate": 0.25,
+          "unmapped_count": 21,
+          "mappings": [
+            {
+              "id": "6f521ba2-d33f-4333-9110-0bb18cbd8500",
+              "source_code": "1000",
+              "source_name": "Cash at bank",
+              "suggested_canonical_line": "unmapped",
+              "confidence": null,
+              "method": "llm",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "503c0225-2300-40e4-b125-8ad47e55276f",
+              "source_code": "1100",
+              "source_name": "Trade and other receivables",
+              "suggested_canonical_line": "unmapped",
+              "confidence": null,
+              "method": "llm",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "e1eb7ee4-fefd-4158-893e-3493b1610483",
+              "source_code": "1200",
+              "source_name": "Investment in Subsidiary Alpha Ltd (100%)",
+              "suggested_canonical_line": "unmapped",
+              "confidence": null,
+              "method": "llm",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "087950e4-980c-4f0e-87af-3dea0dafcb75",
+              "source_code": "1210",
+              "source_name": "Investment in Subsidiary Beta Ltd (75%)",
+              "suggested_canonical_line": "unmapped",
+              "confidence": null,
+              "method": "llm",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "2c30f097-7b62-4f9b-9446-9ade799bf132",
+              "source_code": "1220",
+              "source_name": "Investment in Associate Gamma Ltd (30%)",
+              "suggested_canonical_line": "unmapped",
+              "confidence": null,
+              "method": "llm",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "33e0305a-76e5-4091-997b-8fb25ee27a85",
+              "source_code": "1230",
+              "source_name": "Goodwill on acquisition of Beta",
+              "suggested_canonical_line": "unmapped",
+              "confidence": null,
+              "method": "llm",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "838154bd-5195-4dd7-924b-5cf1ed652650",
+              "source_code": "1300",
+              "source_name": "Intercompany loan receivable \u2014 Alpha",
+              "suggested_canonical_line": "unmapped",
+              "confidence": null,
+              "method": "llm",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "1bc5bdf2-2bc4-48f5-aae3-5e59b4f2f469",
+              "source_code": "1310",
+              "source_name": "Intercompany loan receivable \u2014 Beta",
+              "suggested_canonical_line": "unmapped",
+              "confidence": null,
+              "method": "llm",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "b3f492a5-5543-464a-930d-5e299b9068de",
+              "source_code": "1400",
+              "source_name": "Deferred tax asset",
+              "suggested_canonical_line": "unmapped",
+              "confidence": null,
+              "method": "llm",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "ca8cad81-dee9-4ea0-a139-cd9b3ba6a778",
+              "source_code": "2000",
+              "source_name": "Trade payables",
+              "suggested_canonical_line": "unmapped",
+              "confidence": null,
+              "method": "llm",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "9ba71efa-a398-493f-a520-448739c87a2c",
+              "source_code": "2100",
+              "source_name": "Intercompany loan payable \u2014 Alpha",
+              "suggested_canonical_line": "unmapped",
+              "confidence": null,
+              "method": "llm",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "ed4abf8d-9067-4536-afbf-f91a1af63a18",
+              "source_code": "2200",
+              "source_name": "Bank loan \u2014 parent",
+              "suggested_canonical_line": "unmapped",
+              "confidence": null,
+              "method": "llm",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "3eaed3f4-19b2-461f-9f8f-8d5bcd770826",
+              "source_code": "2300",
+              "source_name": "Deferred tax liability",
+              "suggested_canonical_line": "unmapped",
+              "confidence": null,
+              "method": "llm",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "1eb174ba-aac6-49d2-b0aa-801952e54159",
+              "source_code": "2400",
+              "source_name": "Non-controlling interest \u2014 Beta Ltd",
+              "suggested_canonical_line": "unmapped",
+              "confidence": null,
+              "method": "llm",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "af8b0f3b-c837-4e9d-8cd0-a7340f0d144e",
+              "source_code": "3000",
+              "source_name": "Called up share capital",
+              "suggested_canonical_line": "unmapped",
+              "confidence": null,
+              "method": "llm",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "e4d564e6-9348-44ee-ad7d-e4d87333e00c",
+              "source_code": "3100",
+              "source_name": "Share premium account",
+              "suggested_canonical_line": "unmapped",
+              "confidence": null,
+              "method": "llm",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "76551943-3db8-4804-85cf-887b559c8a27",
+              "source_code": "3200",
+              "source_name": "Merger reserve",
+              "suggested_canonical_line": "unmapped",
+              "confidence": null,
+              "method": "llm",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "3bcbe060-c206-471f-9c2d-d4e7a7c56b6b",
+              "source_code": "3300",
+              "source_name": "Foreign currency translation reserve",
+              "suggested_canonical_line": "unmapped",
+              "confidence": null,
+              "method": "llm",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "83569259-5572-46a3-9dd5-e55134fab9ef",
+              "source_code": "3400",
+              "source_name": "Retained earnings brought forward",
+              "suggested_canonical_line": "unmapped",
+              "confidence": null,
+              "method": "llm",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "e2e06353-ba34-4f5a-9af1-bea748ca1aa9",
+              "source_code": "4000",
+              "source_name": "Dividend income from Alpha",
+              "suggested_canonical_line": "unmapped",
+              "confidence": null,
+              "method": "llm",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "92c9afd9-e252-4f9f-a1ee-e90ac8bd8aaa",
+              "source_code": "4010",
+              "source_name": "Dividend income from Beta",
+              "suggested_canonical_line": "unmapped",
+              "confidence": null,
+              "method": "llm",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "04cddef0-229c-4d40-afaf-4acb269d8d11",
+              "source_code": "4100",
+              "source_name": "Management charge income \u2014 group",
+              "suggested_canonical_line": "revenue",
+              "confidence": 0.5,
+              "method": "code_range",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "94001981-a640-4530-85b0-6cdb2846829a",
+              "source_code": "4200",
+              "source_name": "Share of profit of associate Gamma",
+              "suggested_canonical_line": "revenue",
+              "confidence": 0.5,
+              "method": "code_range",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "2c1076b5-1878-455b-8894-80a3b6056e87",
+              "source_code": "5000",
+              "source_name": "Impairment of investment in Beta",
+              "suggested_canonical_line": "cost_of_sales",
+              "confidence": 0.5,
+              "method": "code_range",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "415c3f66-1a50-42ac-b9f4-35e59c3792fc",
+              "source_code": "5100",
+              "source_name": "Impairment of goodwill \u2014 Beta",
+              "suggested_canonical_line": "cost_of_sales",
+              "confidence": 0.5,
+              "method": "code_range",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "6c43a62a-c719-46f9-bf1e-3321cc2ff30f",
+              "source_code": "6000",
+              "source_name": "Administrative expenses \u2014 parent",
+              "suggested_canonical_line": "operating_expenses",
+              "confidence": 0.5,
+              "method": "code_range",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "93ec47c9-4426-4091-ba55-c79cacd9793e",
+              "source_code": "6100",
+              "source_name": "Interest receivable \u2014 intercompany",
+              "suggested_canonical_line": "interest_expense",
+              "confidence": 0.5,
+              "method": "code_range",
+              "is_confirmed": false,
+              "is_ignored": false
+            },
+            {
+              "id": "447eb73d-040b-47c6-a724-1418e997bcd9",
+              "source_code": "6200",
+              "source_name": "Interest payable \u2014 bank and IC",
+              "suggested_canonical_line": "interest_expense",
+              "confidence": 0.5,
+              "method": "code_range",
+              "is_confirmed": false,
+              "is_ignored": false
+            }
+          ]
+        }
+      },
+      "detail": "Group/holding accounts should stay unmapped for manual/LLM review. code_range false positives on impairment/interest receivable are bugs."
+    },
+    "4_fiscal_year_apr_mar": {
+      "classification": "AS_DESIGNED_WITH_GAP",
+      "custom_apr_mar": {
+        "http_status": 200,
+        "included": 12,
+        "excluded": 6,
+        "D": "256500",
+        "C": "256500",
+        "rows": [
+          {
+            "code": "1000",
+            "d": "170000",
+            "c": "0",
+            "name": "Cash"
+          },
+          {
+            "code": "1100",
+            "d": "53000",
+            "c": "0",
+            "name": "Receivables"
+          },
+          {
+            "code": "2100",
+            "d": "0",
+            "c": "3500",
+            "name": "Accruals"
+          },
+          {
+            "code": "3000",
+            "d": "0",
+            "c": "200000",
+            "name": "Share capital"
+          },
+          {
+            "code": "4000",
+            "d": "0",
+            "c": "53000",
+            "name": "Sales"
+          },
+          {
+            "code": "5000",
+            "d": "18000",
+            "c": "0",
+            "name": "Cost of sales"
+          },
+          {
+            "code": "6000",
+            "d": "12000",
+            "c": "0",
+            "name": "Operating expenses"
+          },
+          {
+            "code": "6100",
+            "d": "3500",
+            "c": "0",
+            "name": "Accrued expenses"
+          }
+        ]
+      },
+      "calendar_2026_full_year": {
+        "http_status": 200,
+        "included": 10,
+        "excluded": 8,
+        "D": "17000",
+        "C": "17000",
+        "error": null
+      },
+      "calendar_2025_full_year": {
+        "http_status": 200,
+        "included": 8,
+        "excluded": 10,
+        "D": "250000",
+        "C": "250000"
+      },
+      "presets": {
+        "full_year_on_2026-06-15": {
+          "start": "2026-01-01",
+          "end": "2026-12-31"
+        },
+        "this_quarter_on_2026-06-15": {
+          "start": "2026-04-01",
+          "end": "2026-06-30"
+        },
+        "note": "No Apr\u2013Mar fiscal-year preset exists; Custom required."
+      },
+      "boundary_check": {
+        "expect_include_2025-04-01_and_2026-03-31": true,
+        "expect_exclude_2025-03-31_and_2026-04-01": true,
+        "sales_in_fy_should_be": "53000.00"
+      },
+      "detail": "Custom Apr\u2013Mar window correctly includes FY boundary days and excludes pre/post FY. Full year preset is calendar Jan\u2013Dec only."
+    },
+    "5_malformed_corrupt_files": {
+      "classification": "MIXED_WITH_BUGS",
+      "cases": {
+        "truncated_xlsx": {
+          "outcome": "REJECTED",
+          "classification": "AS_DESIGNED",
+          "error_type": "ParseError",
+          "error": "This file is not a valid Excel (.xlsx) workbook. Export your trial balance as .xlsx or .csv from your accounting software.",
+          "http_upload": {
+            "status_code": 202,
+            "poll": {
+              "tb_id": "a32deab2-cd38-47d7-9a00-2a90cdf54c5e",
+              "status": "failed",
+              "progress_pct": 100,
+              "current_step": "Parsing trial balance file",
+              "error_message": "This file is not a valid Excel (.xlsx) workbook. Export your trial balance as .xlsx or .csv from your accounting software.",
+              "jobs": [
+                {
+                  "job_type": "parse",
+                  "status": "failed",
+                  "started_at": "2026-09-11T16:41:29.238898Z",
+                  "completed_at": "2026-09-11T16:41:29.247048Z"
+                },
+                {
+                  "job_type": "map",
+                  "status": "failed",
+                  "started_at": null,
+                  "completed_at": "2026-09-11T16:41:29.247053Z"
+                }
+              ]
+            },
+            "body": {
+              "tb_id": "a32deab2-cd38-47d7-9a00-2a90cdf54c5e"
+            }
+          }
+        },
+        "empty_xlsx": {
+          "outcome": "REJECTED",
+          "classification": "AS_DESIGNED",
+          "error_type": "ParseError",
+          "error": "This file is not a valid Excel (.xlsx) workbook. Export your trial balance as .xlsx or .csv from your accounting software."
+        },
+        "empty_csv": {
+          "outcome": "REJECTED",
+          "classification": "AS_DESIGNED_ROUGH_UX",
+          "error_type": "EmptyDataError",
+          "error": "No columns to parse from file"
+        },
+        "empty_pdf": {
+          "outcome": "REJECTED",
+          "classification": "AS_DESIGNED",
+          "http_status": 422,
+          "http_body": {
+            "detail": "This file is not a valid PDF (missing %PDF header). Export a PDF trial balance, or upload .xlsx / .csv instead."
+          },
+          "service": {
+            "outcome": "REJECTED",
+            "error_type": "PdfTbExtractError",
+            "error": "This file is not a valid PDF (missing %PDF header). Export a PDF trial balance, or upload .xlsx / .csv instead."
+          },
+          "mentions_password": false,
+          "note": null
+        },
+        "password_pdf": {
+          "outcome": "REJECTED",
+          "classification": "AS_DESIGNED",
+          "http_status": 422,
+          "http_body": {
+            "detail": "Could not read this PDF (PdfminerException). Try a different export or upload .xlsx / .csv."
+          },
+          "service": {
+            "outcome": "REJECTED",
+            "error_type": "PdfTbExtractError",
+            "error": "Could not read this PDF (PdfminerException). Try a different export or upload .xlsx / .csv."
+          },
+          "mentions_password": false,
+          "note": "Rejects safely but does not explicitly say password-protected."
+        },
+        "html_as_xlsx": {
+          "outcome": "REJECTED",
+          "classification": "AS_DESIGNED",
+          "error_type": "ParseError",
+          "error": "This file is not a valid Excel (.xlsx) workbook. Export your trial balance as .xlsx or .csv from your accounting software.",
+          "http_upload": {
+            "status_code": 202,
+            "poll": {
+              "tb_id": "5cb4fa20-2f1b-4514-86b1-5cccdf9a4b7f",
+              "status": "failed",
+              "progress_pct": 100,
+              "current_step": "Queued for mapping",
+              "error_message": "This file is not a valid Excel (.xlsx) workbook. Export your trial balance as .xlsx or .csv from your accounting software.",
+              "jobs": [
+                {
+                  "job_type": "map",
+                  "status": "failed",
+                  "started_at": null,
+                  "completed_at": "2026-09-11T16:41:29.363687Z"
+                },
+                {
+                  "job_type": "parse",
+                  "status": "failed",
+                  "started_at": "2026-09-11T16:41:29.358149Z",
+                  "completed_at": "2026-09-11T16:41:29.363683Z"
+                }
+              ]
+            },
+            "body": {
+              "tb_id": "5cb4fa20-2f1b-4514-86b1-5cccdf9a4b7f"
+            }
+          }
+        },
+        "headers_only_csv": {
+          "outcome": "ACCEPTED_EMPTY_TB",
+          "classification": "BUG",
+          "detail": "parse_tb_file returns []. /upload accepts (202); parse+map complete with mappings:[], mapping_rate:0. Empty/header-only files should fail clearly.",
+          "http_followup": {
+            "upload": 202,
+            "status_after_map": "mapping",
+            "mappings": [],
+            "mapping_rate": 0.0
+          }
+        },
+        "random_noise_xlsx": {
+          "outcome": "REJECTED",
+          "classification": "AS_DESIGNED",
+          "error_type": "ParseError",
+          "error": "This file is not a valid Excel (.xlsx) workbook. Export your trial balance as .xlsx or .csv from your accounting software.",
+          "http_upload": {
+            "status_code": 202,
+            "poll": {
+              "tb_id": "821c9320-c4e1-44f7-829b-7f67658bc965",
+              "status": "failed",
+              "progress_pct": 100,
+              "current_step": "Parsing trial balance file",
+              "error_message": "This file is not a valid Excel (.xlsx) workbook. Export your trial balance as .xlsx or .csv from your accounting software.",
+              "jobs": [
+                {
+                  "job_type": "parse",
+                  "status": "failed",
+                  "started_at": "2026-09-11T16:41:29.423811Z",
+                  "completed_at": "2026-09-11T16:41:29.432049Z"
+                },
+                {
+                  "job_type": "map",
+                  "status": "failed",
+                  "started_at": null,
+                  "completed_at": "2026-09-11T16:41:29.432054Z"
+                }
+              ]
+            },
+            "body": {
+              "tb_id": "821c9320-c4e1-44f7-829b-7f67658bc965"
+            }
+          }
+        }
+      }
+    }
+  },
+  "production_probe": {
+    "health": 200,
+    "convert_gl_without_auth": {
+      "status": 401,
+      "body": {
+        "detail": "Missing bearer token"
+      }
+    }
+  }
+}
