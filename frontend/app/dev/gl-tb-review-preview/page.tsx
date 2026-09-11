@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  PdfExtractReview,
-  type EditableExtractedRow,
-} from "@/components/upload/PdfExtractReview";
+import { PdfExtractReview } from "@/components/upload/PdfExtractReview";
 import fixture from "./fixture.json";
 
 /**
@@ -11,8 +8,9 @@ import fixture from "./fixture.json";
  * Open /dev/gl-tb-review-preview after convert-gl UI copy changes.
  */
 export default function GlTbReviewPreviewPage() {
-  const onConfirm = (_rows: EditableExtractedRow[]) => {
-    // Preview only — confirm is a no-op.
+  // Preview only — confirm is a no-op (PdfExtractReview still requires the prop).
+  const onConfirm = () => {
+    /* no-op */
   };
 
   return (
