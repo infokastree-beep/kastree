@@ -5,53 +5,83 @@ import { MarketingFooter } from "@/components/landing/MarketingFooter";
 import { MarketingNav } from "@/components/landing/MarketingNav";
 import { APP_NAME } from "@/lib/constants";
 
+const PILLARS = [
+  {
+    title: "Plan the period",
+    body: "Upload the trial balance you already export. Kastree turns it into a reviewable pack — without another spreadsheet rebuild.",
+  },
+  {
+    title: "Protect judgement",
+    body: "AI suggests account mappings. You confirm. Statements and variance stay deterministic — numbers never come from the model.",
+  },
+  {
+    title: "Finish the narrative",
+    body: "Variance, risk flags, business health, and Ask Copilot — grounded in this period’s evidence, ready for client review.",
+  },
+] as const;
+
 const WHAT_YOU_GET = [
   {
     title: "Upload",
-    body: "Bring the period in as Excel/CSV trial balance, PDF trial balance, or general ledger (PDF or Excel). Extraction and review stay in the same upload flow.",
+    body: "Excel/CSV trial balance, PDF trial balance, or general ledger. Extraction and review stay in one flow.",
   },
   {
     title: "AI-assisted mapping",
-    body: "Suggested account → line mappings you confirm before anything generates. Remembered per client for the next period.",
+    body: "Suggested account → line mappings you confirm. Remembered per client for the next period.",
   },
   {
     title: "Statements",
-    body: "SOPL, SOFP, and SOCIE from confirmed mappings — amounts from the deterministic engine, not the model.",
+    body: "SOPL, SOFP, and SOCIE from confirmed mappings — amounts from the engine, not the model.",
   },
   {
-    title: "Variance & AI commentary",
-    body: "Period-on-period movements when a prior TB exists, plus narrative commentary grounded in those movements (no invented numbers).",
+    title: "Variance & commentary",
+    body: "Period-on-period movements plus narrative grounded in those movements. No invented numbers.",
   },
   {
-    title: "Risk flags",
-    body: "Deterministic checks (for example negative cash or anomalous balances) surfaced with the statements.",
+    title: "Risk & health",
+    body: "Deterministic checks, KPIs, and a short executive read from this period’s evidence.",
   },
   {
-    title: "Business Health",
-    body: "A short executive read from this period’s evidence — trends and ratios, not a spreadsheet dump.",
+    title: "Ask & export",
+    body: "Questions answered only from period evidence, then Excel, PDF, or CSV packs for the client.",
+  },
+] as const;
+
+const STEPS = [
+  {
+    n: "01",
+    title: "Upload the trial balance",
+    body: "Drop the same .xlsx or .csv export you’d normally paste into a template.",
   },
   {
-    title: "Performance Overview",
-    body: "KPIs, trends, and expense mix so you see the shape of the numbers before line detail.",
+    n: "02",
+    title: "Confirm mappings",
+    body: "Review suggested account → line mappings. Fix one-offs before anything generates.",
   },
   {
-    title: "Ask Copilot",
-    body: "Questions answered only from this period’s evidence, with citations back to performance, variance, or risk.",
+    n: "03",
+    title: "Generate statements",
+    body: "SOPL, SOFP, and SOCIE build from confirmed mappings — deterministic amounts only.",
   },
   {
-    title: "Export",
-    body: "Excel, PDF, or CSV packs — currency formatting and tier-aware watermarking included.",
+    n: "04",
+    title: "Review, ask, export",
+    body: "Performance, variance, risk, Ask Copilot, then download the pack.",
   },
 ] as const;
 
 const FAQ = [
+  {
+    q: "Is this just another AI wrapper?",
+    a: "No. Statements and variance come from a deterministic engine on confirmed mappings — every figure traces to source trial-balance rows. AI suggests mappings and drafts commentary; it never calculates amounts, invents movements, or freelances outside this period’s evidence. Ask runs over an evidence graph, not a blank chat on your books.",
+  },
   {
     q: "Do I need to connect to Xero or QuickBooks?",
     a: "No. Upload the trial balance export you already have.",
   },
   {
     q: "What file formats?",
-    a: ".xlsx and .csv.",
+    a: ".xlsx and .csv for trial balances. General ledgers and PDF trial balances are supported in the upload flow.",
   },
   {
     q: "Does AI map everything automatically?",
@@ -73,114 +103,145 @@ export function LandingPage() {
       <MarketingNav />
 
       <main>
-        <section className="relative overflow-hidden border-b border-line bg-surface-elevated">
+        {/* Hero — one composition: brand, claim, support, CTAs, product plane */}
+        <section className="relative overflow-hidden border-b border-line">
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--accent-muted)_0%,_transparent_55%),linear-gradient(180deg,_#ffffff_0%,_var(--surface)_100%)]"
+            className="landing-hero-atmosphere pointer-events-none absolute inset-0"
           />
-          <div className="relative mx-auto max-w-content px-6 pb-6 pt-16 sm:px-8 sm:pb-8 sm:pt-24">
-            <p className="landing-fade-up font-display text-3xl font-medium tracking-tight text-accent sm:text-4xl">
+          <div className="relative mx-auto max-w-content px-6 pb-10 pt-16 sm:px-8 sm:pb-12 sm:pt-20 lg:pt-24">
+            <p className="landing-fade-up font-display text-4xl font-medium tracking-tight text-accent sm:text-5xl">
               {APP_NAME}
             </p>
-            <p className="landing-fade-up mt-3 text-sm font-medium uppercase tracking-[0.14em] text-soft">
-              For accounting practices &amp; fractional CFOs
+            <p className="landing-fade-up mt-4 text-xs font-semibold uppercase tracking-[0.18em] text-soft">
+              Financial intelligence for accounting practices
             </p>
-            <h1 className="landing-fade-up-delay font-display mt-6 max-w-3xl text-display-lg text-ink sm:text-display-xl">
-              Upload a trial balance, get mapped accounts, statements, variance,
-              and AI commentary — automatically.
+            <h1 className="landing-fade-up-delay font-display mt-6 max-w-4xl text-[2.35rem] font-medium leading-[1.08] tracking-tight text-ink sm:text-display-xl">
+              Turn every trial balance into a review-ready pack — without rebuilding Excel.
             </h1>
             <p className="landing-fade-up-delay mt-6 max-w-2xl text-lg leading-relaxed text-ink-secondary sm:text-xl">
-              Built for accountants who still rebuild management packs in Excel.
-              AI suggests account mappings and remembers them per client; you
-              confirm, then statements, variance, and commentary generate so you
-              spend time on review — not reformatting.
+              Mapping suggestions you confirm. Statements, variance, and commentary
+              generated for you. Spend the hour on judgement — not reformatting.
             </p>
-            <div className="landing-fade-up-delay mt-10 flex flex-wrap items-center gap-4">
+            <div className="landing-fade-up-delay mt-10 flex flex-wrap items-center gap-3 sm:gap-4">
               <Link
                 href="/sign-up"
-                className="inline-flex rounded-md bg-accent px-6 py-3 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
+                className="inline-flex rounded-full bg-accent px-7 py-3.5 text-sm font-semibold text-accent-foreground shadow-[0_12px_32px_-16px_rgba(15,92,76,0.65)] transition-colors hover:bg-accent-hover"
               >
-                Create account
-              </Link>
-              <Link
-                href="/sign-in"
-                className="inline-flex rounded-md border border-line bg-surface-elevated px-6 py-3 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
-              >
-                Sign in
-              </Link>
-              <Link
-                href="/pricing"
-                className="inline-flex rounded-md border border-line bg-surface-elevated px-6 py-3 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
-              >
-                See pricing
+                Start free
               </Link>
               <a
-                href="#what-you-get"
-                className="text-sm font-medium text-ink-secondary underline-offset-4 transition-colors hover:text-accent hover:underline"
+                href="#how-it-works"
+                className="inline-flex rounded-full border border-line bg-surface-elevated/80 px-7 py-3.5 text-sm font-semibold text-ink backdrop-blur-sm transition-colors hover:border-accent hover:text-accent"
               >
-                See what it does
+                See how it works
               </a>
+              <Link
+                href="/pricing"
+                className="px-2 text-sm font-medium text-ink-secondary underline-offset-4 transition-colors hover:text-accent hover:underline"
+              >
+                Pricing
+              </Link>
             </div>
           </div>
 
-          <div className="landing-fade-in relative mx-auto max-w-content px-6 pb-16 sm:px-8 sm:pb-24">
-            <img
-              src="/images/statements-dashboard.png"
-              alt="Kastree statements dashboard showing performance overview, business health, statement tabs, and the Ask panel"
-              className="w-full border border-line bg-surface-elevated shadow-[0_24px_60px_-28px_rgba(20,32,28,0.35)]"
-              width={1280}
-              height={900}
-            />
-            <p className="mt-4 text-sm text-soft">
-              After upload: AI-assisted mapping you confirm, then SOPL, SOFP,
-              SOCIE, variance, and commentary on the dashboard.
+          <div className="landing-fade-in relative mx-auto max-w-content px-4 pb-16 sm:px-8 sm:pb-24">
+            <div className="landing-product-frame overflow-hidden rounded-2xl border border-line/80 bg-surface-elevated shadow-[0_40px_100px_-40px_rgba(20,32,28,0.45)]">
+              <img
+                src="/images/statements-dashboard.png"
+                alt="Kastree statements dashboard showing performance overview, business health, statement tabs, and the Ask panel"
+                className="w-full"
+                width={1280}
+                height={900}
+              />
+            </div>
+            <p className="mt-5 px-2 text-center text-sm text-soft sm:px-0">
+              After upload: confirm mappings, then SOPL, SOFP, SOCIE, variance, and
+              commentary on one dashboard.
             </p>
           </div>
         </section>
 
-        <section className="border-b border-line">
+        {/* System pillars — Superfocus-style “method” strip */}
+        <section className="border-b border-line bg-surface-elevated">
           <div className="mx-auto max-w-content px-6 py-section-sm sm:px-8 sm:py-section">
-            <h2 className="font-display text-heading-lg text-ink sm:text-[2.25rem]">
-              The problem
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">
+              A system, not another spreadsheet
+            </p>
+            <h2 className="font-display mt-4 max-w-3xl text-heading-lg text-ink sm:text-[2.5rem] sm:leading-tight">
+              From trial balance to client-ready review — in one calm loop.
             </h2>
-            <div className="mt-8 max-w-2xl space-y-6 text-lg leading-relaxed text-ink-secondary">
+            <div className="mt-14 grid gap-10 md:grid-cols-3 md:gap-8">
+              {PILLARS.map((pillar, index) => (
+                <div key={pillar.title} className="relative border-t border-line pt-6">
+                  <span className="font-display text-sm font-medium text-accent">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <h3 className="font-display mt-3 text-heading-md text-ink">
+                    {pillar.title}
+                  </h3>
+                  <p className="mt-3 text-[0.95rem] leading-relaxed text-ink-secondary">
+                    {pillar.body}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Problem */}
+        <section className="relative overflow-hidden border-b border-line">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -right-24 top-10 h-72 w-72 rounded-full bg-accent-muted/60 blur-3xl"
+          />
+          <div className="relative mx-auto max-w-content px-6 py-section-sm sm:px-8 sm:py-section">
+            <h2 className="font-display max-w-2xl text-heading-lg text-ink sm:text-[2.35rem] sm:leading-tight">
+              Month-end shouldn’t mean rebuilding the same pack in Excel.
+            </h2>
+            <div className="mt-8 max-w-2xl space-y-5 text-lg leading-relaxed text-ink-secondary">
               <p>
-                Most month-end work isn&apos;t the thinking — it&apos;s the repetition:
-                reformatting the same trial balance export, manually grouping accounts
-                into P&amp;L and balance sheet lines, checking the balance sheet still
-                ties, and starting variance notes from scratch when a client asks why a
-                line moved.
+                Most of the time isn’t the thinking — it’s the repetition:
+                reformatting the export, grouping accounts into P&amp;L and balance
+                sheet lines, checking the balance sheet still ties, and starting
+                variance notes from scratch.
               </p>
               <p>
-                That work is fine once. It doesn&apos;t scale when you&apos;re carrying
-                ten similar clients with comparable charts.
+                That work is fine once. It doesn’t scale when you’re carrying ten
+                similar clients with comparable charts.
               </p>
               <p>
-                Kastree doesn&apos;t replace your judgement. It removes the mechanical
+                {APP_NAME} doesn’t replace your judgement. It removes the mechanical
                 steps between{" "}
                 <strong className="font-semibold text-ink">trial balance</strong> and{" "}
-                <strong className="font-semibold text-ink">reviewable statements</strong>,
-                so you spend time on mapping edge cases and client questions — not
-                copy-paste.
+                <strong className="font-semibold text-ink">
+                  reviewable statements
+                </strong>
+                .
               </p>
             </div>
           </div>
         </section>
 
+        {/* What you get */}
         <section
           id="what-you-get"
           className="border-b border-line bg-surface-elevated"
         >
           <div className="mx-auto max-w-content px-6 py-section-sm sm:px-8 sm:py-section">
-            <h2 className="font-display text-heading-lg text-ink sm:text-[2.25rem]">
-              What you get
-            </h2>
-            <p className="mt-4 max-w-2xl text-[0.95rem] leading-relaxed text-ink-secondary sm:text-base">
-              Everything below is included in one Kastree subscription — one
-              platform from intake through export. No add-ons, no standalone
-              conversion tools.
-            </p>
-            <ul className="mt-12 grid gap-x-12 gap-y-10 sm:grid-cols-2">
+            <div className="max-w-2xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">
+                What’s included
+              </p>
+              <h2 className="font-display mt-4 text-heading-lg text-ink sm:text-[2.35rem] sm:leading-tight">
+                One platform from intake through export.
+              </h2>
+              <p className="mt-4 text-[0.95rem] leading-relaxed text-ink-secondary sm:text-base">
+                Everything below ships in a Kastree subscription — no bolt-on
+                converters, no separate commentary tool.
+              </p>
+            </div>
+            <ul className="mt-14 grid gap-x-12 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
               {WHAT_YOU_GET.map((item) => (
                 <li key={item.title} className="border-t border-line pt-5">
                   <p className="font-display text-heading-md text-ink">{item.title}</p>
@@ -191,159 +252,177 @@ export function LandingPage() {
               ))}
             </ul>
 
-            <h3 className="mt-16 text-xs font-semibold uppercase tracking-[0.16em] text-soft">
-              What it is not
-            </h3>
-            <ul className="mt-5 max-w-2xl list-disc space-y-2 pl-5 text-ink-secondary">
-              <li>Not statutory accounts or a filing tool</li>
-              <li>
-                Not “push button, send to client” — every mapping is confirmed by a
-                person
-              </li>
-              <li>Not a general ledger — you still work from the client&apos;s TB export</li>
-              <li>
-                Not a crystal ball — Ask refuses questions outside this period&apos;s
-                evidence
-              </li>
-            </ul>
+            <div className="mt-16 rounded-2xl border border-line bg-surface px-6 py-7 sm:px-8">
+              <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-soft">
+                What it is not
+              </h3>
+              <ul className="mt-4 grid gap-2 text-ink-secondary sm:grid-cols-2">
+                <li className="flex gap-2">
+                  <span className="text-accent">—</span>
+                  Not statutory accounts or a filing tool
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-accent">—</span>
+                  Not “push button, send to client” — mappings stay human-confirmed
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-accent">—</span>
+                  Not a general ledger — you still start from the client’s TB export
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-accent">—</span>
+                  Not a crystal ball — Ask refuses questions outside this period
+                </li>
+              </ul>
+            </div>
           </div>
         </section>
 
+        {/* How it works */}
         <section id="how-it-works" className="border-b border-line">
           <div className="mx-auto max-w-content px-6 py-section-sm sm:px-8 sm:py-section">
-            <h2 className="font-display text-heading-lg text-ink sm:text-[2.25rem]">
-              How it works
-            </h2>
-            <ol className="mt-12 max-w-2xl space-y-10">
-              {[
-                {
-                  n: "1",
-                  title: "Upload the trial balance",
-                  body: "Drop the same .xlsx or .csv export you’d normally paste into a template.",
-                },
-                {
-                  n: "2",
-                  title: "Confirm mappings",
-                  body: "Review suggested account → line mappings. Fix unusual accounts, one-offs, and reclasses before anything generates.",
-                },
-                {
-                  n: "3",
-                  title: "Generate statements",
-                  body: "SOPL, SOFP, and SOCIE build from confirmed mappings — amounts from the deterministic engine, not the model.",
-                },
-                {
-                  n: "4",
-                  title: "Review Performance and Business Health",
-                  body: "KPIs, trends, expense mix, and a short executive read grounded in this period’s evidence.",
-                },
-                {
-                  n: "5",
-                  title: "Check Variance, Risk, Commentary — Ask Copilot",
-                  body: "Period movements, deterministic risk flags, and AI commentary. Ask only answers from this period’s evidence, with citations.",
-                },
-                {
-                  n: "6",
-                  title: "Export",
-                  body: "Download Excel, PDF, or CSV packs with currency formatting and tier-aware watermarking.",
-                },
-              ].map((step) => (
-                <li key={step.n} className="flex gap-5">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-semibold text-accent-foreground">
+            <div className="max-w-2xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">
+                How it works
+              </p>
+              <h2 className="font-display mt-4 text-heading-lg text-ink sm:text-[2.35rem] sm:leading-tight">
+                Four steps. Confirm once. Review with confidence.
+              </h2>
+            </div>
+            <ol className="mt-14 grid gap-8 lg:grid-cols-2">
+              {STEPS.map((step) => (
+                <li
+                  key={step.n}
+                  className="flex gap-5 rounded-2xl border border-line bg-surface-elevated p-6 sm:p-7"
+                >
+                  <span className="font-display text-2xl font-medium text-accent">
                     {step.n}
                   </span>
-                  <div className="pt-0.5">
-                    <p className="font-display text-heading-md text-ink">
-                      {step.title}
-                    </p>
-                    <p className="mt-1.5 leading-relaxed text-ink-secondary">
-                      {step.body}
-                    </p>
+                  <div>
+                    <p className="font-display text-heading-md text-ink">{step.title}</p>
+                    <p className="mt-2 leading-relaxed text-ink-secondary">{step.body}</p>
                   </div>
                 </li>
               ))}
             </ol>
             <div className="mt-14">
-              <img
-                src="/images/statements-dashboard.png"
-                alt="Kastree statements dashboard after generate — performance, business health, statement tabs, and Ask"
-                className="w-full border border-line bg-surface-elevated shadow-[0_24px_60px_-28px_rgba(20,32,28,0.35)]"
-                width={1280}
-                height={900}
-              />
+              <div className="overflow-hidden rounded-2xl border border-line bg-surface-elevated shadow-[0_28px_70px_-36px_rgba(20,32,28,0.4)]">
+                <img
+                  src="/images/statements-dashboard.png"
+                  alt="Kastree statements dashboard after generate — performance, business health, statement tabs, and Ask"
+                  className="w-full"
+                  width={1280}
+                  height={900}
+                />
+              </div>
               <p className="mt-4 text-sm text-soft">
-                After generate: performance and business health above; SOPL,
-                SOFP, SOCIE, Variance, and Risk below. Ask opens a grounded
-                Q&amp;A panel for this period.
+                After generate: performance and business health above; SOPL, SOFP,
+                SOCIE, Variance, and Risk below. Ask opens grounded Q&amp;A for this
+                period.
               </p>
             </div>
-            <div className="mt-10">
-              <Link
-                href="/pricing"
-                className="text-sm font-medium text-accent underline-offset-4 hover:underline"
-              >
-                See pricing
-              </Link>
-            </div>
           </div>
         </section>
 
+        {/* Principle / proof band */}
+        <section className="relative overflow-hidden border-b border-line bg-[var(--ink)] text-white">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,_rgba(228,240,236,0.14)_0%,_transparent_55%)]"
+          />
+          <div className="relative mx-auto max-w-content px-6 py-section-sm sm:px-8 sm:py-section">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/55">
+              Built on a hard rule
+            </p>
+            <blockquote className="font-display mt-6 max-w-3xl text-[1.65rem] font-medium leading-snug tracking-tight sm:text-[2.15rem] sm:leading-[1.2]">
+              “Python does the math. The model does the narrative. Never the reverse.”
+            </blockquote>
+            <p className="mt-8 max-w-2xl text-base leading-relaxed text-white/70">
+              Every statement figure traces to source TB rows. AI never invents
+              amounts, never invents variance, and never answers outside this
+              period’s evidence. That’s how practices can trust the pack.
+            </p>
+          </div>
+        </section>
+
+        {/* Who */}
         <section className="border-b border-line bg-surface-elevated">
           <div className="mx-auto max-w-content px-6 py-section-sm sm:px-8 sm:py-section">
-            <h2 className="font-display text-heading-lg text-ink sm:text-[2.25rem]">
-              Who it&apos;s for
+            <h2 className="font-display text-heading-lg text-ink sm:text-[2.35rem] sm:leading-tight">
+              Built for people who live in month-end.
             </h2>
-            <ul className="mt-8 max-w-2xl list-disc space-y-3 pl-5 text-lg text-ink-secondary">
-              <li>
-                Small and mid-size accounting practices doing regular management
-                accounts
-              </li>
-              <li>Fractional CFOs with several similar clients on comparable charts</li>
-              <li>Teams tired of maintaining one master spreadsheet per client</li>
+            <ul className="mt-10 grid gap-6 sm:grid-cols-3">
+              {[
+                "Small and mid-size accounting practices doing regular management accounts",
+                "Fractional CFOs with several similar clients on comparable charts",
+                "Teams tired of maintaining one master spreadsheet per client",
+              ].map((item) => (
+                <li
+                  key={item}
+                  className="rounded-2xl border border-line bg-surface px-5 py-6 text-[0.95rem] leading-relaxed text-ink-secondary"
+                >
+                  {item}
+                </li>
+              ))}
             </ul>
             <p className="mt-8 max-w-2xl leading-relaxed text-ink-secondary">
-              Best fit: clients where a standard chart maps cleanly to management lines.
-              Messy or highly bespoke charts of accounts still work — you&apos;ll just
-              spend longer on mapping review.
+              Best fit: clients where a standard chart maps cleanly to management
+              lines. Messy or highly bespoke charts still work — you’ll just spend
+              longer on mapping review.
             </p>
           </div>
         </section>
 
-        <section id="get-started" className="border-b border-line">
-          <div className="mx-auto max-w-content px-6 py-section-sm sm:px-8 sm:py-section">
-            <h2 className="font-display text-heading-lg text-ink sm:text-[2.25rem]">
-              Start with your next trial balance
+        {/* Final CTA */}
+        <section id="get-started" className="relative overflow-hidden border-b border-line">
+          <div
+            aria-hidden
+            className="landing-cta-atmosphere pointer-events-none absolute inset-0"
+          />
+          <div className="relative mx-auto max-w-content px-6 py-section-sm sm:px-8 sm:py-section">
+            <h2 className="font-display max-w-3xl text-heading-lg text-ink sm:text-[2.75rem] sm:leading-tight">
+              Start with your next trial balance.
             </h2>
             <p className="mt-5 max-w-2xl text-lg leading-relaxed text-ink-secondary">
-              Create an account to upload a client TB, or sign in if you already have
-              one.
+              Create an account, upload a client TB, confirm mappings, and review
+              the pack — usually in the time you’d spend fighting a template.
             </p>
-            <div className="mt-10 flex flex-wrap items-center gap-4">
+            <div className="mt-10 flex flex-wrap items-center gap-3 sm:gap-4">
               <Link
                 href="/sign-up"
-                className="inline-flex rounded-md bg-accent px-6 py-3 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
+                className="inline-flex rounded-full bg-accent px-7 py-3.5 text-sm font-semibold text-accent-foreground shadow-[0_12px_32px_-16px_rgba(15,92,76,0.65)] transition-colors hover:bg-accent-hover"
               >
                 Create account
               </Link>
               <Link
                 href="/sign-in"
-                className="inline-flex rounded-md border border-line bg-surface-elevated px-6 py-3 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
+                className="inline-flex rounded-full border border-line bg-surface-elevated/90 px-7 py-3.5 text-sm font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
               >
                 Sign in
+              </Link>
+              <Link
+                href="/pricing"
+                className="px-2 text-sm font-medium text-ink-secondary underline-offset-4 hover:text-accent hover:underline"
+              >
+                Compare plans
               </Link>
             </div>
           </div>
         </section>
 
+        {/* FAQ */}
         <section className="bg-surface-elevated">
           <div className="mx-auto max-w-content px-6 py-section-sm sm:px-8 sm:py-section">
-            <h2 className="font-display text-heading-lg text-ink sm:text-[2.25rem]">
-              FAQ
+            <h2 className="font-display text-heading-lg text-ink sm:text-[2.35rem]">
+              Questions, answered plainly
             </h2>
-            <dl className="mt-12 max-w-2xl space-y-10">
+            <dl className="mt-12 max-w-3xl divide-y divide-line border-t border-line">
               {FAQ.map((item) => (
-                <div key={item.q} className="border-t border-line pt-6">
+                <div key={item.q} className="py-7">
                   <dt className="font-display text-heading-md text-ink">{item.q}</dt>
-                  <dd className="mt-2 leading-relaxed text-ink-secondary">{item.a}</dd>
+                  <dd className="mt-2 max-w-2xl leading-relaxed text-ink-secondary">
+                    {item.a}
+                  </dd>
                 </div>
               ))}
             </dl>

@@ -58,11 +58,37 @@ body {
   animation: landing-fade-in 0.75s ease-out 0.12s both;
 }
 
+/* Marketing landing atmosphere — keep brand teal, avoid flat white slabs */
+.landing-hero-atmosphere,
+.landing-hero-glow {
+  background:
+    radial-gradient(ellipse 80% 55% at 12% -10%, color-mix(in srgb, var(--accent) 18%, transparent) 0%, transparent 58%),
+    radial-gradient(ellipse 70% 50% at 92% 8%, color-mix(in srgb, var(--accent-muted) 90%, transparent) 0%, transparent 52%),
+    linear-gradient(180deg, #ffffff 0%, var(--surface) 72%, var(--surface) 100%);
+}
+
+.landing-cta-atmosphere,
+.landing-cta-glow {
+  background:
+    radial-gradient(ellipse 60% 80% at 80% 20%, color-mix(in srgb, var(--accent) 14%, transparent) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 60% at 10% 90%, color-mix(in srgb, var(--accent-muted) 80%, transparent) 0%, transparent 55%),
+    linear-gradient(180deg, var(--surface) 0%, #ffffff 100%);
+}
+
+.landing-product-frame {
+  transform: perspective(1400px) rotateX(1.5deg);
+  transform-origin: center top;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .landing-fade-up,
   .landing-fade-up-delay,
   .landing-fade-in {
     animation: none;
+  }
+
+  .landing-product-frame {
+    transform: none;
   }
 }
 

@@ -23,12 +23,12 @@ export function MarketingNav() {
     // 2) backdrop-blur must NOT wrap interactive chrome — Chrome composites
     //    overflowing descendants of a backdrop-filter element as frost. Keep
     //    blur on a clipped inset layer; nav links stay outside.
-    <header className="relative z-50 border-b border-line/80">
+    <header className="sticky top-0 z-50 border-b border-line/70">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-surface-elevated/90 backdrop-blur-sm"
+        className="pointer-events-none absolute inset-0 bg-surface-elevated/85 backdrop-blur-md"
       />
-      <div className="relative z-10 mx-auto flex max-w-content items-center justify-between gap-4 px-6 py-5 sm:px-8">
+      <div className="relative z-10 mx-auto flex max-w-content items-center justify-between gap-4 px-6 py-4 sm:px-8">
         <div className="flex items-center gap-6">
           <MarketingBrandLink />
           <nav className="hidden items-center gap-5 sm:flex">
@@ -44,7 +44,7 @@ export function MarketingNav() {
           </nav>
         </div>
         {clerkReady ? (
-          <div className="flex items-center gap-4 text-sm">
+          <div className="flex items-center gap-3 text-sm sm:gap-4">
             <Link
               href="/pricing"
               className="font-medium text-ink-secondary underline-offset-4 transition-colors hover:text-accent hover:underline sm:hidden"
@@ -54,7 +54,7 @@ export function MarketingNav() {
             {isSignedIn ? (
               <Link
                 href={POST_AUTH_PATH}
-                className="rounded-md bg-accent px-4 py-2 font-medium text-accent-foreground transition-colors hover:bg-accent-hover"
+                className="rounded-full bg-accent px-4 py-2 font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
               >
                 Go to app
               </Link>
@@ -63,9 +63,9 @@ export function MarketingNav() {
                 <SignInNavLink className="font-medium text-ink-secondary underline-offset-4 transition-colors hover:text-accent hover:underline" />
                 <Link
                   href="/sign-up"
-                  className="rounded-md bg-accent px-4 py-2 font-medium text-accent-foreground transition-colors hover:bg-accent-hover"
+                  className="rounded-full bg-accent px-4 py-2 font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
                 >
-                  Create account
+                  Start free
                 </Link>
               </>
             )}
