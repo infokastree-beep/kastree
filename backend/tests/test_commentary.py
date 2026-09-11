@@ -287,6 +287,10 @@ def test_business_health_prompt_contains_no_monetary_figures() -> None:
     assert call_kwargs["model"] == "gpt-4o"
     assert call_kwargs["temperature"] == 0.2
     assert call_kwargs["messages"][0]["content"] == BUSINESS_HEALTH_SYSTEM
+    # Anti-template discipline must stay on the live BH system prompt (v2).
+    assert "Anti-template" in BUSINESS_HEALTH_SYSTEM
+    assert "mixed financial trends" in BUSINESS_HEALTH_SYSTEM
+    assert "clearly improving" in BUSINESS_HEALTH_SYSTEM
     user_content = call_kwargs["messages"][1]["content"]
     assert "Gross margin trend: improving" in user_content
     assert "Operating expense growth: faster than revenue" in user_content
@@ -294,6 +298,47 @@ def test_business_health_prompt_contains_no_monetary_figures() -> None:
     assert "Debt levels: stable" in user_content
     for forbidden in ("120000", "100000", "40000", "8000", "£", "€", "$"):
         assert forbidden not in user_content
+
+
+def test_business_health_debt_uses_stock_level_language() -> None:
+    """Rising loan balances must read as increasing (pressure), not improving."""
+    client = MagicMock()
+    client.chat.completions.create.return_value = _mock_completion(
+        {
+            "summary": "Cash and leverage both moved adversely.",
+            "key_points": [
+                "Gross margin declined",
+                "Operating expenses grew faster than revenue",
+                "Debt levels increased",
+            ],
+            "confidence": "high",
+        }
+    )
+
+    generate_business_health_summary(
+        [
+            _line("revenue", "900.00"),
+            _line("cost_of_sales", "700.00"),
+            _line("operating_expenses", "500.00"),
+        ],
+        [
+            _line("revenue", "1500.00"),
+            _line("cost_of_sales", "600.00"),
+            _line("operating_expenses", "300.00"),
+        ],
+        [_line("cash", "50.00"), _line("loans", "900.00")],
+        [_line("cash", "500.00"), _line("loans", "200.00")],
+        openai_client=client,
+        sleep=lambda _: None,
+    )
+
+    user_content = client.chat.completions.create.call_args.kwargs["messages"][1][
+        "content"
+    ]
+    assert "Debt levels: increasing" in user_content
+    assert "Debt levels: improving" not in user_content
+    assert "Cash position: declining" in user_content
+    assert "Gross margin trend: declining" in user_content
 
 
 def test_business_health_fallback_to_empty_after_exhausted_retries() -> None:
