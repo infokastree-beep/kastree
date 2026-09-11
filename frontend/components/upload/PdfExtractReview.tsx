@@ -91,15 +91,36 @@ export function extractedRowsToCsvFile(
 /**
  * Real OOXML .xlsx (ZIP package) — not SpreadsheetML XML renamed to .xls.
  * SpreadsheetML + `.xls` is exactly what triggers Excel's format/extension warning.
+ *
+ * When periodStart/periodEnd are provided, the workbook starts with a plain-language
+ * period note (and ISO dates) above the TB header so the downloaded file itself
+ * states which window the numbers belong to.
  */
 export function extractedRowsToExcelFile(
   rows: EditableExtractedRow[],
   filename = "extracted-trial-balance.xlsx",
+  options?: { periodStart?: string; periodEnd?: string },
 ): File {
   const safeName = filename.toLowerCase().endsWith(".xlsx")
     ? filename
     : `${filename.replace(/\.xls$/i, "")}.xlsx`;
+  const periodStart = options?.periodStart?.trim();
+  const periodEnd = options?.periodEnd?.trim();
+  const periodNoteRows: (string | number)[][] =
+    periodStart && periodEnd
+      ? [
+          [
+            "Trial balance period",
+            `${formatPeriodDate(periodStart)} to ${formatPeriodDate(periodEnd)}`,
+            "",
+            "",
+          ],
+          ["Period start (ISO)", periodStart, "Period end (ISO)", periodEnd],
+          ["", "", "", ""],
+        ]
+      : [];
   const grid = [
+    ...periodNoteRows,
     ["Account Code", "Account Name", "Debit", "Credit"],
     ...rows.map((row) => [
       row.account_code.trim(),
@@ -112,6 +133,18 @@ export function extractedRowsToExcelFile(
   return new File([blob], safeName, {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
+}
+
+/** Filename that embeds the conversion window, e.g. trial-balance_2025-01-01_to_2025-12-31.xlsx */
+export function trialBalanceDownloadFilename(
+  periodStart?: string,
+  periodEnd?: string,
+  fallback = "extracted-trial-balance.xlsx",
+): string {
+  if (periodStart && periodEnd) {
+    return `trial-balance_${periodStart}_to_${periodEnd}.xlsx`;
+  }
+  return fallback;
 }
 
 function triggerBrowserDownload(file: File) {
@@ -165,7 +198,15 @@ export function PdfExtractReview({
   };
 
   const downloadExcel = () => {
-    const file = extractedRowsToExcelFile(draft, downloadFilename);
+    const name = trialBalanceDownloadFilename(
+      periodStart,
+      periodEnd,
+      downloadFilename,
+    );
+    const file = extractedRowsToExcelFile(draft, name, {
+      periodStart,
+      periodEnd,
+    });
     triggerBrowserDownload(file);
   };
 
@@ -178,7 +219,7 @@ export function PdfExtractReview({
         <h2 className="text-base font-semibold text-stone-900">{title}</h2>
         {hasPeriod ? (
           <p
-            className="mt-2 rounded border border-stone-300 bg-stone-50 px-3 py-2 text-sm font-medium text-stone-900"
+            className="mt-2 rounded border border-teal-200 bg-teal-50 px-3 py-2 text-sm font-medium text-teal-950"
             data-testid="tb-period-banner"
           >
             Trial balance for {formatPeriodDate(periodStart!)} to{" "}
@@ -188,6 +229,9 @@ export function PdfExtractReview({
         <p className="mt-2 text-sm text-stone-600">{description}</p>
         <p className="mt-1 text-xs text-stone-500">
           {hasPeriod ? "Generated" : "Extracted"} via {method.replaceAll("_", " ")}
+          {hasPeriod
+            ? " · Download includes this period in the filename and inside the file."
+            : ""}
         </p>
       </div>
 

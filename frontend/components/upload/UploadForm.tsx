@@ -644,7 +644,6 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
           ]}
           busy={reviewBusy}
           confirmLabel="Confirm and continue to mapping"
-          downloadFilename="extracted-general-ledger.xlsx"
           onConfirm={onConfirmGlConvert}
           onCancel={() => {
             setGlConvert(null);
