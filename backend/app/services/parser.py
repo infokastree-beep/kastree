@@ -173,12 +173,44 @@ def parse_tb_file(
     else:
         raise ParseError(f"Unsupported file type: {extension!r}. Expected .xlsx or .csv.")
 
+    if not rows:
+        raise ParseError(
+            "No trial balance data rows found. The file appears to have headers only "
+            "(or no account lines). Export a trial balance that includes account "
+            "codes, names, and debit/credit amounts."
+        )
+
     _validate_balanced(rows)
     return rows
 
 
+def raise_if_ambiguous_currency_symbols(values: object) -> set[str]:
+    """Scan cells for currency symbols; raise if more than one distinct symbol.
+
+    Returns the set of symbols found (0 or 1 entries when it does not raise).
+    Shared by the TB parser and GL → TB converter so both paths reject mixed
+    £/€/$ symbols instead of silently stripping them into one currency.
+    """
+    symbols = _scan_currency_symbols_from_values(values)
+    if len(symbols) > 1:
+        logger.warning(
+            "Ambiguous currency symbols detected in scanned cells: %s",
+            ", ".join(sorted(symbols)),
+        )
+        raise AmbiguousCurrencyError(frozenset(symbols))
+    return symbols
+
+
 def _read_csv(content: bytes) -> pd.DataFrame:
-    return pd.read_csv(BytesIO(content), header=None, dtype=str, keep_default_na=False)
+    try:
+        return pd.read_csv(
+            BytesIO(content), header=None, dtype=str, keep_default_na=False
+        )
+    except pd.errors.EmptyDataError as exc:
+        raise ParseError(
+            "This CSV file is empty. Export a trial balance that includes account "
+            "codes, names, and debit/credit amounts."
+        ) from exc
 
 
 def _prepare_xlsx(content: bytes) -> bytes:
@@ -469,14 +501,7 @@ def _detect_currency(
     if header_currency is not None:
         return header_currency, None
 
-    symbols = _scan_currency_symbols(dataframe)
-    if len(symbols) > 1:
-        logger.warning(
-            "Ambiguous currency symbols detected in scanned cells: %s",
-            ", ".join(sorted(symbols)),
-        )
-        raise AmbiguousCurrencyError(frozenset(symbols))
-
+    symbols = raise_if_ambiguous_currency_symbols(dataframe.to_numpy().flat)
     if len(symbols) == 1:
         return SYMBOL_TO_CURRENCY[next(iter(symbols))], None
 
@@ -499,10 +524,10 @@ def _currency_from_headers(columns: list[str]) -> str | None:
     return None
 
 
-def _scan_currency_symbols(dataframe: pd.DataFrame) -> set[str]:
+def _scan_currency_symbols_from_values(values: object) -> set[str]:
     symbols: set[str] = set()
     scanned = 0
-    for value in dataframe.to_numpy().flat:
+    for value in values:
         if scanned >= SCAN_CELL_LIMIT:
             break
         scanned += 1
@@ -511,6 +536,10 @@ def _scan_currency_symbols(dataframe: pd.DataFrame) -> set[str]:
             if symbol in text:
                 symbols.add(symbol)
     return symbols
+
+
+def _scan_currency_symbols(dataframe: pd.DataFrame) -> set[str]:
+    return _scan_currency_symbols_from_values(dataframe.to_numpy().flat)
 
 
 class _PerRowCurrencyResolver:

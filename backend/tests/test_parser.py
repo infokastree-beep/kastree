@@ -201,6 +201,22 @@ def test_parse_raises_on_ambiguous_currency_symbols(
     assert any("Ambiguous currency symbols detected" in record.message for record in caplog.records)
 
 
+def test_parse_rejects_headers_only_csv_with_clear_error() -> None:
+    """Headers-only / zero data rows must not silently succeed as an empty TB."""
+    content = b"Account Code,Account Name,Debit,Credit\n"
+    with pytest.raises(ParseError) as exc_info:
+        parse_tb_file(content, filename="headers-only.csv", functional_currency="EUR")
+    message = str(exc_info.value)
+    assert "No trial balance data rows found" in message
+    assert "headers only" in message.lower()
+
+
+def test_parse_rejects_empty_csv_with_clear_error() -> None:
+    with pytest.raises(ParseError) as exc_info:
+        parse_tb_file(b"", filename="empty.csv", functional_currency="EUR")
+    assert "empty" in str(exc_info.value).lower()
+
+
 def test_parse_rejects_non_numeric_monetary_cells() -> None:
     def build(ws) -> None:
         ws.append(["Account Code", "Account Name", "Debit", "Credit"])

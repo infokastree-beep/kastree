@@ -127,3 +127,32 @@ async def test_convert_gl_mode_b_without_prior_rejected(
     assert resp.status_code == 422, resp.text
     detail = resp.json()["detail"]
     assert detail["code"] == "GL_MODE_B_REQUIRES_PRIOR"
+
+
+@pytest.mark.asyncio
+async def test_convert_gl_mixed_currency_symbols_rejected(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """GL path must raise the same AmbiguousCurrencyError gate as TB upload."""
+    mixed = (
+        "Date,Account Code,Account Name,Debit,Credit,Journal\n"
+        "2025-06-01,1000,Bank,\"€10,000.00\",,J1\n"
+        "2025-06-01,3000,Capital,,\"£10,000.00\",J1\n"
+    ).encode("utf-8")
+    headers = auth_headers(provisioned_org["token"])
+    resp = await api_client.post(
+        "/trial-balances/convert-gl",
+        headers=headers,
+        files={"file": ("mixed-symbol-gl.csv", BytesIO(mixed), "text/csv")},
+        data={
+            "period_start": "2025-01-01",
+            "period_end": "2025-12-31",
+            "opening_balance_mode": "C",
+        },
+    )
+    assert resp.status_code == 422, resp.text
+    detail = resp.json()["detail"]
+    assert detail["code"] == "AMBIGUOUS_CURRENCY"
+    assert set(detail["symbols"]) == {"£", "€"}
+    assert "Multiple currency symbols detected" in detail["detail"]

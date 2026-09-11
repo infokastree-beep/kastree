@@ -392,6 +392,45 @@ def test_tier3_name_contradiction_falls_through_for_non_appendix_c_coa() -> None
     assert all(r.confidence == Decimal("0.50") for r in results[7:])
 
 
+def test_tier3_impairment_interest_receivable_associate_fall_through() -> None:
+    """Stress-found cases: do not confidently mis-file via code_range defaults."""
+    accounts = [
+        FakeAccount(
+            account_code="5000",
+            account_name="Impairment of investment in Beta",
+        ),
+        FakeAccount(
+            account_code="5100",
+            account_name="Impairment of goodwill — Beta",
+        ),
+        FakeAccount(
+            account_code="6100",
+            account_name="Interest receivable — intercompany",
+        ),
+        FakeAccount(
+            account_code="4200",
+            account_name="Share of profit of associate Gamma",
+        ),
+        # Controls that must still resolve:
+        FakeAccount(account_code="5500", account_name="Purchases"),
+        FakeAccount(account_code="4000", account_name="Sales Revenue"),
+        FakeAccount(account_code="7000", account_name="Interest Expense"),
+        FakeAccount(account_code="7900", account_name="Interest Income"),
+    ]
+
+    results = map_accounts(accounts, prior_confirmed=[])
+
+    assert [r.method for r in results[:4]] == [None] * 4
+    assert all(r.canonical_line is None for r in results[:4])
+    assert [r.canonical_line for r in results[4:]] == [
+        "cost_of_sales",
+        "revenue",
+        "interest_expense",
+        "interest_income",
+    ]
+    assert [r.method for r in results[4:]] == ["code_range"] * 4
+
+
 def test_ambiguous_and_invalid_codes_fall_through_unmapped() -> None:
     accounts = [
         FakeAccount(account_code="1500", account_name="Cash at bank"),  # assets

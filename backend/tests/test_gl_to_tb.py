@@ -191,3 +191,26 @@ def test_mode_b_with_prior_seeds() -> None:
     assert by_code["1000"].debit == Decimal("900")
     assert by_code["3000"].credit == Decimal("1000")
     assert by_code["6000"].debit == Decimal("100")
+
+
+def test_convert_gl_rejects_mixed_currency_symbols_like_tb_parser() -> None:
+    """Regression: € + £ in GL amount cells must raise AmbiguousCurrencyError."""
+    from pathlib import Path
+
+    from app.services.parser import AmbiguousCurrencyError
+
+    fixture = (
+        Path(__file__).resolve().parents[2]
+        / "fixtures"
+        / "adversarial-stress-v2"
+        / "01c_mixed_symbol_gl.xlsx"
+    )
+    with pytest.raises(AmbiguousCurrencyError) as exc_info:
+        convert_gl_file_to_tb(
+            fixture.read_bytes(),
+            fixture.name,
+            period_start=date(2025, 1, 1),
+            period_end=date(2025, 12, 31),
+            mode="C",
+        )
+    assert exc_info.value.symbols == frozenset({"£", "€"})
