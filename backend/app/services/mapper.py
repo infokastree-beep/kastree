@@ -323,6 +323,14 @@ def _tier3_code_range(source_code: str, source_name: str) -> MappingResult | Non
             else:
                 interest_line = _interest_canonical_from_name(source_name)
                 if interest_line is not None:
+                    # Income-side interest (receivable/received) must not silently
+                    # become interest_expense via the bare-interest default — same
+                    # Option B fall-through as name-vs-band contradictions.
+                    if (
+                        interest_line == "interest_expense"
+                        and _name_suggests_interest_income_side(source_name)
+                    ):
+                        return None
                     resolved = interest_line
                     specialised = True
             # Option B: clear name-vs-band contradiction → leave for Tier 4.
@@ -351,14 +359,20 @@ def _name_contradicts_band_default(band_default: str, source_name: str) -> bool:
     if not normalized:
         return False
     if band_default == "revenue":
-        return _name_suggests_equity_or_dividends(normalized)
+        return _name_suggests_equity_or_dividends(
+            normalized
+        ) or _name_suggests_share_of_associate(normalized)
     if band_default == "cost_of_sales":
-        return _name_suggests_revenue_not_cos(normalized)
+        return _name_suggests_revenue_not_cos(
+            normalized
+        ) or _name_suggests_impairment_or_write_down(normalized)
     if band_default == "operating_expenses":
         return (
             _name_suggests_cost_of_sales(normalized)
             or _name_suggests_revenue_not_cos(normalized)
             or _name_suggests_equity_or_dividends(normalized)
+            or _name_suggests_impairment_or_write_down(normalized)
+            or _name_suggests_share_of_associate(normalized)
         )
     if band_default == "depreciation":
         # Dep/amort/interest names are handled by carve-outs before this runs.
@@ -367,8 +381,49 @@ def _name_contradicts_band_default(band_default: str, source_name: str) -> bool:
             or _name_suggests_cost_of_sales(normalized)
             or _name_suggests_revenue_not_cos(normalized)
             or _name_suggests_equity_or_dividends(normalized)
+            or _name_suggests_impairment_or_write_down(normalized)
+            or _name_suggests_share_of_associate(normalized)
         )
     return False
+
+
+def _name_suggests_impairment_or_write_down(normalized: str) -> bool:
+    """Impairment / write-down of investments or goodwill is not cost of sales."""
+    return bool(
+        re.search(
+            r"\b("
+            r"impairment|"
+            r"write[- ]?downs?|"
+            r"written down"
+            r")\b",
+            normalized,
+        )
+    )
+
+
+def _name_suggests_share_of_associate(normalized: str) -> bool:
+    """Equity-method / associate results are not trading revenue."""
+    return bool(
+        re.search(
+            r"\b("
+            r"share of (profit|loss|profits|losses)|"
+            r"equity[- ]method|"
+            r"associates?|"
+            r"joint ventures?"
+            r")\b",
+            normalized,
+        )
+    )
+
+
+def _name_suggests_interest_income_side(source_name: str) -> bool:
+    """True for interest receivable/received (income side, not expense)."""
+    normalized = normalize_text(source_name)
+    if not re.search(r"\binterest\b", normalized):
+        return False
+    if re.search(r"\b(expense|paid|payable|charge)\b", normalized):
+        return False
+    return bool(re.search(r"\b(receivable|received)\b", normalized))
 
 
 def _name_suggests_equity_or_dividends(normalized: str) -> bool:

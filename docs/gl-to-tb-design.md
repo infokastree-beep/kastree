@@ -97,6 +97,23 @@ closing TB every time.** The product must **never** infer this silently.
 | `period_start` | Required for GL path. Inclusive start of the reporting window. |
 | `opening_balance_mode` | Required enum — user must choose. No implicit default that invents openings. |
 
+### Period presets (Upload UI)
+
+GL conversion shows quick-select presets beside the manual date fields so users
+do not accidentally convert a narrow custom window and mistake the smaller
+result for a full-year bug:
+
+| Preset | Fills |
+|--------|--------|
+| **Full year** (default on GL select) | Jan 1 – Dec 31 of the current calendar year |
+| **This month** | First–last day of the current month |
+| **This quarter** | First–last day of the current calendar quarter |
+| **Custom** | Leaves dates editable; any manual edit switches to Custom |
+
+Selecting a named preset auto-fills both `period_start` and `period_end`. A
+banner under the presets restates the active range in plain language
+(e.g. `1 Jan 2026 → 31 Dec 2026`).
+
 Date filter (all modes), for **movement** lines:
 
 ```

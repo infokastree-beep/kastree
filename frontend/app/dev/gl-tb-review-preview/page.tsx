@@ -32,7 +32,6 @@ export default function GlTbReviewPreviewPage() {
           `Included ${fixture.included_count} ledger lines, excluded ${fixture.excluded_count}, openings ${fixture.opening_count}.`,
         ]}
         confirmLabel="Confirm and continue to mapping"
-        downloadFilename="extracted-general-ledger.xlsx"
         onConfirm={onConfirm}
         onCancel={() => undefined}
       />

@@ -59,6 +59,7 @@ from app.services.gl_to_tb import (
     PriorTbSeed,
     convert_gl_file_to_tb,
 )
+from app.services.parser import AmbiguousCurrencyError
 from app.services.performance import (
     METRIC_CODES,
     aggregate_performance_periods,
@@ -526,6 +527,15 @@ async def convert_general_ledger_to_tb(
             detail={
                 "code": "GL_MODE_B_REQUIRES_PRIOR",
                 "detail": str(exc),
+            },
+        ) from exc
+    except AmbiguousCurrencyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "AMBIGUOUS_CURRENCY",
+                "detail": str(exc),
+                "symbols": sorted(exc.symbols),
             },
         ) from exc
     except GlImbalanceError as exc:

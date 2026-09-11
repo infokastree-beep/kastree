@@ -169,7 +169,9 @@ def _build_business_health_user_prompt(
         current_sofp_map.get("cash"),
         prior_sofp_map.get("cash"),
     )
-    debt_levels = _directional_trend(
+    # Debt uses stock-level language (increasing/decreasing), not
+    # improving/declining — loan balance up is pressure, not "improving".
+    debt_levels = _stock_level_trend(
         current_sofp_map.get("loans"),
         prior_sofp_map.get("loans"),
     )
@@ -246,6 +248,24 @@ def _directional_trend(current: Decimal | None, prior: Decimal | None) -> str:
     if abs(change_pct) < _STABLE_PCT_BAND:
         return "stable"
     return "improving" if change_pct > 0 else "declining"
+
+
+def _stock_level_trend(current: Decimal | None, prior: Decimal | None) -> str:
+    """Direction for balance-sheet stocks where 'up' is not inherently healthy.
+
+    Used for debt/loans so the LLM sees increasing/decreasing rather than the
+    cash-style improving/declining polarity.
+    """
+    if current is None or prior is None:
+        return "unavailable"
+    if prior == Decimal("0"):
+        if current == Decimal("0"):
+            return "stable"
+        return "increasing" if current > 0 else "decreasing"
+    change_pct = ((current - prior) / abs(prior)) * Decimal("100")
+    if abs(change_pct) < _STABLE_PCT_BAND:
+        return "stable"
+    return "increasing" if change_pct > 0 else "decreasing"
 
 
 def _complete_commentary_json(

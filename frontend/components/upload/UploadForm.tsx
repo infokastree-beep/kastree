@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { CompanyEntityForm } from "@/components/clients/CompanyEntityForm";
+import { GlPeriodFields } from "@/components/upload/GlPeriodFields";
 import type { CompanyEntityFormValues } from "@/lib/company-form";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch, existingTbIdFromConflict, existingTbStatusFromConflict } from "@/lib/api";
@@ -14,6 +15,10 @@ import {
   FUNCTIONAL_CURRENCIES,
   MAX_UPLOAD_BYTES,
 } from "@/lib/constants";
+import {
+  rangeForPreset,
+  type PeriodPreset,
+} from "@/lib/period-presets";
 import {
   filterPriorTbOptions,
   readPreferredPriorTbId,
@@ -91,17 +96,21 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
   const [uploadKind, setUploadKind] = useState<UploadSourceKind>("excel_csv");
   const [pdfExtract, setPdfExtract] = useState<PdfTbExtractResponse | null>(null);
   const [glConvert, setGlConvert] = useState<GlConvertResponse | null>(null);
-  const [periodStart, setPeriodStart] = useState(() => {
-    const d = new Date();
-    d.setMonth(0, 1);
-    return d.toISOString().slice(0, 10);
-  });
+  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>("full_year");
+  const [periodStart, setPeriodStart] = useState(
+    () => rangeForPreset("full_year").start,
+  );
   const [openingBalanceMode, setOpeningBalanceMode] =
     useState<OpeningBalanceMode>("C");
   const [periodEnd, setPeriodEnd] = useState(() => {
+    // Trial-balance uploads default to last day of the prior month.
+    // GL conversion uses presets (Full year on first GL selection).
     const d = new Date();
     d.setDate(0);
-    return d.toISOString().slice(0, 10);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
   });
   const [currency, setCurrency] = useState("GBP");
   const [clientId, setClientId] = useState("");
@@ -516,6 +525,24 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
     uploadMutation.mutate(csvFile);
   };
 
+  const applyPeriodPreset = useCallback((preset: PeriodPreset) => {
+    setPeriodPreset(preset);
+    if (preset === "custom") return;
+    const range = rangeForPreset(preset);
+    setPeriodStart(range.start);
+    setPeriodEnd(range.end);
+  }, []);
+
+  const onPeriodStartChange = useCallback((value: string) => {
+    setPeriodStart(value);
+    setPeriodPreset("custom");
+  }, []);
+
+  const onPeriodEndChange = useCallback((value: string) => {
+    setPeriodEnd(value);
+    setPeriodPreset("custom");
+  }, []);
+
   const resetKind = (kind: UploadSourceKind) => {
     setUploadKind(kind);
     setFile(null);
@@ -523,6 +550,12 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
     setGlConvert(null);
     setLocalError(null);
     setRowCount(null);
+    if (isGlKind(kind)) {
+      const range = rangeForPreset("full_year");
+      setPeriodPreset("full_year");
+      setPeriodStart(range.start);
+      setPeriodEnd(range.end);
+    }
   };
 
   const reviewBusy =
@@ -611,7 +644,6 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
           ]}
           busy={reviewBusy}
           confirmLabel="Confirm and continue to mapping"
-          downloadFilename="extracted-general-ledger.xlsx"
           onConfirm={onConfirmGlConvert}
           onCancel={() => {
             setGlConvert(null);
@@ -737,15 +769,14 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
 
         {isGlKind(uploadKind) ? (
           <>
-            <label className="block text-sm">
-              <span className="mb-1 block text-stone-600">Period start</span>
-              <input
-                type="date"
-                className="w-full rounded border border-stone-300 px-3 py-2"
-                value={periodStart}
-                onChange={(e) => setPeriodStart(e.target.value)}
-              />
-            </label>
+            <GlPeriodFields
+              periodPreset={periodPreset}
+              periodStart={periodStart}
+              periodEnd={periodEnd}
+              onPresetChange={applyPeriodPreset}
+              onPeriodStartChange={onPeriodStartChange}
+              onPeriodEndChange={onPeriodEndChange}
+            />
             <label className="block text-sm sm:col-span-2">
               <span className="mb-1 block text-stone-600">
                 Opening balances (required)
@@ -775,15 +806,17 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
           </>
         ) : null}
 
-        <label className="block text-sm">
-          <span className="mb-1 block text-stone-600">Period end</span>
-          <input
-            type="date"
-            className="w-full rounded border border-stone-300 px-3 py-2"
-            value={periodEnd}
-            onChange={(e) => setPeriodEnd(e.target.value)}
-          />
-        </label>
+        {!isGlKind(uploadKind) ? (
+          <label className="block text-sm">
+            <span className="mb-1 block text-stone-600">Period end</span>
+            <input
+              type="date"
+              className="w-full rounded border border-stone-300 px-3 py-2"
+              value={periodEnd}
+              onChange={(e) => setPeriodEnd(e.target.value)}
+            />
+          </label>
+        ) : null}
         <label className="block text-sm">
           <span className="mb-1 block text-stone-600">Currency</span>
           <select

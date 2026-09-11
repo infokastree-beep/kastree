@@ -21,7 +21,14 @@ from typing import Literal, Sequence
 import openpyxl
 import pandas as pd
 
-from app.services.parser import ParseError, TOLERANCE, decimal_eq, parse_monetary
+from app.services.parser import (
+    AmbiguousCurrencyError,
+    ParseError,
+    TOLERANCE,
+    decimal_eq,
+    parse_monetary,
+    raise_if_ambiguous_currency_symbols,
+)
 from app.services.pdf_tb_extract import ExtractedTBRow, rows_to_csv_bytes
 
 OpeningBalanceMode = Literal["A", "B", "C"]
@@ -231,6 +238,13 @@ def parse_gl_tabular(content: bytes, filename: str) -> list[GlLine]:
 
     if len(rows) < 2:
         raise GlToTbError("General ledger file looks empty.")
+
+    # Same gate as TB upload: mixed £/€/$ in amount cells must not be silently
+    # stripped into a single-currency TB (AmbiguousCurrencyError).
+    flat_cells: list[object] = []
+    for row in rows:
+        flat_cells.extend(row)
+    raise_if_ambiguous_currency_symbols(flat_cells)
 
     # Find header row in first 15 rows
     header_idx = 0

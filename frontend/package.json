@@ -6,7 +6,8 @@
     "dev": "next dev -p 43123",
     "build": "next build",
     "start": "next start -p 43123",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:period-presets": "node --experimental-strip-types --test lib/period-presets.test.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^5.7.6",

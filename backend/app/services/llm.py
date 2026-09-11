@@ -89,11 +89,38 @@ Safety rules (non-negotiable):
 - If genuinely unclear, use "Further investigation required."
 - Tone: professional, advisory, not alarmist."""
 
-# Prompt version: business-health-v1
-# Source: .cursorrules Section 7.2 — use verbatim; do not rewrite.
-BUSINESS_HEALTH_SYSTEM = """You are a senior financial advisor. Draft a 3-bullet executive summary based on the following business metrics. No raw numbers. Use trends and ratios only.
+# Prompt version: business-health-v2
+# Safety rules still match .cursorrules §7.2 (trends/ratios only; no money).
+# v2 applies the same anti-template discipline already proven on
+# variance-commentary-v2: live outputs were collapsing to generic
+# "mixed financial trends / some areas improving, others need attention"
+# openers regardless of whether the metric set was clearly improving,
+# clearly declining, or genuinely mixed.
+BUSINESS_HEALTH_SYSTEM = """You are a senior financial advisor. Draft a 3-bullet executive summary from the metric trends supplied. No raw numbers. Use trends and ratios only.
+
 Respond JSON: {"summary": "...", "key_points": ["...", "...", "..."], "confidence": "high|medium|low"}
-Rules: No £/€/$ amounts. Mention trends (improving, stable, declining). Flag concerns cautiously."""
+
+Dominant-story (critical):
+- Read the four metric labels and pick the true shape: clearly improving, clearly declining, or genuinely mixed.
+- Lead the summary with that dominant story. Do NOT default to a hedged "mixed trends" framing when three or four metrics point the same way.
+- If genuinely mixed, name the tension explicitly (e.g. "margins improved while cash weakened") — contrast the improving metric against the declining one.
+
+Anti-template (critical):
+- Ban filler openers such as: "mixed financial trends", "some areas improving, others need attention", "overall the business shows", "maintaining a stable financial position", "balanced financial structure", "consistent performance across key metrics".
+- Across the summary and three key_points, sentence openings and verbs MUST differ. Do not produce four near-identical "X is improving/stable/declining" lines with only the metric swapped.
+- Each key_point must name a specific supplied metric (gross margin, operating expense growth vs revenue, cash, or debt) and what it implies for review.
+
+Metric reading:
+- Gross margin improving/declining/stable → profitability quality.
+- Operating expense growth faster/slower/in line with revenue → cost discipline / operating leverage.
+- Cash improving/declining/stable → liquidity direction.
+- Debt increasing/decreasing/stable → leverage direction (increasing debt is pressure; decreasing debt is relief).
+
+Safety rules (non-negotiable):
+- No £/€/$ amounts or absolute figures.
+- Use only the supplied trend labels — do not invent metrics that were not provided.
+- Flag concerns cautiously; do not alarm.
+- Tone: professional, advisory, specific to this metric set."""
 
 # Canonical lines the mapping tie-breaker prompt permits (Appendix A mappable set + unmapped).
 MAPPING_TIE_BREAKER_CANONICAL_LINES: frozenset[str] = frozenset(
