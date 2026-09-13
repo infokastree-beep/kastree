@@ -23,5 +23,20 @@ COPY backend/ .
 ENV PORT=8000
 EXPOSE 8000
 
+# --- Deployed-revision stamp -------------------------------------------------
+# Bake the deploying commit SHA so the running service can report exactly which
+# code is live (GET /version and the git_sha field on GET /health), mirroring the
+# frontend's <meta name="kastree-git-sha"> tag. Railway auto-populates the
+# RAILWAY_GIT_COMMIT_SHA build arg from the deploying commit; GIT_SHA is an
+# explicit override for local/CI builds:
+#   docker build --build-arg GIT_SHA="$(git rev-parse HEAD)" ...
+# Kept last so a new SHA never invalidates the apt/pip/copy layer cache. Railway
+# also injects RAILWAY_GIT_COMMIT_SHA at runtime, which overrides the image ENV;
+# app.config resolves GIT_SHA first, then RAILWAY_GIT_COMMIT_SHA, then "unknown".
+ARG GIT_SHA=""
+ARG RAILWAY_GIT_COMMIT_SHA=""
+ENV GIT_SHA=${GIT_SHA}
+ENV RAILWAY_GIT_COMMIT_SHA=${RAILWAY_GIT_COMMIT_SHA}
+
 # Railway/Render inject PORT; default 8000 for local docker run.
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]

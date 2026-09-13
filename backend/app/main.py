@@ -75,8 +75,20 @@ app.include_router(archived_records.records_router)
 
 @app.get("/health")
 async def health_check() -> dict[str, str]:
-    """Liveness probe. Git deploy source: infokastree-beep/kastree (auto-deploy check)."""
-    return {"status": "ok"}
+    """Liveness probe. Includes git_sha so the deployed revision is verifiable.
+
+    Git deploy source: infokastree-beep/kastree (auto-deploy check).
+    """
+    return {"status": "ok", "git_sha": settings.resolved_git_sha()}
+
+
+@app.get("/version")
+async def version() -> dict[str, str]:
+    """Deployed backend revision (mirrors the frontend's kastree-git-sha meta tag)."""
+    return {
+        "version": settings.app_version,
+        "git_sha": settings.resolved_git_sha(),
+    }
 
 
 @app.get("/sentry-debug")

@@ -6,6 +6,14 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     app_env: str = "development"
     app_version: str = "0.1.0"
+
+    # Deployed revision. Baked into the image at build time as GIT_SHA
+    # (infra/docker/Dockerfile.backend) and/or provided by Railway at runtime as
+    # RAILWAY_GIT_COMMIT_SHA. Surfaced via GET /health (git_sha field) and
+    # GET /version so the running backend's exact revision is verifiable over
+    # HTTP, mirroring the frontend's <meta name="kastree-git-sha"> tag.
+    git_sha: str | None = None
+    railway_git_commit_sha: str | None = None
     database_url: str = "postgresql+asyncpg://findraft:local@localhost/findraft_dev"
     database_url_sync: str = "postgresql://findraft:local@localhost/findraft_dev"
 
@@ -85,6 +93,13 @@ class Settings(BaseSettings):
     # GET /sentry-debug always 404s. Set temporarily on Railway for a proof,
     # then clear.
     sentry_debug_token: str | None = None
+
+    def resolved_git_sha(self) -> str:
+        """Best available deployed commit SHA (build-baked, else Railway, else unknown)."""
+        for candidate in (self.git_sha, self.railway_git_commit_sha):
+            if candidate and candidate.strip() and candidate.strip().lower() != "unknown":
+                return candidate.strip()
+        return "unknown"
 
     class Config:
         env_file = ".env"
