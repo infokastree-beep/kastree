@@ -139,6 +139,30 @@ def is_opening_label(text: str) -> bool:
     return bool(OPENING_LABEL_RE.search(text or ""))
 
 
+# Chromium-rendered PDFs (Google Docs/Sheets print-to-PDF, headless Chrome, and
+# similar engines) hard-wrap long cells at a hyphen. When such a PDF is text- or
+# table-extracted, an ISO-8601 date can arrive split across lines at one of its
+# hyphens, e.g. "2026-06-\n01", "2026-\n06-01", or with a soft hyphen inserted at
+# the wrap point "2026-06-\u00ad\n01". Left as-is these fail date parsing and abort
+# the whole GL conversion. Rejoin the fragments before parsing.
+_WRAPPED_ISO_DATE_RE = re.compile(r"(\d{4})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})")
+
+
+def rejoin_wrapped_iso_date_text(text: str) -> str:
+    """Collapse hyphen-wrap artifacts inside ISO-8601 dates split across lines.
+
+    Targets year-first ISO dates only (``YYYY-M-D``) so ordinary hyphenated text
+    (e.g. ``"cost-of-\\nsales"``) and account codes are left untouched. Soft
+    hyphens (U+00AD) inserted at the wrap point are dropped first.
+    """
+    if not text:
+        return text
+    cleaned = text.replace("\u00ad", "")
+    return _WRAPPED_ISO_DATE_RE.sub(
+        lambda m: f"{m.group(1)}-{m.group(2)}-{m.group(3)}", cleaned
+    )
+
+
 def parse_gl_date(value: object) -> date | None:
     """Parse a cell into a calendar date, or None if blank."""
     if value is None:
@@ -152,6 +176,9 @@ def parse_gl_date(value: object) -> date | None:
     text = str(value).strip()
     if not text or text.lower() in {"nan", "none"}:
         return None
+    # Repair Chromium-style hyphen-wrapped ISO dates ("2026-06-\n01") before
+    # attempting any format below.
+    text = rejoin_wrapped_iso_date_text(text)
     # Excel serials sometimes arrive as ints/floats
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         try:
@@ -625,8 +652,10 @@ __all__ = [
     "PriorTbSeed",
     "convert_gl_file_to_tb",
     "convert_gl_to_tb",
+    "parse_gl_date",
     "parse_gl_tabular",
     "parse_gl_pdf",
+    "rejoin_wrapped_iso_date_text",
     "rows_to_csv_bytes",
     "TOLERANCE",
 ]
