@@ -14,6 +14,8 @@ from app.services.gl_to_tb import (
     PriorTbSeed,
     convert_gl_file_to_tb,
     convert_gl_to_tb,
+    parse_gl_date,
+    rejoin_wrapped_iso_date_text,
     rows_to_csv_bytes,
 )
 from app.services.parser import parse_tb_file
@@ -214,3 +216,75 @@ def test_convert_gl_rejects_mixed_currency_symbols_like_tb_parser() -> None:
             mode="C",
         )
     assert exc_info.value.symbols == frozenset({"£", "€"})
+
+
+# ---------------------------------------------------------------------------
+# Chromium-style hyphen-wrapped ISO date fragments (e.g. "2026-06-" + "01"
+# split across lines by a print-to-PDF engine) must be rejoined before parsing.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "wrapped,expected",
+    [
+        ("2026-06-\n01", "2026-06-01"),  # wrap after the month hyphen (day split off)
+        ("2026-\n06-01", "2026-06-01"),  # wrap after the year hyphen
+        ("2026-06-\n  01", "2026-06-01"),  # newline + indentation on the next line
+        ("2026-06-\r\n01", "2026-06-01"),  # Windows CRLF wrap
+        ("2026-06-\u00ad\n01", "2026-06-01"),  # soft hyphen inserted at wrap point
+        ("2026-06-01", "2026-06-01"),  # already contiguous — unchanged
+        ("Invoice cost-of-\nsales run", "Invoice cost-of-\nsales run"),  # non-date text untouched
+    ],
+)
+def test_rejoin_wrapped_iso_date_text(wrapped: str, expected: str) -> None:
+    assert rejoin_wrapped_iso_date_text(wrapped) == expected
+
+
+def test_rejoin_wrapped_iso_date_text_handles_empty() -> None:
+    assert rejoin_wrapped_iso_date_text("") == ""
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["2026-06-\n01", "2026-\n06-01", "2026-06-\u00ad\n01", "  2026-06-\n01  "],
+)
+def test_parse_gl_date_repairs_wrapped_iso_date(raw: str) -> None:
+    assert parse_gl_date(raw) == date(2026, 6, 1)
+
+
+def test_parse_gl_date_still_rejects_genuinely_unparseable() -> None:
+    from app.services.gl_to_tb import GlToTbError
+
+    with pytest.raises(GlToTbError):
+        parse_gl_date("not-a-date")
+
+
+def _wrapped_date_gl_csv() -> bytes:
+    """Balanced GL whose first row's date is Chromium hyphen-wrapped across lines.
+
+    The quoted field preserves the embedded newline exactly as a print-to-PDF /
+    CSV export would emit it. Before the fix this aborts conversion with an
+    "Unparseable transaction date" error.
+    """
+    return (
+        "Date,Account Code,Account Name,Debit,Credit\n"
+        '"2026-06-\n01",1000,Bank,100.00,0\n'
+        "2026-06-02,4000,Sales,0,100.00\n"
+    ).encode("utf-8")
+
+
+def test_convert_gl_with_wrapped_iso_date_succeeds() -> None:
+    result = convert_gl_file_to_tb(
+        _wrapped_date_gl_csv(),
+        "wrapped-date-gl.csv",
+        period_start=date(2026, 6, 1),
+        period_end=date(2026, 6, 30),
+        mode="C",
+    )
+    assert result.pipeline_eligible is True
+    assert result.included_count == 2  # both rows dated inside the window
+    assert result.excluded_count == 0
+    assert result.total_debits == result.total_credits == Decimal("100.00")
+    by_code = {r.account_code: r for r in result.rows}
+    assert by_code["1000"].debit == Decimal("100.00")
+    assert by_code["4000"].credit == Decimal("100.00")
