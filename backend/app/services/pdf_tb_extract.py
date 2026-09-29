@@ -26,7 +26,12 @@ from typing import Literal
 import pdfplumber
 from pdfplumber.page import Page
 
-from app.services.parser import ParseError, parse_monetary
+from app.services.parser import (
+    PASSWORD_PROTECTED_MESSAGE,
+    ParseError,
+    parse_monetary,
+    pdf_is_password_protected,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +77,8 @@ def extract_trial_balance_from_pdf(content: bytes) -> PdfTbExtractResult:
             "This file is not a valid PDF (missing %PDF header). "
             "Export a PDF trial balance, or upload .xlsx / .csv instead."
         )
+    if pdf_is_password_protected(content):
+        raise PdfTbExtractError(PASSWORD_PROTECTED_MESSAGE)
 
     warnings: list[str] = []
     try:

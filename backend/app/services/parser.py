@@ -56,6 +56,50 @@ class ParseError(Exception):
     """Raised when a cell cannot be parsed as a monetary value."""
 
 
+PASSWORD_PROTECTED_MESSAGE = (
+    "This file is password-protected — please remove the password and re-upload."
+)
+
+
+class PasswordProtectedError(ParseError):
+    """Raised when an uploaded PDF/Excel file is encrypted / password-protected.
+
+    Subclasses ParseError so existing upload handlers surface it, but carries the
+    specific, actionable password message (distinct from a generic parse failure).
+    """
+
+    def __init__(self, message: str = PASSWORD_PROTECTED_MESSAGE) -> None:
+        super().__init__(message)
+
+
+# Compound File Binary / OLE2 signature. A normal .xlsx is a ZIP ("PK\x03\x04");
+# a password-encrypted OOXML workbook is an OLE2 container starting with these
+# 8 bytes (it wraps an "EncryptedPackage" stream). openpyxl then fails with
+# BadZipFile, which we would otherwise report as a generic "not a valid workbook".
+_OLE2_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+
+
+def looks_like_encrypted_office(content: bytes) -> bool:
+    """True when bytes carry the OLE2/CFB signature (encrypted OOXML or legacy Office)."""
+    return content[:8] == _OLE2_MAGIC
+
+
+def pdf_is_password_protected(content: bytes) -> bool:
+    """True when the PDF requires a password to open (PyMuPDF ``needs_pass``)."""
+    try:
+        import fitz  # PyMuPDF
+    except Exception:  # pragma: no cover - dependency always present in prod
+        return False
+    try:
+        doc = fitz.open(stream=content, filetype="pdf")
+    except Exception:
+        return False
+    try:
+        return bool(getattr(doc, "needs_pass", False))
+    finally:
+        doc.close()
+
+
 class OrphanedAmountError(Exception):
     """Raised when a row has monetary values but no account identifiers."""
 
@@ -214,9 +258,16 @@ def _read_csv(content: bytes) -> pd.DataFrame:
 
 
 def _prepare_xlsx(content: bytes) -> bytes:
+    if looks_like_encrypted_office(content):
+        raise PasswordProtectedError()
     try:
         workbook = openpyxl.load_workbook(BytesIO(content), data_only=True)
     except BadZipFile as exc:
+        # An encrypted OOXML workbook is an OLE2 container, so openpyxl reports it
+        # as "not a zip". Disambiguate password-protection from a genuinely broken
+        # file so the user gets the actionable message.
+        if looks_like_encrypted_office(content):
+            raise PasswordProtectedError() from exc
         raise ParseError(
             "This file is not a valid Excel (.xlsx) workbook. "
             "Export your trial balance as .xlsx or .csv from your accounting software."
