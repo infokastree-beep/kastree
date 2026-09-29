@@ -43,6 +43,28 @@ see [`product-roadmap.md`](product-roadmap.md).
    webhook-driven paid status on a genuine Live charge. Complete one end-to-end
    Live payment and confirm org tier/status updates from the Live webhook.
 
+### Deferred enhancements (low priority)
+
+- **Auto-run risk analysis on upload/mapping (deferred — future consideration).**
+  Today risk flags are generated on demand via `POST /trial-balances/{id}/risk`
+  (the Risk tab triggers it). Auto-running would remove a manual click. Decision:
+  **defer**, not because it is high-risk in isolation (`evaluate_risks` is
+  deterministic, no LLM), but because doing it *well* is a core async-pipeline
+  behaviour change rather than a one-line toggle:
+  - Timing matters — the most useful risk output needs **variance + statements**
+    to exist first (e.g. unusual-variance-history rules), so the natural hook is
+    *after* statement generation, not at upload/mapping-confirm. Running it at
+    upload would produce partial (account-level only) flags that then need
+    re-running, risking stale/duplicate flags.
+  - It touches the `tb_pipeline` / statements-generation flow and needs its own
+    idempotency handling (delete-and-reinsert already exists in the endpoint) plus
+    pipeline tests. Best delivered as its own small PR, not bundled into unrelated
+    work.
+  Recommended shape when picked up: trigger `evaluate_risks` + persist as a final
+  step of the statements-generation path (where variance is already available),
+  guarded so re-generation replaces prior flags. Until then, the manual endpoint
+  remains the supported path.
+
 ### Go-to-market (after technical confidence)
 
 3. **Socials setup and content.** Profiles, basics, and a small set of posts
