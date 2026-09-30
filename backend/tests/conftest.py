@@ -50,6 +50,9 @@ def _force_rls_on_all_tables() -> None:
         "findraft_year_ends",
         "findraft_draft_versions",
         "findraft_source_documents",
+        "findraft_tb_versions",
+        "findraft_tb_lines",
+        "findraft_prior_year_lines",
     )
     with SyncSessionLocal() as session:
         for table in tables:
@@ -258,6 +261,38 @@ def provisioned_org() -> Iterator[dict]:
                 "(SELECT id FROM clients WHERE org_id = :oid))"
             ),
             {"oid": str(data["org_id"])},
+        )
+        session.execute(
+            text(
+                "ALTER TABLE findraft_prior_year_lines "
+                "DISABLE TRIGGER findraft_prior_year_lines_locked"
+            )
+        )
+        session.execute(
+            text("DELETE FROM findraft_tb_lines WHERE org_id = :oid"),
+            {"oid": str(data["org_id"])},
+        )
+        session.execute(
+            text("DELETE FROM findraft_draft_versions WHERE org_id = :oid"),
+            {"oid": str(data["org_id"])},
+        )
+        session.execute(
+            text("DELETE FROM findraft_tb_versions WHERE org_id = :oid"),
+            {"oid": str(data["org_id"])},
+        )
+        session.execute(
+            text("DELETE FROM findraft_prior_year_lines WHERE org_id = :oid"),
+            {"oid": str(data["org_id"])},
+        )
+        session.execute(
+            text("DELETE FROM findraft_year_ends WHERE org_id = :oid"),
+            {"oid": str(data["org_id"])},
+        )
+        session.execute(
+            text(
+                "ALTER TABLE findraft_prior_year_lines "
+                "ENABLE TRIGGER findraft_prior_year_lines_locked"
+            )
         )
         session.execute(
             text("DELETE FROM findraft_source_documents WHERE org_id = :oid"),
