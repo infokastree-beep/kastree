@@ -689,3 +689,42 @@ def test_bad_debt_expense_7100_resolves_to_operating_expenses() -> None:
         else:
             assert result.confidence == Decimal("0.90")
 
+
+def test_expense_guard_does_not_rewrite_unrelated_accounts() -> None:
+    """The Bad Debt Expense guard must not move accounts that lack the word Expense.
+
+    These five were correct before the guard and were forced onto the wrong
+    line because the guard reused broad keyword lists (corporation tax, software
+    licences, materials, motor, PRSI).
+    """
+    cases = (
+        ("2400", "Corporation Tax Payable", "taxes_payable"),
+        ("1400", "Intangible Assets - Software Licences", "intangible_assets"),
+        ("1500", "Inventory - Raw Materials", "inventory"),
+        ("1200", "Motor Vehicles - Cost", "property_plant_equipment"),
+        ("2300", "PAYE/PRSI Control", "social_security_payable"),
+    )
+    for code, name, line in cases:
+        client = MagicMock()
+        client.chat.completions.create.return_value = _mock_completion(
+            {
+                "mappings": [
+                    {
+                        "index": 1,
+                        "canonical_line": line,
+                        "reasoning": "correct model answer",
+                        "confidence": 0.91,
+                    }
+                ]
+            }
+        )
+        result = map_accounts_with_llm(
+            [FakeAccount(account_code=code, account_name=name)],
+            prior_confirmed=[],
+            openai_client=client,
+            sleep=lambda _: None,
+        )[0]
+        assert result.canonical_line == line
+        assert result.method == "llm"
+        assert result.confidence == Decimal("0.91")
+
