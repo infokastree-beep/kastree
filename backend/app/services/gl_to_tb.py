@@ -401,15 +401,37 @@ def _norm_cells(row: Sequence[object]) -> list[str]:
     return [_norm_header(c) for c in row]
 
 
+def _header_row_score(cells: Sequence[str]) -> int:
+    """How many distinct GL/TB columns a candidate header row resolves."""
+    score = 0
+    for keys in (
+        DATE_HEADER_KEYS,
+        CODE_HEADER_KEYS,
+        NAME_HEADER_KEYS,
+        DEBIT_HEADER_KEYS,
+        CREDIT_HEADER_KEYS,
+    ):
+        if _find_col(cells, keys) is not None:
+            score += 1
+    if _find_col(cells, ("balance", "amount", "net")) is not None:
+        score += 1
+    return score
+
+
 def _detect_gl_header_row(
     rows: Sequence[Sequence[object]], *, max_scan: int = 20
 ) -> tuple[int | None, list[str]]:
-    """First row that looks like a GL/TB column header.
+    """Best row that looks like a GL/TB column header.
 
-    Reuses the same tolerance as ``parse_gl_tabular`` (scan rows, don't assume the
-    first one is the header): a header needs an amount column plus at least one of
-    date / code / name.
+    Reuses ``parse_gl_tabular``'s tolerance (scan rows, don't assume row 0) but
+    *scores* candidates and picks the strongest, so a spanning/merged group-header
+    row ("Transaction Details" | "Amounts ($)") does not shadow the real
+    Date/Code/Debit/Credit header on the row below it. A header needs an amount
+    column plus at least one of date / code / name to be a candidate at all.
     """
+    best_idx: int | None = None
+    best_cells: list[str] = []
+    best_score = 0
     for i, row in enumerate(rows[:max_scan]):
         cells = _norm_cells(row)
         has_amount = (
@@ -422,9 +444,12 @@ def _detect_gl_header_row(
             or _find_col(cells, CODE_HEADER_KEYS) is not None
             or _find_col(cells, NAME_HEADER_KEYS) is not None
         )
-        if has_amount and has_key:
-            return i, cells
-    return None, []
+        if not (has_amount and has_key):
+            continue
+        score = _header_row_score(cells)
+        if score > best_score:
+            best_idx, best_cells, best_score = i, cells, score
+    return best_idx, best_cells
 
 
 def _banner_from_row(row: Sequence[object]) -> tuple[str, str] | None:
