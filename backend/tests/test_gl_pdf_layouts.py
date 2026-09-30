@@ -10,6 +10,8 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from app.services.gl_to_tb import convert_gl_file_to_tb, convert_gl_to_tb, parse_gl_pdf
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "gl_pdf"
@@ -58,3 +60,23 @@ def test_banner_grouped_gl_parses_via_scanned_header_and_banner_code() -> None:
     # Net presentation: Bank +900 (1200-300), Sales -1200, Cost +300 -> balanced 1200.
     assert result.total_debits == result.total_credits == Decimal("1200.00")
     assert {r.account_code for r in result.rows} == {"1000", "4000", "5000"}
+
+
+# Additional real-world PDF layout variants (rendered with headless Chrome). Each
+# is a balanced 4-account GL (total 1500.00); the fixture name records the layout.
+@pytest.mark.parametrize(
+    "fixture",
+    [
+        "item6_merged.pdf",      # spanning/merged group-header row above the real header
+        "item7_split.pdf",       # two-row split header ("Debit" / "($)" on separate rows)
+        "item8_subtotal.pdf",    # mid-document subtotal rows between sections
+        "item9_landscape.pdf",   # landscape page orientation
+    ],
+)
+def test_pdf_layout_variant_converts_balanced(fixture: str) -> None:
+    lines = parse_gl_pdf(_read(fixture))
+    result = convert_gl_to_tb(
+        lines, period_start=date(2026, 6, 1), period_end=date(2026, 6, 30), mode="C"
+    )
+    assert result.total_debits == result.total_credits == Decimal("1500.00"), fixture
+    assert {r.account_code for r in result.rows} == {"1000", "1100", "3000", "4000"}
