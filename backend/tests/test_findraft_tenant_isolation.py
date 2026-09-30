@@ -37,6 +37,14 @@ def _delete_org(org_id: uuid.UUID) -> None:
             )
         )
         session.execute(
+            text("DELETE FROM findraft_fa_lines WHERE org_id = :oid"),
+            {"oid": oid},
+        )
+        session.execute(
+            text("DELETE FROM findraft_fa_versions WHERE org_id = :oid"),
+            {"oid": oid},
+        )
+        session.execute(
             text("DELETE FROM findraft_tb_lines WHERE org_id = :oid"),
             {"oid": oid},
         )
@@ -732,6 +740,249 @@ def test_tb_version_composite_fk_rejects_mismatched_company(
                     ) VALUES (
                       :id, :org, :company, :year_end, 2,
                       :document, 'pending', 'tb-fk-mismatch'
+                    )
+                    """
+                ),
+                {
+                    "id": str(uuid.uuid4()),
+                    "org": str(parent.org_id),
+                    "company": str(parent.company_id),
+                    "year_end": str(first["year_end_id"]),
+                    "document": str(parent.source_document_id),
+                },
+            )
+        session.rollback()
+
+
+def _insert_fa_version(session, practice: dict, *, suffix: str) -> uuid.UUID:
+    document_id = uuid.uuid4()
+    version_id = uuid.uuid4()
+    session.execute(
+        text(
+            """
+            INSERT INTO findraft_source_documents (
+              id, org_id, company_id, storage_key, original_filename,
+              detected_type, byte_size, sha256, idempotency_key
+            ) VALUES (
+              :id, :org, :company, :key, 'fa.csv',
+              'csv', 8, :sha, :idem
+            )
+            """
+        ),
+        {
+            "id": str(document_id),
+            "org": str(practice["org_id"]),
+            "company": str(practice["company_id"]),
+            "key": (
+                f"practices/{practice['org_id']}/companies/"
+                f"{practice['company_id']}/documents/{document_id}"
+            ),
+            "sha": "fa" * 32,
+            "idem": f"fa-src-{suffix}",
+        },
+    )
+    session.execute(
+        text(
+            """
+            INSERT INTO findraft_fa_versions (
+              id, org_id, company_id, year_end_id, version_number,
+              source_document_id, status, idempotency_key
+            ) VALUES (
+              :id, :org, :company, :year_end, 1,
+              :document, 'pending', :idem
+            )
+            """
+        ),
+        {
+            "id": str(version_id),
+            "org": str(practice["org_id"]),
+            "company": str(practice["company_id"]),
+            "year_end": str(practice["year_end_id"]),
+            "document": str(document_id),
+            "idem": f"fa-{suffix}",
+        },
+    )
+    session.execute(
+        text(
+            """
+            INSERT INTO findraft_fa_lines (
+              id, org_id, company_id, fa_version_id, line_no, asset_class,
+              opening_cost, additions, disposals, disposals_dep, opening_dep, charge
+            ) VALUES (
+              :id, :org, :company, :version, 1, 'Plant',
+              10.00, 0.00, 0.00, 0.00, 0.00, 0.00
+            )
+            """
+        ),
+        {
+            "id": str(uuid.uuid4()),
+            "org": str(practice["org_id"]),
+            "company": str(practice["company_id"]),
+            "version": str(version_id),
+        },
+    )
+    return version_id
+
+
+def test_fa_version_unset_context_returns_no_rows(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        try:
+            _as_login_superuser(session)
+            _insert_fa_version(session, first, suffix="a")
+            _insert_fa_version(session, second, suffix="b")
+            _as_app_role(session)
+            versions = session.execute(
+                text("SELECT count(*) FROM findraft_fa_versions")
+            ).scalar_one()
+            lines = session.execute(
+                text("SELECT count(*) FROM findraft_fa_lines")
+            ).scalar_one()
+            assert versions == 0
+            assert lines == 0
+        finally:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+
+
+def test_fa_version_app_role_sees_only_its_practice(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        try:
+            _as_login_superuser(session)
+            own_id = _insert_fa_version(session, first, suffix="own")
+            other_id = _insert_fa_version(session, second, suffix="other")
+            _as_app_role(session)
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(first["org_id"])},
+            )
+            seen = (
+                session.execute(text("SELECT id FROM findraft_fa_versions"))
+                .scalars()
+                .all()
+            )
+            line_versions = (
+                session.execute(text("SELECT fa_version_id FROM findraft_fa_lines"))
+                .scalars()
+                .all()
+            )
+            assert seen == [own_id]
+            assert other_id not in seen
+            assert line_versions == [own_id]
+        finally:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+
+
+def test_fa_version_with_check_rejects_cross_tenant_insert(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        try:
+            _as_login_superuser(session)
+            version_id = _insert_fa_version(session, second, suffix="base")
+            parent = session.execute(
+                text(
+                    """
+                    SELECT org_id, company_id, year_end_id, source_document_id
+                    FROM findraft_fa_versions WHERE id = :id
+                    """
+                ),
+                {"id": str(version_id)},
+            ).one()
+            _as_app_role(session)
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(first["org_id"])},
+            )
+            with pytest.raises(ProgrammingError, match="row-level security"):
+                session.execute(
+                    text(
+                        """
+                        INSERT INTO findraft_fa_versions (
+                          id, org_id, company_id, year_end_id, version_number,
+                          source_document_id, status, idempotency_key
+                        ) VALUES (
+                          :id, :org, :company, :year_end, 2,
+                          :document, 'pending', 'fa-cross'
+                        )
+                        """
+                    ),
+                    {
+                        "id": str(uuid.uuid4()),
+                        "org": str(parent.org_id),
+                        "company": str(parent.company_id),
+                        "year_end": str(parent.year_end_id),
+                        "document": str(parent.source_document_id),
+                    },
+                )
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+            _as_login_superuser(session)
+            version_id = _insert_fa_version(session, second, suffix="lines")
+            _as_app_role(session)
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(first["org_id"])},
+            )
+            with pytest.raises(ProgrammingError, match="row-level security"):
+                session.execute(
+                    text(
+                        """
+                        INSERT INTO findraft_fa_lines (
+                          id, org_id, company_id, fa_version_id, line_no, asset_class,
+                          opening_cost, additions, disposals, disposals_dep,
+                          opening_dep, charge
+                        ) VALUES (
+                          :id, :org, :company, :version, 2, 'Other',
+                          1.00, 0.00, 0.00, 0.00, 0.00, 0.00
+                        )
+                        """
+                    ),
+                    {
+                        "id": str(uuid.uuid4()),
+                        "org": str(second["org_id"]),
+                        "company": str(second["company_id"]),
+                        "version": str(version_id),
+                    },
+                )
+        finally:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+
+
+def test_fa_version_composite_fk_rejects_mismatched_year_end(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        _as_login_superuser(session)
+        version_id = _insert_fa_version(session, second, suffix="fk")
+        parent = session.execute(
+            text(
+                """
+                SELECT org_id, company_id, source_document_id
+                FROM findraft_fa_versions WHERE id = :id
+                """
+            ),
+            {"id": str(version_id)},
+        ).one()
+        with pytest.raises(IntegrityError, match="findraft_fa_versions_year_end_fk"):
+            session.execute(
+                text(
+                    """
+                    INSERT INTO findraft_fa_versions (
+                      id, org_id, company_id, year_end_id, version_number,
+                      source_document_id, status, idempotency_key
+                    ) VALUES (
+                      :id, :org, :company, :year_end, 2,
+                      :document, 'pending', 'fa-fk-mismatch'
                     )
                     """
                 ),

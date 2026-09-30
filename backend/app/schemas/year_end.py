@@ -91,3 +91,75 @@ class ReconciliationGateResponse(BaseModel):
 
 def amount_text(value: Decimal) -> str:
     return format(value, "f")
+
+
+class FixedAssetVersionCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_document_id: uuid.UUID
+
+
+class FixedAssetLineOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    asset_class: str
+    opening_cost: str
+    additions: str
+    disposals: str
+    disposals_dep: str
+    opening_dep: str
+    charge: str
+
+
+class FixedAssetTotalOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    opening_cost: str
+    additions: str
+    disposals: str
+    disposals_dep: str
+    closing_cost: str
+    opening_dep: str
+    charge: str
+    closing_dep: str
+    nbv_close: str
+    nbv_open: str
+
+
+class FixedAssetVersionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    year_end_id: uuid.UUID
+    version_number: int
+    source_document_id: uuid.UUID
+    status: str
+    error_message: str | None
+    lines: list[FixedAssetLineOut]
+    total: FixedAssetTotalOut | None
+    invariant_holds: bool | None
+
+
+class SizeYearIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    turnover: str = Field(min_length=1, max_length=32)
+    balance_sheet_total: str = Field(min_length=1, max_length=32)
+    employees: int = Field(ge=0)
+
+
+class SizeEligibilityRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current: SizeYearIn
+    preceding: SizeYearIn | None = None
+
+
+class SizeEligibilityResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    year_end_id: uuid.UUID
+    eligible: bool
+    current_conditions_met: int
+    preceding_conditions_met: int | None
+    message: str

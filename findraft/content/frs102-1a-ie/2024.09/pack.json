@@ -5,5 +5,14 @@
   "version": "2024.09",
   "effective": "Accounting periods beginning on or after 1 January 2026",
   "jurisdiction": "IE",
-  "effective_from": "2026-01-01"
+  "effective_from": "2026-01-01",
+  "thresholds": {
+    "regime": "small",
+    "currency": "EUR",
+    "rule": "2-of-3",
+    "years": "current-and-preceding",
+    "turnover": "15000000.00",
+    "balance_sheet": "7500000.00",
+    "employees": 50
+  }
 }
