@@ -9,6 +9,9 @@ export default function SignInPage() {
   if (!clerkReady) {
     return (
       <main className="mx-auto flex min-h-screen max-w-lg flex-col justify-center gap-4 px-4">
+        <Link href="/" className="inline-flex">
+          <KastreeLogo className="h-16 w-auto" />
+        </Link>
         <h1 className="text-xl font-semibold">Sign in</h1>
         <p className="text-sm text-stone-600">
           Configure Clerk keys and set{" "}
