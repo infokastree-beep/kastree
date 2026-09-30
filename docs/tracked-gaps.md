@@ -1275,7 +1275,17 @@ UI exists. Internal confidence that “just an assistant” sounds reasonable is
 
 Qualified reviewer sign-off of statutory wording remains pending and still
 gates client use. Phase 1 below is schema, the pure engine, and the golden
-suite. It produces no client-facing statutory output.
+suite. It produces no client-facing statutory output. Week 2 stores source
+files and does not produce statutory output either.
+
+### Week 2 document-type taxonomy — not invented
+
+The v7.6 build plan (§9 Week 2, goal G9) names a **16-type classifier** and
+does not list the 16 types. Searches of the specification and the build pack
+found the phrase only. Week 2 therefore verifies the real file type
+(`pdf`, `xlsx`, `csv`) and does not assign a business-document category.
+The category list has to come from the specification before a classifier
+of those types can be built.
 
 ### Row 13 scope decision (2026-09-30)
 
