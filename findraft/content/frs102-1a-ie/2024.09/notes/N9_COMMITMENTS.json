@@ -1,0 +1,26 @@
+{
+  "title": "9. Commitments and contingencies",
+  "sourceRef": [
+    "1AD.28",
+    "1AD.29",
+    "1AD.30",
+    "1AD.31",
+    "1AD.32",
+    "1AD.34",
+    "1AD.54"
+  ],
+  "jurisdiction": [
+    "IE",
+    "UK"
+  ],
+  "includeWhen": "COMMITMENTS_EXIST == true OR GUARANTEES_EXIST == true OR SUBSEQUENT_EVENTS == true OR PENSION_COMMITMENT == true OR CHARGES_EXIST == true OR OFF_BALANCE_ARRANGEMENT == true",
+  "bodyTemplate": "{{capital_commitments}} {{pension_commitments}} {{guarantee_particulars}} {{charge_particulars}} {{subsequent_events}}",
+  "blocks": {
+    "capital_commitments": "1AD.31 \u2014 contractual capital commitments not provided for",
+    "pension_commitments": "1AD.32 \u2014 retirement benefit commitments incl. assumptions",
+    "guarantee_particulars": "1AD.29/1AD.30 \u2014 guarantees/security given, estimated liability",
+    "charge_particulars": "1AD.28 \u2014 charges on the assets of the company",
+    "subsequent_events": "1AD.54 \u2014 material post-reporting-date events and financial effect"
+  },
+  "needsInput": true
+}

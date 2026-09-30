@@ -1,0 +1,34 @@
+{
+  "title": "3. Debtors",
+  "sourceRef": [
+    "1AD.12",
+    "1AD.22",
+    "1AD.23",
+    "1AD.24",
+    "1AD.35"
+  ],
+  "jurisdiction": [
+    "IE",
+    "UK"
+  ],
+  "includeWhen": "DEBTORS != 0",
+  "bodyTemplate": "Amounts falling due within one year:",
+  "tableSpec": {
+    "columns": [
+      "line",
+      "current",
+      "prior"
+    ],
+    "lines_from": [
+      "TRADE_DEBTORS",
+      "OTHER_DEBTORS",
+      "PREPAYMENTS",
+      "VAT_ASSET",
+      "PAYE_ASSET",
+      "ACCRUED_INCOME",
+      "DEFERRED_TAX_ASSET"
+    ],
+    "totals": true
+  },
+  "needsInput": false
+}

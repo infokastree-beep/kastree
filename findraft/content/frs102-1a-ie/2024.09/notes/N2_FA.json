@@ -1,0 +1,46 @@
+{
+  "title": "2. Fixed assets",
+  "sourceRef": [
+    "1AD.5",
+    "1AD.6",
+    "1AD.7",
+    "1AD.13",
+    "1AD.14",
+    "1AD.15",
+    "1AD.16",
+    "1AD.19",
+    "1AD.20",
+    "1AD.21"
+  ],
+  "jurisdiction": [
+    "IE",
+    "UK"
+  ],
+  "includeWhen": "FIXED_ASSETS_NBV != 0",
+  "bodyTemplate": "The movements in fixed assets during the reporting period were as follows:",
+  "tableSpec": {
+    "columns": [
+      "class",
+      "opening_cost",
+      "additions",
+      "disposals",
+      "closing_cost",
+      "opening_dep",
+      "charge",
+      "disposals_dep",
+      "closing_dep",
+      "closing_nbv",
+      "prior_nbv"
+    ],
+    "classes_from": "FA_REGISTER + mapped FA nominal codes",
+    "totals": [
+      "closing_cost",
+      "closing_dep",
+      "closing_nbv",
+      "prior_nbv"
+    ],
+    "note": "Comparative NBV column required per period; movement comparatives optional (1AD.14)."
+  },
+  "trailingText": "Depreciation is provided on tangible fixed assets at rates calculated to write off their cost or valuation, less estimated residual value, over their expected useful lives.{{impairment_clause}}{{revaluation_clause}}",
+  "needsInput": false
+}

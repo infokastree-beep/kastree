@@ -1,0 +1,17 @@
+{
+  "title": "8. Employees",
+  "sourceRef": [
+    "1AD.37"
+  ],
+  "jurisdiction": [
+    "IE",
+    "UK"
+  ],
+  "includeWhen": "always",
+  "bodyTemplate": "The average number of persons employed by the company during the reporting period was {{avg_employees_current}} ({{avg_employees_prior}}).",
+  "fields": [
+    "avg_employees_current",
+    "avg_employees_prior"
+  ],
+  "needsInput": true
+}

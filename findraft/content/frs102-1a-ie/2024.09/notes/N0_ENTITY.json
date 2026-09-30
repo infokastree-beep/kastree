@@ -1,0 +1,18 @@
+{
+  "title": null,
+  "sourceRef": [
+    "1AD.52"
+  ],
+  "jurisdiction": [
+    "IE",
+    "UK"
+  ],
+  "includeWhen": "always",
+  "bodyTemplate": "The company is a private company limited by shares, incorporated and registered in the Republic of Ireland under the Companies Act 2014. The registered office is {{registered_office}} and the company registration number is {{company_number}}.\n\nThe directors who served during the reporting period were: {{directors_list}}.",
+  "fields": [
+    "registered_office",
+    "company_number",
+    "directors_list"
+  ],
+  "needsInput": true
+}

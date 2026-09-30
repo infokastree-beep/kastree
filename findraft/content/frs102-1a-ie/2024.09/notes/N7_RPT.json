@@ -1,0 +1,27 @@
+{
+  "title": "7. Related party transactions",
+  "sourceRef": [
+    "1AD.33",
+    "1AD.38",
+    "1AD.39",
+    "1AD.48",
+    "1AD.51"
+  ],
+  "jurisdiction": [
+    "IE",
+    "UK"
+  ],
+  "includeWhen": "RPT_EXISTS == true OR DIRECTORS_EXIST == true",
+  "bodyTemplate": "The company is required to disclose transactions with related parties as defined in the Companies Act 2014. During the reporting period the company entered into the following material transactions with related parties:{{rpt_table}}\n\nDirectors' remuneration, advances and credits are disclosed in accordance with Schedule 3A to the Companies Act 2014.{{directors_agg_table}}",
+  "tableSpec": {
+    "columns": [
+      "related_party",
+      "relationship",
+      "nature",
+      "amount_outstanding_current",
+      "amount_outstanding_prior"
+    ],
+    "needsInput": true
+  },
+  "needsInput": true
+}

@@ -1,0 +1,47 @@
+{
+  "title": "4. Creditors",
+  "sourceRef": [
+    "1AD.26",
+    "1AD.27"
+  ],
+  "jurisdiction": [
+    "IE",
+    "UK"
+  ],
+  "includeWhen": "CREDITORS != 0",
+  "bodyTemplate": "Amounts falling due within one year:",
+  "tableSpec": {
+    "columns": [
+      "line",
+      "current",
+      "prior"
+    ],
+    "lines_from": [
+      "TRADE_CREDITORS",
+      "OTHER_CREDITORS",
+      "ACCRUALS",
+      "CORP_TAX",
+      "VAT_CREDITOR",
+      "PAYE_PRSI_CREDITOR",
+      "DEFERRED_INCOME",
+      "BANK_OVERDRAFT",
+      "LOANS_LT1Y",
+      "LEASE_LIABILITY_LT1Y"
+    ],
+    "totals": true,
+    "maturity_analysis": {
+      "bands": [
+        "<1yr",
+        "1-5yr",
+        ">5yr"
+      ],
+      "sourceRef": "1AD.26",
+      "includeWhen": "LOANS != 0"
+    },
+    "security_analysis": {
+      "sourceRef": "1AD.27",
+      "includeWhen": "SECURED_CREDITORS != 0"
+    }
+  },
+  "needsInput": false
+}

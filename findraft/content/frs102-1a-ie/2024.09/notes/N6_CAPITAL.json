@@ -1,0 +1,29 @@
+{
+  "title": "6. Share capital and reserves",
+  "sourceRef": [
+    "1AD.17",
+    "1AD.18",
+    "1AD.47",
+    "1AD.49",
+    "1AD.50",
+    "1AD.52"
+  ],
+  "jurisdiction": [
+    "IE",
+    "UK"
+  ],
+  "includeWhen": "always",
+  "bodyTemplate": "Called up share capital: {{share_capital_table}}",
+  "tableSpec": {
+    "columns": [
+      "class",
+      "number",
+      "nominal_value",
+      "current",
+      "prior"
+    ]
+  },
+  "reservesNote": "Movements in reserves are reconciled to the statement of changes in retained earnings within these financial statements.",
+  "parentClause": "includeWhen IS_SUBSIDIARY: state immediate and ultimate parent undertakings (1AD.50).",
+  "needsInput": false
+}

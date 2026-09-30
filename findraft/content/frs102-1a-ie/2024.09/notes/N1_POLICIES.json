@@ -1,0 +1,34 @@
+{
+  "title": "1. Accounting policies",
+  "sourceRef": [
+    "1AD.3",
+    "1AD.4",
+    "1AD.8",
+    "1AD.9",
+    "1AD.10",
+    "1AD.11",
+    "1A.17A"
+  ],
+  "jurisdiction": [
+    "IE",
+    "UK"
+  ],
+  "includeWhen": "always",
+  "bodyTemplate": "Statement of compliance\nThese financial statements have been prepared in accordance with FRS 102 The Financial Reporting Standard applicable in the UK and Republic of Ireland, Section 1A Small Entities, and the Companies Act 2014. They are prepared under the small companies regime and in accordance with the financial reporting standards specified by the relevant law.{{departure_clause}}\n\nBasis of preparation\nThe financial statements are prepared on the historical cost basis except as disclosed below, and on a going concern basis. The presentation currency is {{currency}} and amounts are rounded to the nearest {{rounding_unit}}.\n\n{{policy_blocks}}\n\n{{format_change_clause}}{{policy_change_clause}}{{prior_reclass_clause}}",
+  "policyBlocks": [
+    "REVENUE",
+    "FIXED_ASSETS",
+    "INTANGIBLES",
+    "LEASES",
+    "STOCKS",
+    "DEBTORS",
+    "CREDITORS",
+    "BORROWING_COSTS",
+    "TAXATION",
+    "FOREIGN_CURRENCIES",
+    "EMPLOYEE_BENEFITS",
+    "RELATED_PARTIES"
+  ],
+  "departure_clause": "\n\nThere were no material departures from Section 1A of FRS 102.",
+  "needsInput": false
+}

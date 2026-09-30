@@ -1,0 +1,78 @@
+# FinDraft — Draft Financial Statements Engine (FRS 102, Section 1A first)
+# Deterministic numbers. Rules v7.5 — product decisions applied: members' accounts in scope; LLM uses v1.1; aggregate() stays in the production path; namespace findraft/.
+# Numeric thresholds and statutory figures live in pack data, never in these rules.
+
+## 1. PROJECT IDENTITY
+You are building FinDraft: trial balance + source documents in → compliant FRS 102 Section 1A members'-accounts drafts out (statement of financial position, income statement, small-company directors' report, notes from 10 note templates N0–N9, approval and audit-exemption statements), for Irish accounting practices, UK pack as fast-follow. CORE PRINCIPLE: deterministic engine for numbers. The LLM never touches a number, mapping, or reconciliation result.
+
+## 2. STACK (fixed — do not substitute)
+Backend: FastAPI (Python 3.11+, async SQLAlchemy 2.0, Pydantic v2) · PostgreSQL 15+ · Celery + Redis · object storage: MinIO in local development, AWS S3 (eu-west-1) in production · React 18 + TypeScript + Tailwind + Vite · TanStack React Query for server state only; local UI state uses useState/useContext — never Redux/Zustand/SWR · WeasyPrint (Jinja2 HTML) for PDF · python-docx for Word export · OpenAI API (uses listed in §8 only) · Clerk JWT. Never introduce a second backend framework, ORM, state manager, or meta-framework.
+
+## 3. ARCHITECTURE RULES
+Directory roles: app layer (FastAPI routers+services) · engine/ (pure Python: mapping, reconciliation, statement generation, rounding, validation — NO DB or HTTP imports) · content/<pack>/ (pack data) · web/ (React) · tests/. All of these live under findraft/ inside the Kastree repo (DECIDED v6.6) — do not create other top-level directories.
+REUSE RULE: before writing a new function, check whether an equivalent already exists in Product 1's codebase and extend it. Never duplicate auth, classification, or file-handling logic. Mapping DECIDED (v6.6): Product 1 OWNS mapping SUGGESTIONS (keyword scoring with the FinDraft exclusions ported and tested there). engine/mapping.aggregate() STAYS IN THE PRODUCTION STATEMENT PATH — it reclassifies overdrawn cash accounts before totalling so accounts never net against each other; do not route statements around it. A contract test enforces that Product 1's output uses the engine's canonical line names (BANK_OVERDRAFT, FA_INTANGIBLE_AMORT, …). Namespace DECIDED (v6.6): FinDraft lives at findraft/ inside the Kastree repo — never a parallel root tree. Never merge, replace, or duplicate either mapping module without instruction.
+engine/ functions are pure over plain dataclasses; services inject data. Money: Decimal(15,2), 0.01 tolerance, no floats. Every figure materialised with lineage — no compute-at-render money.
+Target: standard-specific text and structure live in content/<pack>/<version>/ so a new standard needs zero engine changes. Accepted exception until the pack-schema decision: engine/statements.py owns statement labels, line order and the 1A.6A balance-sheet compliance statement (kept identical to the pack's statements.py by test); content/*/statements.py and policies.py are not read by the engine. Do not migrate this unless asked. engine/lines.py is the ONE registry of canonical lines and statement groups: every sum (statements, notes context, review rules, mapping exclusions) iterates it — never hand-type a list of lines anywhere else.
+
+## 4. HARD GATES & INVARIANTS (tests must enforce)
+prior_year_validated=true before reconciliation (else BLOCKED) · TB debits=credits EXACTLY · BS balances EXACTLY (same comparison as articulates; rounding belongs only to presentation) · FA roll-forward ties · RE roll-forward ties · comparatives == validated prior year (prior year stored as canonical-line balances; comparatives rendered by the same builders via prior_from_mapped) · bank rec vs manual input · mapping confidence: 100 = auto-confirm (reachable ONLY via a human-confirmed prior-year exact match); heuristics are capped at 79 and prior-code matches score 60, so 80–99 never occurs today — do not build UI for it; 50–79 = active choice; <50 = review queue · confirmed mappings LOCKED (no LLM/background mutation) · LLM output never parsed into a number field · a review rule that cannot be evaluated, or whose input is missing, reports CRITICAL and blocks FINAL · disclosure answers are tri-state (yes / no / unanswered): an unanswered fact is never treated as "no" — a note needing it is included as pending and V-DISC-001 (CRITICAL) blocks FINAL until every applicable question is answered · facts derivable from the TB (e.g. director's loans, via aggregate() lineage) are derived, never asked.
+ERROR FALLBACK: if any LLM call fails or times out, fall through to the safe deterministic state — mapping goes to needs-review, extraction goes to manual entry — never silently guess, retry at most once, never block the request thread.
+
+## 5. MVP BEHAVIOURS
+IN MVP: (1) rounding flags with chart-of-accounts deep-link (engine/rounding.py) · (2) draft version locking · (3) report options & styles · (4) in-place note editing + text blocks.
+NOT in MVP (DECIDED v6.6): roll forward (A12) and cash-flow working column (A8) → v1.1; LLM features → v1.1; firm→client report-option inheritance → Week 14 fast-follow. Build these only when instructed.
+DEFERRED to v1.1 (do not build): right-click context menu, anchored cell comments with Resolve workflow, cross-client disclosure import/export.
+
+## 6. CONTENT PACK CONTRACT (content/frs102-1a-ie/2024.09/*)
+Note template JSON (code = file stem): {title, bodyTemplate, sourceRef, includeWhen, jurisdiction, needsInput, tableSpec?} plus note-specific extras. Note 2 builds the FA movement grid. tableSpec.lines_from lists canonical line names only (each must be a presented line); every includeWhen, including nested ones, is validated at load. Two DIFFERENT compliance statements are required — never merge or remove either: the 1A.6A statement on the SoFP above the directors' signatures (Ireland: s.324(4A) CA 2014), and note N1's statement of compliance with Section 1A (1AD.3; s.291(7)). policies.py: 12 toggleable blocks {id, title, appliesWhen, body}; wording is fixed and subject to qualified sign-off — never generate or rewrite it. disclosure-checklist.json: Appendix D items 1AD.1–1AD.55 {id, topic, note, statuteRef, statuteRefStatus, includeWhen?, evidence?}; tests/test_checklist_integrity.py enforces that every 'verified' item carries evidence whose quote contains its citation — never weaken that test or relabel an item to pass it. pack.json: {pack, standard, section, version, effective, effective_from, jurisdiction}; there is no thresholds block yet. UK pack mirrors with Appendix C (1AC) refs.
+
+## 7. UI/UX RULES
+Review dashboard red/amber/green; every issue has Resolve → deep-link to the exact screen. Statement preview: click a figure → evidence drawer showing contributing TB lines. Rounding flags amber with chart-of-accounts link. Locked drafts show a create-new-version flow, never silent mutation. Loading skeletons; empty states with next action; optimistic UI only for non-financial edits.
+
+## 8. LLM BOUNDARIES & EXECUTION
+MVP uses NO LLM calls (DECIDED v6.6): prior-year figures come from a manual entry form (plus a 'first financial period' path with no comparatives), and 50–79 mapping candidates go to the human review queue. (a) prior-year PDF extraction and (b) mapping tie-break are DEFERRED TO v1.1 — when built, extraction output is schema-validated before display (untrusted input). Accounting-policy wording comes from policies.py, never from the LLM. v1.1 principle, stated honestly: no LLM-produced number reaches a statement without human confirmation, and extracted totals must cross-cast (e.g. net assets = equity) before a human sees them. Forbidden: everything else.
+EXECUTION: all LLM calls run as Celery background jobs, never in the request thread. Tie-break cache keyed by (tenant_id, normalised account-name pattern) — per practice, never shared across practices. Stateless calls, no training; prompt+output hash logged in audit_trail. No client data reaches any API before the OpenAI DPA and EU data-residency review are signed off (v1.1 precondition).
+
+## 9. AUTH, MULTI-TENANCY & SCHEMA
+Reuse Product 1's Clerk authentication and RLS-scoped multi-tenancy — no new auth system or tenancy model. New tables carry company_id foreign keys into the EXISTING clients/companies schema — never a parallel company structure. Lock, FINAL, adjustments and pack pinning are role-checked server-side, never by hiding UI.
+
+## 10. QUALITY BAR
+ruff + mypy --strict everywhere. The engine's existing typing backlog (94 mypy --strict errors at v7.5) is fixed as a Week 1 task, behind the full test suite with no behaviour change; until then fix only lines you change for a tested reason. Name tests by behaviour, never by release. Tests: golden-file renders; one pass+fail test per validation rule; the full suite (python -m unittest discover -s tests -t .) must stay green. Playwright happy path green. One logical change per Alembic migration; never edit shipped migrations.
+
+## 11. MVP GUARDRAILS (flag, don't build)
+iXBRL, accounting-software APIs, OCR, cash-flow STATEMENT (the directors' REPORT is IN SCOPE for the members'-accounts set), FRS 105/101, consolidations, anomaly ML, client emails, LLM features (v1.1). BUT keep xbrl_concept_id, pack architecture, includeWhen, lineage — Phase 2 depends on all four.
+
+## 12. DEFINITION OF DONE (per feature)
+Migration → engine code + tests → router + Pydantic schema → React UI with states → audit entry → validation rules updated if money-affecting → disclosure checklist updated if a note changed → report-options defaults updated if a statement changed.
+
+## 13. PACKS & VERSION PINNING
+Two independent choices at client setup: JURISDICTION (IE | UK) and STANDARD (frs102-1a | frs102-full | frs105). Pack identity = <standard>-<jurisdiction>, versioned by pack.json "version" (e.g. frs102-1a-ie @ 2024.09). A new FRC edition = a NEW pack version in its own immutable directory content/<pack>/<version>/ (engine/pack.py pack_dir() resolves a pinned draft to exactly those files) — never edit a live pack in place. year_ends and draft_versions record pack_id + pack_version at creation and stay pinned; pinning refuses a period starting before the pack's effective_from. Packs govern presentation, formats, thresholds and disclosures; classification is not pack-specific.
+
+## 14. CHANGE SAFETY
+engine/ and content/ are audited. Change them only to fix a bug demonstrated by a failing test you add first. Never reformat, rename, or "clean up" engine code.
+Never modify, skip, or delete an existing test to make a change pass. If a test blocks you, stop and explain why.
+If a request conflicts with these rules or the spec, stop and ask — do not guess.
+
+## 15. DEPENDENCIES
+Do not add any package not already declared without asking first. Never invent package names or APIs; if unsure a function exists, search the codebase.
+No new infrastructure (queues, caches, databases, services) without an explicit request.
+
+## 16. SCOPE DISCIPLINE
+Implement exactly what is asked. No speculative abstractions, base classes, plugin systems, or config options "for later".
+One feature per change; touch the fewest files possible and list every file you changed.
+
+## 17. DATA & TENANCY
+Every new table: tenant_id NOT NULL + an RLS policy + a test proving tenant A cannot read tenant B's rows. RLS (Week 1, the existential risk): the app connects as a role that does NOT own the tables and has NOBYPASSRLS; FORCE ROW LEVEL SECURITY on every table anyway; every policy is USING and WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid), which matches zero rows when the context is unset; the context is set in ONE place per transaction with set_config('app.tenant_id', …, true) (e.g. SQLAlchemy after_begin), from a ContextVar filled by auth from the VERIFIED Clerk organisation claim — never from a path or body parameter; workers use the same helper; the cross-tenant CI test runs under the production role, never a superuser.
+Tenant-owned rows reference companies by a composite foreign key (tenant_id, company_id) → companies(tenant_id, id), with UNIQUE(tenant_id, id) on companies, so a row can never pair one tenant's id with another tenant's company.
+asyncpg behind PgBouncer in transaction mode: connect_args statement_cache_size=0; size pools so (tasks × (pool_size + max_overflow)) stays below max_connections minus headroom. Cache Clerk JWKS, refreshing on an unknown kid. CORS: explicit allowlist of the Kastree frontend origin.
+Money is Decimal end-to-end: NUMERIC(15,2) in Postgres, strings in JSON APIs, never JavaScript number arithmetic on money.
+Celery tasks receive IDs only — never client data in the payload — and re-establish tenant context themselves.
+Each TB upload is a new immutable TB version; a draft records the TB version it was built from, and a re-import creates a new draft version — never mutates an existing draft.
+The client entity record (legal name, CRO number, registered office, directors, secretary, financial year, average employees) is captured once and feeds note N0, the directors' report and the approval page — never retyped per draft.
+Derived output is a snapshot, not tables: inputs stay relational and immutable (TB version, CONFIRMED mappings only, adjustments, entity record, disclosure answers, pack id + version); each computation's statements, notes and check results are ONE immutable JSONB document keyed by sha256(inputs) + engine SHA + pack version, recomputed on every change (the engine runs in milliseconds). Unconfirmed mapping suggestions never reach aggregate().
+Draft concurrency (Week 10): draft_versions.row_version with optimistic concurrency (zero rows updated → 409); SELECT … FOR UPDATE on the draft inside adjust, recompute and finalise; a database trigger refuses INSERT/UPDATE/DELETE on adjustments, note overrides, text blocks and mappings when the parent draft is LOCKED or FINAL; FINAL is one transaction that writes the snapshot, inputs_sha256, engine SHA and pack version, then flips the status — FINAL output is never recomputed. Upload, adjust and finalise require an Idempotency-Key.
+Rendering: PDF and DOCX render in a separate worker process with a memory cap and timeout, never inside an async handler; the API returns a job id. Reuse Kastree's Celery if it exists; otherwise a Postgres job table with SELECT … FOR UPDATE SKIP LOCKED — do not add Redis/Celery for this alone. Call the engine directly (pure CPU, milliseconds) — no async or thread-pool wrapper.
+Review rules always receive the draft's pinned pack: engine.pack.pack_dir(pack_id, version) / "review-rules.json" — there is no default.
+UPLOADS (Week 2 acceptance): cap file size; verify the REAL file type (never trust the extension); reject macro-enabled workbooks (.xlsm); guard against zip bombs (cap decompressed size); per-practice storage prefixes/keys; parse spreadsheets in the worker, never the API process (openpyxl read_only=True, hard row and column caps); escape formula-leading characters (= + - @) on import as well as export, since account names flow into PDFs, DOCX and CSVs — uploads are the main outside-data entry point.
+AUDIT TRAIL: append-only for real — REVOKE UPDATE, DELETE from the app role, plus a per-row prev_hash chain so tampering is detectable.
+RETENTION vs ERASURE (Week 12 acceptance): state the policy for statutory accounting-record retention periods vs GDPR erasure — which wins, and when; never ship a delete path that removes records the practice is legally required to keep.
