@@ -10,10 +10,17 @@
 #   - the frontend node_modules
 #   - local-only .env files (gitignored) if they do not already exist
 #
-# The `findraft` role is created as a SUPERUSER to mirror the documented local
-# dev database (infra/docker/docker-compose.yml sets POSTGRES_USER=findraft,
-# which the postgres image provisions as a superuser). This matches alembic.ini
-# and app/config.py defaults exactly.
+# The `findraft` role is created as a NON-superuser, NON-bypassrls LOGIN role
+# that OWNS the findraft_dev database. This mirrors the documented production
+# security model (docs/runbooks/deployment.md + backend/scripts/
+# provision_findraft_app_role.sql + backend/scripts/verify_findraft_rls.sql):
+# the running app must NOT connect as a superuser, because a superuser session
+# bypasses every org-isolation RLS policy unconditionally. Owning the tables lets
+# findraft run the Alembic migrations (including the data migrations that
+# `ALTER TABLE ... DISABLE ROW LEVEL SECURITY` for backfills), while FORCE ROW
+# LEVEL SECURITY still applies the policies to the owner at runtime — so the
+# app is subject to RLS exactly as in production. install verifies this at the
+# end via verify_findraft_rls.sql (fake org -> 0 client rows).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -45,9 +52,9 @@ sudo -u postgres psql -v ON_ERROR_STOP=1 <<'SQL'
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'findraft') THEN
-    CREATE ROLE findraft LOGIN SUPERUSER PASSWORD 'local';
+    CREATE ROLE findraft LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'local';
   ELSE
-    ALTER ROLE findraft LOGIN SUPERUSER PASSWORD 'local';
+    ALTER ROLE findraft LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'local';
   END IF;
 END
 $$;
@@ -76,6 +83,14 @@ sudo -u postgres psql -v ON_ERROR_STOP=1 -d findraft_dev \
   -f "$REPO_ROOT/backend/scripts/bootstrap_stripe_rls_lookup.sql"
 # 3) Apply the remaining migrations.
 .venv/bin/alembic upgrade head
+
+# 4) Verify RLS is actually enforced for the findraft app role. With a fake org
+#    GUC, clients must return 0 rows; a superuser/bypassrls connection would
+#    return all rows (docs/runbooks/deployment.md). Fail install if not enforced.
+echo "==> Verifying findraft RLS enforcement"
+unset PGOPTIONS
+PGPASSWORD=local psql -h localhost -U findraft -d findraft_dev -v ON_ERROR_STOP=1 \
+  -f "$REPO_ROOT/backend/scripts/verify_findraft_rls.sql"
 
 echo "==> [6/7] Frontend dependencies"
 cd "$REPO_ROOT/frontend"
