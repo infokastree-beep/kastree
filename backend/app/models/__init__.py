@@ -14,6 +14,7 @@ from app.models.notification import Notification
 from app.models.organisation import Organisation
 from app.models.processing_job import ProcessingJob
 from app.models.risk_flag import RiskFlag
+from app.models.source_document import SourceDocument
 from app.models.statement_line_item import StatementLineItem
 from app.models.subscription_event import SubscriptionEvent
 from app.models.trial_balance import TrialBalance
@@ -36,6 +37,7 @@ __all__ = [
     "Organisation",
     "ProcessingJob",
     "RiskFlag",
+    "SourceDocument",
     "StatementLineItem",
     "SubscriptionEvent",
     "TrialBalance",
