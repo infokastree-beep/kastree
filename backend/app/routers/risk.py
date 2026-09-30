@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
-from app.dependencies import AuthContext, get_auth_context, get_db_session
+from app.dependencies import AuthContext, get_db_session, require_member_work, require_reader
 from app.models.account_mapping import AccountMapping
 from app.models.risk_flag import RiskFlag
 from app.models.trial_balance import TrialBalance
@@ -166,7 +166,7 @@ def _flag_to_response(flag: RiskFlag) -> RiskFlagResponse:
 @router.post("/{tb_id}/risk", response_model=RiskFlagsResponse)
 async def generate_risk_flags(
     tb_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_member_work)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> RiskFlagsResponse:
     await aset_rls_org_id(session, auth.org_id)
@@ -218,7 +218,7 @@ async def generate_risk_flags(
 @router.get("/{tb_id}/risk", response_model=RiskFlagsResponse)
 async def get_risk_flags(
     tb_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> RiskFlagsResponse:
     await aset_rls_org_id(session, auth.org_id)

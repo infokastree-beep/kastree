@@ -292,11 +292,23 @@ def require_roles(*allowed_roles: str):
     return _dependency
 
 
+# Product Spec §4.5 / Cursor Rules §8.2. Role is the users.role row on every
+# request, never the JWT role claim. Each level includes the one below it.
+# owner  — billing and organisation settings, plus everything an admin can do
+# admin  — manage users and clients, plus everything a member can do
+# member — upload, review, generate statements, and export
+# viewer — read only, including marking their own notifications read
+require_reader = require_roles("owner", "admin", "member", "viewer")
+require_member_work = require_roles("owner", "admin", "member")
+require_client_admin = require_roles("owner", "admin")
+require_owner = require_roles("owner")
+
+
 def require_platform_admin():
     """Owner role plus PLATFORM_ADMIN_EMAILS allowlist — not every org owner."""
 
     async def _dependency(
-        auth: Annotated[AuthContext, Depends(require_roles("owner"))],
+        auth: Annotated[AuthContext, Depends(require_owner)],
     ) -> AuthContext:
         if not is_platform_admin(auth):
             raise HTTPException(

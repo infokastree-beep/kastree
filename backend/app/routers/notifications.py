@@ -15,7 +15,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
-from app.dependencies import AuthContext, get_auth_context, get_db_session
+from app.dependencies import AuthContext, get_db_session, require_reader
 from app.models.notification import Notification
 from app.schemas.notification import (
     MarkAllReadResponse,
@@ -53,7 +53,7 @@ async def _get_own_notification(
 
 @router.get("", response_model=NotificationListResponse)
 async def list_notifications(
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     limit: Annotated[int, Query(ge=1, le=_MAX_PAGE)] = _DEFAULT_PAGE,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -86,7 +86,7 @@ async def list_notifications(
 @router.put("/{notification_id}/read", response_model=MarkReadResponse)
 async def mark_notification_read(
     notification_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> MarkReadResponse:
     await aset_rls_org_id(session, auth.org_id)
@@ -103,7 +103,7 @@ async def mark_notification_read(
 
 @router.put("/read-all", response_model=MarkAllReadResponse)
 async def mark_all_notifications_read(
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> MarkAllReadResponse:
     await aset_rls_org_id(session, auth.org_id)

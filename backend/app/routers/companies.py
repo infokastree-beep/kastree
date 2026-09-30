@@ -11,7 +11,13 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
-from app.dependencies import AuthContext, get_auth_context, get_db_session
+from app.dependencies import (
+    AuthContext,
+    get_db_session,
+    require_client_admin,
+    require_member_work,
+    require_reader,
+)
 from app.models.account_mapping import AccountMapping
 from app.models.company import Company
 from app.schemas.company import (
@@ -31,7 +37,7 @@ router = APIRouter(prefix="/companies", tags=["companies"])
 @router.get("/{company_id}", response_model=CompanyResponse)
 async def get_company(
     company_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Company:
     await aset_rls_org_id(session, auth.org_id)
@@ -42,7 +48,7 @@ async def get_company(
 async def update_company(
     company_id: uuid.UUID,
     body: CompanyUpdateRequest,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_client_admin)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Company:
     await aset_rls_org_id(session, auth.org_id)
@@ -74,7 +80,7 @@ async def update_company(
 )
 async def dismiss_materiality_suggestion(
     company_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_member_work)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> MaterialitySuggestionDismissResponse:
     """Soft-dismiss the materiality suggestion banner for this company."""
@@ -94,7 +100,7 @@ async def dismiss_materiality_suggestion(
 @router.delete("/{company_id}", status_code=status.HTTP_200_OK, response_model=CompanyResponse)
 async def soft_delete_company(
     company_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_client_admin)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Company:
     """Soft delete + archived_records snapshot in the same transaction (§12.2).
@@ -126,7 +132,7 @@ async def soft_delete_company(
 @router.get("/{company_id}/mappings", response_model=CompanyMappingsResponse)
 async def list_company_mappings(
     company_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> CompanyMappingsResponse:
     await aset_rls_org_id(session, auth.org_id)
@@ -152,7 +158,7 @@ async def list_company_mappings(
 )
 async def bulk_delete_company_mappings(
     company_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_client_admin)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> BulkDeleteMappingsResponse:
     await aset_rls_org_id(session, auth.org_id)

@@ -11,7 +11,12 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
-from app.dependencies import AuthContext, get_auth_context, get_db_session
+from app.dependencies import (
+    AuthContext,
+    get_db_session,
+    require_client_admin,
+    require_reader,
+)
 from app.models.account_mapping import AccountMapping
 from app.models.client import Client
 from app.models.company import Company
@@ -46,7 +51,7 @@ _MAX_PAGE = 100
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=ClientResponse)
 async def create_client(
     body: ClientCreateRequest,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_client_admin)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Client:
     await aset_rls_org_id(session, auth.org_id)
@@ -86,7 +91,7 @@ async def create_client(
 
 @router.get("", response_model=ClientListResponse)
 async def list_clients(
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     limit: Annotated[int, Query(ge=1, le=_MAX_PAGE)] = _DEFAULT_PAGE,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -114,7 +119,7 @@ async def list_clients(
 @router.get("/{client_id}", response_model=ClientResponse)
 async def get_client(
     client_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Client:
     await aset_rls_org_id(session, auth.org_id)
@@ -125,7 +130,7 @@ async def get_client(
 async def update_client(
     client_id: uuid.UUID,
     body: ClientUpdateRequest,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_client_admin)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Client:
     await aset_rls_org_id(session, auth.org_id)
@@ -143,7 +148,7 @@ async def update_client(
 @router.delete("/{client_id}", status_code=status.HTTP_200_OK, response_model=ClientResponse)
 async def soft_delete_client(
     client_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_client_admin)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Client:
     """Soft delete + archived_records snapshot in the same transaction (§12.2)."""
@@ -171,7 +176,7 @@ async def soft_delete_client(
 async def create_company_for_client(
     client_id: uuid.UUID,
     body: CompanyCreateRequest,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_client_admin)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Company:
     await aset_rls_org_id(session, auth.org_id)
@@ -198,7 +203,7 @@ async def create_company_for_client(
 @router.get("/{client_id}/companies", response_model=CompanyListResponse)
 async def list_companies_for_client(
     client_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> CompanyListResponse:
     await aset_rls_org_id(session, auth.org_id)
@@ -222,7 +227,7 @@ async def list_companies_for_client(
 @router.get("/{client_id}/mappings", response_model=ClientGroupMappingsResponse)
 async def list_client_mappings(
     client_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> ClientGroupMappingsResponse:
     """Confirmed mappings across all companies under this client group."""
@@ -251,7 +256,7 @@ async def list_client_mappings(
 )
 async def bulk_delete_client_mappings(
     client_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_client_admin)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> ClientGroupBulkDeleteMappingsResponse:
     """Bulk delete all account_mappings for every company under this client."""

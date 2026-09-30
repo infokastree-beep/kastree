@@ -11,7 +11,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
-from app.dependencies import AuthContext, get_auth_context, get_db_session, require_roles
+from app.dependencies import (
+    AuthContext,
+    get_db_session,
+    require_client_admin,
+    require_owner,
+)
 from app.models.archived_record import ArchivedRecord
 from app.models.client import Client
 from app.schemas.archived_record import (
@@ -34,7 +39,7 @@ _ORG_LEVEL_REASONS = frozenset({"org_deleted", "subscription_cancelled"})
 )
 async def list_client_archived_records(
     client_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(require_roles("owner", "admin"))],
+    auth: Annotated[AuthContext, Depends(require_client_admin)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     entity_type: Annotated[str | None, Query()] = None,
     period_end: Annotated[date | None, Query()] = None,
@@ -88,7 +93,7 @@ async def list_client_archived_records(
     response_model=ArchivedRecordListResponse,
 )
 async def list_org_archived_records(
-    auth: Annotated[AuthContext, Depends(require_roles("owner"))],
+    auth: Annotated[AuthContext, Depends(require_owner)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     entity_type: Annotated[str | None, Query()] = None,
     archive_reason: Annotated[str | None, Query()] = None,
@@ -123,7 +128,7 @@ async def list_org_archived_records(
 )
 async def get_archived_record(
     record_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(require_roles("owner", "admin"))],
+    auth: Annotated[AuthContext, Depends(require_client_admin)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> ArchivedRecordDetailResponse:
     """Full snapshot + server-side SHA-256 recompute → hash_verified (§10.2)."""

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.db import aset_rls_org_id
-from app.dependencies import AuthContext, get_auth_context, get_db_session
+from app.dependencies import AuthContext, get_db_session, require_member_work
 from app.models.client import Client
 from app.models.company import Company
 from app.models.commentary_feedback import CommentaryFeedback
@@ -108,7 +108,7 @@ def _apply_corrected_commentary(
 )
 async def submit_commentary_feedback(
     body: CommentaryFeedbackRequest,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_member_work)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> CommentaryFeedbackResponse:
     await aset_rls_org_id(session, auth.org_id)

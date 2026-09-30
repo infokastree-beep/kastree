@@ -27,7 +27,12 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import SyncSessionLocal, aset_rls_org_id, set_rls_org_id
-from app.dependencies import AuthContext, get_auth_context, get_db_session
+from app.dependencies import (
+    AuthContext,
+    get_db_session,
+    require_member_work,
+    require_reader,
+)
 from app.models.account_mapping import AccountMapping
 from app.models.client import Client
 from app.models.company import Company
@@ -422,7 +427,7 @@ def _progress_for_tb(tb: TrialBalance, jobs: list[ProcessingJob]) -> tuple[int, 
     response_model=PdfTbExtractResponse,
 )
 async def extract_pdf_trial_balance(
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_member_work)],
     file: Annotated[UploadFile, File()],
 ) -> PdfTbExtractResponse:
     """Phase 1: extract TB rows from a PDF for review — does not create a TB.
@@ -470,7 +475,7 @@ async def extract_pdf_trial_balance(
     response_model=GlConvertResponse,
 )
 async def convert_general_ledger_to_tb(
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_member_work)],
     file: Annotated[UploadFile, File()],
     period_start: Annotated[date, Form()],
     period_end: Annotated[date, Form()],
@@ -619,7 +624,7 @@ def _prior_seeds_from_csv(content: bytes, filename: str) -> list[PriorTbSeed]:
 )
 async def upload_trial_balance(
     background_tasks: BackgroundTasks,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_member_work)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     company_id: Annotated[uuid.UUID, Form()],
     period_end: Annotated[date, Form()],
@@ -758,7 +763,7 @@ async def upload_trial_balance(
 @router.get("", response_model=TrialBalanceListResponse)
 async def list_trial_balances(
     company_id: Annotated[uuid.UUID, Query()],
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     limit: Annotated[int, Query(ge=1, le=_MAX_TB_PAGE)] = _DEFAULT_TB_PAGE,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -799,7 +804,7 @@ async def list_trial_balances(
 async def preview_prior_period(
     company_id: Annotated[uuid.UUID, Query()],
     period_end: Annotated[date, Query()],
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> PriorPeriodPreviewResponse:
     """Lightweight check: which prior TB would auto-detection use for this upload?
@@ -841,7 +846,7 @@ async def preview_prior_period(
 )
 async def soft_delete_trial_balance(
     tb_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_member_work)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> TrialBalance:
     """Soft delete + archived_records snapshot in the same transaction (§12.2)."""
@@ -871,7 +876,7 @@ async def soft_delete_trial_balance(
 @router.get("/{tb_id}/status", response_model=StatusResponse)
 async def get_trial_balance_status(
     tb_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> StatusResponse:
     await aset_rls_org_id(session, auth.org_id)
@@ -904,7 +909,7 @@ async def get_trial_balance_status(
 @router.get("/{tb_id}/mapping", response_model=MappingResponse)
 async def get_trial_balance_mapping(
     tb_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> MappingResponse:
     await aset_rls_org_id(session, auth.org_id)
@@ -967,7 +972,7 @@ async def confirm_trial_balance_mapping(
     tb_id: uuid.UUID,
     body: MappingConfirmRequest,
     background_tasks: BackgroundTasks,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_member_work)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> MappingConfirmResponse:
     await aset_rls_org_id(session, auth.org_id)
@@ -1167,7 +1172,7 @@ def _mapped_accounts_for_tb(session: Session, tb: TrialBalance) -> list[SimpleMa
 @router.get("/{tb_id}/validation", response_model=ValidationResponse)
 async def get_trial_balance_validation(
     tb_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> ValidationResponse:
     await aset_rls_org_id(session, auth.org_id)
@@ -1186,7 +1191,7 @@ async def get_trial_balance_validation(
 @router.post("/{tb_id}/statements", response_model=StatementsGenerateResponse)
 async def generate_statements(
     tb_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_member_work)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     prior_tb_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> StatementsGenerateResponse:
@@ -1409,7 +1414,7 @@ def _statement_accounts(
 async def get_statement_line_sources(
     tb_id: uuid.UUID,
     line_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> StatementLineSourcesResponse:
     """Evidence-graph drill-down: TB accounts behind one statement face line.
@@ -1491,7 +1496,7 @@ async def get_statement_line_sources(
 @router.get("/{tb_id}/statements", response_model=StatementsResponse)
 async def get_statements(
     tb_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     prior_tb_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> StatementsResponse:
@@ -1710,7 +1715,7 @@ def _attach_comparative_amounts(
 )
 async def get_performance_overview(
     tb_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     granularity: Annotated[
         Literal["monthly", "quarterly", "yearly"], Query()
@@ -1831,7 +1836,7 @@ async def get_performance_overview(
 )
 async def get_materiality_suggestion(
     tb_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> MaterialitySuggestionResponse:
     """Soft ISA 320-style materiality suggestion from generated statement figures."""

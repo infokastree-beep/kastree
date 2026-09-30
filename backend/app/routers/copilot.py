@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
-from app.dependencies import AuthContext, get_auth_context, get_db_session
+from app.dependencies import AuthContext, get_db_session, require_member_work
 from app.routers.trial_balances import _get_owned_tb
 from app.schemas.copilot import CopilotAskRequest, CopilotAskResponse
 from app.services.copilot_service import ask_copilot
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/trial-balances", tags=["copilot"])
 async def post_copilot_ask(
     tb_id: uuid.UUID,
     body: CopilotAskRequest,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_member_work)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> CopilotAskResponse:
     """Ask Copilot a question grounded in this trial balance's evidence."""
