@@ -291,6 +291,24 @@ def test_convert_gl_with_wrapped_iso_date_succeeds() -> None:
     assert by_code["4000"].credit == Decimal("100.00")
 
 
+def test_quickbooks_memo_column_is_the_account_name() -> None:
+    content = (
+        "Posted,Acct,Memo,Debit,Credit\n"
+        "06/15/2026,1000,Bank deposit,100.00,0.00\n"
+        "06/15/2026,4000,Sales receipt,0.00,100.00\n"
+    ).encode("utf-8")
+    result = convert_gl_file_to_tb(
+        content,
+        "quickbooks-memo.csv",
+        period_start=date(2026, 6, 1),
+        period_end=date(2026, 6, 30),
+        mode="C",
+    )
+    by_code = {row.account_code: row for row in result.rows}
+    assert by_code["1000"].account_name == "Bank deposit"
+    assert by_code["4000"].account_name == "Sales receipt"
+
+
 def test_parse_gl_date_day_first_when_slash_date_is_ambiguous() -> None:
     assert parse_gl_date("03/04/2026") == date(2026, 4, 3)
 

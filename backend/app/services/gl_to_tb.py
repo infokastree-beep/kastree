@@ -51,7 +51,13 @@ OPENING_LABEL_RE = re.compile(
 
 DATE_HEADER_KEYS = ("date", "txn date", "trans date", "transaction date", "posted")
 CODE_HEADER_KEYS = ("account code", "code", "acct", "gl code", "a/c")
-NAME_HEADER_KEYS = ("account name", "description", "particulars", "details")
+NAME_HEADER_KEYS = (
+    "account name",
+    "description",
+    "particulars",
+    "details",
+    "memo",
+)
 # Avoid bare "account" / "name" — those collide with "account code".
 DEBIT_HEADER_KEYS = ("debit", "dr", "debit amount")
 CREDIT_HEADER_KEYS = ("credit", "cr", "credit amount")
