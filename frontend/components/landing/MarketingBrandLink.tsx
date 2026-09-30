@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { PRODUCTS, formatProductLabel } from "@/lib/products";
+import { KastreeLogo } from "@/components/brand/KastreeLogo";
 
 /**
  * Public marketing brand control — always navigates to `/` (no auth).
@@ -8,16 +8,13 @@ import { PRODUCTS, formatProductLabel } from "@/lib/products";
  * Clerk protects and redirects signed-out visitors to `/sign-in`.
  */
 export function MarketingBrandLink({
-  className = "font-display text-base font-semibold tracking-tight text-accent transition-colors hover:opacity-80 sm:text-lg",
+  className = "h-12 w-auto sm:h-14",
 }: {
   className?: string;
 }) {
-  const product = PRODUCTS[0];
-  const label = product ? formatProductLabel(product) : "Kastree";
-
   return (
-    <Link href="/" className={className}>
-      {label}
+    <Link href="/" className="inline-flex shrink-0">
+      <KastreeLogo className={className} />
     </Link>
   );
 }

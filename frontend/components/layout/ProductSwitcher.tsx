@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
+import { KastreeLogo } from "@/components/brand/KastreeLogo";
 import {
   PRODUCTS,
   formatProductLabel,
@@ -71,11 +72,8 @@ export function ProductSwitcher({
 
   if (products.length < 2) {
     return (
-      <Link
-        href={homeHref}
-        className="font-display text-base font-semibold tracking-tight text-accent transition-colors hover:opacity-80 sm:text-lg"
-      >
-        {formatProductLabel(activeProduct)}
+      <Link href={homeHref} className="inline-flex shrink-0">
+        <KastreeLogo className="h-12 w-auto sm:h-14" />
       </Link>
     );
   }

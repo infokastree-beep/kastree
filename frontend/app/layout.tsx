@@ -23,13 +23,13 @@ export const metadata: Metadata = {
   // Cache-bust so browsers that cached the prior 404 globe refresh the real icon.
   icons: {
     icon: [
-      { url: "/favicon.ico?v=2", sizes: "any" },
-      { url: "/icon.png?v=2", type: "image/png", sizes: "32x32" },
-      { url: "/icon-192.png?v=2", type: "image/png", sizes: "192x192" },
+      { url: "/favicon.ico?v=3", sizes: "any" },
+      { url: "/icon.png?v=3", type: "image/png", sizes: "32x32" },
+      { url: "/icon-192.png?v=3", type: "image/png", sizes: "192x192" },
     ],
     apple: [
       {
-        url: "/apple-touch-icon.png?v=2",
+        url: "/apple-touch-icon.png?v=3",
         sizes: "180x180",
         type: "image/png",
       },

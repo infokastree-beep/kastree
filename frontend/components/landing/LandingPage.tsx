@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { KastreeLogo } from "@/components/brand/KastreeLogo";
 import { MarketingFooter } from "@/components/landing/MarketingFooter";
 import { MarketingNav } from "@/components/landing/MarketingNav";
 import { APP_NAME } from "@/lib/constants";
@@ -110,13 +111,8 @@ export function LandingPage() {
             className="landing-hero-atmosphere pointer-events-none absolute inset-0"
           />
           <div className="relative mx-auto max-w-content px-6 pb-10 pt-16 sm:px-8 sm:pb-12 sm:pt-20 lg:pt-24">
-            <p className="landing-fade-up font-display text-4xl font-medium tracking-tight text-accent sm:text-5xl">
-              {APP_NAME}
-            </p>
-            <p className="landing-fade-up mt-4 text-xs font-semibold uppercase tracking-[0.18em] text-soft">
-              Financial intelligence for accounting practices
-            </p>
-            <h1 className="landing-fade-up-delay font-display mt-6 max-w-4xl text-[2.35rem] font-medium leading-[1.08] tracking-tight text-ink sm:text-display-xl">
+            <KastreeLogo className="landing-fade-up h-20 w-auto sm:h-24" />
+            <h1 className="landing-fade-up-delay font-display mt-8 max-w-4xl text-[2.35rem] font-medium leading-[1.08] tracking-tight text-ink sm:text-display-xl">
               Turn every trial balance into a review-ready pack — without rebuilding Excel.
             </h1>
             <p className="landing-fade-up-delay mt-6 max-w-2xl text-lg leading-relaxed text-ink-secondary sm:text-xl">

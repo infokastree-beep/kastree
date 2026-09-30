@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { SignUp } from "@clerk/nextjs";
+import { KastreeLogo } from "@/components/brand/KastreeLogo";
 import { clerkReady } from "@/lib/clerk";
 import { POST_AUTH_PATH } from "@/lib/constants";
 
@@ -22,7 +23,10 @@ export default function SignUpPage() {
     );
   }
   return (
-    <main className="flex min-h-screen items-center justify-center px-4">
+    <main className="flex min-h-screen flex-col items-center justify-center gap-8 px-4 py-10">
+      <Link href="/" className="inline-flex">
+        <KastreeLogo className="h-16 w-auto" />
+      </Link>
       <SignUp
         routing="path"
         path="/sign-up"
