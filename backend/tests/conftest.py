@@ -47,6 +47,8 @@ def _force_rls_on_all_tables() -> None:
         "statement_line_items",
         "commentary_feedback",
         "waitlist_signups",
+        "findraft_year_ends",
+        "findraft_draft_versions",
     )
     with SyncSessionLocal() as session:
         for table in tables:
