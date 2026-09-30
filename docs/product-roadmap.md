@@ -126,6 +126,12 @@ is actually required, and how that differs from Product 1’s settled
 internal-review-only positioning. Framing that merely *sounds* reasonable is
 **not** enough.
 
+**Pre-client-use gate:** qualified reviewer sign-off of statutory wording, and
+a customer-facing DPA (GDPR Article 28) drafted, reviewed, and published. Both
+are human legal artifacts. They gate real client use. Detail is in
+[`tracked-gaps.md`](tracked-gaps.md). The OpenAI DPA remains the v1.1
+precondition already in the v7.6 specification and is not a current blocker.
+
 Scoped capabilities (after the gate clears — still not scheduled):
 
 - **Toggle-based note / disclosure content library** (Accurri-style) — FRS 102
