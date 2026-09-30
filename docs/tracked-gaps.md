@@ -167,6 +167,24 @@ further `account_mappings` access in those two tests. Also `session.expire_all()
 after raw SQL UPDATEs so ORM re-reads are not stale (`SyncSessionLocal` uses
 `expire_on_commit=False`).
 
+## Local `findraft` login bypasses RLS — test with `findraft_app`
+
+Phase 5 of the Product 1 stress test (30 September 2026) confirmed row-level
+security is enforced under the real production database role `findraft_app`
+(`NOSUPERUSER`, `NOBYPASSRLS`). With `app.current_org_id` set to organisation B,
+a direct `SELECT` of organisation A's trial balance returned 0 rows. Cross-org
+API calls still returned 404.
+
+The default local development login `findraft` (the user in local `DATABASE_URL`
+/ `DATABASE_URL_SYNC`) is a PostgreSQL superuser. Superusers bypass row-level
+security even when `FORCE ROW LEVEL SECURITY` is on, so the same query run as
+`findraft` still sees every tenant. That is fine for production, which never
+uses this local superuser login.
+
+**Reminder:** any future local RLS test must connect explicitly as
+`findraft_app`, not the default `findraft` login. A test run as `findraft`
+will look like a tenant leak even when the policies are correct.
+
 ## Tier 4 OpenAI in sync BackgroundTasks (event-loop blocking)
 
 `run_parse_and_map_job` (`backend/app/services/tb_pipeline.py`) invokes Tier 4
