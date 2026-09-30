@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from app.dependencies import AuthContext, get_auth_context, is_platform_admin
+from app.dependencies import AuthContext, is_platform_admin, require_reader
 from app.schemas.user import UserMeResponse
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 @router.get("/me", response_model=UserMeResponse)
 async def get_current_user(
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
 ) -> UserMeResponse:
     """Return the DB-backed role for the signed-in user (not the JWT role claim)."""
     return UserMeResponse(

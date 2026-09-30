@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
-from app.dependencies import AuthContext, get_auth_context, get_db_session
+from app.dependencies import AuthContext, get_db_session, require_member_work, require_reader
 from app.models.client import Client
 from app.models.company import Company
 from app.models.financial_statement import FinancialStatement
@@ -227,7 +227,7 @@ def _analysis_response(
 @router.post("/{tb_id}/variance", response_model=VarianceResponse)
 async def generate_variance(
     tb_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_member_work)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     body: VarianceGenerateRequest | None = None,
 ) -> VarianceResponse:
@@ -310,7 +310,7 @@ async def generate_variance(
 @router.get("/{tb_id}/variance", response_model=VarianceResponse)
 async def get_variance(
     tb_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> VarianceResponse:
     await aset_rls_org_id(session, auth.org_id)
@@ -370,7 +370,7 @@ def _health_unavailable(
 @router.post("/{tb_id}/business-health", response_model=BusinessHealthResponse)
 async def generate_business_health(
     tb_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_member_work)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     body: BusinessHealthGenerateRequest | None = None,
 ) -> BusinessHealthResponse:

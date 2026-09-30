@@ -17,7 +17,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import SyncSessionLocal, aset_rls_org_id, set_rls_org_id
-from app.dependencies import AuthContext, get_auth_context, get_db_session
+from app.dependencies import (
+    AuthContext,
+    get_db_session,
+    require_member_work,
+    require_reader,
+)
 from app.models.client import Client
 from app.models.company import Company
 from app.models.export import Export
@@ -79,7 +84,7 @@ async def create_export(
     tb_id: uuid.UUID,
     body: ExportCreateRequest,
     background_tasks: BackgroundTasks,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_member_work)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     storage: Annotated[ObjectStorage, Depends(get_object_storage)],
 ) -> ExportAcceptedResponse:
@@ -131,7 +136,7 @@ async def create_export(
 @exports_router.get("/{export_id}", response_model=ExportStatusResponse)
 async def get_export_status(
     export_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Export:
     await aset_rls_org_id(session, auth.org_id)
@@ -141,7 +146,7 @@ async def get_export_status(
 @exports_router.get("/{export_id}/download")
 async def download_export(
     export_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_member_work)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     storage: Annotated[ObjectStorage, Depends(get_object_storage)],
 ) -> RedirectResponse:

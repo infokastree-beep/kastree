@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db import aset_rls_org_id
-from app.dependencies import AuthContext, get_auth_context, get_db_session
+from app.dependencies import AuthContext, get_db_session, require_owner
 from app.models.organisation import Organisation
 from app.models.user import User
 from app.services.tier_limits import PAID_TIERS
@@ -77,7 +77,7 @@ def _frontend_base_url() -> str:
 @router.post("/checkout", response_model=CheckoutResponse)
 async def create_checkout_session(
     body: CheckoutRequest,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_owner)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> CheckoutResponse:
     """Create a Stripe Checkout Session (subscription) for a paid tier upgrade.

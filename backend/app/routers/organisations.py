@@ -19,7 +19,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
-from app.dependencies import AuthContext, get_auth_context, get_db_session, require_roles
+from app.dependencies import (
+    AuthContext,
+    get_db_session,
+    require_client_admin,
+    require_owner,
+    require_reader,
+)
 from app.models.organisation import Organisation
 from app.models.user import User
 from app.schemas.organisation import (
@@ -68,7 +74,7 @@ async def _load_caller_org(
 
 @router.get("/me", response_model=OrganisationResponse)
 async def get_my_organisation(
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Organisation:
     return await _load_caller_org(session, auth)
@@ -77,7 +83,7 @@ async def get_my_organisation(
 @router.put("/me", response_model=OrganisationResponse)
 async def update_my_organisation(
     body: OrganisationUpdateRequest,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_owner)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Organisation:
     org = await _load_caller_org(session, auth)
@@ -99,7 +105,7 @@ async def update_my_organisation(
 
 @router.get("/me/members", response_model=MemberListResponse)
 async def list_my_organisation_members(
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> MemberListResponse:
     await _load_caller_org(session, auth)
@@ -121,7 +127,7 @@ async def list_my_organisation_members(
 )
 async def invite_member(
     body: InviteCreateRequest,
-    auth: Annotated[AuthContext, Depends(require_roles("owner", "admin"))],
+    auth: Annotated[AuthContext, Depends(require_client_admin)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> InviteStubResponse:
     """Owner/admin only. Stub only — no invites table in §9.1 (see module docstring)."""
@@ -141,7 +147,7 @@ async def invite_member(
 )
 async def remove_member(
     user_id: uuid.UUID,
-    auth: Annotated[AuthContext, Depends(require_roles("owner", "admin"))],
+    auth: Annotated[AuthContext, Depends(require_client_admin)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> dict[str, str]:
     await _load_caller_org(session, auth)
