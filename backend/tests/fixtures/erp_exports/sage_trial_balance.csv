@@ -1,0 +1,5 @@
+Nominal Code,Account Name,Debit,Credit
+0050,Freehold Property,150000.00,nil
+1100,Debtors Control,32000.00,-
+2100,Creditors Control,nil,18000.00
+3000,Capital,-,164000.00

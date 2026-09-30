@@ -1,0 +1,5 @@
+Account Code,Account Name,Debit,Credit
+1000,Cash,10000.00,-
+3000,Capital,nil,6000.00
+3100,Reserves,,4000.00
+4000,Wash,0.00,0.00

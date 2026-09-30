@@ -29,7 +29,9 @@ HEADER_FIRST_CELL_KEYWORDS = (
     "currency",
     "name",
 )
-TOTALS_NAME_KEYWORDS = ("total", "balance", "sum")
+# NB: bare "balance" is intentionally excluded — it collides with real account
+# names ("Opening Balance Equity", "Bank Balance"). Totals rows in a TB say "Total".
+TOTALS_NAME_KEYWORDS = ("total", "subtotal", "sum")
 
 SYMBOL_TO_CURRENCY: dict[str, str] = {
     "£": "GBP",
@@ -156,7 +158,8 @@ def parse_monetary(
         return Decimal("0")
 
     text = str(value).strip()
-    if text == "" or text.lower() in {"nan", "none"}:
+    # Common ERP zero/empty representations.
+    if text == "" or text.lower() in {"nan", "none", "nil", "n/a", "na", "--"}:
         return Decimal("0")
 
     negative = False
@@ -167,6 +170,16 @@ def parse_monetary(
     for symbol in SYMBOL_TO_CURRENCY:
         text = text.replace(symbol, "")
     text = text.replace(",", "").strip()
+
+    # Trailing DR/CR sign convention (Sage / QuickBooks balance columns):
+    # "1,000.00 CR" -> -1000 ; "1,000.00 DR" -> +1000. Applied before ISO-code
+    # stripping so it is not mistaken for a currency suffix.
+    upper = text.upper()
+    if upper.endswith("CR") and any(ch.isdigit() for ch in text[:-2]):
+        negative = not negative
+        text = text[:-2].strip()
+    elif upper.endswith("DR") and any(ch.isdigit() for ch in text[:-2]):
+        text = text[:-2].strip()
 
     for code in ISO_CURRENCIES:
         if text.upper().endswith(code):
@@ -366,7 +379,12 @@ def _parse_dataframe(
         account_code = _cell_text(series, column_map["account_code"])
         account_name = _cell_text(series, column_map["account_name"])
 
-        if _is_header_row(account_code):
+        # Only treat as a repeated header row when the amount columns hold header
+        # labels (non-numeric text like "Debit"), never when a real account *name*
+        # merely contains a keyword (e.g. "Accounts Receivable", "Bank Account").
+        if _is_header_row(account_code) and _amount_cells_non_numeric(
+            series, column_map, tb_format
+        ):
             continue
 
         if not account_code and not account_name:
@@ -494,11 +512,25 @@ def _detect_columns(columns: list[str]) -> tuple[dict[str, str], TBFormat]:
                     return column
         return None
 
-    account_code = find("account code", "acct code", "code", "col_0")
-    account_name = find("account name", "description", "name", "col_1")
+    account_code = find(
+        "account code", "acct code", "gl code", "nominal code", "ledger code",
+        "code", "col_0",
+    )
+    account_name = find(
+        "account name", "account description", "description", "particulars",
+        "narrative", "name", "col_1",
+    )
     debit = find("debit", "debits", "col_2")
     credit = find("credit", "credits", "col_3")
     balance = find("balance", "net balance", "amount")
+
+    if account_code is None and account_name is None:
+        # Single combined account column (Xero / QuickBooks export just "Account"
+        # holding code+name together). Use it for both so downstream mapping works.
+        combined = find("gl account", "ledger account", "account title", "account")
+        if combined is not None:
+            account_code = combined
+            account_name = combined
 
     if account_code is None or account_name is None:
         raise ParseError("Could not detect account code and account name columns.")
@@ -610,6 +642,25 @@ class _PerRowCurrencyResolver:
 def _cell_text(series: pd.Series, column: str) -> str:
     value = series.get(column, "")
     return str(value).strip()
+
+
+def _amount_cells_non_numeric(
+    series: pd.Series, column_map: dict[str, str], tb_format: TBFormat
+) -> bool:
+    """True if any amount cell holds non-numeric text (a repeated header row)."""
+    if tb_format == "four_column":
+        cols = [column_map["debit"], column_map["credit"]]
+    else:
+        cols = [column_map["balance"]]
+    for col in cols:
+        cell = _cell_text(series, col)
+        if not cell:
+            continue
+        try:
+            parse_monetary(cell)
+        except ParseError:
+            return True
+    return False
 
 
 def _is_header_row(first_cell: str) -> bool:
