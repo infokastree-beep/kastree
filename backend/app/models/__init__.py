@@ -12,11 +12,13 @@ from app.models.export import Export
 from app.models.financial_statement import FinancialStatement
 from app.models.notification import Notification
 from app.models.organisation import Organisation
+from app.models.prior_year_line import PriorYearLine
 from app.models.processing_job import ProcessingJob
 from app.models.risk_flag import RiskFlag
 from app.models.source_document import SourceDocument
 from app.models.statement_line_item import StatementLineItem
 from app.models.subscription_event import SubscriptionEvent
+from app.models.tb_version import TrialBalanceLine, TrialBalanceVersion
 from app.models.trial_balance import TrialBalance
 from app.models.user import User
 from app.models.variance_analysis import VarianceAnalysis
@@ -35,12 +37,15 @@ __all__ = [
     "FinancialStatement",
     "Notification",
     "Organisation",
+    "PriorYearLine",
     "ProcessingJob",
     "RiskFlag",
     "SourceDocument",
     "StatementLineItem",
     "SubscriptionEvent",
     "TrialBalance",
+    "TrialBalanceLine",
+    "TrialBalanceVersion",
     "User",
     "VarianceAnalysis",
     "WaitlistSignup",

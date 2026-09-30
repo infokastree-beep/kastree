@@ -18,7 +18,7 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "infra/docker/Dockerfile.backend"
-watchPatterns = ["backend/**", "infra/docker/Dockerfile.backend"]
+watchPatterns = ["backend/**", "findraft/**", "infra/docker/Dockerfile.backend"]
 
 [deploy]
 healthcheckPath = "/health"
