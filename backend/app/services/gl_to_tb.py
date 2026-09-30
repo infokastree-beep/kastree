@@ -22,11 +22,13 @@ import openpyxl
 import pandas as pd
 
 from app.services.parser import (
-    AmbiguousCurrencyError,
+    PASSWORD_PROTECTED_MESSAGE,
     ParseError,
     TOLERANCE,
     decimal_eq,
+    looks_like_encrypted_office,
     parse_monetary,
+    pdf_is_password_protected,
     raise_if_ambiguous_currency_symbols,
 )
 from app.services.pdf_tb_extract import ExtractedTBRow, rows_to_csv_bytes
@@ -256,6 +258,8 @@ def parse_gl_tabular(content: bytes, filename: str) -> list[GlLine]:
         reader = csv.reader(StringIO(text), dialect)
         rows = [[c for c in row] for row in reader]
     elif lower.endswith(".xlsx"):
+        if looks_like_encrypted_office(content):
+            raise GlToTbError(PASSWORD_PROTECTED_MESSAGE)
         wb = openpyxl.load_workbook(BytesIO(content), data_only=True, read_only=True)
         ws = wb.active
         rows = [[cell for cell in row] for row in ws.iter_rows(values_only=True)]
@@ -384,6 +388,8 @@ def parse_gl_pdf(content: bytes) -> list[GlLine]:
 
     if not content.startswith(b"%PDF"):
         raise GlToTbError("This file is not a valid PDF.")
+    if pdf_is_password_protected(content):
+        raise GlToTbError(PASSWORD_PROTECTED_MESSAGE)
 
     lines: list[GlLine] = []
     with pdfplumber.open(BytesIO(content)) as pdf:
