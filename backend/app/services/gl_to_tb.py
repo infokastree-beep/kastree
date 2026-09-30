@@ -17,6 +17,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from io import BytesIO, StringIO
 from typing import Literal, Sequence
+from zipfile import BadZipFile
 
 import openpyxl
 import pandas as pd
@@ -260,7 +261,18 @@ def parse_gl_tabular(content: bytes, filename: str) -> list[GlLine]:
     elif lower.endswith(".xlsx"):
         if looks_like_encrypted_office(content):
             raise GlToTbError(PASSWORD_PROTECTED_MESSAGE)
-        wb = openpyxl.load_workbook(BytesIO(content), data_only=True, read_only=True)
+        try:
+            wb = openpyxl.load_workbook(BytesIO(content), data_only=True, read_only=True)
+        except BadZipFile as exc:
+            # Truncated or non-zip bytes are not encrypted OOXML. Same message
+            # as the trial-balance parser so a corrupt upload fails closed
+            # instead of raising an uncaught BadZipFile out of the API.
+            if looks_like_encrypted_office(content):
+                raise GlToTbError(PASSWORD_PROTECTED_MESSAGE) from exc
+            raise GlToTbError(
+                "This file is not a valid Excel (.xlsx) workbook. "
+                "Export your general ledger as .xlsx or .csv from your accounting software."
+            ) from exc
         ws = wb.active
         rows = [[cell for cell in row] for row in ws.iter_rows(values_only=True)]
         wb.close()

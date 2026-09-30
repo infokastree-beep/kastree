@@ -81,6 +81,21 @@ def test_gl_upload_password_protected_xlsx_message() -> None:
     assert str(exc.value) == PASSWORD_PROTECTED_MESSAGE
 
 
+def test_gl_upload_truncated_xlsx_is_clean_error_not_crash() -> None:
+    """A chopped .xlsx must not raise BadZipFile out of the GL converter."""
+    good = b"PK\x03\x04" + b"\x00" * 64
+    with pytest.raises(GlToTbError) as exc:
+        convert_gl_file_to_tb(
+            good[:20],
+            "truncated.xlsx",
+            period_start=date(2026, 1, 1),
+            period_end=date(2026, 12, 31),
+            mode="C",
+        )
+    assert str(exc.value) != PASSWORD_PROTECTED_MESSAGE
+    assert "not a valid Excel" in str(exc.value)
+
+
 def test_tb_upload_generic_broken_xlsx_is_not_password_message() -> None:
     with pytest.raises(ParseError) as exc:
         parse_tb_file(b"this is definitely not a spreadsheet", filename="broken.xlsx")
