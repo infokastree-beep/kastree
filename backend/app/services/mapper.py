@@ -605,16 +605,21 @@ def _parse_account_code(source_code: str) -> int | None:
         return None
 
 
-def _canonical_for_clear_expense_name(source_name: str) -> str | None:
-    """P&L line for a name that clearly is an expense, or None if it is not.
+# Only these tie-break answers are rewritten, and only when the account name
+# itself contains the word Expense/Expenses. Keyword overlap (motor, materials,
+# software licences, PRSI, "corporation tax") must not move a correct line.
+_WRONG_EXPENSE_TIEBREAK_LINES = frozenset({"other_revenue", "revenue", "depreciation"})
 
-    There is no separate bad-debt expense canonical line; the charge is
-    ``operating_expenses``. More specific expense lines win: depreciation,
-    amortisation, interest expense, cost of sales, and tax. Balance-sheet
-    contra, prepayments, and accruals are left for their own rules.
+
+def _expense_word_target(source_name: str) -> str | None:
+    """Target line when the name contains Expense/Expenses, else None.
+
+    None means the guard does not apply. More specific P&L charges
+    (depreciation expense, interest expense, tax expense) keep their own line.
+    There is no separate bad-debt expense canonical line.
     """
     normalized = normalize_text(source_name)
-    if not normalized:
+    if not normalized or not re.search(r"\bexpenses?\b", normalized):
         return None
     if _contra_asset_canonical_from_name(source_name) is not None:
         return None
@@ -627,16 +632,11 @@ def _canonical_for_clear_expense_name(source_name: str) -> str | None:
     interest_line = _interest_canonical_from_name(source_name)
     if interest_line == "interest_expense":
         return "interest_expense"
-    if interest_line == "interest_income":
-        return None
     if _name_suggests_cost_of_sales(normalized):
         return "cost_of_sales"
     if re.search(r"\b(corporation tax|income tax|tax expense|taxation)\b", normalized):
         return "tax"
-    ends_with_expense = bool(re.search(r"\bexpenses?$", normalized))
-    if _name_suggests_operating_expense(normalized) or ends_with_expense:
-        return "operating_expenses"
-    return None
+    return "operating_expenses"
 
 
 def _mapping_with_clear_expense_default(
@@ -646,14 +646,17 @@ def _mapping_with_clear_expense_default(
     confidence: Decimal | None,
     method: MappingMethod | None,
 ) -> MappingResult:
-    """Reject other_revenue / unmapped when the name is a clear expense.
+    """Rewrite only a wrong tie-break for a name that contains Expense.
 
-    The tie-break prompt states the same rule. This keeps a wrong or empty
-    model answer from being stored: Code 7100 / Bad Debt Expense must land on
-    operating_expenses even if the model guesses other_revenue or unmapped.
+    Fires when the name contains Expense/Expenses and the model answer is
+    missing, other_revenue, revenue, or depreciation (the 7000-band default).
+    Any other model answer is stored unchanged. Code 7100 / Bad Debt Expense
+    therefore becomes operating_expenses; Corporation Tax Payable, software
+    licences, inventory, motor vehicles, and PAYE/PRSI are not touched.
     """
-    forced = _canonical_for_clear_expense_name(account.source_name)
-    if forced is None:
+    target = _expense_word_target(account.source_name)
+    wrong = canonical_line is None or canonical_line in _WRONG_EXPENSE_TIEBREAK_LINES
+    if target is None or canonical_line == target or not wrong:
         return MappingResult(
             source_code=account.source_code,
             source_name=account.source_name,
@@ -661,18 +664,10 @@ def _mapping_with_clear_expense_default(
             confidence=confidence,
             method=method,
         )
-    if canonical_line == forced:
-        return MappingResult(
-            source_code=account.source_code,
-            source_name=account.source_name,
-            canonical_line=forced,
-            confidence=confidence if confidence is not None else Decimal("0.90"),
-            method=method or "llm",
-        )
     return MappingResult(
         source_code=account.source_code,
         source_name=account.source_name,
-        canonical_line=forced,
+        canonical_line=target,
         confidence=Decimal("0.90"),
         method="llm",
     )
@@ -716,6 +711,7 @@ def _llm_map_batch(
             client,
             model=LLM_PRIMARY_MODEL,
             user_prompt=user_prompt,
+            expected_count=len(unmapped),
             sleep=sleep,
         )
     except Exception as primary_error:
@@ -728,6 +724,7 @@ def _llm_map_batch(
                 client,
                 model=LLM_FALLBACK_MODEL,
                 user_prompt=user_prompt,
+                expected_count=len(unmapped),
                 sleep=sleep,
             )
         except Exception as fallback_error:
@@ -745,7 +742,24 @@ def _build_tie_breaker_user_prompt(unmapped: Sequence[MappingResult]) -> str:
         f"{index}. Code: {account.source_code}, Name: {account.source_name}"
         for index, account in enumerate(unmapped, start=1)
     ]
-    return "Map the following accounts:\n" + "\n".join(lines)
+    return (
+        f"Map the following {len(unmapped)} accounts. "
+        "Return exactly one mapping for every index from 1 through "
+        f"{len(unmapped)}. Do not skip an account or renumber the list.\n"
+        + "\n".join(lines)
+    )
+
+
+def _mapping_indexes_are_complete(payload: dict[str, Any], expected_count: int) -> bool:
+    """True when the model returned each index from 1 through expected_count once."""
+    indexes: list[int] = []
+    for entry in payload["mappings"]:
+        if not isinstance(entry, dict):
+            continue
+        raw_index = entry.get("index")
+        if type(raw_index) is int:
+            indexes.append(raw_index)
+    return sorted(indexes) == list(range(1, expected_count + 1))
 
 
 def _complete_mapping_json(
@@ -753,6 +767,7 @@ def _complete_mapping_json(
     *,
     model: str,
     user_prompt: str,
+    expected_count: int,
     sleep: SleepFn,
 ) -> dict[str, Any]:
     last_error: Exception | None = None
@@ -775,6 +790,10 @@ def _complete_mapping_json(
                 raise ValueError("LLM response missing 'mappings' key")
             if not isinstance(payload["mappings"], list):
                 raise ValueError("LLM 'mappings' value is not a list")
+            if not _mapping_indexes_are_complete(payload, expected_count):
+                raise ValueError(
+                    "LLM mappings omitted or renumbered an account index"
+                )
             return payload
         except Exception as exc:
             last_error = exc

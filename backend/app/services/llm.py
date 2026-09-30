@@ -18,9 +18,10 @@ from __future__ import annotations
 # VAT Recoverable (asset) ≠ taxes_payable — prefer unmapped over wrong leaf.
 # v8: other_receivables / other_payables / other_revenue for genuine misc only
 # (VAT Recoverable → other_receivables; not a dump for investment_property etc.).
-# v9: a clear expense name wins over an unrelated code band. Names ending in
-# Expense default to operating_expenses when no more specific expense line fits.
-# other_revenue is never a fallback for a name that says Expense.
+# v9: a name containing Expense wins over an unrelated code band and defaults
+# to operating_expenses when no more specific expense line fits. other_revenue
+# is never a fallback for that name. The parser guard is the same narrow case
+# only — it does not rewrite other tie-break answers.
 MAPPING_TIE_BREAKER_SYSTEM = """You are an accounting assistant. Map each account to exactly one canonical category.
 Available: revenue, other_revenue, cost_of_sales, operating_expenses, depreciation, amortisation, interest_income, interest_expense,
 tax, property_plant_equipment, intangible_assets, investments, inventory, trade_receivables, other_receivables,
@@ -41,7 +42,7 @@ Prefer the most specific matching line when several could fit. Liability distinc
 - other_receivables: genuine miscellaneous current assets that are not trade debtors (e.g. VAT Recoverable / VAT receivable). Not a dump for items that deserve a specific line (investment property, deferred tax asset, etc.).
 - other_payables: genuine miscellaneous current liabilities that are not trade creditors. Not for deferred tax liability or other named lines.
 - other_revenue: genuine miscellaneous income that is not trading revenue or interest_income. Never use other_revenue or revenue for a name that says Expense or Expenses — that name is a cost, not income.
-- Expense name vs code band: the account code is only a hint. When the name clearly indicates a different category, follow the name. A name ending in "Expense" or "Expenses", or other clear expense language (bad debt expense, rent, wages, insurance, bank charges), maps to the most specific expense line that fits: depreciation, amortisation, interest_expense, cost_of_sales, or tax. If none of those fit, use operating_expenses. Do not return unmapped for that clear expense name. Example: Code 7100 (depreciation-band code), Name: Bad Debt Expense → operating_expenses, not depreciation, not other_revenue, and not unmapped. An allowance or provision for bad debts stays trade_receivables; the P&L expense does not.
+- Expense name vs code band: apply this only when the account name contains the word Expense or Expenses. Do not apply it to payable, control, inventory, intangible-asset, or fixed-asset cost accounts. Map that expense name to the most specific expense line that fits: depreciation, amortisation, interest_expense, cost_of_sales, or tax. If none of those fit, use operating_expenses. Do not return unmapped, other_revenue, or the depreciation code-band default for that name. Example: Code 7100 (depreciation-band code), Name: Bad Debt Expense → operating_expenses, not depreciation, not other_revenue, and not unmapped. An allowance or provision for bad debts stays trade_receivables; the P&L expense does not.
 - depreciation (P&L): period depreciation charge only — not accumulated / Accum. / Acc. / A/Depn / provision-for depreciation.
 - amortisation (P&L): period amortisation charge only — not accumulated / Accum. / provision-for amortisation.
 - share_premium: premium on issue of shares only — not capital contribution / capital contribution reserve.
