@@ -1273,10 +1273,27 @@ This is a **real, upfront legal gate before building**, not a retrofit after
 UI exists. Internal confidence that “just an assistant” sounds reasonable is
 **not** confirmed legal grounding — counsel must say so for this use case.
 
-Qualified reviewer sign-off of statutory wording remains pending and still
-gates client use. Phase 1 below is schema, the pure engine, and the golden
-suite. It produces no client-facing statutory output. Week 2 stores source
-files and does not produce statutory output either.
+### Pre-client-use gate
+
+Two human legal artifacts gate real client use of Product 2. Both are
+pending. The build continues while they are open.
+
+- **Qualified reviewer sign-off of statutory wording.** Checklist row 7 of
+  the v7.6 specification. Until sign-off, a beta practice using FinDraft on
+  real clients treats every output as a draft and reviews it itself before
+  anything is filed or sent.
+- **Customer-facing DPA (GDPR Article 28) drafted, reviewed, and published.**
+  Same category as the reviewer sign-off. `docs/dpa-template.md` is an
+  unpublished solicitor-review draft and does not meet this gate.
+
+The OpenAI DPA, together with the EU data-residency review, is a v1.1
+precondition already stated in the specification: no client data reaches an
+LLM API before that sign-off. The MVP makes no LLM calls, so that
+precondition is not currently blocking.
+
+Phase 1 is schema, the pure engine, and the golden suite. It produces no
+client-facing statutory output. Week 2 stores source files and does not
+produce statutory output either.
 
 ### Week 2 document-type taxonomy — not invented
 
