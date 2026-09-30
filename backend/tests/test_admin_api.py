@@ -9,7 +9,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.config import settings
-from app.db import SyncSessionLocal
+from app.db import SyncSessionLocal, set_rls_org_id
 from app.models.user import User
 from app.models.waitlist_signup import WaitlistSignup
 from tests.conftest import auth_headers
@@ -23,6 +23,9 @@ def platform_admin_allowlist(
 ) -> str:
     """Allow the provisioned org owner as a platform admin for positive admin tests."""
     with SyncSessionLocal() as session:
+        # Reads of the RLS-protected users table need the org GUC set (the app role
+        # is a non-superuser and RLS is FORCE-enabled — same as production).
+        set_rls_org_id(session, provisioned_org["org_id"])
         email = session.scalar(
             select(User.email).where(User.id == provisioned_org["user_id"])
         )

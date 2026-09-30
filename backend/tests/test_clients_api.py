@@ -15,7 +15,6 @@ from sqlalchemy import select, text
 from app.db import SyncSessionLocal, set_rls_org_id
 from app.models.account_mapping import AccountMapping
 from app.models.archived_record import ArchivedRecord
-from app.models.company import Company
 from app.services.archival import RETENTION_YEARS, add_years, sha256_hex
 from app.services.org_provisioning import provision_first_signup
 from tests.conftest import auth_headers, make_access_token
@@ -76,6 +75,16 @@ async def test_list_clients_pagination_excludes_deleted(
     provisioned_org: dict,
 ) -> None:
     headers = auth_headers(provisioned_org["token"])
+    # provisioned_org already creates one client; raise the tier above the free
+    # 3-client cap so this pagination test is not throttled by CLIENT_LIMIT_REACHED.
+    from app.models.organisation import Organisation
+
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
+        org = session.get(Organisation, provisioned_org["org_id"])
+        assert org is not None
+        org.subscription_tier = "starter"
+        session.commit()
     created_ids: list[str] = []
     for index in range(3):
         resp = await api_client.post(
