@@ -10,6 +10,7 @@ import pytest
 from app.services.gl_to_tb import (
     GlImbalanceError,
     GlLine,
+    GlToTbError,
     ModeBRequiresPriorError,
     PriorTbSeed,
     convert_gl_file_to_tb,
@@ -288,3 +289,43 @@ def test_convert_gl_with_wrapped_iso_date_succeeds() -> None:
     by_code = {r.account_code: r for r in result.rows}
     assert by_code["1000"].debit == Decimal("100.00")
     assert by_code["4000"].credit == Decimal("100.00")
+
+
+def test_parse_gl_date_day_first_when_slash_date_is_ambiguous() -> None:
+    assert parse_gl_date("03/04/2026") == date(2026, 4, 3)
+
+
+def test_quickbooks_month_first_dates_convert_when_day_exceeds_12() -> None:
+    """06/15/2026 cannot be day-first. A file of only those dates is month-first."""
+    content = (
+        "Posted,Acct,Memo,Debit,Credit\n"
+        "06/15/2026,1000,Deposit,800.00,0.00\n"
+        "06/15/2026,4000,Sales,0.00,800.00\n"
+        "06/21/2026,6100,Utilities,250.00,0.00\n"
+        "06/21/2026,1000,Payment,0.00,250.00\n"
+    ).encode("utf-8")
+    result = convert_gl_file_to_tb(
+        content,
+        "quickbooks.csv",
+        period_start=date(2026, 6, 1),
+        period_end=date(2026, 6, 30),
+        mode="C",
+    )
+    assert result.total_debits == result.total_credits == Decimal("800.00")
+    assert result.included_count == 4
+
+
+def test_mixed_day_first_and_month_first_dates_are_refused() -> None:
+    content = (
+        "Date,Account Code,Description,Debit,Credit\n"
+        "13/01/2026,1000,Day first only,100.00,0\n"
+        "02/13/2026,4000,Month first only,0,100.00\n"
+    ).encode("utf-8")
+    with pytest.raises(GlToTbError, match="YYYY-MM-DD"):
+        convert_gl_file_to_tb(
+            content,
+            "mixed-dates.csv",
+            period_start=date(2026, 1, 1),
+            period_end=date(2026, 12, 31),
+            mode="C",
+        )

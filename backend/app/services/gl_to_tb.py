@@ -166,8 +166,13 @@ def rejoin_wrapped_iso_date_text(text: str) -> str:
     )
 
 
-def parse_gl_date(value: object) -> date | None:
-    """Parse a cell into a calendar date, or None if blank."""
+def parse_gl_date(value: object, *, convention: Literal["dmy", "mdy"] = "dmy") -> date | None:
+    """Parse a cell into a calendar date, or None if blank.
+
+    ``convention`` selects day-first (UK/IE default) or month-first for numeric
+    slash dates. Callers that have already seen a date which cannot be day-first
+    pass ``mdy``. Ambiguous values such as 03/04/2026 stay 3 April under ``dmy``.
+    """
     if value is None:
         return None
     if isinstance(value, datetime):
@@ -190,11 +195,15 @@ def parse_gl_date(value: object) -> date | None:
             ).date()
         except (ValueError, OverflowError):
             pass
+    day_first = ("%d/%m/%Y", "%d-%m-%Y", "%d/%m/%y")
+    month_first = ("%m/%d/%Y", "%m/%d/%y")
+    if convention == "mdy":
+        numeric = month_first + day_first
+    else:
+        numeric = day_first
     for fmt in (
         "%Y-%m-%d",
-        "%d/%m/%Y",
-        "%d-%m-%Y",
-        "%d/%m/%y",
+        *numeric,
         "%Y/%m/%d",
         "%d %b %Y",
         "%d %B %Y",
@@ -204,6 +213,73 @@ def parse_gl_date(value: object) -> date | None:
         except ValueError:
             continue
     raise GlToTbError(f"Unparseable transaction date: {text!r}")
+
+
+_SLASH_DATE_RE = re.compile(r"^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$")
+
+
+def _slash_date_kind(text: str) -> str | None:
+    """Classify a numeric slash date.
+
+    Returns ``dmy`` (only day-first is a real date), ``mdy`` (only month-first),
+    ``ambiguous`` (both are real dates and they differ), ``same`` (both agree,
+    e.g. 06/06/2026), or None when the text is not a slash date.
+    """
+    if not _SLASH_DATE_RE.match(text):
+        return None
+    normalized = text.replace("-", "/")
+
+    def _try(fmt: str) -> date | None:
+        try:
+            return datetime.strptime(normalized, fmt).date()
+        except ValueError:
+            return None
+
+    dmy = _try("%d/%m/%Y") or _try("%d/%m/%y")
+    mdy = _try("%m/%d/%Y") or _try("%m/%d/%y")
+    if dmy is not None and mdy is not None:
+        return "same" if dmy == mdy else "ambiguous"
+    if dmy is not None:
+        return "dmy"
+    if mdy is not None:
+        return "mdy"
+    return None
+
+
+def resolve_slash_date_convention(values: Sequence[object]) -> Literal["dmy", "mdy"]:
+    """Pick day-first or month-first for a whole ledger, or refuse a mix.
+
+    UK/IE day-first stays the default. Month-first is used only when every
+    numeric slash date is impossible as day/month (the day is greater than 12),
+    which is how a QuickBooks export of 15 June looks (``06/15/2026``).
+    A file that contains both a day-first-only date and a month-first-only date,
+    or a month-first-only date plus an ambiguous one (``03/04/2026``), is refused
+    so the converter does not silently flip some rows.
+    """
+    saw_dmy_only = False
+    saw_mdy_only = False
+    saw_ambiguous = False
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        kind = _slash_date_kind(text)
+        if kind == "dmy":
+            saw_dmy_only = True
+        elif kind == "mdy":
+            saw_mdy_only = True
+        elif kind == "ambiguous":
+            saw_ambiguous = True
+    if saw_mdy_only and (saw_dmy_only or saw_ambiguous):
+        raise GlToTbError(
+            "This file mixes day-first and month-first dates. "
+            "A value like 02/13/2026 is only valid as month/day/year, while "
+            "other dates are day/month or could be either. "
+            "Export dates as YYYY-MM-DD and re-upload."
+        )
+    if saw_mdy_only:
+        return "mdy"
+    return "dmy"
 
 
 def _norm_header(value: object) -> str:
@@ -322,6 +398,15 @@ def parse_gl_tabular(content: bytes, filename: str) -> list[GlLine]:
     if debit_i is None and credit_i is None and amount_i is None:
         raise GlToTbError("Could not find debit/credit or amount columns.")
 
+    date_convention: Literal["dmy", "mdy"] = "dmy"
+    if date_i is not None:
+        date_cells = [
+            row[date_i]
+            for row in rows[header_idx + 1 :]
+            if row and date_i < len(row)
+        ]
+        date_convention = resolve_slash_date_convention(date_cells)
+
     lines: list[GlLine] = []
     for offset, row in enumerate(rows[header_idx + 1 :], start=header_idx + 2):
         if not row or all(c is None or str(c).strip() == "" for c in row):
@@ -343,7 +428,7 @@ def parse_gl_tabular(content: bytes, filename: str) -> list[GlLine]:
 
         if date_i is not None and cell(date_i) not in (None, ""):
             try:
-                txn_date = parse_gl_date(cell(date_i))
+                txn_date = parse_gl_date(cell(date_i), convention=date_convention)
             except GlToTbError as exc:
                 raise GlToTbError(
                     f"Row {offset}: {exc}. Fix or remove the date before converting."
