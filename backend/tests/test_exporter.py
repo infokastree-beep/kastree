@@ -24,6 +24,7 @@ from app.services.exporter import (
     build_csv,
     build_excel,
     build_export,
+    content_disposition_for_export,
     format_currency,
     regenerate_export_if_missing,
     render_pdf_html,
@@ -468,6 +469,9 @@ def test_run_export_job_transitions_status_and_uploads() -> None:
     put_kwargs = storage.put_export.call_args.kwargs
     assert put_kwargs["key"].startswith("exports/")
     assert put_kwargs["expires_at"] is not None
+    assert put_kwargs["content_disposition"].startswith("attachment;")
+    assert 'filename="' in put_kwargs["content_disposition"]
+    assert put_kwargs["content_disposition"].endswith('.xlsx"')
     # NOTE: put_export's Expires= and Tagging= cannot prove 30-day deletion.
     # Expires is only an HTTP caching hint; Tagging only feeds a bucket lifecycle
     # filter. Actual deletion requires put_bucket_lifecycle_configuration
@@ -521,10 +525,12 @@ def test_s3_put_export_omits_tagging_for_r2(monkeypatch: pytest.MonkeyPatch) -> 
         key="exports/test-id.xlsx",
         body=b"data",
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        content_disposition='attachment; filename="Acme_2026-08-12.xlsx"',
         expires_at=datetime.now(timezone.utc),
     )
     assert "Tagging" not in captured
     assert captured["Key"] == "exports/test-id.xlsx"
+    assert captured["ContentDisposition"] == 'attachment; filename="Acme_2026-08-12.xlsx"'
 
 
 def test_s3_client_region_uses_auto_for_r2(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -540,6 +546,50 @@ def test_s3_client_region_uses_auto_for_r2(monkeypatch: pytest.MonkeyPatch) -> N
     assert _s3_client_region() == "auto"
     monkeypatch.setattr(settings, "s3_region", "weur")
     assert _s3_client_region() == "weur"
+
+def test_content_disposition_inline_for_pdf_attachment_for_excel_and_csv() -> None:
+    assert content_disposition_for_export("pdf", "Acme_2026-08-12.pdf") == (
+        'inline; filename="Acme_2026-08-12.pdf"'
+    )
+    assert content_disposition_for_export("xlsx", "Acme_2026-08-12.xlsx") == (
+        'attachment; filename="Acme_2026-08-12.xlsx"'
+    )
+    assert content_disposition_for_export("csv", "Acme_2026-08-12.csv") == (
+        'attachment; filename="Acme_2026-08-12.csv"'
+    )
+
+
+def test_s3_put_export_stores_content_disposition_for_each_format() -> None:
+    """The header is part of the stored object, not only the presigned URL."""
+    from app.services.exporter import S3ObjectStorage
+
+    cases = (
+        ("pdf", "application/pdf", 'inline; filename="Acme_2026-08-12.pdf"'),
+        (
+            "xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            'attachment; filename="Acme_2026-08-12.xlsx"',
+        ),
+        ("csv", "text/csv; charset=utf-8", 'attachment; filename="Acme_2026-08-12.csv"'),
+    )
+    for extension, content_type, disposition in cases:
+        captured: dict[str, object] = {}
+
+        class FakeClient:
+            def put_object(self, **kwargs: object) -> None:
+                captured.update(kwargs)
+
+        storage = S3ObjectStorage(client=FakeClient())
+        storage.put_export(
+            key=f"exports/test-id.{extension}",
+            body=b"data",
+            content_type=content_type,
+            content_disposition=disposition,
+            expires_at=datetime.now(timezone.utc),
+        )
+        assert captured["ContentDisposition"] == disposition
+        assert captured["ContentType"] == content_type
+
 
 def test_pdf_toc_and_body_share_single_section_list() -> None:
     """Contents <ol> titles must equal body <h2> titles in the same order."""

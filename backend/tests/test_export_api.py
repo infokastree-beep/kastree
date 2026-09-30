@@ -31,6 +31,7 @@ class InMemoryObjectStorage:
     def __init__(self) -> None:
         self.objects: dict[str, bytes] = {}
         self.content_types: dict[str, str] = {}
+        self.content_dispositions: dict[str, str] = {}
         self.put_calls = 0
 
     def put_export(
@@ -39,10 +40,12 @@ class InMemoryObjectStorage:
         key: str,
         body: bytes,
         content_type: str,
+        content_disposition: str,
         expires_at: datetime,
     ) -> None:
         self.objects[key] = body
         self.content_types[key] = content_type
+        self.content_dispositions[key] = content_disposition
         self.put_calls += 1
 
     def generate_signed_url(self, *, key: str, expires_in: int) -> str:
@@ -206,6 +209,11 @@ async def test_export_request_202_poll_complete(
     assert final["status"] == "complete", final
     assert final["file_url"]
     assert memory_storage.put_calls >= 1
+    stored = memory_storage.content_dispositions
+    assert stored, "export object was stored without Content-Disposition"
+    disposition = next(iter(stored.values()))
+    assert disposition.startswith("attachment;")
+    assert disposition.endswith('.xlsx"')
 
     download = await api_client.get(
         f"/exports/{export_id}/download",
