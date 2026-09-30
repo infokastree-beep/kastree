@@ -605,6 +605,93 @@ def _parse_account_code(source_code: str) -> int | None:
         return None
 
 
+def _canonical_for_clear_expense_name(source_name: str) -> str | None:
+    """P&L line for a name that clearly is an expense, or None if it is not.
+
+    There is no separate bad-debt expense canonical line; the charge is
+    ``operating_expenses``. More specific expense lines win: depreciation,
+    amortisation, interest expense, cost of sales, and tax. Balance-sheet
+    contra, prepayments, and accruals are left for their own rules.
+    """
+    normalized = normalize_text(source_name)
+    if not normalized:
+        return None
+    if _contra_asset_canonical_from_name(source_name) is not None:
+        return None
+    if re.search(r"\b(prepa(?:id|yments?)|accrued|deferred)\b", normalized):
+        return None
+    if _name_suggests_amortisation(source_name):
+        return "amortisation"
+    if _name_suggests_depreciation(source_name):
+        return "depreciation"
+    interest_line = _interest_canonical_from_name(source_name)
+    if interest_line == "interest_expense":
+        return "interest_expense"
+    if interest_line == "interest_income":
+        return None
+    if _name_suggests_cost_of_sales(normalized):
+        return "cost_of_sales"
+    if re.search(r"\b(corporation tax|income tax|tax expense|taxation)\b", normalized):
+        return "tax"
+    ends_with_expense = bool(re.search(r"\bexpenses?$", normalized))
+    if _name_suggests_operating_expense(normalized) or ends_with_expense:
+        return "operating_expenses"
+    return None
+
+
+def _mapping_with_clear_expense_default(
+    account: MappingResult,
+    *,
+    canonical_line: str | None,
+    confidence: Decimal | None,
+    method: MappingMethod | None,
+) -> MappingResult:
+    """Reject other_revenue / unmapped when the name is a clear expense.
+
+    The tie-break prompt states the same rule. This keeps a wrong or empty
+    model answer from being stored: Code 7100 / Bad Debt Expense must land on
+    operating_expenses even if the model guesses other_revenue or unmapped.
+    """
+    forced = _canonical_for_clear_expense_name(account.source_name)
+    if forced is None:
+        return MappingResult(
+            source_code=account.source_code,
+            source_name=account.source_name,
+            canonical_line=canonical_line,
+            confidence=confidence,
+            method=method,
+        )
+    if canonical_line == forced:
+        return MappingResult(
+            source_code=account.source_code,
+            source_name=account.source_name,
+            canonical_line=forced,
+            confidence=confidence if confidence is not None else Decimal("0.90"),
+            method=method or "llm",
+        )
+    return MappingResult(
+        source_code=account.source_code,
+        source_name=account.source_name,
+        canonical_line=forced,
+        confidence=Decimal("0.90"),
+        method="llm",
+    )
+
+
+def _apply_clear_expense_name_defaults(
+    results: Sequence[MappingResult],
+) -> list[MappingResult]:
+    return [
+        _mapping_with_clear_expense_default(
+            account,
+            canonical_line=account.canonical_line,
+            confidence=account.confidence,
+            method=account.method,
+        )
+        for account in results
+    ]
+
+
 def _llm_map_batch(
     unmapped: Sequence[MappingResult],
     *,
@@ -620,7 +707,7 @@ def _llm_map_batch(
             "OpenAI client init failed for mapping tie-breaker: %s; leaving accounts unmapped",
             init_error,
         )
-        return list(unmapped)
+        return _apply_clear_expense_name_defaults(unmapped)
 
     user_prompt = _build_tie_breaker_user_prompt(unmapped)
 
@@ -648,7 +735,7 @@ def _llm_map_batch(
                 "GPT-4o mapping tie-breaker also failed after retries: %s; leaving accounts unmapped",
                 fallback_error,
             )
-            return list(unmapped)
+            return _apply_clear_expense_name_defaults(unmapped)
 
     return _parse_llm_mappings(unmapped, payload)
 
@@ -714,21 +801,34 @@ def _parse_llm_mappings(
     results: list[MappingResult] = []
     for position, account in enumerate(unmapped, start=1):
         if position not in by_index:
-            results.append(account)
+            results.append(
+                _mapping_with_clear_expense_default(
+                    account,
+                    canonical_line=account.canonical_line,
+                    confidence=account.confidence,
+                    method=account.method,
+                )
+            )
             continue
 
         entry = by_index[position]
         canonical_line = str(entry["canonical_line"]).strip()
         confidence = _parse_llm_confidence(entry.get("confidence"))
         if canonical_line not in MAPPING_TIE_BREAKER_CANONICAL_LINES:
-            results.append(account)
+            results.append(
+                _mapping_with_clear_expense_default(
+                    account,
+                    canonical_line=account.canonical_line,
+                    confidence=account.confidence,
+                    method=account.method,
+                )
+            )
             continue
 
         if canonical_line == "unmapped":
             results.append(
-                MappingResult(
-                    source_code=account.source_code,
-                    source_name=account.source_name,
+                _mapping_with_clear_expense_default(
+                    account,
                     canonical_line=None,
                     confidence=confidence,
                     method="llm",
@@ -737,9 +837,8 @@ def _parse_llm_mappings(
             continue
 
         results.append(
-            MappingResult(
-                source_code=account.source_code,
-                source_name=account.source_name,
+            _mapping_with_clear_expense_default(
+                account,
                 canonical_line=canonical_line,
                 confidence=confidence,
                 method="llm",
