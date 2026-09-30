@@ -1,7 +1,11 @@
-"""Product 2 Phase 1 tenant isolation under the production NOBYPASSRLS role.
+"""Product 2 Phase 1 tenant isolation.
 
-The local `findraft` login is a superuser and bypasses RLS. These tests
-SET ROLE findraft_app, which is NOSUPERUSER and NOBYPASSRLS.
+The local login is `findraft`, a superuser, which bypasses RLS even with
+FORCE. The three RLS tests call SET ROLE findraft_app and then assert that
+current_user is that role and that rolsuper and rolbypassrls are both false.
+session_user stays `findraft` because SET ROLE does not change the login.
+The foreign-key, re-pin, and org-id trigger tests run as the superuser login;
+those constraints apply to table owners and do not depend on RLS.
 """
 
 from __future__ import annotations
@@ -126,13 +130,51 @@ def two_practices() -> Iterator[tuple[dict, dict]]:
         _delete_org(second["org_id"])
 
 
+def _role_snapshot(session):
+    return session.execute(
+        text(
+            """
+            SELECT session_user AS login_role,
+                   current_user AS executing_role,
+                   r.rolsuper,
+                   r.rolbypassrls
+            FROM pg_roles AS r
+            WHERE r.rolname = current_user
+            """
+        )
+    ).one()
+
+
 def _as_app_role(session) -> None:
     session.execute(text("SET ROLE findraft_app"))
+    row = _role_snapshot(session)
+    assert row.login_role == "findraft"
+    assert row.executing_role == "findraft_app"
+    assert row.rolsuper is False
+    assert row.rolbypassrls is False
+    print(
+        f"executing_role={row.executing_role} login_role={row.login_role} "
+        f"rolsuper={row.rolsuper} rolbypassrls={row.rolbypassrls}",
+        flush=True,
+    )
+
+
+def _as_login_superuser(session) -> None:
+    row = _role_snapshot(session)
+    assert row.login_role == "findraft"
+    assert row.executing_role == "findraft"
+    assert row.rolsuper is True
+    print(
+        f"executing_role={row.executing_role} login_role={row.login_role} "
+        f"rolsuper={row.rolsuper} rolbypassrls={row.rolbypassrls}",
+        flush=True,
+    )
 
 
 def test_company_org_id_is_copied_from_client(two_practices: tuple[dict, dict]) -> None:
     first, _second = two_practices
     with SyncSessionLocal() as session:
+        _as_login_superuser(session)
         row = session.execute(
             text("SELECT org_id FROM companies WHERE id = :id"),
             {"id": str(first["company_id"])},
@@ -224,6 +266,7 @@ def test_composite_fk_rejects_mismatched_company(
 ) -> None:
     first, second = two_practices
     with SyncSessionLocal() as session:
+        _as_login_superuser(session)
         with pytest.raises(IntegrityError):
             session.execute(
                 text(
@@ -248,6 +291,7 @@ def test_composite_fk_rejects_mismatched_company(
 def test_repin_is_rejected(two_practices: tuple[dict, dict]) -> None:
     first, _second = two_practices
     with SyncSessionLocal() as session:
+        _as_login_superuser(session)
         with pytest.raises(DBAPIError, match="already pinned"):
             session.execute(
                 text(
@@ -265,6 +309,7 @@ def test_repin_is_rejected(two_practices: tuple[dict, dict]) -> None:
 def test_draft_pack_must_match_year_end(two_practices: tuple[dict, dict]) -> None:
     first, _second = two_practices
     with SyncSessionLocal() as session:
+        _as_login_superuser(session)
         with pytest.raises(IntegrityError):
             session.add(
                 DraftVersion(
