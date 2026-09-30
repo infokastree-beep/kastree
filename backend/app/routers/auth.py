@@ -15,7 +15,7 @@ from typing import Any
 import structlog
 from fastapi import APIRouter, Header, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.config import settings
 from app.db import SyncSessionLocal, set_rls_org_id
@@ -103,7 +103,13 @@ def _owner_email(data: dict[str, Any], *, clerk_user_id: str | None = None) -> s
         return webhook_email
     lookup_id = clerk_user_id or data.get("created_by") or data.get("user_id")
     if lookup_id:
-        api_email = fetch_clerk_user_primary_email(str(lookup_id))
+        # Fail soft: a Clerk Users API error (timeout, connection, HTTP) must never
+        # block org/user provisioning — fall back to the placeholder email, which
+        # user.updated backfills later.
+        try:
+            api_email = fetch_clerk_user_primary_email(str(lookup_id))
+        except Exception:  # noqa: BLE001 - defensive: any Clerk API failure
+            api_email = None
         if api_email:
             return api_email
     created_by = data.get("created_by") or lookup_id or "unknown"
@@ -341,6 +347,25 @@ def _handle_user_updated(
         return response
 
     with SyncSessionLocal() as session:
+        # Resolve the user's org first via a SECURITY DEFINER lookup — under the
+        # non-superuser app role RLS blocks a cross-org SELECT on users by
+        # clerk_user_id (the webhook has no org context). Then set the org GUC so
+        # the normal RLS-scoped query below succeeds. Mirrors the Stripe lookup.
+        org_id = session.execute(
+            text("SELECT app_find_org_id_for_clerk_user(:cid)"),
+            {"cid": clerk_user_id},
+        ).scalar()
+        if org_id is None:
+            log.info(
+                "clerk_webhook_user_updated_skipped",
+                clerk_user_id=clerk_user_id,
+                detail="User not provisioned yet",
+            )
+            return ClerkWebhookResponse(
+                status="skipped",
+                detail="User not provisioned yet",
+            )
+        set_rls_org_id(session, org_id)
         user = session.scalar(select(User).where(User.clerk_user_id == clerk_user_id))
         if user is None:
             response = ClerkWebhookResponse(

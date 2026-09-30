@@ -76,4 +76,34 @@ GRANT EXECUTE ON FUNCTION app_find_org_id_for_stripe_customer(varchar)
 GRANT EXECUTE ON FUNCTION app_find_org_id_for_stripe_subscription(varchar)
   TO findraft;
 
+-- Clerk user.updated webhooks arrive with only a clerk_user_id and must resolve
+-- the user's org_id to set the RLS context before updating users. Under the
+-- non-superuser findraft role that cross-org lookup is blocked by RLS, so use the
+-- same SECURITY DEFINER + BYPASSRLS pattern as the Stripe lookups above. The
+-- function only returns a single org_id for an exact-match on a high-entropy
+-- Clerk user id (same accepted tradeoff as the Stripe grants).
+DROP FUNCTION IF EXISTS app_find_org_id_for_clerk_user(varchar);
+
+CREATE FUNCTION app_find_org_id_for_clerk_user(p_clerk_user_id varchar)
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT org_id
+  FROM users
+  WHERE clerk_user_id = p_clerk_user_id
+  LIMIT 1;
+$$;
+
+ALTER FUNCTION app_find_org_id_for_clerk_user(varchar)
+  OWNER TO findraft_rls_bypass;
+
+-- BYPASSRLS skips RLS policies but not table GRANTs.
+GRANT SELECT ON users TO findraft_rls_bypass;
+
+REVOKE ALL ON FUNCTION app_find_org_id_for_clerk_user(varchar) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app_find_org_id_for_clerk_user(varchar) TO findraft;
+
 COMMIT;
