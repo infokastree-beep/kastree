@@ -324,6 +324,22 @@ def _extract_via_words(pages: list[Page]) -> list[ExtractedTBRow]:
             text = page.extract_text() or ""
             plain_lines.extend(text.splitlines())
             continue
+        panels = _detect_amount_panels(words)
+        if len(panels) > 1:
+            # Side-by-side trial balances share one header line (Debit/Credit
+            # repeated). One midpoint would pull the right-hand credit into the
+            # left-hand debit. Extract each panel on its own x-window.
+            used_anchors = True
+            for x0, x1, debit_x, credit_x in panels:
+                panel_words = [
+                    word
+                    for word in words
+                    if x0 <= float(word["x0"]) < x1
+                ]
+                out.extend(
+                    _rows_from_anchored_words(panel_words, (debit_x, credit_x))
+                )
+            continue
         anchors = _detect_amount_column_anchors(words)
         if anchors is not None:
             used_anchors = True
@@ -352,6 +368,64 @@ def _extract_via_words(pages: list[Page]) -> list[ExtractedTBRow]:
     if len(out) >= len(plain_rows):
         return out
     return plain_rows
+
+
+def _amount_word_kind(text: str) -> str | None:
+    token = text.strip().lower().rstrip(".")
+    if token in {"debit", "dr"}:
+        return "debit"
+    if token in {"credit", "cr"}:
+        return "credit"
+    return None
+
+
+def _detect_amount_panels(
+    words: list[dict[str, object]],
+) -> list[tuple[float, float, float, float]]:
+    """Side-by-side Debit/Credit pairs as (x0, x1, debit_x, credit_x).
+
+    Empty when the page has a single amount pair — that path stays on
+    :func:`_detect_amount_column_anchors`.
+    """
+    buckets: dict[int, list[dict[str, object]]] = {}
+    for word in words:
+        top = int(round(float(word["top"]) / 3.0) * 3)
+        buckets.setdefault(top, []).append(word)
+
+    for top in sorted(buckets):
+        ordered = sorted(buckets[top], key=lambda w: float(w["x0"]))
+        # credit-word index, debit midpoint, credit midpoint
+        pairs: list[tuple[int, float, float]] = []
+        pending_debit_x: float | None = None
+        for index, word in enumerate(ordered):
+            kind = _amount_word_kind(str(word["text"]))
+            midpoint = (float(word["x0"]) + float(word["x1"])) / 2.0
+            if kind == "debit":
+                pending_debit_x = midpoint
+            elif kind == "credit" and pending_debit_x is not None:
+                pairs.append((index, pending_debit_x, midpoint))
+                pending_debit_x = None
+        if len(pairs) < 2:
+            continue
+        windows: list[tuple[float, float, float, float]] = []
+        for position, (credit_index, debit_x, credit_x) in enumerate(pairs):
+            if position == 0:
+                x0 = -1_000_000.0
+            else:
+                previous_credit = pairs[position - 1][0]
+                next_header = previous_credit + 1
+                x0 = (
+                    float(ordered[next_header]["x0"])
+                    if next_header < len(ordered)
+                    else credit_x
+                )
+            if position + 1 < len(pairs) and credit_index + 1 < len(ordered):
+                x1 = float(ordered[credit_index + 1]["x0"])
+            else:
+                x1 = 1_000_000.0
+            windows.append((x0, x1, debit_x, credit_x))
+        return windows
+    return []
 
 
 def _detect_amount_column_anchors(

@@ -193,6 +193,7 @@ class ObjectStorage(Protocol):
         key: str,
         body: bytes,
         content_type: str,
+        content_disposition: str,
         expires_at: datetime,
     ) -> None: ...
 
@@ -422,6 +423,24 @@ def export_object_key(export_id: uuid.UUID, format: ExportFormat) -> str:
     return f"{EXPORT_PREFIX}{export_id}.{format}"
 
 
+def content_disposition_for_export(format: ExportFormat, filename: str) -> str:
+    """Header stored with the object so browsers treat each format correctly.
+
+    PDF is ``inline`` so a new tab renders it. Excel and CSV are ``attachment``
+    so the browser saves the file instead of showing CSV as plain text.
+    ``filename`` comes from :func:`_filename` (no quotes or newlines).
+    """
+    if format == "pdf":
+        disposition = "inline"
+    elif format in ("xlsx", "csv"):
+        disposition = "attachment"
+    else:
+        raise ValueError(f"Unsupported export format: {format!r}")
+    if filename == "" or any(ch in filename for ch in ('"', "\\", "\r", "\n")):
+        raise ValueError("export filename is not safe for Content-Disposition")
+    return f'{disposition}; filename="{filename}"'
+
+
 def upload_export_file(
     storage: ObjectStorage,
     *,
@@ -446,6 +465,7 @@ def upload_export_file(
         key=key,
         body=built.content,
         content_type=built.content_type,
+        content_disposition=content_disposition_for_export(format, built.filename),
         expires_at=expires_at,
     )
     return storage.generate_signed_url(
@@ -563,17 +583,21 @@ class S3ObjectStorage:
         key: str,
         body: bytes,
         content_type: str,
+        content_disposition: str,
         expires_at: datetime,
     ) -> None:
         # Expires= → HTTP Expires response header only (caching hint). It does
         # NOT schedule object deletion. Tagging= feeds AWS S3 lifecycle filters;
         # R2 does not support x-amz-tagging on PutObject — use prefix-only
         # lifecycle on R2 (see configure_s3_lifecycle.py).
+        # ContentDisposition is stored on the object and returned on GET, so
+        # Excel/CSV download and PDF stays inline even through a presigned URL.
         put_kwargs: dict[str, object] = {
             "Bucket": settings.s3_bucket,
             "Key": key,
             "Body": body,
             "ContentType": content_type,
+            "ContentDisposition": content_disposition,
             "Expires": expires_at,
             "Metadata": {
                 "export-ttl-days": str(settings.export_file_ttl_days),

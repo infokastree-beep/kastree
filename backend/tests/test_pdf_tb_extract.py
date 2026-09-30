@@ -232,6 +232,44 @@ def test_extract_scanned_image_only_pdf_uses_ocr_fallback() -> None:
     assert total_debits == total_credits == Decimal("42250.50")
 
 
+def _landscape_two_panel_pdf() -> bytes:
+    """Landscape page with two Debit/Credit panels on one header line."""
+    doc = fitz.open()
+    page = doc.new_page(width=842, height=595)
+    headers = ["Code", "Account Name", "Debit", "Credit", "Code", "Account Name", "Debit", "Credit"]
+    xs = [36, 90, 250, 330, 430, 490, 650, 730]
+    y = 70
+    for x, header in zip(xs, headers, strict=True):
+        page.insert_text((x, y), header, fontsize=9)
+    rows = [
+        ["1100", "Trade Debtors", "5000.00", "0.00", "4000", "Sales", "0.00", "5000.00"],
+        ["1000", "Cash at Bank", "2000.00", "0.00", "3000", "Share Capital", "0.00", "2000.00"],
+        ["6100", "Rent Expense", "1500.00", "0.00", "2100", "Trade Creditors", "0.00", "1500.00"],
+    ]
+    y = 96
+    for row in rows:
+        for x, value in zip(xs, row, strict=True):
+            page.insert_text((x, y), value, fontsize=10)
+        y += 22
+    raw = doc.tobytes()
+    doc.close()
+    return raw
+
+
+def test_extract_landscape_two_panel_pdf_keeps_each_debit_credit_pair() -> None:
+    result = extract_trial_balance_from_pdf(_landscape_two_panel_pdf())
+    by_code = {row.account_code: row for row in result.rows}
+    assert set(by_code) == {"1100", "1000", "6100", "4000", "3000", "2100"}
+    assert by_code["1100"].debit == Decimal("5000.00")
+    assert by_code["1100"].credit == Decimal("0.00")
+    assert by_code["4000"].debit == Decimal("0.00")
+    assert by_code["4000"].credit == Decimal("5000.00")
+    assert by_code["2100"].credit == Decimal("1500.00")
+    total_debits = sum((row.debit for row in result.rows), Decimal("0"))
+    total_credits = sum((row.credit for row in result.rows), Decimal("0"))
+    assert total_debits == total_credits == Decimal("8500.00")
+
+
 def test_extract_rejects_non_pdf_magic() -> None:
     with pytest.raises(PdfTbExtractError, match="not a valid PDF"):
         extract_trial_balance_from_pdf(b"PK\x03\x04not-a-pdf")

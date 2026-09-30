@@ -10,7 +10,10 @@
  *   4. On complete: GET /exports/{id} for the presigned file_url, then
  *      trigger a real <a href={file_url}> navigation (not fetch + blob).
  *      Cross-origin fetch of the R2 302 is blocked by CORS; top-level
- *      navigation is not.
+ *      navigation is not. PDF uses target="_blank" so the pack renders in a
+ *      new tab. Excel and CSV do not set the download attribute — browsers
+ *      ignore it on cross-origin presigned URLs. Those objects are stored
+ *      with Content-Disposition: attachment, which is what starts the save.
  *
  * Tier-gated watermarking is fully server-side — this component never passes
  * subscription_tier or watermark flags in the request body.
@@ -19,6 +22,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
+import { exportAnchorAttributes } from "@/lib/export-download";
 import type { ExportAcceptedResponse, ExportFormat, ExportStatusResponse } from "@/types";
 
 const FORMAT_OPTIONS: readonly { format: ExportFormat; label: string }[] = [
@@ -152,10 +156,13 @@ export function ExportButton({ tbId }: { tbId: string }) {
           return;
         }
         const format = data.format;
+        const attrs = exportAnchorAttributes(data.file_url, format);
         const a = document.createElement("a");
-        a.href = data.file_url;
-        a.download = `statements-${exportId.slice(0, 8)}.${format}`;
-        a.rel = "noopener";
+        a.href = attrs.href;
+        a.rel = attrs.rel;
+        if (attrs.target) {
+          a.target = attrs.target;
+        }
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
