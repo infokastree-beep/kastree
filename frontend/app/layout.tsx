@@ -20,16 +20,19 @@ export const metadata: Metadata = {
   title: "Kastree",
   applicationName: "Kastree",
   description: "Financial intelligence for accounting practices",
-  // Cache-bust so browsers that cached the prior 404 globe refresh the real icon.
+  // 16px tab icon is a pixel-fit bar mark (3px bars, 2px gaps). Do not
+  // point the favicon at the full-resolution lockup — downscaling it
+  // closes the gaps and the three bars merge.
   icons: {
     icon: [
-      { url: "/favicon.ico?v=2", sizes: "any" },
-      { url: "/icon.png?v=2", type: "image/png", sizes: "32x32" },
-      { url: "/icon-192.png?v=2", type: "image/png", sizes: "192x192" },
+      { url: "/favicon.ico?v=4", sizes: "16x16" },
+      { url: "/icon-16.png?v=4", type: "image/png", sizes: "16x16" },
+      { url: "/icon.png?v=4", type: "image/png", sizes: "32x32" },
+      { url: "/icon-192.png?v=4", type: "image/png", sizes: "192x192" },
     ],
     apple: [
       {
-        url: "/apple-touch-icon.png?v=2",
+        url: "/apple-touch-icon.png?v=4",
         sizes: "180x180",
         type: "image/png",
       },

@@ -3,11 +3,11 @@
 import { useMutation } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { KastreeLogo } from "@/components/brand/KastreeLogo";
 import { MarketingFooter } from "@/components/landing/MarketingFooter";
 import { MarketingNav } from "@/components/landing/MarketingNav";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
-import { APP_NAME } from "@/lib/constants";
 
 const CAPABILITIES = [
   "Variance",
@@ -120,9 +120,7 @@ export function PricingPage() {
             className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--accent-muted)_0%,_transparent_55%),linear-gradient(180deg,_#ffffff_0%,_var(--surface)_100%)]"
           />
           <div className="relative mx-auto max-w-content px-6 pb-16 pt-16 sm:px-8 sm:pb-20 sm:pt-24">
-            <p className="landing-fade-up font-display text-3xl font-medium tracking-tight text-accent sm:text-4xl">
-              {APP_NAME}
-            </p>
+            <KastreeLogo className="landing-fade-up h-16 w-auto sm:h-20" />
             <h1 className="landing-fade-up-delay font-display mt-6 max-w-3xl text-display-lg text-ink sm:text-display-xl">
               Pricing that scales with your client list
             </h1>

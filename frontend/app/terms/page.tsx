@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { KastreeLogo } from "@/components/brand/KastreeLogo";
 import { APP_NAME } from "@/lib/constants";
 
 export const metadata: Metadata = {
@@ -13,11 +14,8 @@ export default function TermsPage() {
     <div className="min-h-screen bg-surface text-ink">
       <header className="border-b border-line">
         <div className="mx-auto flex max-w-content items-center justify-between px-6 py-5 sm:px-8">
-          <Link
-            href="/"
-            className="font-display text-lg font-medium tracking-tight text-ink"
-          >
-            {APP_NAME}
+          <Link href="/" className="inline-flex shrink-0">
+            <KastreeLogo className="h-12 w-auto" />
           </Link>
           <Link
             href="/"

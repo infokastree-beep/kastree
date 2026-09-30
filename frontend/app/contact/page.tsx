@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { KastreeLogo } from "@/components/brand/KastreeLogo";
 import { ContactForm } from "@/components/landing/ContactForm";
 import { MarketingFooter } from "@/components/landing/MarketingFooter";
 import { MarketingNav } from "@/components/landing/MarketingNav";
@@ -20,9 +21,7 @@ export default function ContactPage() {
             className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--accent-muted)_0%,_transparent_55%),linear-gradient(180deg,_#ffffff_0%,_var(--surface)_100%)]"
           />
           <div className="relative mx-auto max-w-content px-6 pb-16 pt-16 sm:px-8 sm:pb-20 sm:pt-24">
-            <p className="font-display text-3xl font-medium tracking-tight text-accent sm:text-4xl">
-              {APP_NAME}
-            </p>
+            <KastreeLogo className="h-16 w-auto sm:h-20" />
             <h1 className="font-display mt-6 max-w-3xl text-display-lg text-ink sm:text-display-xl">
               Contact Kastree
             </h1>
