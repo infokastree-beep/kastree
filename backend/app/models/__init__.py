@@ -9,6 +9,7 @@ from app.models.company import Company
 from app.models.commentary_feedback import CommentaryFeedback
 from app.models.copilot_turn import CopilotTurn
 from app.models.export import Export
+from app.models.fa_version import FixedAssetLine, FixedAssetVersion
 from app.models.financial_statement import FinancialStatement
 from app.models.notification import Notification
 from app.models.organisation import Organisation
@@ -34,6 +35,8 @@ __all__ = [
     "CommentaryFeedback",
     "CopilotTurn",
     "Export",
+    "FixedAssetLine",
+    "FixedAssetVersion",
     "FinancialStatement",
     "Notification",
     "Organisation",

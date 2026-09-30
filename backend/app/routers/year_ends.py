@@ -20,13 +20,21 @@ from app.dependencies import (
     require_member_work,
     require_reader,
 )
+from app.models.company import Company
+from app.models.fa_version import FixedAssetLine, FixedAssetVersion
 from app.models.source_document import SourceDocument
 from app.models.tb_version import TrialBalanceVersion
 from app.schemas.year_end import (
+    FixedAssetLineOut,
+    FixedAssetTotalOut,
+    FixedAssetVersionCreate,
+    FixedAssetVersionResponse,
     PriorYearConfirmRequest,
     PriorYearLineOut,
     PriorYearResponse,
     ReconciliationGateResponse,
+    SizeEligibilityRequest,
+    SizeEligibilityResponse,
     TrialBalanceVersionCreate,
     TrialBalanceVersionResponse,
     YearEndCreateRequest,
@@ -34,12 +42,20 @@ from app.schemas.year_end import (
     amount_text,
 )
 from app.services.ownership import get_owned_company
+from app.services.size_eligibility import (
+    SizeEligibilityRejected,
+    YearSize,
+    assess_size,
+    exact_amount,
+    record_size_assessment,
+)
 from app.services.prior_year import (
     PriorYearRejected,
     confirm_prior_year,
     mark_first_financial_period,
     reconciliation_gate,
 )
+from findraft.engine.notes import build_fa_grid
 from findraft.engine.pack import load_manifest, pack_dir, pin_pack_version
 from findraft.models.draft_version import DraftVersion
 from findraft.models.year_end import YearEnd
@@ -312,3 +328,267 @@ async def get_reconciliation_gate(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
     return ReconciliationGateResponse.model_validate(reconciliation_gate(year_end))
+
+
+def _fa_response(
+    version: FixedAssetVersion, lines: list[FixedAssetLine]
+) -> FixedAssetVersionResponse:
+    total: FixedAssetTotalOut | None = None
+    invariant: bool | None = None
+    if version.status == "ready" and lines:
+        grid = build_fa_grid(
+            {
+                line.asset_class: {
+                    "opening_cost": line.opening_cost,
+                    "additions": line.additions,
+                    "disposals": line.disposals,
+                    "disposals_dep": line.disposals_dep,
+                    "opening_dep": line.opening_dep,
+                    "charge": line.charge,
+                }
+                for line in lines
+            }
+        )
+        totals = next(row for row in grid if row.get("class") == "Total")
+        holds = grid[-1].get("invariant_holds")
+        invariant = holds if isinstance(holds, bool) else None
+        total = FixedAssetTotalOut(
+            opening_cost=amount_text(totals["opening_cost"]),
+            additions=amount_text(totals["additions"]),
+            disposals=amount_text(totals["disposals"]),
+            disposals_dep=amount_text(totals["disposals_dep"]),
+            closing_cost=amount_text(totals["closing_cost"]),
+            opening_dep=amount_text(totals["opening_dep"]),
+            charge=amount_text(totals["charge"]),
+            closing_dep=amount_text(totals["closing_dep"]),
+            nbv_close=amount_text(totals["nbv_close"]),
+            nbv_open=amount_text(totals["nbv_open"]),
+        )
+    return FixedAssetVersionResponse(
+        id=version.id,
+        year_end_id=version.year_end_id,
+        version_number=version.version_number,
+        source_document_id=version.source_document_id,
+        status=version.status,
+        error_message=version.error_message,
+        lines=[
+            FixedAssetLineOut(
+                asset_class=line.asset_class,
+                opening_cost=amount_text(line.opening_cost),
+                additions=amount_text(line.additions),
+                disposals=amount_text(line.disposals),
+                disposals_dep=amount_text(line.disposals_dep),
+                opening_dep=amount_text(line.opening_dep),
+                charge=amount_text(line.charge),
+            )
+            for line in lines
+        ],
+        total=total,
+        invariant_holds=invariant,
+    )
+
+
+async def _fa_lines(
+    session: AsyncSession, version_id: uuid.UUID
+) -> list[FixedAssetLine]:
+    return list(
+        (
+            await session.scalars(
+                select(FixedAssetLine)
+                .where(FixedAssetLine.fa_version_id == version_id)
+                .order_by(FixedAssetLine.line_no)
+            )
+        ).all()
+    )
+
+
+@router.post(
+    "/{year_end_id}/fixed-asset-versions",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=FixedAssetVersionResponse,
+)
+async def create_fixed_asset_version(
+    year_end_id: uuid.UUID,
+    body: FixedAssetVersionCreate,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    idempotency_key: Annotated[str | None, Header()] = None,
+) -> FixedAssetVersionResponse:
+    key = _idempotency_key(idempotency_key)
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    existing = (
+        await session.execute(
+            select(FixedAssetVersion).where(
+                FixedAssetVersion.org_id == auth.org_id,
+                FixedAssetVersion.idempotency_key == key,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        if (
+            existing.source_document_id == body.source_document_id
+            and existing.year_end_id == year_end.id
+        ):
+            return _fa_response(existing, await _fa_lines(session, existing.id))
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Idempotency-Key was already used for a different import",
+        )
+
+    document = await session.get(SourceDocument, body.source_document_id)
+    if (
+        document is None
+        or document.org_id != auth.org_id
+        or document.company_id != year_end.company_id
+    ):
+        raise HTTPException(status_code=404, detail="Source document not found")
+    if document.detected_type not in {"xlsx", "csv"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Fixed asset import accepts xlsx or csv files",
+        )
+
+    await session.execute(
+        text("SELECT id FROM findraft_year_ends WHERE id = :id FOR UPDATE"),
+        {"id": str(year_end.id)},
+    )
+    current = (
+        await session.execute(
+            select(func.max(FixedAssetVersion.version_number)).where(
+                FixedAssetVersion.year_end_id == year_end.id
+            )
+        )
+    ).scalar_one_or_none()
+    version = FixedAssetVersion(
+        org_id=year_end.org_id,
+        company_id=year_end.company_id,
+        year_end_id=year_end.id,
+        version_number=(current or 0) + 1,
+        source_document_id=document.id,
+        status="pending",
+        idempotency_key=key,
+        created_by_user_id=auth.user_id,
+    )
+    session.add(version)
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Idempotency-Key was already used for a different import",
+        ) from exc
+    return _fa_response(version, [])
+
+
+@router.get(
+    "/{year_end_id}/fixed-asset-versions/{version_id}",
+    response_model=FixedAssetVersionResponse,
+)
+async def get_fixed_asset_version(
+    year_end_id: uuid.UUID,
+    version_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> FixedAssetVersionResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    version = await session.get(FixedAssetVersion, version_id)
+    if (
+        version is None
+        or version.year_end_id != year_end.id
+        or version.org_id != auth.org_id
+    ):
+        raise HTTPException(status_code=404, detail="Fixed asset version not found")
+    return _fa_response(version, await _fa_lines(session, version.id))
+
+
+def _size_response(year_end: YearEnd) -> SizeEligibilityResponse:
+    if (
+        year_end.size_checked_at is None
+        or year_end.size_eligible is None
+        or year_end.size_current_met is None
+        or year_end.size_message is None
+    ):
+        raise HTTPException(
+            status_code=404, detail="Size eligibility has not been checked"
+        )
+    return SizeEligibilityResponse(
+        year_end_id=year_end.id,
+        eligible=year_end.size_eligible,
+        current_conditions_met=year_end.size_current_met,
+        preceding_conditions_met=year_end.size_preceding_met,
+        message=year_end.size_message,
+    )
+
+
+@router.post(
+    "/{year_end_id}/size-eligibility",
+    response_model=SizeEligibilityResponse,
+)
+async def check_size_eligibility(
+    year_end_id: uuid.UUID,
+    body: SizeEligibilityRequest,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> SizeEligibilityResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    company = await session.get(Company, year_end.company_id)
+    if company is None or company.org_id != auth.org_id:
+        raise HTTPException(status_code=404, detail="Company not found")
+    try:
+        manifest = load_manifest(
+            pack_dir(year_end.pack_id, year_end.pack_version) / "pack.json"
+        )
+        assessment = assess_size(
+            manifest,
+            company_currency=company.functional_currency,
+            current=YearSize(
+                turnover=exact_amount(body.current.turnover),
+                balance_sheet_total=exact_amount(body.current.balance_sheet_total),
+                employees=body.current.employees,
+            ),
+            preceding=(
+                None
+                if body.preceding is None
+                else YearSize(
+                    turnover=exact_amount(body.preceding.turnover),
+                    balance_sheet_total=exact_amount(
+                        body.preceding.balance_sheet_total
+                    ),
+                    employees=body.preceding.employees,
+                )
+            ),
+            first_financial_period=year_end.first_financial_period,
+        )
+        await record_size_assessment(
+            session, org_id=auth.org_id, year_end=year_end, assessment=assessment
+        )
+    except SizeEligibilityRejected as exc:
+        raise HTTPException(status_code=400, detail=exc.detail) from exc
+    except (ValueError, FileNotFoundError, OSError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _size_response(year_end)
+
+
+@router.get(
+    "/{year_end_id}/size-eligibility",
+    response_model=SizeEligibilityResponse,
+)
+async def get_size_eligibility(
+    year_end_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> SizeEligibilityResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    return _size_response(year_end)

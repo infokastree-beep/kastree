@@ -53,6 +53,8 @@ def _force_rls_on_all_tables() -> None:
         "findraft_tb_versions",
         "findraft_tb_lines",
         "findraft_prior_year_lines",
+        "findraft_fa_versions",
+        "findraft_fa_lines",
     )
     with SyncSessionLocal() as session:
         for table in tables:
@@ -267,6 +269,14 @@ def provisioned_org() -> Iterator[dict]:
                 "ALTER TABLE findraft_prior_year_lines "
                 "DISABLE TRIGGER findraft_prior_year_lines_locked"
             )
+        )
+        session.execute(
+            text("DELETE FROM findraft_fa_lines WHERE org_id = :oid"),
+            {"oid": str(data["org_id"])},
+        )
+        session.execute(
+            text("DELETE FROM findraft_fa_versions WHERE org_id = :oid"),
+            {"oid": str(data["org_id"])},
         )
         session.execute(
             text("DELETE FROM findraft_tb_lines WHERE org_id = :oid"),
