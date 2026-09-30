@@ -20,7 +20,7 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -1264,6 +1264,24 @@ async def _generate_and_persist_statements(
         return blocks
 
 
+def _lock_statement_replace(session: Session, tb_id: uuid.UUID) -> None:
+    """One statement-replace at a time for this trial balance.
+
+    ``pg_advisory_xact_lock`` is held until the caller commits or rolls back.
+    It does not lock ``trial_balances``, so it does not deadlock with the
+    request transaction that sets ``status='generating'``.
+
+    Confirm-mapping auto-generate commits that status update *before* calling
+    ``_persist_statements_for_tb``. Two workers can therefore enter the replace
+    together. Without this lock both read the same existing rows, both insert,
+    and the trial balance keeps two SOPL/SOFP/SOCIE copies.
+    """
+    session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:tb_id, 0))"),
+        {"tb_id": str(tb_id)},
+    )
+
+
 def _persist_statements_for_tb(
     session: Session, tb: TrialBalance
 ) -> list[StatementBlockResponse]:
@@ -1272,6 +1290,7 @@ def _persist_statements_for_tb(
     Caller owns the commit. Used by the async generate endpoint and by
     ``run_validation_job`` auto-generate after successful validation.
     """
+    _lock_statement_replace(session, tb.id)
     accounts = _statement_accounts(session, tb)
     sopl, sofp, socie = build_statements(accounts)
 

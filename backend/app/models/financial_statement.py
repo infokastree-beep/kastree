@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -16,6 +16,11 @@ class FinancialStatement(Base):
         CheckConstraint(
             "statement_type IN ('SOPL', 'SOFP', 'SOCIE')",
             name="financial_statements_statement_type_check",
+        ),
+        UniqueConstraint(
+            "tb_id",
+            "statement_type",
+            name="financial_statements_tb_id_statement_type_key",
         ),
         Index("idx_financial_statements_tb_id", "tb_id"),
         Index("idx_financial_statements_tb_type", "tb_id", "statement_type"),
