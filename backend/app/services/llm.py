@@ -1,11 +1,11 @@
 """LLM prompt templates and helpers.
 
-Prompt versions: mapping-tie-breaker-v8, variance-commentary-v2, business-health-v1
+Prompt versions: mapping-tie-breaker-v9, variance-commentary-v2, business-health-v1
 """
 
 from __future__ import annotations
 
-# Prompt version: mapping-tie-breaker-v8
+# Prompt version: mapping-tie-breaker-v9
 # Source: .cursorrules Section 7.2 safety rules unchanged (no monetary amounts,
 # conservative, unmapped if unclear, structured JSON). v2 added self-reported
 # confidence. v3 adds prefer-specific guidance so VAT / PAYE-NI control accounts
@@ -18,6 +18,9 @@ from __future__ import annotations
 # VAT Recoverable (asset) ≠ taxes_payable — prefer unmapped over wrong leaf.
 # v8: other_receivables / other_payables / other_revenue for genuine misc only
 # (VAT Recoverable → other_receivables; not a dump for investment_property etc.).
+# v9: a clear expense name wins over an unrelated code band. Names ending in
+# Expense default to operating_expenses when no more specific expense line fits.
+# other_revenue is never a fallback for a name that says Expense.
 MAPPING_TIE_BREAKER_SYSTEM = """You are an accounting assistant. Map each account to exactly one canonical category.
 Available: revenue, other_revenue, cost_of_sales, operating_expenses, depreciation, amortisation, interest_income, interest_expense,
 tax, property_plant_equipment, intangible_assets, investments, inventory, trade_receivables, other_receivables,
@@ -37,13 +40,14 @@ Prefer the most specific matching line when several could fit. Liability distinc
 - trade_receivables: trade debtors/receivables AND Allowance / Provision for Doubtful or Bad Debts / Expected Credit Losses (BS contra-asset — never bad-debt expense).
 - other_receivables: genuine miscellaneous current assets that are not trade debtors (e.g. VAT Recoverable / VAT receivable). Not a dump for items that deserve a specific line (investment property, deferred tax asset, etc.).
 - other_payables: genuine miscellaneous current liabilities that are not trade creditors. Not for deferred tax liability or other named lines.
-- other_revenue: genuine miscellaneous income that is not trading revenue or interest_income.
+- other_revenue: genuine miscellaneous income that is not trading revenue or interest_income. Never use other_revenue or revenue for a name that says Expense or Expenses — that name is a cost, not income.
+- Expense name vs code band: the account code is only a hint. When the name clearly indicates a different category, follow the name. A name ending in "Expense" or "Expenses", or other clear expense language (bad debt expense, rent, wages, insurance, bank charges), maps to the most specific expense line that fits: depreciation, amortisation, interest_expense, cost_of_sales, or tax. If none of those fit, use operating_expenses. Do not return unmapped for that clear expense name. Example: Code 7100 (depreciation-band code), Name: Bad Debt Expense → operating_expenses, not depreciation, not other_revenue, and not unmapped. An allowance or provision for bad debts stays trade_receivables; the P&L expense does not.
 - depreciation (P&L): period depreciation charge only — not accumulated / Accum. / Acc. / A/Depn / provision-for depreciation.
 - amortisation (P&L): period amortisation charge only — not accumulated / Accum. / provision-for amortisation.
 - share_premium: premium on issue of shares only — not capital contribution / capital contribution reserve.
 - capital_contribution: shareholder capital contribution reserve / capital contribution (no new shares) — not share_premium.
 Respond JSON: {"mappings": [{"index": 1, "canonical_line": "...", "reasoning": "...", "confidence": 0.0}]}
-Rules: No monetary amounts. Conservative. Use "unmapped" if unclear. confidence is your self-reported certainty from 0 to 1 (e.g. 0.9 when the name clearly matches one category, lower when ambiguous)."""
+Rules: No monetary amounts. Conservative. Use "unmapped" if unclear, except a clear expense name with no more specific expense line, which must be operating_expenses. Never answer other_revenue for a name that says Expense. confidence is your self-reported certainty from 0 to 1 (e.g. 0.9 when the name clearly matches one category, lower when ambiguous)."""
 
 # Prompt version: variance-commentary-v2
 # Safety rules unchanged from .cursorrules §7.2 / Product Spec §4.3 (name +

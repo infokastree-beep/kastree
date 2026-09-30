@@ -7,14 +7,13 @@ from dataclasses import dataclass
 from decimal import Decimal
 from unittest.mock import MagicMock
 
-import pytest
-
 from app.services.llm import MAPPING_TIE_BREAKER_SYSTEM
 from app.services.mapper import (
     MappingResult,
     PriorConfirmedMapping,
     apply_llm_tie_breaker,
     map_accounts,
+    map_accounts_with_llm,
 )
 
 
@@ -636,4 +635,57 @@ def test_tier4_parses_and_clamps_self_reported_confidence() -> None:
     )
     assert results[0].confidence == Decimal("0.96")
     assert results[0].method == "llm"
+
+
+def test_bad_debt_expense_7100_resolves_to_operating_expenses() -> None:
+    """Code 7100 is a depreciation band; the name is an operating expense.
+
+    The tie-break must not store other_revenue or unmapped. There is no
+    separate bad-debt expense canonical line, so operating_expenses is the
+    line. Repeated hostile model answers stay corrected.
+    """
+    assert "Bad Debt Expense" in MAPPING_TIE_BREAKER_SYSTEM
+    assert "not other_revenue, and not unmapped" in MAPPING_TIE_BREAKER_SYSTEM
+    assert "Never use other_revenue or revenue for a name that says Expense" in (
+        MAPPING_TIE_BREAKER_SYSTEM
+    )
+
+    account = FakeAccount(account_code="7100", account_name="Bad Debt Expense")
+    # No prior mappings: the depreciation band rejects the name and Tier 4 runs.
+    assert map_accounts([account], prior_confirmed=[])[0].method is None
+
+    hostile_answers = (
+        ("other_revenue", 0.80),
+        ("unmapped", 0.70),
+        ("revenue", 0.60),
+        ("depreciation", 0.55),
+        ("operating_expenses", 0.95),
+    )
+    for canonical_line, confidence in hostile_answers:
+        client = MagicMock()
+        client.chat.completions.create.return_value = _mock_completion(
+            {
+                "mappings": [
+                    {
+                        "index": 1,
+                        "canonical_line": canonical_line,
+                        "reasoning": "model guess",
+                        "confidence": confidence,
+                    }
+                ]
+            }
+        )
+        result = map_accounts_with_llm(
+            [account],
+            prior_confirmed=[],
+            openai_client=client,
+            sleep=lambda _: None,
+        )[0]
+        assert result.canonical_line == "operating_expenses"
+        assert result.canonical_line != "other_revenue"
+        assert result.method == "llm"
+        if canonical_line == "operating_expenses":
+            assert result.confidence == Decimal("0.95")
+        else:
+            assert result.confidence == Decimal("0.90")
 
