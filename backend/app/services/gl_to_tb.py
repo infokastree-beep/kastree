@@ -22,7 +22,6 @@ import openpyxl
 import pandas as pd
 
 from app.services.parser import (
-    AmbiguousCurrencyError,
     ParseError,
     TOLERANCE,
     decimal_eq,
@@ -378,8 +377,70 @@ def parse_gl_tabular(content: bytes, filename: str) -> list[GlLine]:
     return lines
 
 
+# "ACCOUNT 4010: Enterprise SaaS Revenue Type: Revenue" — a section banner whose
+# transaction rows below carry no per-row code column.
+_ACCOUNT_BANNER_RE = re.compile(
+    r"\baccount\s+(?P<code>[A-Za-z0-9][A-Za-z0-9\-/]*)\s*[:\-]\s*(?P<name>.*)",
+    re.IGNORECASE,
+)
+# Closing/ending balance and (sub)total marker rows — never real transactions.
+# Deliberately excludes opening / brought-down so Mode A openings are preserved.
+_ENDING_TOTAL_RE = re.compile(
+    r"\b(ending|closing)\s+balance\b|\b(sub\s*)?totals?\b|\bbalance\s+c/?d\b|"
+    r"\bbalance\s+c/?fwd\b",
+    re.IGNORECASE,
+)
+
+
+def _norm_cells(row: Sequence[object]) -> list[str]:
+    return [_norm_header(c) for c in row]
+
+
+def _detect_gl_header_row(
+    rows: Sequence[Sequence[object]], *, max_scan: int = 20
+) -> tuple[int | None, list[str]]:
+    """First row that looks like a GL/TB column header.
+
+    Reuses the same tolerance as ``parse_gl_tabular`` (scan rows, don't assume the
+    first one is the header): a header needs an amount column plus at least one of
+    date / code / name.
+    """
+    for i, row in enumerate(rows[:max_scan]):
+        cells = _norm_cells(row)
+        has_amount = (
+            _find_col(cells, DEBIT_HEADER_KEYS) is not None
+            or _find_col(cells, CREDIT_HEADER_KEYS) is not None
+            or _find_col(cells, ("amount", "balance", "net")) is not None
+        )
+        has_key = (
+            _find_col(cells, DATE_HEADER_KEYS) is not None
+            or _find_col(cells, CODE_HEADER_KEYS) is not None
+            or _find_col(cells, NAME_HEADER_KEYS) is not None
+        )
+        if has_amount and has_key:
+            return i, cells
+    return None, []
+
+
+def _banner_from_row(row: Sequence[object]) -> tuple[str, str] | None:
+    joined = " ".join(str(c) for c in row if c not in (None, "")).strip()
+    match = _ACCOUNT_BANNER_RE.search(joined)
+    if not match:
+        return None
+    return match.group("code").strip(), match.group("name").strip()
+
+
 def parse_gl_pdf(content: bytes) -> list[GlLine]:
-    """Extract GL-like lines from a PDF table (Date, Code, Name, Debit, Credit)."""
+    """Extract GL lines from a PDF, including grouped / banner-style ledgers.
+
+    Robust to real-world layouts:
+    - the column header is **scanned for**, not assumed to be the first table row;
+    - **account-banner** sub-tables ("ACCOUNT 4010: Enterprise SaaS Revenue") whose
+      transaction rows have no per-row code column — the banner code is captured
+      and applied to the rows beneath it;
+    - Ending/Closing balance and (sub)total marker rows are skipped;
+    - wrapped ISO dates are still repaired by ``parse_gl_date`` / ``rejoin``.
+    """
     import pdfplumber
 
     if not content.startswith(b"%PDF"):
@@ -390,22 +451,34 @@ def parse_gl_pdf(content: bytes) -> list[GlLine]:
         if not pdf.pages:
             raise GlToTbError("PDF has no pages.")
         row_index = 1
+        banner_code: str | None = None
+        banner_name: str = ""
         for page in pdf.pages:
-            tables = page.extract_tables() or []
-            for table in tables:
+            for table in page.extract_tables() or []:
                 if not table:
                     continue
-                headers = [_norm_header(c) for c in table[0]]
+                header_idx, headers = _detect_gl_header_row(table)
+                # An account banner may sit above the header (or be the table's
+                # title row). Capture it for the code-less rows that follow.
+                pre_rows = table if header_idx is None else table[:header_idx]
+                for pre in pre_rows:
+                    found = _banner_from_row(pre)
+                    if found:
+                        banner_code, banner_name = found
+                if header_idx is None:
+                    continue
+
                 date_i = _find_col(headers, DATE_HEADER_KEYS)
                 code_i = _find_col(headers, CODE_HEADER_KEYS)
                 name_i = _find_col(headers, NAME_HEADER_KEYS)
                 debit_i = _find_col(headers, DEBIT_HEADER_KEYS)
                 credit_i = _find_col(headers, CREDIT_HEADER_KEYS)
-                if code_i is None or (debit_i is None and credit_i is None):
+                if debit_i is None and credit_i is None:
                     continue
-                for raw in table[1:]:
+
+                for raw in table[header_idx + 1 :]:
                     row_index += 1
-                    if not raw:
+                    if not raw or all(c in (None, "") for c in raw):
                         continue
 
                     def cell(idx: int | None) -> object:
@@ -413,12 +486,27 @@ def parse_gl_pdf(content: bytes) -> list[GlLine]:
                             return None
                         return raw[idx]
 
-                    code = str(cell(code_i) or "").strip()
-                    name = str(cell(name_i) or "").strip() if name_i is not None else ""
-                    if not code and not name:
+                    joined = " ".join(
+                        str(c) for c in raw if c not in (None, "")
+                    ).strip()
+
+                    # Skip closing-balance / total marker rows before anything else.
+                    if _ENDING_TOTAL_RE.search(joined):
                         continue
-                    if re.search(r"\b(total|totals)\b", f"{code} {name}", re.I):
+                    # A banner can also appear as a row inside one table.
+                    found = _banner_from_row(raw)
+                    if found and _find_col(_norm_cells(raw), DEBIT_HEADER_KEYS) is None:
+                        banner_code, banner_name = found
                         continue
+
+                    code_cell = (
+                        str(cell(code_i) or "").strip() if code_i is not None else ""
+                    )
+                    name = (
+                        str(cell(name_i) or "").strip() if name_i is not None else ""
+                    )
+                    code = code_cell or (banner_code or "")
+
                     try:
                         txn_date = (
                             parse_gl_date(cell(date_i)) if date_i is not None else None
@@ -434,11 +522,20 @@ def parse_gl_pdf(content: bytes) -> list[GlLine]:
                         )
                     except ParseError as exc:
                         raise GlToTbError(str(exc)) from exc
-                    opening = is_opening_label(name)
+
+                    # No movement (e.g. an opening/BAL-FWD row whose figure lives
+                    # only in a running-balance column) — nothing to net.
+                    if debit == 0 and credit == 0:
+                        continue
+                    if not code and not name:
+                        continue
+
+                    opening = is_opening_label(name) or is_opening_label(joined)
+                    display_name = name or banner_name or code or f"Account {row_index}"
                     lines.append(
                         GlLine(
                             account_code=code or f"UNCODED-{row_index}",
-                            account_name=name or code,
+                            account_name=display_name,
                             debit=debit,
                             credit=credit,
                             row_index=row_index,
@@ -617,6 +714,67 @@ def convert_gl_to_tb(
     )
 
 
+def _tb_summary_result_if_present(
+    content: bytes,
+    *,
+    mode: OpeningBalanceMode,
+    period_start: date,
+    period_end: date,
+) -> GlToTbResult | None:
+    """If a 'GL' PDF is actually a trial-balance summary, extract it directly.
+
+    Some documents (e.g. an "Adjusted Trial Balance & Detailed General Ledger"
+    pack) are primarily a balanced TB summary with only a partial GL detail
+    section. Uploaded via the GL path they must still yield the real TB rather
+    than choking on the detail. We only take this path when the PDF text actually
+    says "trial balance" AND a balanced Code/Debit/Credit summary is extractable —
+    so genuine general ledgers fall through to transaction conversion.
+    """
+    import pdfplumber
+
+    try:
+        with pdfplumber.open(BytesIO(content)) as pdf:
+            raw_text = "\n".join((page.extract_text() or "") for page in pdf.pages)
+    except Exception:
+        return None
+    if "trial balance" not in raw_text.lower():
+        return None
+
+    from app.services.pdf_tb_extract import (
+        PdfTbExtractError,
+        extract_trial_balance_from_pdf,
+    )
+
+    try:
+        extracted = extract_trial_balance_from_pdf(content)
+    except PdfTbExtractError:
+        return None
+    rows = list(extracted.rows)
+    if len(rows) < 2:
+        return None
+    total_debits = sum((row.debit for row in rows), Decimal("0"))
+    total_credits = sum((row.credit for row in rows), Decimal("0"))
+    if not decimal_eq(total_debits, total_credits):
+        return None
+
+    return GlToTbResult(
+        rows=rows,
+        mode=mode,
+        period_start=period_start,
+        period_end=period_end,
+        included_count=len(rows),
+        excluded_count=0,
+        opening_count=0,
+        warnings=[
+            "Input PDF is a trial-balance summary; extracted account balances "
+            "directly (no general-ledger conversion required)."
+        ],
+        pipeline_eligible=True,
+        total_debits=total_debits,
+        total_credits=total_credits,
+    )
+
+
 def convert_gl_file_to_tb(
     content: bytes,
     filename: str,
@@ -629,6 +787,11 @@ def convert_gl_file_to_tb(
     """Parse a GL file (xlsx/csv/pdf) and convert to a balanced TB."""
     lower = filename.lower()
     if lower.endswith(".pdf"):
+        summary = _tb_summary_result_if_present(
+            content, mode=mode, period_start=period_start, period_end=period_end
+        )
+        if summary is not None:
+            return summary
         lines = parse_gl_pdf(content)
     else:
         lines = parse_gl_tabular(content, filename)
