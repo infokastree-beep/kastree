@@ -11,6 +11,7 @@ from app.sentry_setup import init_sentry
 from app.routers import (
     admin,
     archived_records,
+    audit_logs,
     auth,
     billing,
     clients,
@@ -72,6 +73,7 @@ app.include_router(webhooks.router)
 app.include_router(commentary.router)
 app.include_router(copilot.router)
 app.include_router(notifications.router)
+app.include_router(audit_logs.router)
 app.include_router(archived_records.clients_router)
 app.include_router(archived_records.org_router)
 app.include_router(archived_records.records_router)
