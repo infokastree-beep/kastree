@@ -1317,6 +1317,17 @@ and `FA_INTANGIBLE_COST`. Product 1's existing canonical lines are unchanged.
 `engine/mapping.aggregate()` stays out of Product 1 statement generation.
 The review-queue UI named in the Week 5 build-plan row is not this change.
 
+### Week 6 reconciliation v1
+
+Reconciliation runs the engine checks for the trial balance, the balance sheet,
+and retained earnings, and calls `build_sofp`, which refuses a non-zero line
+the statements do not present. Confirmed mappings are stored per trial-balance
+version and are not updated. The prior-year gate still stops the other checks.
+
+FA roll-forward, bank reconciliation, comparatives, and pack review rules are
+the Week 7 row. They are not in this change. Bank reconciliation stays the
+row 13 cut as a product feature; the engine function is not wired here.
+
 ### Week 3 trial-balance ingestion
 
 The four vendor-named parsers (Sage, Xero, QuickBooks, Big Red Book) stay

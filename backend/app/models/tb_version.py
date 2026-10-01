@@ -38,6 +38,12 @@ class TrialBalanceVersion(Base):
             "idempotency_key",
             name="findraft_tb_versions_idempotency_key",
         ),
+        UniqueConstraint(
+            "id",
+            "org_id",
+            "company_id",
+            name="findraft_tb_versions_id_org_company_key",
+        ),
         CheckConstraint(
             "version_number >= 1", name="findraft_tb_versions_number_check"
         ),
