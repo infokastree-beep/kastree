@@ -29,10 +29,15 @@ from app.schemas.year_end import (
     FixedAssetTotalOut,
     FixedAssetVersionCreate,
     FixedAssetVersionResponse,
+    MappingConfirmRequest,
+    MappingConfirmResponse,
+    MappingLineOut,
     PriorYearConfirmRequest,
     PriorYearLineOut,
     PriorYearResponse,
+    ReconciliationCheckOut,
     ReconciliationGateResponse,
+    ReconciliationResponse,
     SizeEligibilityRequest,
     SizeEligibilityResponse,
     TrialBalanceVersionCreate,
@@ -54,6 +59,12 @@ from app.services.prior_year import (
     confirm_prior_year,
     mark_first_financial_period,
     reconciliation_gate,
+)
+from app.services.reconciliation import (
+    ReconciliationRejected,
+    ReconciliationReport,
+    confirm_mappings,
+    reconcile_version,
 )
 from findraft.engine.notes import build_fa_grid
 from findraft.engine.pack import load_manifest, pack_dir, pin_pack_version
@@ -328,6 +339,108 @@ async def get_reconciliation_gate(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
     return ReconciliationGateResponse.model_validate(reconciliation_gate(year_end))
+
+
+async def _owned_tb_version(
+    session: AsyncSession,
+    *,
+    year_end: YearEnd,
+    version_id: uuid.UUID,
+    org_id: uuid.UUID,
+) -> TrialBalanceVersion:
+    version = await session.get(TrialBalanceVersion, version_id)
+    if (
+        version is None
+        or version.org_id != org_id
+        or version.year_end_id != year_end.id
+    ):
+        raise HTTPException(status_code=404, detail="Trial balance version not found")
+    return version
+
+
+def _report_response(report: ReconciliationReport) -> ReconciliationResponse:
+    return ReconciliationResponse(
+        blocked=report.blocked,
+        build_error=report.build_error,
+        checks=[
+            ReconciliationCheckOut(
+                code=item.code,
+                severity=item.severity,
+                passed=item.passed,
+                message=item.message,
+            )
+            for item in report.checks
+        ],
+        net_assets=None
+        if report.net_assets is None
+        else amount_text(report.net_assets),
+        profit=None if report.profit is None else amount_text(report.profit),
+    )
+
+
+@router.post(
+    "/{year_end_id}/trial-balance-versions/{version_id}/mappings",
+    response_model=MappingConfirmResponse,
+)
+async def confirm_trial_balance_mappings(
+    year_end_id: uuid.UUID,
+    version_id: uuid.UUID,
+    body: MappingConfirmRequest,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> MappingConfirmResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    version = await _owned_tb_version(
+        session, year_end=year_end, version_id=version_id, org_id=auth.org_id
+    )
+    try:
+        stored = await confirm_mappings(
+            session,
+            org_id=auth.org_id,
+            year_end=year_end,
+            version=version,
+            lines=[(line.nominal_code, line.canonical_line) for line in body.lines],
+        )
+    except ReconciliationRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    return MappingConfirmResponse(
+        tb_version_id=version.id,
+        lines=[
+            MappingLineOut(
+                nominal_code=row.nominal_code, canonical_line=row.canonical_line
+            )
+            for row in stored
+        ],
+    )
+
+
+@router.get(
+    "/{year_end_id}/trial-balance-versions/{version_id}/reconciliation",
+    response_model=ReconciliationResponse,
+)
+async def get_reconciliation(
+    year_end_id: uuid.UUID,
+    version_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> ReconciliationResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    version = await _owned_tb_version(
+        session, year_end=year_end, version_id=version_id, org_id=auth.org_id
+    )
+    try:
+        report = await reconcile_version(
+            session, org_id=auth.org_id, year_end=year_end, version=version
+        )
+    except ReconciliationRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    return _report_response(report)
 
 
 def _fa_response(

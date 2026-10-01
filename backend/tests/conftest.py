@@ -55,6 +55,7 @@ def _force_rls_on_all_tables() -> None:
         "findraft_prior_year_lines",
         "findraft_fa_versions",
         "findraft_fa_lines",
+        "findraft_confirmed_mappings",
     )
     with SyncSessionLocal() as session:
         for table in tables:
@@ -251,9 +252,7 @@ def provisioned_org() -> Iterator[dict]:
             {"oid": str(data["org_id"])},
         )
         session.execute(
-            text(
-                "DELETE FROM archived_records WHERE org_id = :oid"
-            ),
+            text("DELETE FROM archived_records WHERE org_id = :oid"),
             {"oid": str(data["org_id"])},
         )
         session.execute(
@@ -269,6 +268,16 @@ def provisioned_org() -> Iterator[dict]:
                 "ALTER TABLE findraft_prior_year_lines "
                 "DISABLE TRIGGER findraft_prior_year_lines_locked"
             )
+        )
+        session.execute(
+            text(
+                "ALTER TABLE findraft_confirmed_mappings "
+                "DISABLE TRIGGER findraft_confirmed_mappings_immutable"
+            )
+        )
+        session.execute(
+            text("DELETE FROM findraft_confirmed_mappings WHERE org_id = :oid"),
+            {"oid": str(data["org_id"])},
         )
         session.execute(
             text("DELETE FROM findraft_fa_lines WHERE org_id = :oid"),
@@ -297,6 +306,12 @@ def provisioned_org() -> Iterator[dict]:
         session.execute(
             text("DELETE FROM findraft_year_ends WHERE org_id = :oid"),
             {"oid": str(data["org_id"])},
+        )
+        session.execute(
+            text(
+                "ALTER TABLE findraft_confirmed_mappings "
+                "ENABLE TRIGGER findraft_confirmed_mappings_immutable"
+            )
         )
         session.execute(
             text(

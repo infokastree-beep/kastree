@@ -6,6 +6,7 @@ from app.models.audit_log import AuditLog
 from app.models.base import Base
 from app.models.client import Client
 from app.models.company import Company
+from app.models.confirmed_mapping import ConfirmedMapping
 from app.models.commentary_feedback import CommentaryFeedback
 from app.models.copilot_turn import CopilotTurn
 from app.models.export import Export
@@ -32,6 +33,7 @@ __all__ = [
     "AuditLog",
     "Client",
     "Company",
+    "ConfirmedMapping",
     "CommentaryFeedback",
     "CopilotTurn",
     "Export",

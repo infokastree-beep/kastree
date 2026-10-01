@@ -37,6 +37,16 @@ def _delete_org(org_id: uuid.UUID) -> None:
             )
         )
         session.execute(
+            text(
+                "ALTER TABLE findraft_confirmed_mappings "
+                "DISABLE TRIGGER findraft_confirmed_mappings_immutable"
+            )
+        )
+        session.execute(
+            text("DELETE FROM findraft_confirmed_mappings WHERE org_id = :oid"),
+            {"oid": oid},
+        )
+        session.execute(
             text("DELETE FROM findraft_fa_lines WHERE org_id = :oid"),
             {"oid": oid},
         )
@@ -59,6 +69,12 @@ def _delete_org(org_id: uuid.UUID) -> None:
         session.execute(
             text("DELETE FROM findraft_prior_year_lines WHERE org_id = :oid"),
             {"oid": oid},
+        )
+        session.execute(
+            text(
+                "ALTER TABLE findraft_confirmed_mappings "
+                "ENABLE TRIGGER findraft_confirmed_mappings_immutable"
+            )
         )
         session.execute(
             text(
@@ -1013,4 +1029,184 @@ def test_draft_pack_must_match_year_end(two_practices: tuple[dict, dict]) -> Non
                 )
             )
             session.commit()
+        session.rollback()
+
+
+def _insert_confirmed_mapping(session, practice: dict, *, suffix: str) -> uuid.UUID:
+    version_id = _insert_source_and_version(session, practice, suffix=suffix)
+    mapping_id = uuid.uuid4()
+    session.execute(
+        text(
+            """
+            INSERT INTO findraft_confirmed_mappings (
+              id, org_id, company_id, tb_version_id, nominal_code, canonical_line
+            ) VALUES (
+              :id, :org, :company, :version, '4000', 'REVENUE'
+            )
+            """
+        ),
+        {
+            "id": str(mapping_id),
+            "org": str(practice["org_id"]),
+            "company": str(practice["company_id"]),
+            "version": str(version_id),
+        },
+    )
+    return mapping_id
+
+
+def test_confirmed_mapping_unset_context_returns_no_rows(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        try:
+            _as_login_superuser(session)
+            _insert_confirmed_mapping(session, first, suffix="map-a")
+            _insert_confirmed_mapping(session, second, suffix="map-b")
+            _as_app_role(session)
+            count = session.execute(
+                text("SELECT count(*) FROM findraft_confirmed_mappings")
+            ).scalar_one()
+            assert count == 0
+        finally:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+
+
+def test_confirmed_mapping_app_role_sees_only_its_practice(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        try:
+            _as_login_superuser(session)
+            own_id = _insert_confirmed_mapping(session, first, suffix="map-own")
+            other_id = _insert_confirmed_mapping(session, second, suffix="map-other")
+            _as_app_role(session)
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(first["org_id"])},
+            )
+            seen = (
+                session.execute(text("SELECT id FROM findraft_confirmed_mappings"))
+                .scalars()
+                .all()
+            )
+            assert seen == [own_id]
+            assert other_id not in seen
+        finally:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+
+
+def test_confirmed_mapping_with_check_rejects_cross_tenant_insert(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        try:
+            _as_login_superuser(session)
+            version_id = _insert_source_and_version(session, second, suffix="map-base")
+            _as_app_role(session)
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(first["org_id"])},
+            )
+            with pytest.raises(ProgrammingError, match="row-level security"):
+                session.execute(
+                    text(
+                        """
+                        INSERT INTO findraft_confirmed_mappings (
+                          id, org_id, company_id, tb_version_id,
+                          nominal_code, canonical_line
+                        ) VALUES (
+                          :id, :org, :company, :version, '4000', 'REVENUE'
+                        )
+                        """
+                    ),
+                    {
+                        "id": str(uuid.uuid4()),
+                        "org": str(second["org_id"]),
+                        "company": str(second["company_id"]),
+                        "version": str(version_id),
+                    },
+                )
+        finally:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+
+
+def test_confirmed_mapping_is_immutable(two_practices: tuple[dict, dict]) -> None:
+    """The trigger runs as the table owner. The app role has no UPDATE grant."""
+    first, _second = two_practices
+    with SyncSessionLocal() as session:
+        try:
+            _as_login_superuser(session)
+            mapping_id = _insert_confirmed_mapping(session, first, suffix="map-lock")
+            with pytest.raises(DBAPIError, match="confirmed mapping is immutable"):
+                session.execute(
+                    text(
+                        """
+                        UPDATE findraft_confirmed_mappings
+                        SET canonical_line = 'CASH'
+                        WHERE id = :id
+                        """
+                    ),
+                    {"id": str(mapping_id)},
+                )
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+            _as_login_superuser(session)
+            mapping_id = _insert_confirmed_mapping(session, first, suffix="map-grant")
+            _as_app_role(session)
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(first["org_id"])},
+            )
+            with pytest.raises(ProgrammingError, match="permission denied"):
+                session.execute(
+                    text(
+                        """
+                        UPDATE findraft_confirmed_mappings
+                        SET canonical_line = 'CASH'
+                        WHERE id = :id
+                        """
+                    ),
+                    {"id": str(mapping_id)},
+                )
+        finally:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+
+
+def test_confirmed_mapping_composite_fk_rejects_mismatched_company(
+    two_practices: tuple[dict, dict],
+) -> None:
+    """The company pair is valid. The version belongs to the other practice."""
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        _as_login_superuser(session)
+        version_id = _insert_source_and_version(session, first, suffix="map-fk")
+        with pytest.raises(
+            IntegrityError, match="findraft_confirmed_mappings_version_fk"
+        ):
+            session.execute(
+                text(
+                    """
+                    INSERT INTO findraft_confirmed_mappings (
+                      id, org_id, company_id, tb_version_id,
+                      nominal_code, canonical_line
+                    ) VALUES (
+                      :id, :org, :company, :version, '4000', 'REVENUE'
+                    )
+                    """
+                ),
+                {
+                    "id": str(uuid.uuid4()),
+                    "org": str(second["org_id"]),
+                    "company": str(second["company_id"]),
+                    "version": str(version_id),
+                },
+            )
         session.rollback()
