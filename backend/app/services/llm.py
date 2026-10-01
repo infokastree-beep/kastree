@@ -1,11 +1,11 @@
 """LLM prompt templates and helpers.
 
-Prompt versions: mapping-tie-breaker-v9, variance-commentary-v2, business-health-v1
+Prompt versions: mapping-tie-breaker-v10, variance-commentary-v2, business-health-v1
 """
 
 from __future__ import annotations
 
-# Prompt version: mapping-tie-breaker-v9
+# Prompt version: mapping-tie-breaker-v10
 # Source: .cursorrules Section 7.2 safety rules unchanged (no monetary amounts,
 # conservative, unmapped if unclear, structured JSON). v2 added self-reported
 # confidence. v3 adds prefer-specific guidance so VAT / PAYE-NI control accounts
@@ -22,6 +22,10 @@ from __future__ import annotations
 # to operating_expenses when no more specific expense line fits. other_revenue
 # is never a fallback for that name. The parser guard is the same narrow case
 # only — it does not rewrite other tie-break answers.
+# v10: hire purchase creditors and lease liabilities are loans, never
+# other_payables. Product 1 has no separate finance-lease line. Clearing,
+# discounts allowed/received, returns and allowances, and WIP valuation
+# adjustments are never other_revenue. The parser guard enforces both.
 MAPPING_TIE_BREAKER_SYSTEM = """You are an accounting assistant. Map each account to exactly one canonical category.
 Available: revenue, other_revenue, cost_of_sales, operating_expenses, depreciation, amortisation, interest_income, interest_expense,
 tax, property_plant_equipment, intangible_assets, investments, inventory, trade_receivables, other_receivables,
@@ -40,15 +44,16 @@ Prefer the most specific matching line when several could fit. Liability distinc
 - intangible_assets: intangible cost AND Accumulated Amortisation / Accum. Amortisation / provision for amortisation (BS contra-asset — never amortisation).
 - trade_receivables: trade debtors/receivables AND Allowance / Provision for Doubtful or Bad Debts / Expected Credit Losses (BS contra-asset — never bad-debt expense).
 - other_receivables: genuine miscellaneous current assets that are not trade debtors (e.g. VAT Recoverable / VAT receivable). Not a dump for items that deserve a specific line (investment property, deferred tax asset, etc.).
-- other_payables: genuine miscellaneous current liabilities that are not trade creditors. Not for deferred tax liability or other named lines.
-- other_revenue: genuine miscellaneous income that is not trading revenue or interest_income. Never use other_revenue or revenue for a name that says Expense or Expenses — that name is a cost, not income.
+- loans: hire purchase creditors and lease liabilities, including an IFRS 16 lease liability and a finance lease obligation. Not leasehold improvements, not a right-of-use asset, not lease rent or hire charges, and not interest on those liabilities.
+- other_payables: genuine miscellaneous current liabilities that are not trade creditors. Not hire purchase or lease liabilities (those are loans). Not deferred tax liability or other named lines.
+- other_revenue: genuine miscellaneous income that is not trading revenue or interest_income. Never use other_revenue or revenue for a name that says Expense or Expenses — that name is a cost, not income. Never use other_revenue or revenue for a clearing account, discounts allowed or received, returns and allowances, or a WIP / work-in-progress valuation adjustment. A WIP valuation adjustment is inventory, not income.
 - Expense name vs code band: apply this only when the account name contains the word Expense or Expenses. Do not apply it to payable, control, inventory, intangible-asset, or fixed-asset cost accounts. Map that expense name to the most specific expense line that fits: depreciation, amortisation, interest_expense, cost_of_sales, or tax. If none of those fit, use operating_expenses. Do not return unmapped, other_revenue, or the depreciation code-band default for that name. Example: Code 7100 (depreciation-band code), Name: Bad Debt Expense → operating_expenses, not depreciation, not other_revenue, and not unmapped. An allowance or provision for bad debts stays trade_receivables; the P&L expense does not.
 - depreciation (P&L): period depreciation charge only — not accumulated / Accum. / Acc. / A/Depn / provision-for depreciation.
 - amortisation (P&L): period amortisation charge only — not accumulated / Accum. / provision-for amortisation.
 - share_premium: premium on issue of shares only — not capital contribution / capital contribution reserve.
 - capital_contribution: shareholder capital contribution reserve / capital contribution (no new shares) — not share_premium.
 Respond JSON: {"mappings": [{"index": 1, "canonical_line": "...", "reasoning": "...", "confidence": 0.0}]}
-Rules: No monetary amounts. Conservative. Use "unmapped" if unclear, except a clear expense name with no more specific expense line, which must be operating_expenses. Never answer other_revenue for a name that says Expense. confidence is your self-reported certainty from 0 to 1 (e.g. 0.9 when the name clearly matches one category, lower when ambiguous)."""
+Rules: No monetary amounts. Conservative. Use "unmapped" if unclear, except a clear expense name with no more specific expense line, which must be operating_expenses. Never answer other_revenue for a name that says Expense. Never answer other_payables for hire purchase or a lease liability — those are loans. Never answer other_revenue or revenue for clearing, discounts allowed or received, returns and allowances, or a WIP valuation adjustment. confidence is your self-reported certainty from 0 to 1 (e.g. 0.9 when the name clearly matches one category, lower when ambiguous)."""
 
 # Prompt version: variance-commentary-v2
 # Safety rules unchanged from .cursorrules §7.2 / Product Spec §4.3 (name +
