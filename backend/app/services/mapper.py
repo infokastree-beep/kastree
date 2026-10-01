@@ -272,11 +272,44 @@ def _map_one(
     ):
         return fuzzy
 
+    # Hire purchase and lease liabilities are loans. This runs before the
+    # P&L code bands so a mis-coded creditor cannot become revenue.
+    if _name_suggests_loan_like_liability(source_name):
+        return MappingResult(
+            source_code=source_code,
+            source_name=source_name,
+            canonical_line="loans",
+            confidence=Decimal("0.90"),
+            method="code_range",
+        )
+
     code_range = _tier3_code_range(source_code, source_name)
     if code_range is not None and not _product1_suggestion_excluded(
         source_name, code_range.canonical_line
     ):
         return code_range
+
+    # Names that are not income, once the code band has declined them.
+    # WIP valuation is inventory. Clearing, discounts allowed/received, and
+    # returns and allowances have no Product 1 line, so they stay unmapped
+    # rather than falling through to an other_revenue tie-break.
+    misfile = _non_revenue_misfile(source_name)
+    if misfile == "inventory":
+        return MappingResult(
+            source_code=source_code,
+            source_name=source_name,
+            canonical_line="inventory",
+            confidence=Decimal("0.90"),
+            method="code_range",
+        )
+    if misfile == "unmapped":
+        return MappingResult(
+            source_code=source_code,
+            source_name=source_name,
+            canonical_line="unmapped",
+            confidence=Decimal("0.90"),
+            method="code_range",
+        )
 
     return MappingResult(
         source_code=source_code,
@@ -440,9 +473,11 @@ def _name_contradicts_band_default(band_default: str, source_name: str) -> bool:
     if not normalized:
         return False
     if band_default == "revenue":
-        return _name_suggests_equity_or_dividends(
-            normalized
-        ) or _name_suggests_share_of_associate(normalized)
+        return (
+            _name_suggests_equity_or_dividends(normalized)
+            or _name_suggests_share_of_associate(normalized)
+            or _non_revenue_misfile(source_name) is not None
+        )
     if band_default == "cost_of_sales":
         return _name_suggests_revenue_not_cos(
             normalized
@@ -464,6 +499,7 @@ def _name_contradicts_band_default(band_default: str, source_name: str) -> bool:
             or _name_suggests_equity_or_dividends(normalized)
             or _name_suggests_impairment_or_write_down(normalized)
             or _name_suggests_share_of_associate(normalized)
+            or _non_revenue_misfile(source_name) is not None
         )
     return False
 
@@ -682,6 +718,178 @@ def _parse_account_code(source_code: str) -> int | None:
         return None
 
 
+def _name_suggests_loan_like_liability(source_name: str) -> bool:
+    """Hire purchase creditors and lease liabilities belong on ``loans``.
+
+    Product 1 has no separate finance-lease / hire-purchase line. ``loans`` is
+    the closest existing line. Leasehold assets, right-of-use assets, lease
+    rent, and interest on these liabilities are not this case. The statutory
+    engine still presents lease liabilities and hire purchase on different
+    face lines; this Product 1 bucket does not.
+    """
+    normalized = normalize_text(source_name)
+    if not normalized:
+        return False
+    if re.search(
+        r"\b("
+        r"leasehold|right[- ]of[- ]use|rou asset|"
+        r"expense|expenses|rent|rental|charge|charges|interest|income"
+        r")\b",
+        normalized,
+    ):
+        return False
+    if re.search(r"\bhire purchase\b", normalized):
+        return True
+    if re.search(r"\blease liabilit", normalized):
+        return True
+    return bool(
+        re.search(r"\bfinance lease\b", normalized)
+        and re.search(
+            r"\b(creditor|liability|liabilities|obligation|obligations)\b",
+            normalized,
+        )
+    )
+
+
+def _non_revenue_misfile(source_name: str) -> Literal["inventory", "unmapped"] | None:
+    """Names that must not be filed as revenue or other revenue.
+
+    ``inventory`` is a WIP valuation adjustment. ``unmapped`` is a clearing,
+    discount, or returns account with no honest Product 1 income line.
+    None means this exclusion does not apply.
+    """
+    normalized = normalize_text(source_name)
+    if not normalized:
+        return None
+    if re.search(r"\b(wip|work in progress)\b", normalized) and re.search(
+        r"\b(valuation|adjustment)\b", normalized
+    ):
+        return "inventory"
+    if re.search(r"\bclearing\b", normalized) and re.search(
+        r"\bintercompany\b", normalized
+    ):
+        return "unmapped"
+    if re.search(r"\bdiscounts?\b", normalized) and re.search(
+        r"\b(allowed|received)\b", normalized
+    ):
+        return "unmapped"
+    if re.search(r"\breturns?\b", normalized) and re.search(
+        r"\ballowances?\b", normalized
+    ):
+        return "unmapped"
+    return None
+
+
+_WRONG_LOAN_TIEBREAK_LINES = frozenset(
+    {"other_payables", "other_revenue", "revenue", "trade_payables"}
+)
+_WRONG_REVENUE_TIEBREAK_LINES = frozenset({"other_revenue", "revenue"})
+
+
+def _mapping_with_loan_like_default(
+    account: MappingResult,
+    *,
+    canonical_line: str | None,
+    confidence: Decimal | None,
+    method: MappingMethod | None,
+) -> MappingResult:
+    """Send a hire-purchase or lease liability off other payables onto loans."""
+    if not _name_suggests_loan_like_liability(account.source_name):
+        return MappingResult(
+            source_code=account.source_code,
+            source_name=account.source_name,
+            canonical_line=canonical_line,
+            confidence=confidence,
+            method=method,
+        )
+    if canonical_line == "loans":
+        return MappingResult(
+            source_code=account.source_code,
+            source_name=account.source_name,
+            canonical_line=canonical_line,
+            confidence=confidence,
+            method=method,
+        )
+    wrong = canonical_line is None or canonical_line in _WRONG_LOAN_TIEBREAK_LINES
+    if not wrong:
+        return MappingResult(
+            source_code=account.source_code,
+            source_name=account.source_name,
+            canonical_line=canonical_line,
+            confidence=confidence,
+            method=method,
+        )
+    return MappingResult(
+        source_code=account.source_code,
+        source_name=account.source_name,
+        canonical_line="loans",
+        confidence=Decimal("0.90"),
+        method="llm",
+    )
+
+
+def _mapping_with_revenue_exclusion(
+    account: MappingResult,
+    *,
+    canonical_line: str | None,
+    confidence: Decimal | None,
+    method: MappingMethod | None,
+) -> MappingResult:
+    """Refuse other_revenue / revenue for clearing, discounts, returns, and WIP."""
+    kind = _non_revenue_misfile(account.source_name)
+    if kind is None or canonical_line not in _WRONG_REVENUE_TIEBREAK_LINES:
+        return MappingResult(
+            source_code=account.source_code,
+            source_name=account.source_name,
+            canonical_line=canonical_line,
+            confidence=confidence,
+            method=method,
+        )
+    if kind == "inventory":
+        return MappingResult(
+            source_code=account.source_code,
+            source_name=account.source_name,
+            canonical_line="inventory",
+            confidence=Decimal("0.90"),
+            method="llm",
+        )
+    return MappingResult(
+        source_code=account.source_code,
+        source_name=account.source_name,
+        canonical_line="unmapped",
+        confidence=Decimal("0.90"),
+        method="llm",
+    )
+
+
+def _apply_tiebreak_name_guards(
+    account: MappingResult,
+    *,
+    canonical_line: str | None,
+    confidence: Decimal | None,
+    method: MappingMethod | None,
+) -> MappingResult:
+    """Loan, non-revenue, then expense-name guards. Each sees the previous line."""
+    loan_guarded = _mapping_with_loan_like_default(
+        account,
+        canonical_line=canonical_line,
+        confidence=confidence,
+        method=method,
+    )
+    revenue_guarded = _mapping_with_revenue_exclusion(
+        loan_guarded,
+        canonical_line=loan_guarded.canonical_line,
+        confidence=loan_guarded.confidence,
+        method=loan_guarded.method,
+    )
+    return _mapping_with_clear_expense_default(
+        revenue_guarded,
+        canonical_line=revenue_guarded.canonical_line,
+        confidence=revenue_guarded.confidence,
+        method=revenue_guarded.method,
+    )
+
+
 # Only these tie-break answers are rewritten, and only when the account name
 # itself contains the word Expense/Expenses. Keyword overlap (motor, materials,
 # software licences, PRSI, "corporation tax") must not move a correct line.
@@ -754,7 +962,7 @@ def _apply_clear_expense_name_defaults(
     results: Sequence[MappingResult],
 ) -> list[MappingResult]:
     return [
-        _mapping_with_clear_expense_default(
+        _apply_tiebreak_name_guards(
             account,
             canonical_line=account.canonical_line,
             confidence=account.confidence,
@@ -995,7 +1203,7 @@ def _parse_llm_mappings(
     for position, account in enumerate(unmapped, start=1):
         if position not in by_index:
             results.append(
-                _mapping_with_clear_expense_default(
+                _apply_tiebreak_name_guards(
                     account,
                     canonical_line=account.canonical_line,
                     confidence=account.confidence,
@@ -1009,7 +1217,7 @@ def _parse_llm_mappings(
         confidence = _parse_llm_confidence(entry.get("confidence"))
         if canonical_line not in MAPPING_TIE_BREAKER_CANONICAL_LINES:
             results.append(
-                _mapping_with_clear_expense_default(
+                _apply_tiebreak_name_guards(
                     account,
                     canonical_line=account.canonical_line,
                     confidence=account.confidence,
@@ -1020,7 +1228,7 @@ def _parse_llm_mappings(
 
         if canonical_line == "unmapped":
             results.append(
-                _mapping_with_clear_expense_default(
+                _apply_tiebreak_name_guards(
                     account,
                     canonical_line=None,
                     confidence=confidence,
@@ -1030,7 +1238,7 @@ def _parse_llm_mappings(
             continue
 
         results.append(
-            _mapping_with_clear_expense_default(
+            _apply_tiebreak_name_guards(
                 account,
                 canonical_line=canonical_line,
                 confidence=confidence,
