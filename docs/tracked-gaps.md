@@ -1317,6 +1317,32 @@ and `FA_INTANGIBLE_COST`. Product 1's existing canonical lines are unchanged.
 `engine/mapping.aggregate()` stays out of Product 1 statement generation.
 The review-queue UI named in the Week 5 build-plan row is not this change.
 
+### Week 13 first practice and the golden suite
+
+Week 13 of the v7.6 §9 plan is the beta: one practice, and a green golden
+suite. Goal G10 names roll-forward and report styles for this same week.
+That is not the §9 row. Roll-forward is the v1.1 decision (A12). Report
+styles are the in-app editing cut. Firm-to-client option inheritance is
+Week 14. None of those are built here.
+
+The beta states the standing gate. A qualified reviewer has not signed off
+the statutory wording. `wording_signed_off` is false and the response model
+cannot say otherwise. The practice records that it will review every output
+itself before anything is filed or sent. The record is one append-only audit
+row. A second acknowledgement does not add another row. The product does
+not file, and it does not produce iXBRL or a CT1.
+
+The numeric gate is the engine suite, run as
+`python -m unittest discover -s tests -t .` from `findraft/`. The API does
+not report that suite as passed. The test runs it. The first-practice path
+uses the Irish pack already built: the golden trial balance, prior year,
+confirmed mappings, disclosure answers the practice records, a FINAL
+snapshot, the PDF from that snapshot, and one trial-balance evidence
+document. Net assets stay 455812.00 and profit stays 157650.00.
+
+The auditor's-report slot, note overrides, text blocks, bank
+reconciliation, and the UK pack stay cut.
+
 ### Week 12 audit log and erasure
 
 Week 12 states the retention rule and then follows it. Accounting records are
