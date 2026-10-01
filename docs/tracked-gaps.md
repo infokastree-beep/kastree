@@ -1317,6 +1317,24 @@ and `FA_INTANGIBLE_COST`. Product 1's existing canonical lines are unchanged.
 `engine/mapping.aggregate()` stays out of Product 1 statement generation.
 The review-queue UI named in the Week 5 build-plan row is not this change.
 
+### Week 8 statutory statements
+
+A ready trial balance with an open prior-year gate can be read as a DRAFT
+statement of financial position, income statement, and pack notes. Figures
+come from `aggregate()`, `build_sofp`, and `build_income_statement`. Note
+inclusion is `select_notes`. Rounding gaps are `flag_for_note` at the nearest
+whole currency unit. Zero lines stay on the face.
+
+The HTML is Jinja with autoescape on. The PDF passes a `url_fetcher` that
+refuses every URL. The watermark is DRAFT. A failed critical check, a closed
+gate, an unmapped trial balance, or a `build_sofp` error withholds the
+statement and the PDF. Warning checks still render. Useful lives the company
+has not supplied stay as placeholders.
+
+No new table was added. FINAL snapshot, the directors' report, DOCX, and
+disclosure answers that block FINAL are later weeks. `V-DISC-001` does not
+block this DRAFT. Bank reconciliation stays the row 13 cut.
+
 ### Week 7 reconciliation v2
 
 Reconciliation now also runs the engine fixed-asset roll-forward, the
