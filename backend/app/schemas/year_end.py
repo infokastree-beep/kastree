@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -281,7 +282,7 @@ class EvidenceDocumentOut(BaseModel):
     id: uuid.UUID
     filename: str
     detected_type: str
-    role: str
+    role: Literal["trial_balance"]
 
 
 class EvidenceResponse(BaseModel):

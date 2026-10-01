@@ -4,9 +4,8 @@ The engine still owns the amounts. This module reads ``aggregate().sources``
 and checks that those accounts, with the statement's presentation sign,
 add back to each face figure. A graph that does not tie is withheld.
 
-Journals are not stored. The document at the end of the chain is the
-trial-balance source file. A fixed-asset register is linked beside the
-graph and is not part of the sum.
+The chain stops at the trial-balance source document. Row 13 keeps journals,
+and any other document, outside this graph.
 """
 
 from __future__ import annotations
@@ -14,12 +13,12 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
-from app.models.fa_version import FixedAssetLine, FixedAssetVersion
 from app.models.source_document import SourceDocument
 from app.models.tb_version import TrialBalanceLine, TrialBalanceVersion
 from app.services.reconciliation import (
@@ -202,7 +201,7 @@ class EvidenceDocument:
     id: uuid.UUID
     filename: str
     detected_type: str
-    role: str
+    role: Literal["trial_balance"]
 
 
 @dataclass(frozen=True)
@@ -353,7 +352,6 @@ async def _document(
     *,
     org_id: uuid.UUID,
     document_id: uuid.UUID,
-    role: str,
 ) -> EvidenceDocument:
     await aset_rls_org_id(session, org_id)
     document = await session.scalar(
@@ -363,54 +361,12 @@ async def _document(
         )
     )
     if document is None:
-        raise ValueError(f"{role} source document is missing")
+        raise ValueError("trial balance source document is missing")
     return EvidenceDocument(
         id=document.id,
         filename=document.original_filename,
         detected_type=document.detected_type,
-        role=role,
-    )
-
-
-async def _register_document(
-    session: AsyncSession,
-    *,
-    org_id: uuid.UUID,
-    year_end: YearEnd,
-) -> EvidenceDocument | None:
-    """The latest ready register, linked beside the graph and not summed."""
-    await aset_rls_org_id(session, org_id)
-    fa_version = (
-        await session.scalars(
-            select(FixedAssetVersion)
-            .where(
-                FixedAssetVersion.year_end_id == year_end.id,
-                FixedAssetVersion.org_id == org_id,
-                FixedAssetVersion.status == "ready",
-            )
-            .order_by(FixedAssetVersion.version_number.desc())
-            .limit(1)
-        )
-    ).first()
-    if fa_version is None:
-        return None
-    has_lines = (
-        await session.scalars(
-            select(FixedAssetLine.id)
-            .where(
-                FixedAssetLine.fa_version_id == fa_version.id,
-                FixedAssetLine.org_id == org_id,
-            )
-            .limit(1)
-        )
-    ).first()
-    if has_lines is None:
-        return None
-    return await _document(
-        session,
-        org_id=org_id,
-        document_id=fa_version.source_document_id,
-        role="fixed_asset_register",
+        role="trial_balance",
     )
 
 
@@ -448,9 +404,7 @@ async def evidence_for_version(
             session,
             org_id=org_id,
             document_id=version.source_document_id,
-            role="trial_balance",
         )
-        register = await _register_document(session, org_id=org_id, year_end=year_end)
         lines = build_evidence_lines(
             tb_lines=loaded.tb_lines,
             mappings=loaded.mappings,
@@ -461,12 +415,11 @@ async def evidence_for_version(
         )
     except (OSError, ValueError) as exc:
         return _withheld(document, str(exc))
-    documents = [trial_balance] if register is None else [trial_balance, register]
     return EvidenceGraph(
         renderable=True,
         blocked=False,
         build_error=None,
         checks=document.checks,
-        documents=tuple(documents),
+        documents=(trial_balance,),
         lines=lines,
     )

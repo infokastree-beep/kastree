@@ -1326,9 +1326,9 @@ The service checks that they add back to the engine face amount, including
 subtotals and the profit and loss account. A graph that does not tie is
 withheld.
 
-The fixed-asset register is a linked document. Its movement columns are not
-added into the face. Journals are not stored. Drill-down past the trial
-balance into general-ledger transactions stays the row 13 cut.
+The chain stops there. The fixed-asset register stays a Week 4 import and a
+Week 7 roll-forward input. It is not an evidence-graph node. Journals stay
+the row 13 cut.
 
 No new table was added. The graph is computed on the read.
 
@@ -1417,6 +1417,10 @@ Row 13 drops it from the current build.
 
 Revisit only if a real beta practice specifically asks for transaction-level
 drill-down in statutory statements.
+
+The cut is closed. A later week whose natural shape would pass it — another
+source document on this graph, a journal, or any node past the trial-balance
+account — stops and flags that boundary before any of it is built.
 
 ### Model evaluation when Product 2 is scheduled (do not pre-select now)
 

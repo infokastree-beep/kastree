@@ -190,12 +190,11 @@ async def test_api_golden_evidence_points_at_the_trial_balance_document(
     body = response.json()
     assert body["renderable"] is True
     assert body["build_error"] is None
-    roles = {document["role"]: document for document in body["documents"]}
-    assert set(roles) == {"trial_balance", "fixed_asset_register"}
-    assert roles["trial_balance"]["filename"] == "golden.csv"
-    assert roles["fixed_asset_register"]["filename"] == "fa.csv"
-    register_id = roles["fixed_asset_register"]["id"]
-    trial_id = roles["trial_balance"]["id"]
+    assert len(body["documents"]) == 1
+    trial_balance = body["documents"][0]
+    assert trial_balance["role"] == "trial_balance"
+    assert trial_balance["filename"] == "golden.csv"
+    trial_id = trial_balance["id"]
     codes: list[str] = []
     for line in body["lines"]:
         contributions = [
@@ -215,7 +214,6 @@ async def test_api_golden_evidence_points_at_the_trial_balance_document(
         for account in line["accounts"]:
             assert account["tb_line_id"]
             assert account["source_document_id"] == trial_id
-            assert account["source_document_id"] != register_id
             codes.append(account["nominal_code"])
             assert Decimal(account["contribution"]) not in {
                 Decimal("120000.00"),
