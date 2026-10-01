@@ -1,12 +1,14 @@
-"""Statutory SoFP, income statement, and notes for a DRAFT pack.
+"""Statutory SoFP, income statement, notes, and the pages in front of them.
 
 Python owns every figure. This module calls the engine builders and the
 rounding flag, then renders pack note templates. The HTML environment
 autoescapes every string. The PDF fetcher refuses every URL.
 
-Week 8 always watermarks DRAFT. FINAL, the directors' report, and DOCX
-are later weeks. A failed critical check withholds the statement.
-Bank reconciliation is not called.
+The compilation report, directors' report, approval page, and audit-exemption
+page are filled from the entity record and the engine profit. Missing facts
+stay missing. The auditor's-report slot is not rendered. DOCX is a separate
+job. A failed critical check withholds the statement. Bank reconciliation
+is not called.
 """
 
 from __future__ import annotations
@@ -24,7 +26,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
 from app.models.company import Company
+from app.models.organisation import Organisation
 from app.services.draft_inputs import adjusted_for_draft, latest_draft
+from app.services.statutory_pages import StatutoryPage, build_statutory_pages
 from app.models.tb_version import TrialBalanceVersion
 from app.services.reconciliation import (
     ReconciliationCheck,
@@ -83,6 +87,14 @@ _DOCUMENT = """<!DOCTYPE html>
 <body>
 <p class="watermark">{{ watermark }}</p>
 <h1>{{ company_name }}</h1>
+{% for page in pages %}
+<section>
+<h2>{{ page.heading }}</h2>
+{% for paragraph in page.paragraphs %}
+<p>{{ paragraph }}</p>
+{% endfor %}
+</section>
+{% endfor %}
 <h2>Statement of financial position</h2>
 <p>{{ compliance_statement }}</p>
 <table>
@@ -142,6 +154,8 @@ class StatementEntity:
     directors_list: str
     currency: str
     average_employees: str
+    secretary: str = ""
+    industry: str = ""
 
 
 @dataclass(frozen=True)
@@ -205,6 +219,8 @@ class StatutoryStatements:
     notes: tuple[StatementNote, ...]
     rounding_flags: tuple[RoundingFlag, ...]
     html: str | None
+    pages: tuple[StatutoryPage, ...] = ()
+    company_name: str = ""
 
 
 class _ExternalFetchRefused(BaseException):
@@ -283,6 +299,8 @@ def entity_from_company(company: Company) -> StatementEntity:
         directors_list=_directors_list(company.directors),
         currency=company.functional_currency,
         average_employees="" if employees is None else str(employees),
+        secretary=company.secretary or "",
+        industry=company.industry or "",
     )
 
 
@@ -314,6 +332,8 @@ def _withheld(
         notes=(),
         rounding_flags=(),
         html=None,
+        pages=(),
+        company_name="",
     )
 
 
@@ -594,6 +614,7 @@ def _render_html(
     sofp: tuple[StatementRow, ...],
     income: tuple[StatementRow, ...],
     notes: tuple[StatementNote, ...],
+    pages: tuple[StatutoryPage, ...],
     watermark: str,
 ) -> str:
     note_view = [
@@ -622,6 +643,10 @@ def _render_html(
         sofp=_display_rows(sofp),
         income=_display_rows(income),
         notes=note_view,
+        pages=[
+            {"heading": page.heading, "paragraphs": list(page.paragraphs)}
+            for page in pages
+        ],
         watermark=watermark,
     )
 
@@ -638,6 +663,9 @@ def _render_draft(
     entity: StatementEntity,
     disclosure_flags: dict[str, bool] | None = None,
     watermark: str = WATERMARK,
+    practice_name: str = "",
+    period_end: str = "",
+    size_eligible: bool | None = None,
 ) -> StatutoryStatements:
     directory = (
         pack_dir(pack_id, pack_version)
@@ -675,12 +703,24 @@ def _render_draft(
     )
     sofp_rows = _statement_rows(sofp)
     income_rows = _statement_rows(income)
+    pages = build_statutory_pages(
+        company_name=entity.name,
+        practice_name=practice_name,
+        period_end=period_end,
+        directors=entity.directors_list,
+        secretary=entity.secretary,
+        industry=entity.industry,
+        currency=entity.currency,
+        profit=sofp_profit,
+        size_eligible=size_eligible,
+    )
     html = _render_html(
         entity=entity,
         compliance=compliance,
         sofp=sofp_rows,
         income=income_rows,
         notes=notes,
+        pages=pages,
         watermark=watermark,
     )
     return StatutoryStatements(
@@ -697,6 +737,8 @@ def _render_draft(
         notes=notes,
         rounding_flags=flags,
         html=html,
+        pages=pages,
+        company_name=entity.name,
     )
 
 
@@ -714,6 +756,9 @@ def build_statutory_statements(
     entity: StatementEntity | None = None,
     disclosure_flags: dict[str, bool] | None = None,
     watermark: str = WATERMARK,
+    practice_name: str = "",
+    period_end: str = "",
+    size_eligible: bool | None = None,
 ) -> StatutoryStatements:
     """Render a DRAFT only when every critical check has passed.
 
@@ -748,6 +793,9 @@ def build_statutory_statements(
             entity=entity,
             disclosure_flags=disclosure_flags,
             watermark=watermark,
+            practice_name=practice_name,
+            period_end=period_end,
+            size_eligible=size_eligible,
         )
     except (OSError, ValueError, KeyError) as exc:
         return _withheld(report, build_error=str(exc))
@@ -812,6 +860,9 @@ async def statements_for_version(
     )
     if company is None or company.is_deleted:
         raise ReconciliationRejected("Company not found", 404)
+    organisation = await session.scalar(
+        select(Organisation).where(Organisation.id == org_id)
+    )
     return build_statutory_statements(
         prior_year_validated=True,
         tb_lines=tb_lines,
@@ -825,4 +876,7 @@ async def statements_for_version(
         entity=entity_from_company(company),
         disclosure_flags=flags,
         watermark=watermark,
+        practice_name="" if organisation is None else organisation.name,
+        period_end=year_end.period_end.isoformat(),
+        size_eligible=year_end.size_eligible,
     )

@@ -786,6 +786,8 @@ async def finalise_draft(
             notes=document.notes,
             rounding_flags=document.rounding_flags,
             html=document.html,
+            pages=document.pages,
+            company_name=document.company_name,
         )
     ).model_dump(mode="json")
     evidence = evidence_response(graph).model_dump(mode="json")

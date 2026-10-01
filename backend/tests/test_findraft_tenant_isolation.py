@@ -74,6 +74,10 @@ def _delete_org(org_id: uuid.UUID) -> None:
             )
         )
         session.execute(
+            text("DELETE FROM findraft_render_jobs WHERE org_id = :oid"),
+            {"oid": oid},
+        )
+        session.execute(
             text("DELETE FROM findraft_draft_operations WHERE org_id = :oid"),
             {"oid": oid},
         )
@@ -353,6 +357,107 @@ def _as_login_superuser(session) -> None:
         f"rolsuper={row.rolsuper} rolbypassrls={row.rolbypassrls}",
         flush=True,
     )
+
+
+def _insert_render_job(
+    session, practice: dict, version_id: uuid.UUID, *, suffix: str
+) -> uuid.UUID:
+    job_id = uuid.uuid4()
+    session.execute(
+        text(
+            """
+            INSERT INTO findraft_render_jobs (
+              id, org_id, company_id, tb_version_id, format, status,
+              idempotency_key, watermark
+            ) VALUES (
+              :id, :org, :company, :version, 'docx', 'pending',
+              :idem, 'DRAFT'
+            )
+            """
+        ),
+        {
+            "id": str(job_id),
+            "org": str(practice["org_id"]),
+            "company": str(practice["company_id"]),
+            "version": str(version_id),
+            "idem": f"docx-{suffix}",
+        },
+    )
+    return job_id
+
+
+def test_render_job_unset_context_returns_no_rows(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        try:
+            _as_login_superuser(session)
+            first_version = _insert_source_and_version(session, first, suffix="rj-a")
+            second_version = _insert_source_and_version(session, second, suffix="rj-b")
+            _insert_render_job(session, first, first_version, suffix="a")
+            _insert_render_job(session, second, second_version, suffix="b")
+            _as_app_role(session)
+            count = session.execute(
+                text("SELECT count(*) FROM findraft_render_jobs")
+            ).scalar_one()
+            assert count == 0
+        finally:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+
+
+def test_render_job_app_role_sees_only_its_practice(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        try:
+            _as_login_superuser(session)
+            own_version = _insert_source_and_version(session, first, suffix="rj-own")
+            other_version = _insert_source_and_version(
+                session, second, suffix="rj-other"
+            )
+            own_id = _insert_render_job(session, first, own_version, suffix="own")
+            other_id = _insert_render_job(
+                session, second, other_version, suffix="other"
+            )
+            _as_app_role(session)
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(first["org_id"])},
+            )
+            seen = (
+                session.execute(text("SELECT id FROM findraft_render_jobs"))
+                .scalars()
+                .all()
+            )
+            assert seen == [own_id]
+            assert other_id not in seen
+        finally:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+
+
+def test_render_job_with_check_rejects_cross_tenant_insert(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        try:
+            _as_login_superuser(session)
+            version_id = _insert_source_and_version(session, second, suffix="rj-cross")
+            _as_app_role(session)
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(first["org_id"])},
+            )
+            with pytest.raises(ProgrammingError, match="row-level security"):
+                _insert_render_job(session, second, version_id, suffix="cross")
+            session.rollback()
+        finally:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
 
 
 def test_company_org_id_is_copied_from_client(two_practices: tuple[dict, dict]) -> None:

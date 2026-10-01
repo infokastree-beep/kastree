@@ -60,6 +60,7 @@ def _force_rls_on_all_tables() -> None:
         "findraft_adjustment_lines",
         "findraft_disclosure_answers",
         "findraft_draft_operations",
+        "findraft_render_jobs",
     )
     with SyncSessionLocal() as session:
         for table in tables:
@@ -302,6 +303,10 @@ def provisioned_org() -> Iterator[dict]:
                 "ALTER TABLE findraft_disclosure_answers "
                 "DISABLE TRIGGER findraft_disclosure_answers_locked_draft"
             )
+        )
+        session.execute(
+            text("DELETE FROM findraft_render_jobs WHERE org_id = :oid"),
+            {"oid": str(data["org_id"])},
         )
         session.execute(
             text("DELETE FROM findraft_draft_operations WHERE org_id = :oid"),

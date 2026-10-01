@@ -13,6 +13,7 @@ from app.schemas.year_end import (
     StatementNoteOut,
     StatementResponse,
     StatementRowOut,
+    StatutoryPageOut,
     FixedAssetGridRowOut,
     NoteLineOut,
     amount_text,
@@ -101,6 +102,11 @@ def statement_response(document: StatutoryStatements) -> StatementResponse:
                 deeplink=flag.deeplink,
             )
             for flag in document.rounding_flags
+        ],
+        company_name=document.company_name,
+        pages=[
+            StatutoryPageOut(heading=page.heading, paragraphs=list(page.paragraphs))
+            for page in document.pages
         ],
     )
 
