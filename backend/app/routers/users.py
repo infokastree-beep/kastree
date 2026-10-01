@@ -2,12 +2,24 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import AuthContext, is_platform_admin, require_reader
+from app.db import aset_rls_org_id
+from app.dependencies import (
+    AuthContext,
+    get_db_session,
+    is_platform_admin,
+    require_client_admin,
+    require_reader,
+)
+from app.schemas.audit import ErasureResponse
 from app.schemas.user import UserMeResponse
+from app.services.erasure import ErasureRejected, erase_user
+from app.services.retention import RETAINED_ON_ERASURE
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -23,4 +35,31 @@ async def get_current_user(
         email=auth.email,
         role=auth.role,
         is_platform_admin=is_platform_admin(auth),
+    )
+
+
+@router.post("/{user_id}/erasure", response_model=ErasureResponse)
+async def erase_user_personal_data(
+    user_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_client_admin)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> ErasureResponse:
+    """Replace the user's email and login id. The user row and the audit log stay."""
+    await aset_rls_org_id(session, auth.org_id)
+    try:
+        changed, statement = await erase_user(
+            session,
+            org_id=auth.org_id,
+            actor_user_id=auth.user_id,
+            actor_role=auth.role,
+            target_user_id=user_id,
+        )
+    except ErasureRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    return ErasureResponse(
+        entity_type="user",
+        entity_id=user_id,
+        erased=changed,
+        retained=list(RETAINED_ON_ERASURE),
+        statement=statement,
     )

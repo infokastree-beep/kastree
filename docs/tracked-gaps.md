@@ -1317,6 +1317,30 @@ and `FA_INTANGIBLE_COST`. Product 1's existing canonical lines are unchanged.
 `engine/mapping.aggregate()` stays out of Product 1 statement generation.
 The review-queue UI named in the Week 5 build-plan row is not this change.
 
+### Week 12 audit log and erasure
+
+Week 12 states the retention rule and then follows it. Accounting records are
+kept for 7 years: the 6-year floor in Companies Act 2014 section 285 and
+Taxes Consolidation Act 1997 section 886, plus a 1-year engineering buffer.
+The buffer is not a statutory requirement.
+
+An erasure request replaces personal data the practice is not required to
+keep. A user's email and login identifier are replaced with a non-identifying
+value. A client name becomes `[Redacted Client]`. Company legal names,
+director names, and trial-balance account names stay, because they are part
+of the accounting record.
+
+Erasure does not delete, and does not rewrite, trial balances, mappings,
+drafts, statements, source documents, `archived_records`, or `audit_logs`.
+Those records win over the erasure request. An archive keeps its hash and
+its `retention_until`. The audit log is append-only: the app role has no
+UPDATE or DELETE, a trigger refuses both, and each row carries a `prev_hash`
+link. Erasure appends a new row and does not copy the erased name into it.
+A name already stored in an earlier archive stays there.
+
+The audit-trail CSV escapes formula-leading `=`, `+`, `-`, and `@`. The
+auditor's-report slot, note overrides, and the UK pack stay cut.
+
 ### Week 11 statutory pages and DOCX
 
 Week 11 of the v7.6 §9 plan names a small-company directors' report, the

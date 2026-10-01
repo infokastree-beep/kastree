@@ -305,6 +305,15 @@ def provisioned_org() -> Iterator[dict]:
             )
         )
         session.execute(
+            text(
+                "ALTER TABLE audit_logs DISABLE TRIGGER findraft_audit_log_append_only"
+            )
+        )
+        session.execute(
+            text("DELETE FROM audit_logs WHERE org_id = :oid"),
+            {"oid": str(data["org_id"])},
+        )
+        session.execute(
             text("DELETE FROM findraft_render_jobs WHERE org_id = :oid"),
             {"oid": str(data["org_id"])},
         )
@@ -422,6 +431,9 @@ def provisioned_org() -> Iterator[dict]:
         session.execute(
             text("DELETE FROM organisations WHERE id = :oid"),
             {"oid": str(data["org_id"])},
+        )
+        session.execute(
+            text("ALTER TABLE audit_logs ENABLE TRIGGER findraft_audit_log_append_only")
         )
         session.commit()
 
