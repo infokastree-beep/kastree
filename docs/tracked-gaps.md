@@ -1305,6 +1305,18 @@ The specification also names an excluded-entity eligibility check and does
 not list the excluded categories. That list was not invented. Week 4 applies
 the size test only.
 
+### Week 5 mapping exclusions
+
+Product 1 `mapper.py` now applies the FinDraft exclusions: liability, director,
+and tax-term names never suggest cash; P&L wording never suggests a
+balance-sheet line; statutory heuristic scores stay below 80. A confirmed
+prior exact match is the only path to 100. `suggest_statutory_mapping` emits
+the pack's engine line names, plus `BANK_OVERDRAFT`, `FA_INTANGIBLE_AMORT`,
+and `FA_INTANGIBLE_COST`. Product 1's existing canonical lines are unchanged.
+
+`engine/mapping.aggregate()` stays out of Product 1 statement generation.
+The review-queue UI named in the Week 5 build-plan row is not this change.
+
 ### Week 3 trial-balance ingestion
 
 The four vendor-named parsers (Sage, Xero, QuickBooks, Big Red Book) stay
