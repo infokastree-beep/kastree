@@ -1317,6 +1317,18 @@ and `FA_INTANGIBLE_COST`. Product 1's existing canonical lines are unchanged.
 `engine/mapping.aggregate()` stays out of Product 1 statement generation.
 The review-queue UI named in the Week 5 build-plan row is not this change.
 
+### Week 7 reconciliation v2
+
+Reconciliation now also runs the engine fixed-asset roll-forward, the
+comparative check, and the pinned pack's review rules. Comparatives are the
+stored prior-year canonical balances rendered by `prior_from_mapped`. A rule
+that cannot be evaluated stays CRITICAL. A ready fixed-asset register is the
+roll-forward; with no register, a non-zero fixed-asset face fails `V-FA-001`.
+
+Bank reconciliation stays the row 13 cut. `check_bank_reconciliation` is not
+called. No new table was added. Review-rule results are computed on the
+reconciliation read. They are not stored.
+
 ### Week 6 reconciliation v1
 
 Reconciliation runs the engine checks for the trial balance, the balance sheet,
