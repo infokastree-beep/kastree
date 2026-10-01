@@ -1317,6 +1317,23 @@ and `FA_INTANGIBLE_COST`. Product 1's existing canonical lines are unchanged.
 `engine/mapping.aggregate()` stays out of Product 1 statement generation.
 The review-queue UI named in the Week 5 build-plan row is not this change.
 
+### Week 10 adjustments, roles, and locking
+
+The adjustment journal is a balanced set of draft lines the preparer posts
+onto the statutory computation. It is not a journal parser, not GL ingestion,
+and not a second evidence document. The evidence graph still returns the
+single trial-balance source. An adjustment line has no trial-balance row id.
+It is a draft input, and the face still has to tie.
+
+Note overrides and text blocks are the in-app editing cut. Those tables are
+not created. The lock trigger therefore covers adjustment journals, adjustment
+lines, disclosure answers, and confirmed mappings. It does not cover tables
+this week refuses to add.
+
+`findraft/web` does not exist. The red/amber/green review state is the
+dashboard API. A second frontend was not added. The directors' report and
+DOCX stay later weeks.
+
 ### Week 9 statutory evidence graph
 
 A renderable DRAFT can be read as a graph from each face figure back to the

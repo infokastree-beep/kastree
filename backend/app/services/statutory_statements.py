@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
 from app.models.company import Company
+from app.services.draft_inputs import adjusted_for_draft, latest_draft
 from app.models.tb_version import TrialBalanceVersion
 from app.services.reconciliation import (
     ReconciliationCheck,
@@ -44,6 +45,7 @@ from findraft.engine.statements import (
     build_sofp,
     prior_from_mapped,
 )
+from findraft.models.draft_version import DraftVersion
 from findraft.models.year_end import YearEnd
 
 WATERMARK = "DRAFT"
@@ -68,7 +70,7 @@ _DOCUMENT = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>DRAFT statutory statements</title>
+<title>{{ watermark }} statutory statements</title>
 <style>
   body { font-family: sans-serif; color: #111; }
   .watermark { color: #9a3412; font-weight: 700; letter-spacing: 0.12em; }
@@ -79,7 +81,7 @@ _DOCUMENT = """<!DOCTYPE html>
 </style>
 </head>
 <body>
-<p class="watermark">DRAFT</p>
+<p class="watermark">{{ watermark }}</p>
 <h1>{{ company_name }}</h1>
 <h2>Statement of financial position</h2>
 <p>{{ compliance_statement }}</p>
@@ -592,6 +594,7 @@ def _render_html(
     sofp: tuple[StatementRow, ...],
     income: tuple[StatementRow, ...],
     notes: tuple[StatementNote, ...],
+    watermark: str,
 ) -> str:
     note_view = [
         {
@@ -619,6 +622,7 @@ def _render_html(
         sofp=_display_rows(sofp),
         income=_display_rows(income),
         notes=note_view,
+        watermark=watermark,
     )
 
 
@@ -632,6 +636,8 @@ def _render_draft(
     pack_id: str | None,
     pack_version: str | None,
     entity: StatementEntity,
+    disclosure_flags: dict[str, bool] | None = None,
+    watermark: str = WATERMARK,
 ) -> StatutoryStatements:
     directory = (
         pack_dir(pack_id, pack_version)
@@ -652,7 +658,7 @@ def _render_draft(
     if not isinstance(compliance, str) or not compliance:
         raise ValueError("compliance statement is missing")
     templates = _load_templates(directory)
-    ctx = build_note_context(aggregated, templates)
+    ctx = build_note_context(aggregated, templates, disclosure_flags)
     if not isinstance(ctx, dict):
         raise ValueError("note context is missing")
     selected = select_notes(templates, ctx)
@@ -675,9 +681,10 @@ def _render_draft(
         sofp=sofp_rows,
         income=income_rows,
         notes=notes,
+        watermark=watermark,
     )
     return StatutoryStatements(
-        watermark=WATERMARK,
+        watermark=watermark,
         renderable=True,
         blocked=False,
         build_error=None,
@@ -705,6 +712,8 @@ def build_statutory_statements(
     pack_id: str | None = None,
     pack_version: str | None = None,
     entity: StatementEntity | None = None,
+    disclosure_flags: dict[str, bool] | None = None,
+    watermark: str = WATERMARK,
 ) -> StatutoryStatements:
     """Render a DRAFT only when every critical check has passed.
 
@@ -737,6 +746,8 @@ def build_statutory_statements(
             pack_id=pack_id,
             pack_version=pack_version,
             entity=entity,
+            disclosure_flags=disclosure_flags,
+            watermark=watermark,
         )
     except (OSError, ValueError, KeyError) as exc:
         return _withheld(report, build_error=str(exc))
@@ -748,20 +759,50 @@ async def statements_for_version(
     org_id: uuid.UUID,
     year_end: YearEnd,
     version: TrialBalanceVersion,
+    watermark: str = WATERMARK,
+    use_draft: DraftVersion | None = None,
 ) -> StatutoryStatements:
-    """Same confirmed inputs as reconciliation. A pending version is refused."""
+    """Same confirmed inputs as reconciliation, plus this draft's adjustments.
+
+    A FINAL draft is not recomputed here. The caller reads its snapshot.
+    ``use_draft`` binds a specific version when it is not the latest.
+    """
     if not year_end.prior_year_validated:
         return build_statutory_statements(
             prior_year_validated=False,
             tb_lines=[],
             mappings={},
             prior_retained_earnings=Decimal("0"),
+            watermark=watermark,
         )
     if version.status != "ready":
         raise ReconciliationRejected("Trial balance version is not ready")
+    draft: DraftVersion | None
+    if use_draft is not None:
+        if use_draft.org_id != org_id or use_draft.tb_version_id != version.id:
+            raise ReconciliationRejected("Draft not found", 404)
+        draft = use_draft
+    else:
+        draft = await latest_draft(session, org_id=org_id, tb_version_id=version.id)
+    if draft is not None and draft.status == "final":
+        raise ReconciliationRejected("FINAL output is stored on the draft", 409)
     loaded = await load_confirmed_inputs(
         session, org_id=org_id, year_end=year_end, version=version
     )
+    flags: dict[str, bool] | None = None
+    tb_lines = loaded.tb_lines
+    mappings = loaded.mappings
+    if draft is not None:
+        adjusted = await adjusted_for_draft(
+            session,
+            org_id=org_id,
+            draft=draft,
+            tb_lines=loaded.tb_lines,
+            mappings=loaded.mappings,
+        )
+        tb_lines = adjusted.tb_lines
+        mappings = adjusted.mappings
+        flags = adjusted.flags or None
     await aset_rls_org_id(session, org_id)
     company = await session.scalar(
         select(Company).where(
@@ -773,8 +814,8 @@ async def statements_for_version(
         raise ReconciliationRejected("Company not found", 404)
     return build_statutory_statements(
         prior_year_validated=True,
-        tb_lines=loaded.tb_lines,
-        mappings=loaded.mappings,
+        tb_lines=tb_lines,
+        mappings=mappings,
         prior_retained_earnings=loaded.prior_retained_earnings,
         prior_canonical=loaded.prior_canonical,
         fa_register=loaded.fa_register,
@@ -782,4 +823,6 @@ async def statements_for_version(
         pack_id=year_end.pack_id,
         pack_version=year_end.pack_version,
         entity=entity_from_company(company),
+        disclosure_flags=flags,
+        watermark=watermark,
     )

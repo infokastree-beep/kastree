@@ -49,6 +49,7 @@ class TrialBalanceVersionResponse(BaseModel):
     status: str
     error_message: str | None
     draft_version_number: int | None = None
+    draft_id: uuid.UUID | None = None
 
 
 class PriorYearLineIn(BaseModel):
@@ -321,3 +322,104 @@ class SizeEligibilityResponse(BaseModel):
     current_conditions_met: int
     preceding_conditions_met: int | None
     message: str
+
+
+class DashboardCheckOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    severity: str
+    passed: bool
+    message: str
+
+
+class DashboardResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    draft_id: uuid.UUID
+    status: str
+    row_version: int
+    traffic: Literal["red", "amber", "green"]
+    can_finalise: bool
+    unanswered_disclosures: list[str]
+    checks: list[DashboardCheckOut]
+
+
+class AdjustmentLineIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nominal_code: str = Field(min_length=1, max_length=64)
+    account_name: str = Field(min_length=1, max_length=255)
+    canonical_line: str = Field(min_length=1, max_length=64)
+    debit: str = Field(min_length=1, max_length=32)
+    credit: str = Field(min_length=1, max_length=32)
+
+
+class AdjustmentPostRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    row_version: int = Field(ge=1)
+    narration: str = Field(min_length=1, max_length=500)
+    lines: list[AdjustmentLineIn] = Field(min_length=2)
+
+
+class AdjustmentPostResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    journal_id: uuid.UUID
+    draft_id: uuid.UUID
+    row_version: int
+    line_count: int
+
+
+class DisclosureAnswerRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    row_version: int = Field(ge=1)
+    flag_name: str = Field(min_length=1, max_length=64)
+    answer: Literal["yes", "no", "unanswered"]
+
+
+class DisclosureAnswerResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    draft_id: uuid.UUID
+    row_version: int
+    flag_name: str
+    answer: Literal["yes", "no", "unanswered"]
+
+
+class DraftMutationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    row_version: int = Field(ge=1)
+
+
+class DraftStatusResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    draft_id: uuid.UUID
+    status: str
+    row_version: int
+
+
+class NewDraftVersionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    draft_id: uuid.UUID
+    version_number: int
+    row_version: int
+    status: str
+
+
+class FinaliseResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    draft_id: uuid.UUID
+    status: str
+    row_version: int
+    inputs_sha256: str
+    engine_sha: str
+    pack_id: str
+    pack_version: str
+    traffic: Literal["red", "amber", "green"]

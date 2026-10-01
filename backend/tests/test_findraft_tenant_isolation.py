@@ -13,6 +13,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterator
 from datetime import date
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import text
@@ -22,6 +23,12 @@ from app.db import SyncSessionLocal, set_rls_org_id
 from app.models.client import Client
 from app.models.company import Company
 from app.services.org_provisioning import provision_first_signup
+from findraft.models.adjustments import (
+    AdjustmentJournal,
+    AdjustmentLine,
+    DisclosureAnswer,
+    DraftOperation,
+)
 from findraft.models.draft_version import DraftVersion
 from findraft.models.year_end import YearEnd
 
@@ -41,6 +48,46 @@ def _delete_org(org_id: uuid.UUID) -> None:
                 "ALTER TABLE findraft_confirmed_mappings "
                 "DISABLE TRIGGER findraft_confirmed_mappings_immutable"
             )
+        )
+        session.execute(
+            text(
+                "ALTER TABLE findraft_adjustment_journals "
+                "DISABLE TRIGGER findraft_adjustment_journals_locked_draft"
+            )
+        )
+        session.execute(
+            text(
+                "ALTER TABLE findraft_adjustment_lines "
+                "DISABLE TRIGGER findraft_adjustment_lines_locked_draft"
+            )
+        )
+        session.execute(
+            text(
+                "ALTER TABLE findraft_adjustment_lines "
+                "DISABLE TRIGGER findraft_adjustment_journal_must_balance"
+            )
+        )
+        session.execute(
+            text(
+                "ALTER TABLE findraft_disclosure_answers "
+                "DISABLE TRIGGER findraft_disclosure_answers_locked_draft"
+            )
+        )
+        session.execute(
+            text("DELETE FROM findraft_draft_operations WHERE org_id = :oid"),
+            {"oid": oid},
+        )
+        session.execute(
+            text("DELETE FROM findraft_adjustment_lines WHERE org_id = :oid"),
+            {"oid": oid},
+        )
+        session.execute(
+            text("DELETE FROM findraft_adjustment_journals WHERE org_id = :oid"),
+            {"oid": oid},
+        )
+        session.execute(
+            text("DELETE FROM findraft_disclosure_answers WHERE org_id = :oid"),
+            {"oid": oid},
         )
         session.execute(
             text("DELETE FROM findraft_confirmed_mappings WHERE org_id = :oid"),
@@ -80,6 +127,30 @@ def _delete_org(org_id: uuid.UUID) -> None:
             text(
                 "ALTER TABLE findraft_prior_year_lines "
                 "ENABLE TRIGGER findraft_prior_year_lines_locked"
+            )
+        )
+        session.execute(
+            text(
+                "ALTER TABLE findraft_adjustment_journals "
+                "ENABLE TRIGGER findraft_adjustment_journals_locked_draft"
+            )
+        )
+        session.execute(
+            text(
+                "ALTER TABLE findraft_adjustment_lines "
+                "ENABLE TRIGGER findraft_adjustment_lines_locked_draft"
+            )
+        )
+        session.execute(
+            text(
+                "ALTER TABLE findraft_adjustment_lines "
+                "ENABLE TRIGGER findraft_adjustment_journal_must_balance"
+            )
+        )
+        session.execute(
+            text(
+                "ALTER TABLE findraft_disclosure_answers "
+                "ENABLE TRIGGER findraft_disclosure_answers_locked_draft"
             )
         )
         session.execute(
@@ -165,6 +236,63 @@ def _provision(suffix: str) -> dict:
             pack_version=year_end.pack_version,
         )
         session.add(draft)
+        session.flush()
+        journal = AdjustmentJournal(
+            org_id=company.org_id,
+            company_id=company.id,
+            draft_version_id=draft.id,
+            narration=f"Reclass {suffix}",
+        )
+        session.add(journal)
+        session.flush()
+        session.add(
+            AdjustmentLine(
+                org_id=company.org_id,
+                company_id=company.id,
+                journal_id=journal.id,
+                draft_version_id=draft.id,
+                line_no=1,
+                nominal_code="2110",
+                account_name="Other debtors",
+                canonical_line="OTHER_DEBTORS",
+                debit=Decimal("10.00"),
+                credit=Decimal("0.00"),
+            )
+        )
+        session.add(
+            AdjustmentLine(
+                org_id=company.org_id,
+                company_id=company.id,
+                journal_id=journal.id,
+                draft_version_id=draft.id,
+                line_no=2,
+                nominal_code="2130",
+                account_name="Bank current account",
+                canonical_line="CASH",
+                debit=Decimal("0.00"),
+                credit=Decimal("10.00"),
+            )
+        )
+        session.add(
+            DisclosureAnswer(
+                org_id=company.org_id,
+                company_id=company.id,
+                draft_version_id=draft.id,
+                flag_name="GOODWILL",
+                answer=False,
+            )
+        )
+        session.add(
+            DraftOperation(
+                org_id=company.org_id,
+                company_id=company.id,
+                draft_version_id=draft.id,
+                action="adjust",
+                idempotency_key=f"iso-{suffix}",
+                request_sha256="a" * 64,
+                response={"ok": True},
+            )
+        )
         session.commit()
         return {
             "org_id": provisioned.organisation.id,
@@ -250,8 +378,24 @@ def test_unset_tenant_context_returns_no_rows(
             drafts = session.execute(
                 text("SELECT count(*) FROM findraft_draft_versions")
             ).scalar_one()
+            journals = session.execute(
+                text("SELECT count(*) FROM findraft_adjustment_journals")
+            ).scalar_one()
+            lines = session.execute(
+                text("SELECT count(*) FROM findraft_adjustment_lines")
+            ).scalar_one()
+            answers = session.execute(
+                text("SELECT count(*) FROM findraft_disclosure_answers")
+            ).scalar_one()
+            operations = session.execute(
+                text("SELECT count(*) FROM findraft_draft_operations")
+            ).scalar_one()
             assert year_ends == 0
             assert drafts == 0
+            assert journals == 0
+            assert lines == 0
+            assert answers == 0
+            assert operations == 0
         finally:
             session.rollback()
             session.execute(text("RESET ROLE"))
@@ -278,8 +422,30 @@ def test_app_role_sees_only_its_practice(
                 .scalars()
                 .all()
             )
+            journal_orgs = (
+                session.execute(text("SELECT org_id FROM findraft_adjustment_journals"))
+                .scalars()
+                .all()
+            )
+            line_count = session.execute(
+                text("SELECT count(*) FROM findraft_adjustment_lines")
+            ).scalar_one()
+            answer_orgs = (
+                session.execute(text("SELECT org_id FROM findraft_disclosure_answers"))
+                .scalars()
+                .all()
+            )
+            operation_orgs = (
+                session.execute(text("SELECT org_id FROM findraft_draft_operations"))
+                .scalars()
+                .all()
+            )
             assert year_ids == [first["year_end_id"]]
             assert draft_ids == [first["draft_id"]]
+            assert journal_orgs == [first["org_id"]]
+            assert line_count == 2
+            assert answer_orgs == [first["org_id"]]
+            assert operation_orgs == [first["org_id"]]
             assert second["year_end_id"] not in year_ids
         finally:
             session.rollback()
@@ -319,6 +485,165 @@ def test_with_check_rejects_cross_tenant_insert(
         finally:
             session.rollback()
             session.execute(text("RESET ROLE"))
+
+
+def test_with_check_rejects_cross_tenant_adjustment(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        try:
+            _as_app_role(session)
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(first["org_id"])},
+            )
+            with pytest.raises(ProgrammingError, match="row-level security"):
+                session.execute(
+                    text(
+                        """
+                        INSERT INTO findraft_adjustment_journals (
+                          id, org_id, company_id, draft_version_id, narration
+                        ) VALUES (
+                          :id, :org, :company, :draft, 'cross'
+                        )
+                        """
+                    ),
+                    {
+                        "id": str(uuid.uuid4()),
+                        "org": str(second["org_id"]),
+                        "company": str(second["company_id"]),
+                        "draft": str(second["draft_id"]),
+                    },
+                )
+            session.rollback()
+        finally:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+
+
+def test_unbalanced_adjustment_is_refused_at_commit(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, _second = two_practices
+    with SyncSessionLocal() as session:
+        _as_login_superuser(session)
+        journal_id = uuid.uuid4()
+        session.execute(
+            text(
+                """
+                INSERT INTO findraft_adjustment_journals (
+                  id, org_id, company_id, draft_version_id, narration
+                ) VALUES (:id, :org, :company, :draft, 'one sided')
+                """
+            ),
+            {
+                "id": str(journal_id),
+                "org": str(first["org_id"]),
+                "company": str(first["company_id"]),
+                "draft": str(first["draft_id"]),
+            },
+        )
+        session.execute(
+            text(
+                """
+                INSERT INTO findraft_adjustment_lines (
+                  id, org_id, company_id, journal_id, draft_version_id, line_no,
+                  nominal_code, account_name, canonical_line, debit, credit
+                ) VALUES (
+                  :id, :org, :company, :journal, :draft, 1,
+                  '2110', 'Other debtors', 'OTHER_DEBTORS', 10.00, 0
+                )
+                """
+            ),
+            {
+                "id": str(uuid.uuid4()),
+                "org": str(first["org_id"]),
+                "company": str(first["company_id"]),
+                "journal": str(journal_id),
+                "draft": str(first["draft_id"]),
+            },
+        )
+        with pytest.raises(DBAPIError, match="does not balance"):
+            session.commit()
+        session.rollback()
+
+
+def test_locked_draft_refuses_child_writes(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, _second = two_practices
+    with SyncSessionLocal() as session:
+        _as_login_superuser(session)
+        session.execute(
+            text(
+                "UPDATE findraft_draft_versions SET status = 'locked' " "WHERE id = :id"
+            ),
+            {"id": str(first["draft_id"])},
+        )
+        session.commit()
+    with SyncSessionLocal() as session:
+        _as_login_superuser(session)
+        with pytest.raises(DBAPIError, match="writes are refused"):
+            session.execute(
+                text(
+                    """
+                    INSERT INTO findraft_disclosure_answers (
+                      id, org_id, company_id, draft_version_id, flag_name, answer
+                    ) VALUES (
+                      :id, :org, :company, :draft, 'HAS_EMPLOYEES', false
+                    )
+                    """
+                ),
+                {
+                    "id": str(uuid.uuid4()),
+                    "org": str(first["org_id"]),
+                    "company": str(first["company_id"]),
+                    "draft": str(first["draft_id"]),
+                },
+            )
+            session.commit()
+        session.rollback()
+
+
+def test_final_snapshot_is_immutable(two_practices: tuple[dict, dict]) -> None:
+    first, _second = two_practices
+    digest = "b" * 64
+    with SyncSessionLocal() as session:
+        _as_login_superuser(session)
+        session.execute(
+            text(
+                """
+                UPDATE findraft_draft_versions
+                SET status = 'final',
+                    snapshot = CAST(:snapshot AS jsonb),
+                    inputs_sha256 = :digest,
+                    engine_sha = :digest
+                WHERE id = :id
+                """
+            ),
+            {
+                "id": str(first["draft_id"]),
+                "snapshot": '{"watermark": "FINAL"}',
+                "digest": digest,
+            },
+        )
+        session.commit()
+    with SyncSessionLocal() as session:
+        _as_login_superuser(session)
+        with pytest.raises(DBAPIError, match="FINAL draft is immutable"):
+            session.execute(
+                text(
+                    """
+                    UPDATE findraft_draft_versions
+                    SET snapshot = CAST('{"watermark": "CHANGED"}' AS jsonb)
+                    WHERE id = :id
+                    """
+                ),
+                {"id": str(first["draft_id"])},
+            )
+            session.commit()
+        session.rollback()
 
 
 def test_composite_fk_rejects_mismatched_company(

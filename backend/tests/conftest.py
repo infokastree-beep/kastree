@@ -56,6 +56,10 @@ def _force_rls_on_all_tables() -> None:
         "findraft_fa_versions",
         "findraft_fa_lines",
         "findraft_confirmed_mappings",
+        "findraft_adjustment_journals",
+        "findraft_adjustment_lines",
+        "findraft_disclosure_answers",
+        "findraft_draft_operations",
     )
     with SyncSessionLocal() as session:
         for table in tables:
@@ -276,6 +280,46 @@ def provisioned_org() -> Iterator[dict]:
             )
         )
         session.execute(
+            text(
+                "ALTER TABLE findraft_adjustment_journals "
+                "DISABLE TRIGGER findraft_adjustment_journals_locked_draft"
+            )
+        )
+        session.execute(
+            text(
+                "ALTER TABLE findraft_adjustment_lines "
+                "DISABLE TRIGGER findraft_adjustment_lines_locked_draft"
+            )
+        )
+        session.execute(
+            text(
+                "ALTER TABLE findraft_adjustment_lines "
+                "DISABLE TRIGGER findraft_adjustment_journal_must_balance"
+            )
+        )
+        session.execute(
+            text(
+                "ALTER TABLE findraft_disclosure_answers "
+                "DISABLE TRIGGER findraft_disclosure_answers_locked_draft"
+            )
+        )
+        session.execute(
+            text("DELETE FROM findraft_draft_operations WHERE org_id = :oid"),
+            {"oid": str(data["org_id"])},
+        )
+        session.execute(
+            text("DELETE FROM findraft_adjustment_lines WHERE org_id = :oid"),
+            {"oid": str(data["org_id"])},
+        )
+        session.execute(
+            text("DELETE FROM findraft_adjustment_journals WHERE org_id = :oid"),
+            {"oid": str(data["org_id"])},
+        )
+        session.execute(
+            text("DELETE FROM findraft_disclosure_answers WHERE org_id = :oid"),
+            {"oid": str(data["org_id"])},
+        )
+        session.execute(
             text("DELETE FROM findraft_confirmed_mappings WHERE org_id = :oid"),
             {"oid": str(data["org_id"])},
         )
@@ -317,6 +361,30 @@ def provisioned_org() -> Iterator[dict]:
             text(
                 "ALTER TABLE findraft_prior_year_lines "
                 "ENABLE TRIGGER findraft_prior_year_lines_locked"
+            )
+        )
+        session.execute(
+            text(
+                "ALTER TABLE findraft_adjustment_journals "
+                "ENABLE TRIGGER findraft_adjustment_journals_locked_draft"
+            )
+        )
+        session.execute(
+            text(
+                "ALTER TABLE findraft_adjustment_lines "
+                "ENABLE TRIGGER findraft_adjustment_lines_locked_draft"
+            )
+        )
+        session.execute(
+            text(
+                "ALTER TABLE findraft_adjustment_lines "
+                "ENABLE TRIGGER findraft_adjustment_journal_must_balance"
+            )
+        )
+        session.execute(
+            text(
+                "ALTER TABLE findraft_disclosure_answers "
+                "ENABLE TRIGGER findraft_disclosure_answers_locked_draft"
             )
         )
         session.execute(

@@ -16,7 +16,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -79,6 +79,17 @@ class DraftVersion(Base):
     tb_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("findraft_tb_versions.id"),
+        nullable=True,
+    )
+    row_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    snapshot: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    inputs_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    engine_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    finalised_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
         nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
