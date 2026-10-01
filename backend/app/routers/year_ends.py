@@ -35,6 +35,10 @@ from app.schemas.year_end import (
     PriorYearConfirmRequest,
     PriorYearLineOut,
     PriorYearResponse,
+    EvidenceAccountOut,
+    EvidenceDocumentOut,
+    EvidenceLineOut,
+    EvidenceResponse,
     FixedAssetGridRowOut,
     NoteLineOut,
     ReconciliationCheckOut,
@@ -72,6 +76,7 @@ from app.services.reconciliation import (
     confirm_mappings,
     reconcile_version,
 )
+from app.services.statutory_evidence import EvidenceGraph, evidence_for_version
 from app.services.statutory_statements import (
     StatutoryStatements,
     statements_for_version,
@@ -603,6 +608,80 @@ async def get_statement_pdf(
             "Content-Disposition": 'inline; filename="statutory-statements-draft.pdf"',
         },
     )
+
+
+def _evidence_response(graph: EvidenceGraph) -> EvidenceResponse:
+    return EvidenceResponse(
+        renderable=graph.renderable,
+        blocked=graph.blocked,
+        build_error=graph.build_error,
+        checks=[
+            ReconciliationCheckOut(
+                code=item.code,
+                severity=item.severity,
+                passed=item.passed,
+                message=item.message,
+            )
+            for item in graph.checks
+        ],
+        documents=[
+            EvidenceDocumentOut(
+                id=document.id,
+                filename=document.filename,
+                detected_type=document.detected_type,
+                role=document.role,
+            )
+            for document in graph.documents
+        ],
+        lines=[
+            EvidenceLineOut(
+                statement=line.statement,
+                label=line.label,
+                amount=amount_text(line.amount),
+                components=list(line.components),
+                accounts=[
+                    EvidenceAccountOut(
+                        tb_line_id=account.tb_line_id,
+                        nominal_code=account.nominal_code,
+                        account_name=account.account_name,
+                        mapped_line=account.mapped_line,
+                        presented_line=account.presented_line,
+                        balance=amount_text(account.balance),
+                        contribution=amount_text(account.contribution),
+                        source_document_id=account.source_document_id,
+                    )
+                    for account in line.accounts
+                ],
+            )
+            for line in graph.lines
+        ],
+    )
+
+
+@router.get(
+    "/{year_end_id}/trial-balance-versions/{version_id}/statements/evidence",
+    response_model=EvidenceResponse,
+)
+async def get_statement_evidence(
+    year_end_id: uuid.UUID,
+    version_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> EvidenceResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    version = await _owned_tb_version(
+        session, year_end=year_end, version_id=version_id, org_id=auth.org_id
+    )
+    try:
+        graph = await evidence_for_version(
+            session, org_id=auth.org_id, year_end=year_end, version=version
+        )
+    except ReconciliationRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    return _evidence_response(graph)
 
 
 def _fa_response(

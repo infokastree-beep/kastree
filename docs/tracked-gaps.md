@@ -1317,6 +1317,21 @@ and `FA_INTANGIBLE_COST`. Product 1's existing canonical lines are unchanged.
 `engine/mapping.aggregate()` stays out of Product 1 statement generation.
 The review-queue UI named in the Week 5 build-plan row is not this change.
 
+### Week 9 statutory evidence graph
+
+A renderable DRAFT can be read as a graph from each face figure back to the
+trial-balance accounts that compose it, and from those accounts to the
+trial-balance source document. `aggregate().sources` supplies the accounts.
+The service checks that they add back to the engine face amount, including
+subtotals and the profit and loss account. A graph that does not tie is
+withheld.
+
+The fixed-asset register is a linked document. Its movement columns are not
+added into the face. Journals are not stored. Drill-down past the trial
+balance into general-ledger transactions stays the row 13 cut.
+
+No new table was added. The graph is computed on the read.
+
 ### Week 8 statutory statements
 
 A ready trial balance with an open prior-year gate can be read as a DRAFT
