@@ -1317,6 +1317,31 @@ and `FA_INTANGIBLE_COST`. Product 1's existing canonical lines are unchanged.
 `engine/mapping.aggregate()` stays out of Product 1 statement generation.
 The review-queue UI named in the Week 5 build-plan row is not this change.
 
+### Week 11 statutory pages and DOCX
+
+Week 11 of the v7.6 §9 plan names a small-company directors' report, the
+approval and audit-exemption statements, a compilation report, DOCX export,
+and an auditor's-report attachment slot. The slot is the row 13 cut. It is
+not built: no placeholder page, no upload, no `draft_attachments` table, and
+no generated audit opinion. An unaudited draft carries the audit-exemption
+page instead.
+
+The four pages are deterministic. They use the entity record and the profit
+figure the statement engine already produced. A missing director, secretary,
+principal activity, approval date, practice name, or size test stays missing.
+The draft does not invent a section 335 declaration, a section 334 notice,
+or a dividend.
+
+Note overrides, text blocks, and report styles stay the in-app editing cut.
+DOCX is the export. The Week 8 PDF GET still returns PDF bytes on that
+request. The new DOCX path returns a job id. A Postgres worker claims the
+job with `FOR UPDATE SKIP LOCKED` and renders in a child process with an
+address-space cap and a timeout. Celery and Redis are not added.
+
+A FINAL DOCX is built from the stored snapshot. A later change to the
+company record does not change that file. Evidence stays the single
+trial-balance document.
+
 ### Week 10 adjustments, roles, and locking
 
 The adjustment journal is a balanced set of draft lines the preparer posts
