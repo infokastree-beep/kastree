@@ -8,7 +8,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,9 +35,15 @@ from app.schemas.year_end import (
     PriorYearConfirmRequest,
     PriorYearLineOut,
     PriorYearResponse,
+    FixedAssetGridRowOut,
+    NoteLineOut,
     ReconciliationCheckOut,
     ReconciliationGateResponse,
     ReconciliationResponse,
+    RoundingFlagOut,
+    StatementNoteOut,
+    StatementResponse,
+    StatementRowOut,
     SizeEligibilityRequest,
     SizeEligibilityResponse,
     TrialBalanceVersionCreate,
@@ -65,6 +71,11 @@ from app.services.reconciliation import (
     ReconciliationReport,
     confirm_mappings,
     reconcile_version,
+)
+from app.services.statutory_statements import (
+    StatutoryStatements,
+    statements_for_version,
+    write_statement_pdf,
 )
 from findraft.engine.notes import build_fa_grid
 from findraft.engine.pack import load_manifest, pack_dir, pin_pack_version
@@ -441,6 +452,157 @@ async def get_reconciliation(
     except ReconciliationRejected as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     return _report_response(report)
+
+
+def _statement_response(document: StatutoryStatements) -> StatementResponse:
+    return StatementResponse(
+        watermark=document.watermark,
+        renderable=document.renderable,
+        blocked=document.blocked,
+        build_error=document.build_error,
+        checks=[
+            ReconciliationCheckOut(
+                code=item.code,
+                severity=item.severity,
+                passed=item.passed,
+                message=item.message,
+            )
+            for item in document.checks
+        ],
+        net_assets=None
+        if document.net_assets is None
+        else amount_text(document.net_assets),
+        profit=None if document.profit is None else amount_text(document.profit),
+        compliance_statement=document.compliance_statement,
+        sofp=[
+            StatementRowOut(
+                label=row.label,
+                current=amount_text(row.current),
+                prior=None if row.prior is None else amount_text(row.prior),
+            )
+            for row in document.sofp
+        ],
+        income=[
+            StatementRowOut(
+                label=row.label,
+                current=amount_text(row.current),
+                prior=None if row.prior is None else amount_text(row.prior),
+            )
+            for row in document.income
+        ],
+        notes=[
+            StatementNoteOut(
+                code=note.code,
+                title=note.title,
+                body=note.body,
+                lines=[
+                    NoteLineOut(
+                        line=line.line,
+                        current=amount_text(line.current),
+                        prior=amount_text(line.prior),
+                    )
+                    for line in note.lines
+                ],
+                fa_rows=[
+                    FixedAssetGridRowOut(
+                        asset_class=row.asset_class,
+                        opening_cost=amount_text(row.opening_cost),
+                        additions=amount_text(row.additions),
+                        disposals=amount_text(row.disposals),
+                        disposals_dep=amount_text(row.disposals_dep),
+                        closing_cost=amount_text(row.closing_cost),
+                        opening_dep=amount_text(row.opening_dep),
+                        charge=amount_text(row.charge),
+                        closing_dep=amount_text(row.closing_dep),
+                        nbv_close=amount_text(row.nbv_close),
+                        nbv_open=amount_text(row.nbv_open),
+                    )
+                    for row in note.fa_rows
+                ],
+            )
+            for note in document.notes
+        ],
+        rounding_flags=[
+            RoundingFlagOut(
+                statement_line_id=flag.statement_line_id,
+                flagged=flag.flagged,
+                gap=amount_text(flag.gap),
+                deeplink=flag.deeplink,
+            )
+            for flag in document.rounding_flags
+        ],
+    )
+
+
+async def _load_statements(
+    *,
+    year_end_id: uuid.UUID,
+    version_id: uuid.UUID,
+    auth: AuthContext,
+    session: AsyncSession,
+) -> StatutoryStatements:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    version = await _owned_tb_version(
+        session, year_end=year_end, version_id=version_id, org_id=auth.org_id
+    )
+    try:
+        return await statements_for_version(
+            session, org_id=auth.org_id, year_end=year_end, version=version
+        )
+    except ReconciliationRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+
+@router.get(
+    "/{year_end_id}/trial-balance-versions/{version_id}/statements",
+    response_model=StatementResponse,
+)
+async def get_statements(
+    year_end_id: uuid.UUID,
+    version_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> StatementResponse:
+    document = await _load_statements(
+        year_end_id=year_end_id,
+        version_id=version_id,
+        auth=auth,
+        session=session,
+    )
+    return _statement_response(document)
+
+
+@router.get(
+    "/{year_end_id}/trial-balance-versions/{version_id}/statements.pdf",
+)
+async def get_statement_pdf(
+    year_end_id: uuid.UUID,
+    version_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> Response:
+    document = await _load_statements(
+        year_end_id=year_end_id,
+        version_id=version_id,
+        auth=auth,
+        session=session,
+    )
+    if not document.renderable or document.html is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Statutory statements are not renderable",
+        )
+    pdf = write_statement_pdf(document.html)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": 'inline; filename="statutory-statements-draft.pdf"',
+        },
+    )
 
 
 def _fa_response(
