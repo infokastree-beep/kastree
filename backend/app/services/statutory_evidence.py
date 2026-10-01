@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import aset_rls_org_id
 from app.models.source_document import SourceDocument
 from app.models.tb_version import TrialBalanceLine, TrialBalanceVersion
+from app.services.draft_inputs import adjusted_for_draft, latest_draft
 from app.services.reconciliation import (
     ReconciliationCheck,
     load_confirmed_inputs,
@@ -32,6 +33,7 @@ from app.services.statutory_statements import (
 )
 from findraft.engine import lines as L
 from findraft.engine.mapping import aggregate
+from findraft.models.draft_version import DraftVersion
 from findraft.engine.money import money
 from findraft.engine.schemas import TBLine
 from findraft.models.year_end import YearEnd
@@ -235,6 +237,7 @@ def _account_from_source(
     sign: int,
     line_ids: dict[tuple[str, str, Decimal], list[uuid.UUID]] | None,
     source_document_id: uuid.UUID | None,
+    adjustment_keys: frozenset[tuple[str, str, Decimal]] | None = None,
 ) -> EvidenceAccount:
     nominal = getattr(source, "nominal_code", None)
     name = getattr(source, "account_name", None)
@@ -251,9 +254,10 @@ def _account_from_source(
     line_id: uuid.UUID | None = None
     if line_ids is not None:
         queue = line_ids.get((nominal, name, stored))
-        if not queue:
+        if queue:
+            line_id = queue.pop(0)
+        elif adjustment_keys is None or (nominal, name, stored) not in adjustment_keys:
             raise ValueError(f"trial-balance line missing from evidence: {nominal}")
-        line_id = queue.pop(0)
     return EvidenceAccount(
         tb_line_id=line_id,
         nominal_code=nominal,
@@ -274,6 +278,7 @@ def build_evidence_lines(
     income: tuple[StatementRow, ...],
     line_ids: dict[tuple[str, str, Decimal], list[uuid.UUID]] | None = None,
     source_document_id: uuid.UUID | None = None,
+    adjustment_keys: frozenset[tuple[str, str, Decimal]] | None = None,
 ) -> tuple[EvidenceLine, ...]:
     """Explain every face row from trial-balance accounts or from other rows.
 
@@ -312,6 +317,7 @@ def build_evidence_lines(
                     sign=spec.sign,
                     line_ids=line_ids,
                     source_document_id=source_document_id,
+                    adjustment_keys=adjustment_keys,
                 )
                 accounts.append(account)
                 raw += account.balance
@@ -376,16 +382,40 @@ async def evidence_for_version(
     org_id: uuid.UUID,
     year_end: YearEnd,
     version: TrialBalanceVersion,
+    use_draft: DraftVersion | None = None,
 ) -> EvidenceGraph:
     """Same render gate as the statutory draft. The graph is computed live."""
     document = await statements_for_version(
-        session, org_id=org_id, year_end=year_end, version=version
+        session,
+        org_id=org_id,
+        year_end=year_end,
+        version=version,
+        use_draft=use_draft,
     )
     if not document.renderable:
         return _withheld(document)
     loaded = await load_confirmed_inputs(
         session, org_id=org_id, year_end=year_end, version=version
     )
+    draft = (
+        use_draft
+        if use_draft is not None
+        else await latest_draft(session, org_id=org_id, tb_version_id=version.id)
+    )
+    adjustment_keys: frozenset[tuple[str, str, Decimal]] = frozenset()
+    tb_lines = loaded.tb_lines
+    mappings = loaded.mappings
+    if draft is not None and draft.status != "final":
+        adjusted = await adjusted_for_draft(
+            session,
+            org_id=org_id,
+            draft=draft,
+            tb_lines=loaded.tb_lines,
+            mappings=loaded.mappings,
+        )
+        tb_lines = adjusted.tb_lines
+        mappings = adjusted.mappings
+        adjustment_keys = adjusted.adjustment_keys
     await aset_rls_org_id(session, org_id)
     tb_rows = list(
         (
@@ -406,12 +436,13 @@ async def evidence_for_version(
             document_id=version.source_document_id,
         )
         lines = build_evidence_lines(
-            tb_lines=loaded.tb_lines,
-            mappings=loaded.mappings,
+            tb_lines=tb_lines,
+            mappings=mappings,
             sofp=document.sofp,
             income=document.income,
             line_ids=_line_queues(tb_rows),
             source_document_id=trial_balance.id,
+            adjustment_keys=adjustment_keys,
         )
     except (OSError, ValueError) as exc:
         return _withheld(document, str(exc))
