@@ -1481,6 +1481,16 @@ What this connection does:
   can be worked on and saved. FINAL evidence and DOCX remain out of this
   connection.
 
+When Evidence and DOCX are connected, the statutory draft page
+(`/year-ends/{id}/draft`) gets its own export control, separate from the
+Statements page export. Word (DOCX), the Week 11 statutory render, is the
+primary format accountants use for final review before filing. PDF is a
+secondary option. That control is additive to the existing Statements
+export. It stays blocked until the render path can read a Product 1 source:
+`finalise_draft` still requires a trial-balance version,
+`evidence_for_version` reads `findraft_tb_lines` and `source_document_id`,
+and `findraft_render_jobs.tb_version_id` is NOT NULL.
+
 ### Week 9 statutory evidence graph
 
 A renderable DRAFT can be read as a graph from each face figure back to the
