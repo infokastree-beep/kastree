@@ -79,6 +79,7 @@ async def health_check() -> dict[str, str]:
 
     Git deploy source: infokastree-beep/kastree (auto-deploy check).
     """
+    # Redeploy stamp: 2026-10-02T08:53Z. No behavior change.
     return {"status": "ok", "git_sha": settings.resolved_git_sha()}
 
 
