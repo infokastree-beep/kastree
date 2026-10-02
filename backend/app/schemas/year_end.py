@@ -155,6 +155,52 @@ class SizeEligibilityRequest(BaseModel):
     preceding: SizeYearIn | None = None
 
 
+class MappingLineIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nominal_code: str = Field(min_length=1, max_length=64)
+    canonical_line: str = Field(min_length=1, max_length=64)
+
+
+class MappingConfirmRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lines: list[MappingLineIn]
+
+
+class MappingLineOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nominal_code: str
+    canonical_line: str
+
+
+class MappingConfirmResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tb_version_id: uuid.UUID
+    lines: list[MappingLineOut]
+
+
+class ReconciliationCheckOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    severity: str
+    passed: bool
+    message: str
+
+
+class ReconciliationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    blocked: bool
+    build_error: str | None
+    checks: list[ReconciliationCheckOut]
+    net_assets: str | None
+    profit: str | None
+
+
 class SizeEligibilityResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
