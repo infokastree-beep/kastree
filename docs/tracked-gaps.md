@@ -1418,76 +1418,71 @@ trial balance still does not create a trial-balance version or a draft row.
 That year end's page reloads the adopted pack and says the working draft is
 not there yet.
 
-### Continuation year end has no working draft — deeper gap, not a bug
+### Statutory workflow — decided, not yet connected
 
-**Status:** open. Do not paper over it by inventing a draft on the page.
-The "no working draft yet" message is fail-closed. A year end created by
-Continue to statutory accounts (adopting an existing Product 1 trial
-balance) produces a read-only statement pack. Adjustments, disclosure
-answers, and locking — the Week 10–12 working draft — run only for a trial
-balance uploaded through the `/statutory` admin flow.
+**Status:** decided. Not built, except where a row below says already built.
+Copying a Product 1 trial balance into `findraft_tb_versions` on adopt is
+rejected. The draft stays a pointer and reads the live confirmed mappings.
 
-This sits under the continuation fix. Continuation was built not to create
-`findraft_tb_versions`, `findraft_tb_lines`, or `findraft_confirmed_mappings`.
-It stores `trial_balances.id` on the year end and reads `parsed_data` plus
-the live Product 1 `account_mappings`, translated by
-`engine_line_for_confirmed_mapping`. `load_adopted_inputs` already returns
-the same `ConfirmedInputs` shape a draft applies journals onto.
-`statements_for_adopted` then renders that pack and, by its own contract,
-applies no draft adjustments and no disclosure flags.
+Four decisions:
 
-The working-draft *row* is the small part. `findraft_draft_versions.tb_version_id`
-is already nullable. `set_disclosure_answer` and `lock_draft` do not read a
-trial-balance version. Inserting one `DraftVersion` with a null version id
-at continuation time would let those two writes succeed, and it would not
-need a migration.
+1. **Page.** Already built. `/year-ends/{id}/draft` is the statutory
+   workspace. Generate statutory draft on the Statements tab opens it, and
+   the tab links back when a year end already exists for that company and
+   period.
 
-The working-draft *computation* assumes a ready `findraft_tb_versions` row.
-These refuse, or cannot run, without one:
+2. **Live Product 1 mappings.** Decided, not connected. The current active
+   draft re-reads Product 1 `account_mappings` on each computation, through
+   `load_adopted_inputs`. A change made in Product 1 after the draft started
+   flows into that active draft with no copy step. The page must show a
+   clear notice when the live mapping set differs from the set this draft
+   last acknowledged. That comparison is not stored yet.
+   `findraft_draft_versions` has no mapping hash.
 
-- `dashboard_for_draft`, `post_adjustment`, and `_disclosure_check` raise
-  "Draft has no trial balance" when `tb_version_id` is null, then call
-  `statements_for_version` and `load_confirmed_inputs` (statutory lines and
-  `findraft_confirmed_mappings` for that version).
-- `recompute_draft` calls the dashboard.
-- `finalise_draft` does the same, then `evidence_for_version` and
-  `_inputs_sha`. The evidence graph walks `findraft_tb_lines` and the
-  version's `source_document_id`. There is no adopted evidence function.
-  An adjustment line still has no trial-balance row id; that rule is
-  already Week 10.
-- `findraft_render_jobs.tb_version_id` is NOT NULL, so the DOCX job cannot
-  be queued for a draft that has no version.
+3. **Save as you go.** Already built for disclosure answers and
+   adjustments, on a draft that already exists. `set_disclosure_answer`
+   inserts or updates `findraft_disclosure_answers` and bumps `row_version`
+   in the same request. `post_adjustment` inserts the journal and its lines
+   the same way. The request session commits. The workspace does not batch
+   these into a final submit: Yes and No each POST
+   `/drafts/{id}/disclosures` immediately, and Post adjustment POSTs
+   `/drafts/{id}/adjustments` for that journal immediately. Reload reads
+   them back from the dashboard. This does nothing on a continuation year
+   end until decision 2 creates the draft row, because those buttons render
+   only when `GET /year-ends/{id}/draft` returns one. Free-text note
+   overrides and text blocks stay the row 13 cut. They are not a third
+   save path.
 
-Two ways to close it, neither of which is a one-line connection:
+4. **A new draft is a separate report.** Decided, not built. Explicitly
+   starting another draft for the same trial balance creates a new
+   `DraftVersion` with its own id and an empty history. It does not copy
+   the previous draft's adjustments or disclosure answers. The previous
+   draft keeps the history it already saved and stops being the active
+   live draft. `new_version_from_locked` is the opposite of this: it copies
+   journals and answers forward, and it only starts from a locked draft.
+   That route stays the lock-and-continue path. It is not the new-report
+   action.
 
-1. **Copy a statutory version on adopt.** Insert a trial-balance version,
-   its lines, confirmed statutory mappings, a source document, and a
-   `DraftVersion`. The existing dashboard, adjustments, lock, FINAL,
-   evidence, and DOCX then work unchanged. This undoes the continuation
-   rule that adoption is a pointer, not a second trial balance. It also
-   freezes lines and mappings. Product 1 can still edit `account_mappings`
-   afterwards; the copy would not follow unless something rebuilds it.
-   Evidence would cite the new source document unless that document is
-   deliberately the Product 1 upload.
+What still has to be connected, and nothing else:
 
-2. **Let the draft read the adopted trial balance.** Keep the pointer.
-   Insert the nullable-version `DraftVersion` on continuation. Point the
-   four "no trial balance" branches at `load_adopted_inputs`, and teach
-   `statements_for_adopted` to pass that draft's adjustments and disclosure
-   flags into `build_statutory_statements` (the builder already accepts
-   both; the adopted wrapper does not). Adjustment checks already run on
-   `ConfirmedInputs`. FINAL and DOCX stay the deeper piece: evidence and
-   render jobs are version-shaped, and an adopted FINAL needs a graph back
-   to the Product 1 trial balance, not to `findraft_tb_lines`. The adopted
-   base is also live. `load_adopted_inputs` re-reads Product 1 mappings on
-   every call. Lock does not snapshot them. Only FINAL snapshots the
-   computed statement. A later remap of the Product 1 trial balance would
-   move the draft's opening figures. That is a product decision, not a
-   missing insert.
-
-Copying is how the current code is shaped. Accepting the adopted trial
-balance directly is how continuation was shaped. The page must keep saying
-there is no working draft until one of those two is chosen and built.
+- On continuation, insert one `DraftVersion` with `tb_version_id` null.
+  The column is already nullable. No copy into `findraft_tb_versions`.
+- Point `dashboard_for_draft`, `post_adjustment`, `_disclosure_check`, and
+  `recompute_draft` at `load_adopted_inputs` when the version id is null,
+  and pass that draft's adjustments and disclosure flags through
+  `statements_for_adopted`. The builder already accepts both. The adopted
+  wrapper currently passes neither, and those four callers currently raise
+  "Draft has no trial balance".
+- Store a mapping fingerprint on the draft and show the notice when the
+  live Product 1 set differs. Acknowledge updates the fingerprint. Only
+  the active (latest) draft stays live. Starting a new report freezes the
+  previous one so later Product 1 edits do not rewrite its history.
+- Add the new-report action. Do not reuse `new_version_from_locked` for it.
+- FINAL evidence and DOCX stay version-shaped (`evidence_for_version`
+  reads `findraft_tb_lines` and `source_document_id`;
+  `findraft_render_jobs.tb_version_id` is NOT NULL). They are not part of
+  this connection. An adopted draft can be worked on and saved before
+  those two learn the Product 1 source.
 
 ### Week 9 statutory evidence graph
 
