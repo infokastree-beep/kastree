@@ -201,6 +201,74 @@ class ReconciliationResponse(BaseModel):
     profit: str | None
 
 
+class StatementRowOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: str
+    current: str
+    prior: str | None
+
+
+class NoteLineOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    line: str
+    current: str
+    prior: str
+
+
+class FixedAssetGridRowOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    asset_class: str
+    opening_cost: str
+    additions: str
+    disposals: str
+    disposals_dep: str
+    closing_cost: str
+    opening_dep: str
+    charge: str
+    closing_dep: str
+    nbv_close: str
+    nbv_open: str
+
+
+class RoundingFlagOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    statement_line_id: str
+    flagged: bool
+    gap: str
+    deeplink: str | None
+
+
+class StatementNoteOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    title: str | None
+    body: str
+    lines: list[NoteLineOut]
+    fa_rows: list[FixedAssetGridRowOut]
+
+
+class StatementResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    watermark: str
+    renderable: bool
+    blocked: bool
+    build_error: str | None
+    checks: list[ReconciliationCheckOut]
+    net_assets: str | None
+    profit: str | None
+    compliance_statement: str | None
+    sofp: list[StatementRowOut]
+    income: list[StatementRowOut]
+    notes: list[StatementNoteOut]
+    rounding_flags: list[RoundingFlagOut]
+
+
 class SizeEligibilityResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

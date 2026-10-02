@@ -354,25 +354,26 @@ async def confirm_mappings(
     return stored
 
 
-async def reconcile_version(
+@dataclass(frozen=True)
+class ConfirmedInputs:
+    """Confirmed trial balance, prior-year lines, and the latest ready register."""
+
+    tb_lines: list[TBLine]
+    mappings: dict[str, str]
+    prior_canonical: dict[str, Decimal]
+    prior_retained_earnings: Decimal
+    fa_register: dict[str, dict[str, Decimal]] | None
+    pack_rules_path: Path
+
+
+async def load_confirmed_inputs(
     session: AsyncSession,
     *,
     org_id: uuid.UUID,
     year_end: YearEnd,
     version: TrialBalanceVersion,
-) -> ReconciliationReport:
-    """Load confirmed mappings only. A pending version is not reconciled."""
-    gate = check_prior_year_gate(year_end.prior_year_validated)
-    if gate is not None:
-        return build_reconciliation(
-            prior_year_validated=False,
-            tb_lines=[],
-            mappings={},
-            prior_retained_earnings=Decimal("0"),
-        )
-    if version.status != "ready":
-        raise ReconciliationRejected("Trial balance version is not ready")
-
+) -> ConfirmedInputs:
+    """Load the inputs aggregate() is allowed to see. Suggestions stay out."""
     await aset_rls_org_id(session, org_id)
     tb_rows = (
         await session.scalars(
@@ -401,7 +402,6 @@ async def reconcile_version(
         )
     ).all()
     prior_canonical = {row.canonical_line: row.amount for row in prior_rows}
-    prior_re = prior_canonical.get("RETAINED_EARNINGS", Decimal("0"))
     fa_version = (
         await session.scalars(
             select(FixedAssetVersion)
@@ -438,8 +438,7 @@ async def reconcile_version(
                 }
                 for line in fa_lines
             }
-    return build_reconciliation(
-        prior_year_validated=True,
+    return ConfirmedInputs(
         tb_lines=[
             TBLine(
                 nominal_code=row.nominal_code,
@@ -450,9 +449,41 @@ async def reconcile_version(
             for row in tb_rows
         ],
         mappings={row.nominal_code: row.canonical_line for row in mapping_rows},
-        prior_retained_earnings=prior_re,
         prior_canonical=prior_canonical,
+        prior_retained_earnings=prior_canonical.get("RETAINED_EARNINGS", Decimal("0")),
         fa_register=fa_register,
         pack_rules_path=pack_dir(year_end.pack_id, year_end.pack_version)
         / "review-rules.json",
+    )
+
+
+async def reconcile_version(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+    version: TrialBalanceVersion,
+) -> ReconciliationReport:
+    """Load confirmed mappings only. A pending version is not reconciled."""
+    gate = check_prior_year_gate(year_end.prior_year_validated)
+    if gate is not None:
+        return build_reconciliation(
+            prior_year_validated=False,
+            tb_lines=[],
+            mappings={},
+            prior_retained_earnings=Decimal("0"),
+        )
+    if version.status != "ready":
+        raise ReconciliationRejected("Trial balance version is not ready")
+    loaded = await load_confirmed_inputs(
+        session, org_id=org_id, year_end=year_end, version=version
+    )
+    return build_reconciliation(
+        prior_year_validated=True,
+        tb_lines=loaded.tb_lines,
+        mappings=loaded.mappings,
+        prior_retained_earnings=loaded.prior_retained_earnings,
+        prior_canonical=loaded.prior_canonical,
+        fa_register=loaded.fa_register,
+        pack_rules_path=loaded.pack_rules_path,
     )
