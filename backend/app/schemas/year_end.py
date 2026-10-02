@@ -29,6 +29,14 @@ class StatutoryYearEndContinueRequest(BaseModel):
     pack_version: str = "2024.09"
 
 
+class StatutoryYearEndLink(BaseModel):
+    """The year end already pinned for this trial balance's company and period."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    year_end_id: uuid.UUID
+
+
 class YearEndResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", from_attributes=True)
 
@@ -445,6 +453,20 @@ class DraftStatusResponse(BaseModel):
     draft_id: uuid.UUID
     status: str
     row_version: int
+
+
+class WorkingDraftResponse(BaseModel):
+    """Latest draft version for a year end. The workspace page reloads this."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    draft_id: uuid.UUID
+    version_number: int
+    status: str
+    row_version: int
+    tb_version_id: uuid.UUID | None
+    mapping_notice: str | None = None
+    frozen: bool = False
 
 
 class NewDraftVersionResponse(BaseModel):

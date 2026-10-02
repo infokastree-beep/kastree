@@ -74,6 +74,7 @@ from app.schemas.year_end import (
     DisclosureAnswerResponse,
     DraftMutationRequest,
     DraftStatusResponse,
+    WorkingDraftResponse,
     FinaliseResponse,
     NewDraftVersionResponse,
     RenderJobResponse,
@@ -96,6 +97,7 @@ from app.services.prior_year import (
 from app.services.adopted_trial_balance import (
     adopt_confirmed_trial_balance,
     list_adoptable_trial_balances,
+    mapping_notice_for,
     reconcile_adopted,
 )
 from app.services.reconciliation import (
@@ -109,6 +111,8 @@ from app.services.draft_workflow import (
     Dashboard,
     DraftRejected,
     PostedLine,
+    acknowledge_mappings,
+    dashboard_for_draft,
     finalise_draft,
     frozen_snapshot,
     lock_draft,
@@ -116,7 +120,7 @@ from app.services.draft_workflow import (
     post_adjustment,
     recompute_draft,
     set_disclosure_answer,
-    dashboard_for_draft,
+    start_new_report,
 )
 from app.services.render_jobs import (
     DOCX_MEDIA,
@@ -268,6 +272,63 @@ async def list_canonical_lines(
     """Mapping targets the statutory pack accepts. No balances."""
     del auth
     return CanonicalLinesResponse(lines=sorted(statutory_lines()))
+
+
+@router.get("/{year_end_id}", response_model=YearEndResponse)
+async def get_year_end(
+    year_end_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> YearEnd:
+    """Reload one year end. The draft workspace uses this address later."""
+    await aset_rls_org_id(session, auth.org_id)
+    return await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+
+
+@router.get("/{year_end_id}/draft", response_model=WorkingDraftResponse)
+async def get_working_draft(
+    year_end_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> WorkingDraftResponse:
+    """Latest draft for this year end, including a continuation draft."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    draft = (
+        await session.scalars(
+            select(DraftVersion)
+            .where(
+                DraftVersion.org_id == auth.org_id,
+                DraftVersion.year_end_id == year_end.id,
+            )
+            .order_by(DraftVersion.version_number.desc())
+            .limit(1)
+        )
+    ).first()
+    if draft is None:
+        raise HTTPException(
+            status_code=404,
+            detail="This year end has no working draft yet",
+        )
+    try:
+        notice = await mapping_notice_for(
+            session, org_id=auth.org_id, year_end=year_end, draft=draft
+        )
+    except ReconciliationRejected as exc:
+        raise _adoption_error(exc) from exc
+    return WorkingDraftResponse(
+        draft_id=draft.id,
+        version_number=draft.version_number,
+        status=draft.status,
+        row_version=draft.row_version,
+        tb_version_id=draft.tb_version_id,
+        mapping_notice=notice,
+        frozen=draft.is_frozen,
+    )
 
 
 def _adoption_error(exc: ReconciliationRejected) -> HTTPException:
@@ -1437,6 +1498,63 @@ async def post_draft_new_version(
     )
     try:
         created = await new_version_from_locked(
+            session,
+            org_id=auth.org_id,
+            year_end=year_end,
+            draft_id=draft_id,
+            row_version=body.row_version,
+        )
+    except DraftRejected as exc:
+        raise _draft_error(exc) from exc
+    return NewDraftVersionResponse.model_validate(created)
+
+
+@router.post(
+    "/{year_end_id}/drafts/{draft_id}/acknowledge-mappings",
+    response_model=DraftStatusResponse,
+)
+async def post_acknowledge_mappings(
+    year_end_id: uuid.UUID,
+    draft_id: uuid.UUID,
+    body: DraftMutationRequest,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DraftStatusResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        stored = await acknowledge_mappings(
+            session,
+            org_id=auth.org_id,
+            year_end=year_end,
+            draft_id=draft_id,
+            row_version=body.row_version,
+        )
+    except DraftRejected as exc:
+        raise _draft_error(exc) from exc
+    return DraftStatusResponse.model_validate(stored)
+
+
+@router.post(
+    "/{year_end_id}/drafts/{draft_id}/new-report",
+    response_model=NewDraftVersionResponse,
+)
+async def post_new_report(
+    year_end_id: uuid.UUID,
+    draft_id: uuid.UUID,
+    body: DraftMutationRequest,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> NewDraftVersionResponse:
+    """Start an empty statutory report and freeze the previous adopted draft."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        created = await start_new_report(
             session,
             org_id=auth.org_id,
             year_end=year_end,

@@ -233,6 +233,76 @@ def _pointer(year_end_id: str) -> str | None:
     return str(value)
 
 
+def _draft_count(year_end_id: str) -> int:
+    with SyncSessionLocal() as session:
+        count = session.execute(
+            text(
+                "SELECT count(*) FROM findraft_draft_versions "
+                "WHERE year_end_id = :id"
+            ),
+            {"id": year_end_id},
+        ).scalar_one()
+    return int(count)
+
+
+def _child_count(table: str, draft_id: str) -> int:
+    if table == "findraft_adjustment_journals":
+        statement = (
+            "SELECT count(*) FROM findraft_adjustment_journals "
+            "WHERE draft_version_id = :id"
+        )
+    elif table == "findraft_disclosure_answers":
+        statement = (
+            "SELECT count(*) FROM findraft_disclosure_answers "
+            "WHERE draft_version_id = :id"
+        )
+    else:
+        raise AssertionError(table)
+    with SyncSessionLocal() as session:
+        count = session.execute(text(statement), {"id": draft_id}).scalar_one()
+    return int(count)
+
+
+def _frozen_mapping(draft_id: str, nominal_code: str) -> str | None:
+    with SyncSessionLocal() as session:
+        value = session.execute(
+            text(
+                "SELECT frozen_inputs->'mappings'->>:code "
+                "FROM findraft_draft_versions WHERE id = :id"
+            ),
+            {"code": nominal_code, "id": draft_id},
+        ).scalar_one()
+    if value is None:
+        return None
+    return str(value)
+
+
+def _remap(company_id: uuid.UUID, source_code: str, canonical_line: str) -> None:
+    with SyncSessionLocal() as session:
+        session.execute(
+            text(
+                "UPDATE account_mappings SET canonical_line = :line "
+                "WHERE company_id = :company AND source_code = :code"
+            ),
+            {
+                "line": canonical_line,
+                "company": str(company_id),
+                "code": source_code,
+            },
+        )
+        session.commit()
+
+
+def _sofp_amount(body: dict[str, object], label: str) -> str:
+    rows = body["sofp"]
+    assert isinstance(rows, list)
+    for row in rows:
+        assert isinstance(row, dict)
+        if row["label"] == label:
+            return str(row["current"])
+    raise AssertionError(label)
+
+
 def _statutory_copy_counts(org_id: uuid.UUID, year_end_id: str) -> tuple[int, int]:
     with SyncSessionLocal() as session:
         versions = session.execute(
@@ -759,9 +829,15 @@ async def test_statutory_continuation_creates_the_year_end_when_missing(
         rows=_CASH_PAIR,
         period_start=date(2026, 1, 1),
     )
+    headers = auth_headers(provisioned_org["token"])
+    missing = await api_client.get(
+        f"/trial-balances/{tb_id}/statutory-year-end",
+        headers=headers,
+    )
+    assert missing.status_code == 404, missing.text
     response = await api_client.post(
         f"/trial-balances/{tb_id}/statutory-year-end",
-        headers=auth_headers(provisioned_org["token"]),
+        headers=headers,
         json={},
     )
     assert response.status_code == 200, response.text
@@ -770,6 +846,44 @@ async def test_statutory_continuation_creates_the_year_end_when_missing(
     assert stored[0] == response.json()["year_end_id"]
     assert stored[1] == str(tb_id)
     assert _statutory_copy_counts(provisioned_org["org_id"], stored[0]) == (0, 0)
+    link = await api_client.get(
+        f"/trial-balances/{tb_id}/statutory-year-end",
+        headers=headers,
+    )
+    assert link.status_code == 200, link.text
+    assert link.json()["year_end_id"] == response.json()["year_end_id"]
+    loaded = await api_client.get(
+        f"/year-ends/{response.json()['year_end_id']}",
+        headers=headers,
+    )
+    assert loaded.status_code == 200, loaded.text
+    assert loaded.json()["period_start"] == "2026-01-01"
+    assert loaded.json()["adopted_trial_balance_id"] == str(tb_id)
+    draft = await api_client.get(
+        f"/year-ends/{response.json()['year_end_id']}/draft",
+        headers=headers,
+    )
+    assert draft.status_code == 200, draft.text
+    assert draft.json()["tb_version_id"] is None
+    assert draft.json()["version_number"] == 1
+    assert draft.json()["mapping_notice"] is None
+    assert draft.json()["frozen"] is False
+    assert _draft_count(response.json()["year_end_id"]) == 1
+    again = await api_client.post(
+        f"/trial-balances/{tb_id}/statutory-year-end",
+        headers=headers,
+        json={},
+    )
+    assert again.status_code == 200, again.text
+    assert _draft_count(response.json()["year_end_id"]) == 1
+    assert _statutory_copy_counts(provisioned_org["org_id"], stored[0]) == (0, 0)
+    unknown = await api_client.get(
+        f"/year-ends/{uuid.uuid4()}",
+        headers=headers,
+    )
+    assert unknown.status_code == 404, unknown.text
+    catalogue = await api_client.get("/year-ends/canonical-lines", headers=headers)
+    assert catalogue.status_code == 200, catalogue.text
 
 
 @pytest.mark.asyncio
@@ -900,3 +1014,196 @@ async def test_statutory_continuation_refuses_a_different_pinned_pack(
     stored = _year_end_row(company_id, date(2026, 12, 31))
     assert stored is not None
     assert stored[1] is None
+
+
+def _draft_version(draft_id: str) -> int:
+    with SyncSessionLocal() as session:
+        value = session.execute(
+            text(
+                "SELECT row_version FROM findraft_draft_versions WHERE id = :id"
+            ),
+            {"id": draft_id},
+        ).scalar_one()
+    return int(value)
+
+
+@pytest.mark.asyncio
+async def test_adopted_draft_adjusts_discloses_notices_and_starts_a_new_report(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """Continuation draft: live mappings, saved work, and a frozen predecessor."""
+    tb_id = _insert_tb(
+        org_id=provisioned_org["org_id"],
+        company_id=provisioned_org["company_id"],
+        rows=_CASH_PAIR,
+        period_start=date(2026, 1, 1),
+    )
+    headers = auth_headers(provisioned_org["token"])
+    opened = await api_client.post(
+        f"/trial-balances/{tb_id}/statutory-year-end",
+        headers=headers,
+        json={},
+    )
+    assert opened.status_code == 200, opened.text
+    year_end_id = opened.json()["year_end_id"]
+    assert _statutory_copy_counts(provisioned_org["org_id"], year_end_id) == (0, 0)
+    gate = await api_client.post(
+        f"/year-ends/{year_end_id}/first-financial-period",
+        headers=headers,
+    )
+    assert gate.status_code == 200, gate.text
+    draft = await api_client.get(
+        f"/year-ends/{year_end_id}/draft", headers=headers
+    )
+    assert draft.status_code == 200, draft.text
+    first_id = draft.json()["draft_id"]
+    board = await api_client.get(
+        f"/year-ends/{year_end_id}/drafts/{first_id}/dashboard",
+        headers=headers,
+    )
+    assert board.status_code == 200, board.text
+    before = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
+        headers=headers,
+    )
+    assert before.status_code == 200, before.text
+    assert before.json()["renderable"] is True, before.text
+    profit_before = before.json()["profit"]
+    assets_before = before.json()["net_assets"]
+    posted = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{first_id}/adjustments",
+        headers={**headers, "Idempotency-Key": "adopted-admin-overhead"},
+        json={
+            "row_version": draft.json()["row_version"],
+            "narration": "Admin overhead",
+            "lines": [
+                {
+                    "nominal_code": "7100",
+                    "account_name": "Admin overhead",
+                    "canonical_line": "ADMIN_EXPENSES",
+                    "debit": "10.00",
+                    "credit": "0.00",
+                },
+                {
+                    "nominal_code": "7200",
+                    "account_name": "Sundry creditor",
+                    "canonical_line": "OTHER_CREDITORS",
+                    "debit": "0.00",
+                    "credit": "10.00",
+                },
+            ],
+        },
+    )
+    assert posted.status_code == 200, posted.text
+    assert _child_count("findraft_adjustment_journals", first_id) == 1
+    moved = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
+        headers=headers,
+    )
+    assert moved.status_code == 200, moved.text
+    assert moved.json()["renderable"] is True, moved.text
+    assert Decimal(moved.json()["profit"]) != Decimal(profit_before)
+    assert Decimal(moved.json()["net_assets"]) != Decimal(assets_before)
+    answered = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{first_id}/disclosures",
+        headers=headers,
+        json={
+            "row_version": posted.json()["row_version"],
+            "flag_name": "HAS_EMPLOYEES",
+            "answer": "no",
+        },
+    )
+    assert answered.status_code == 200, answered.text
+    assert _child_count("findraft_disclosure_answers", first_id) == 1
+    recomputed = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{first_id}/recompute",
+        headers={**headers, "Idempotency-Key": "adopted-recompute"},
+        json={"row_version": answered.json()["row_version"]},
+    )
+    assert recomputed.status_code == 200, recomputed.text
+    _remap(provisioned_org["company_id"], "2130", "other_receivables")
+    noticed = await api_client.get(
+        f"/year-ends/{year_end_id}/draft", headers=headers
+    )
+    assert noticed.status_code == 200, noticed.text
+    assert noticed.json()["mapping_notice"] == (
+        "Product 1 confirmed mappings changed after this draft was acknowledged. "
+        "This draft now uses the current mappings."
+    )
+    remapped = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
+        headers=headers,
+    )
+    assert remapped.status_code == 200, remapped.text
+    assert remapped.json()["renderable"] is True, remapped.text
+    cash_when_remapped = _sofp_amount(remapped.json(), "Cash at bank and in hand")
+    acknowledged = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{first_id}/acknowledge-mappings",
+        headers=headers,
+        json={"row_version": noticed.json()["row_version"]},
+    )
+    assert acknowledged.status_code == 200, acknowledged.text
+    assert (
+        acknowledged.json()["row_version"] == noticed.json()["row_version"] + 1
+    )
+    cleared = await api_client.get(
+        f"/year-ends/{year_end_id}/draft", headers=headers
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["mapping_notice"] is None
+    started = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{first_id}/new-report",
+        headers=headers,
+        json={"row_version": cleared.json()["row_version"]},
+    )
+    assert started.status_code == 200, started.text
+    second_id = started.json()["draft_id"]
+    assert second_id != first_id
+    assert started.json()["version_number"] == 2
+    assert _frozen_mapping(first_id, "2130") == "OTHER_DEBTORS"
+    assert _child_count("findraft_adjustment_journals", first_id) == 1
+    assert _child_count("findraft_adjustment_journals", second_id) == 0
+    assert _child_count("findraft_disclosure_answers", first_id) == 1
+    assert _child_count("findraft_disclosure_answers", second_id) == 0
+    _remap(provisioned_org["company_id"], "2130", "cash")
+    active = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
+        headers=headers,
+    )
+    assert active.status_code == 200, active.text
+    assert active.json()["renderable"] is True, active.text
+    assert (
+        _sofp_amount(active.json(), "Cash at bank and in hand") != cash_when_remapped
+    )
+    assert _frozen_mapping(first_id, "2130") == "OTHER_DEBTORS"
+    current = await api_client.get(
+        f"/year-ends/{year_end_id}/draft", headers=headers
+    )
+    assert current.status_code == 200, current.text
+    assert current.json()["draft_id"] == second_id
+    assert current.json()["mapping_notice"] == (
+        "Product 1 confirmed mappings changed after this draft was acknowledged. "
+        "This draft now uses the current mappings."
+    )
+    stale = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{first_id}/new-report",
+        headers=headers,
+        json={"row_version": _draft_version(first_id)},
+    )
+    assert stale.status_code == 409, stale.text
+    assert stale.json()["detail"] == "This draft is not the active report"
+    history = await api_client.get(
+        f"/year-ends/{year_end_id}/drafts/{first_id}/dashboard",
+        headers=headers,
+    )
+    assert history.status_code == 200, history.text
+    refused = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{second_id}/finalise",
+        headers={**headers, "Idempotency-Key": "adopted-finalise"},
+        json={"row_version": current.json()["row_version"]},
+    )
+    assert refused.status_code == 400, refused.text
+    assert refused.json()["detail"] == "Draft has no trial balance"
+    assert _statutory_copy_counts(provisioned_org["org_id"], year_end_id) == (0, 0)
+    assert _draft_count(year_end_id) == 2

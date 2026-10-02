@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -80,6 +81,13 @@ class DraftVersion(Base):
         UUID(as_uuid=True),
         ForeignKey("findraft_tb_versions.id"),
         nullable=True,
+    )
+    mappings_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    frozen_inputs: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB, nullable=True
+    )
+    is_frozen: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
     )
     row_version: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default="1"

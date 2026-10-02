@@ -117,6 +117,15 @@ async def test_week10_lock_adjust_and_freeze_final(
     draft_id = version.json()["draft_id"]
     assert draft_id
     assert version.json()["draft_version_number"] == 1
+    opened = await api_client.get(f"/year-ends/{year_end_id}", headers=headers)
+    assert opened.status_code == 200, opened.text
+    working = await api_client.get(
+        f"/year-ends/{year_end_id}/draft", headers=headers
+    )
+    assert working.status_code == 200, working.text
+    assert working.json()["draft_id"] == draft_id
+    assert working.json()["status"] == "draft"
+    assert working.json()["tb_version_id"] == version_id
 
     before = await api_client.get(
         _statements_path(year_end_id, version_id), headers=headers

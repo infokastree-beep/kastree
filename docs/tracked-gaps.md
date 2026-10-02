@@ -1407,8 +1407,89 @@ lines, disclosure answers, and confirmed mappings. It does not cover tables
 this week refuses to add.
 
 `findraft/web` does not exist. The red/amber/green review state is the
-dashboard API. A second frontend was not added. The directors' report and
-DOCX stay later weeks.
+dashboard API. The directors' report and DOCX stay later weeks.
+
+The workspace that calls that API is `/year-ends/{id}/draft`. Generate
+statutory draft on the Statements tab opens that address, and opening it
+again reloads the year end. When a statutory trial-balance version has been
+imported, the page shows the dashboard and posts adjustments, disclosure
+answers, and lock through the routes above. Continuing from a Product 1
+trial balance inserts one draft row with `tb_version_id` null and leaves
+`findraft_tb_versions` empty. That page reloads the adopted pack through
+the active draft.
+
+### Statutory workflow — decided, and connected
+
+**Status:** the four connections below are built. A Product 1 trial balance
+stays in `trial_balances`. Continuation does not copy it into
+`findraft_tb_versions`. FINAL evidence and DOCX stay on the statutory
+version path (`evidence_for_version` reads `findraft_tb_lines` and
+`source_document_id`; `findraft_render_jobs.tb_version_id` is NOT NULL).
+
+Four decisions:
+
+1. **Page.** Already built. `/year-ends/{id}/draft` is the statutory
+   workspace. Generate statutory draft on the Statements tab opens it, and
+   the tab links back when a year end already exists for that company and
+   period.
+
+2. **Live Product 1 mappings.** Built. The current active draft re-reads
+   Product 1 `account_mappings` on each computation, through
+   `load_adopted_inputs`. A change made in Product 1 after the draft started
+   flows into that active draft. `mappings_sha256` stores the acknowledged
+   fingerprint. The page shows a notice when the live set differs, and
+   acknowledgement is the only way that notice clears.
+
+3. **Save as you go.** Already built for disclosure answers and
+   adjustments, on a draft that already exists. `set_disclosure_answer`
+   inserts or updates `findraft_disclosure_answers` and bumps `row_version`
+   in the same request. `post_adjustment` inserts the journal and its lines
+   the same way. The request session commits. The workspace does not batch
+   these into a final submit: Yes and No each POST
+   `/drafts/{id}/disclosures` immediately, and Post adjustment POSTs
+   `/drafts/{id}/adjustments` for that journal immediately. Reload reads
+   them back from the dashboard. On a continuation year end those buttons
+   render once `GET /year-ends/{id}/draft` returns the draft row
+   continuation inserted. Free-text note
+   overrides and text blocks stay the row 13 cut. They are not a third
+   save path.
+
+4. **A new draft is a separate report.** Built. Explicitly starting another
+   draft for the same trial balance creates a new `DraftVersion` with its
+   own id and an empty history. It does not copy the previous draft's
+   adjustments or disclosure answers. The previous draft keeps the history
+   it already saved, stores `frozen_inputs`, and stops being the active
+   live draft. `new_version_from_locked` stays the lock-and-continue path:
+   it copies journals and answers forward, and it only starts from a locked
+   draft. The new-report action is `POST /drafts/{id}/new-report`.
+
+What this connection does:
+
+- On continuation, insert one `DraftVersion` with `tb_version_id` null.
+  A second continuation leaves that row in place. `findraft_tb_versions`
+  stays empty.
+- `dashboard_for_draft`, `post_adjustment`, `_disclosure_check`, and
+  `recompute_draft` read `load_adopted_inputs` when the version id is null.
+  `statements_for_adopted` passes that draft's adjustments and disclosure
+  flags into the statement builder. A frozen draft reads `frozen_inputs`
+  instead of the live Product 1 mappings.
+- `mappings_sha256` is the acknowledged fingerprint. The active draft shows
+  the notice when the live Product 1 set differs. Acknowledge updates the
+  fingerprint. Starting a new report freezes the previous draft so later
+  Product 1 edits do not rewrite its history.
+- `finalise_draft` still requires a trial-balance version. An adopted draft
+  can be worked on and saved. FINAL evidence and DOCX remain out of this
+  connection.
+
+When Evidence and DOCX are connected, the statutory draft page
+(`/year-ends/{id}/draft`) gets its own export control, separate from the
+Statements page export. Word (DOCX), the Week 11 statutory render, is the
+primary format accountants use for final review before filing. PDF is a
+secondary option. That control is additive to the existing Statements
+export. It stays blocked until the render path can read a Product 1 source:
+`finalise_draft` still requires a trial-balance version,
+`evidence_for_version` reads `findraft_tb_lines` and `source_document_id`,
+and `findraft_render_jobs.tb_version_id` is NOT NULL.
 
 ### Week 9 statutory evidence graph
 
