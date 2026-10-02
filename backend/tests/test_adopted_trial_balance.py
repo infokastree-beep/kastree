@@ -759,9 +759,15 @@ async def test_statutory_continuation_creates_the_year_end_when_missing(
         rows=_CASH_PAIR,
         period_start=date(2026, 1, 1),
     )
+    headers = auth_headers(provisioned_org["token"])
+    missing = await api_client.get(
+        f"/trial-balances/{tb_id}/statutory-year-end",
+        headers=headers,
+    )
+    assert missing.status_code == 404, missing.text
     response = await api_client.post(
         f"/trial-balances/{tb_id}/statutory-year-end",
-        headers=auth_headers(provisioned_org["token"]),
+        headers=headers,
         json={},
     )
     assert response.status_code == 200, response.text
@@ -770,6 +776,32 @@ async def test_statutory_continuation_creates_the_year_end_when_missing(
     assert stored[0] == response.json()["year_end_id"]
     assert stored[1] == str(tb_id)
     assert _statutory_copy_counts(provisioned_org["org_id"], stored[0]) == (0, 0)
+    link = await api_client.get(
+        f"/trial-balances/{tb_id}/statutory-year-end",
+        headers=headers,
+    )
+    assert link.status_code == 200, link.text
+    assert link.json()["year_end_id"] == response.json()["year_end_id"]
+    loaded = await api_client.get(
+        f"/year-ends/{response.json()['year_end_id']}",
+        headers=headers,
+    )
+    assert loaded.status_code == 200, loaded.text
+    assert loaded.json()["period_start"] == "2026-01-01"
+    assert loaded.json()["adopted_trial_balance_id"] == str(tb_id)
+    no_draft = await api_client.get(
+        f"/year-ends/{response.json()['year_end_id']}/draft",
+        headers=headers,
+    )
+    assert no_draft.status_code == 404, no_draft.text
+    assert no_draft.json()["detail"] == "This year end has no working draft yet"
+    unknown = await api_client.get(
+        f"/year-ends/{uuid.uuid4()}",
+        headers=headers,
+    )
+    assert unknown.status_code == 404, unknown.text
+    catalogue = await api_client.get("/year-ends/canonical-lines", headers=headers)
+    assert catalogue.status_code == 200, catalogue.text
 
 
 @pytest.mark.asyncio

@@ -1407,8 +1407,16 @@ lines, disclosure answers, and confirmed mappings. It does not cover tables
 this week refuses to add.
 
 `findraft/web` does not exist. The red/amber/green review state is the
-dashboard API. A second frontend was not added. The directors' report and
-DOCX stay later weeks.
+dashboard API. The directors' report and DOCX stay later weeks.
+
+The workspace that calls that API is `/year-ends/{id}/draft`. Generate
+statutory draft on the Statements tab opens that address, and opening it
+again reloads the year end. When a statutory trial-balance version has been
+imported, the page shows the dashboard and posts adjustments, disclosure
+answers, and lock through the routes above. Continuing from a Product 1
+trial balance still does not create a trial-balance version or a draft row.
+That year end's page reloads the adopted pack and says the working draft is
+not there yet.
 
 ### Week 9 statutory evidence graph
 

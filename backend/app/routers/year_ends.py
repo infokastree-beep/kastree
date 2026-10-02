@@ -74,6 +74,7 @@ from app.schemas.year_end import (
     DisclosureAnswerResponse,
     DraftMutationRequest,
     DraftStatusResponse,
+    WorkingDraftResponse,
     FinaliseResponse,
     NewDraftVersionResponse,
     RenderJobResponse,
@@ -268,6 +269,55 @@ async def list_canonical_lines(
     """Mapping targets the statutory pack accepts. No balances."""
     del auth
     return CanonicalLinesResponse(lines=sorted(statutory_lines()))
+
+
+@router.get("/{year_end_id}", response_model=YearEndResponse)
+async def get_year_end(
+    year_end_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> YearEnd:
+    """Reload one year end. The draft workspace uses this address later."""
+    await aset_rls_org_id(session, auth.org_id)
+    return await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+
+
+@router.get("/{year_end_id}/draft", response_model=WorkingDraftResponse)
+async def get_working_draft(
+    year_end_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> WorkingDraftResponse:
+    """Latest draft for this year end, if a statutory trial-balance version created one."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    draft = (
+        await session.scalars(
+            select(DraftVersion)
+            .where(
+                DraftVersion.org_id == auth.org_id,
+                DraftVersion.year_end_id == year_end.id,
+            )
+            .order_by(DraftVersion.version_number.desc())
+            .limit(1)
+        )
+    ).first()
+    if draft is None:
+        raise HTTPException(
+            status_code=404,
+            detail="This year end has no working draft yet",
+        )
+    return WorkingDraftResponse(
+        draft_id=draft.id,
+        version_number=draft.version_number,
+        status=draft.status,
+        row_version=draft.row_version,
+        tb_version_id=draft.tb_version_id,
+    )
 
 
 def _adoption_error(exc: ReconciliationRejected) -> HTTPException:

@@ -54,6 +54,7 @@ from app.schemas.year_end import (
     AdoptedTrialBalanceResponse,
     CarriedMappingOut,
     StatutoryYearEndContinueRequest,
+    StatutoryYearEndLink,
 )
 from app.services.adopted_trial_balance import continue_from_trial_balance
 from app.services.archival import archive_trial_balance_user_deleted
@@ -84,6 +85,7 @@ from app.services.llm import MAPPING_TIE_BREAKER_CANONICAL_LINES
 from app.services.prior_period import find_prior_trial_balance
 from app.services.tb_pipeline import parsed_rows_from_tb, run_parse_and_map_job
 from app.services.validator import SimpleMappedAccount, validate_trial_balance
+from findraft.models.year_end import YearEnd
 
 _EXPENSE_LABELS: dict[str, str] = {
     "cost_of_sales": "Cost of sales",
@@ -1925,6 +1927,34 @@ async def get_materiality_suggestion(
         dismissed=suggestion.dismissed,
         disclaimer=suggestion.disclaimer,
     )
+
+
+@router.get(
+    "/{tb_id}/statutory-year-end",
+    response_model=StatutoryYearEndLink,
+    dependencies=[Depends(enforce_product2_production_access)],
+)
+async def get_statutory_year_end(
+    tb_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> StatutoryYearEndLink:
+    """The year end for this trial balance's company and period, if one was pinned."""
+    await aset_rls_org_id(session, auth.org_id)
+    trial_balance = await _get_owned_tb(session, tb_id=tb_id, org_id=auth.org_id)
+    year_end_id = await session.scalar(
+        select(YearEnd.id).where(
+            YearEnd.org_id == auth.org_id,
+            YearEnd.company_id == trial_balance.company_id,
+            YearEnd.period_end == trial_balance.period_end,
+        )
+    )
+    if year_end_id is None:
+        raise HTTPException(
+            status_code=404,
+            detail="This trial balance has no statutory year end",
+        )
+    return StatutoryYearEndLink(year_end_id=year_end_id)
 
 
 @router.post(

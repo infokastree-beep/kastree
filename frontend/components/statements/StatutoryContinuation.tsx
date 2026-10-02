@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch, getApiBaseUrl } from "@/lib/api";
@@ -91,6 +93,7 @@ export function StatutoryContinuation({
   currencyCode: string;
 }) {
   const { getToken, isSignedIn } = useAuth();
+  const router = useRouter();
   const meQuery = useQuery({
     queryKey: ["users", "me"],
     queryFn: () => apiFetch<UserMe>("/users/me", { getToken }),
@@ -113,6 +116,23 @@ export function StatutoryContinuation({
     pack?.checks.some((check) => check.code === "V-GATE-001" && !check.passed) ??
     false;
   const forbidden = meQuery.data?.is_platform_admin === false;
+  const existingYearEnd = useQuery({
+    queryKey: ["statutory-year-end-link", tbId],
+    queryFn: async () => {
+      try {
+        return await apiFetch<{ year_end_id: string }>(
+          `/trial-balances/${tbId}/statutory-year-end`,
+          { getToken },
+        );
+      } catch (caught) {
+        if (caught instanceof ApiError && caught.status === 404) {
+          return null;
+        }
+        throw caught;
+      }
+    },
+    enabled: isSignedIn && meQuery.data?.is_platform_admin === true,
+  });
 
   async function loadPack(nextYearEndId: string): Promise<void> {
     const statements = await apiFetch<StatementPack>(
@@ -139,7 +159,7 @@ export function StatutoryContinuation({
       );
       setYearEndId(continued.year_end_id);
       setCarried(continued.lines);
-      await loadPack(continued.year_end_id);
+      router.push(`/year-ends/${continued.year_end_id}/draft`);
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 403) {
         setError(SIGNOFF);
@@ -286,6 +306,19 @@ export function StatutoryContinuation({
           </button>
         </div>
       )}
+
+      {existingYearEnd.data?.year_end_id ? (
+        <p className="text-sm text-ink-secondary">
+          <Link
+            href={`/year-ends/${existingYearEnd.data.year_end_id}/draft`}
+            className="font-medium text-accent underline-offset-2 hover:underline"
+            data-testid="statutory-open-workspace"
+          >
+            Open the statutory workspace
+          </Link>{" "}
+          for this period. You can leave it and come back to the same address.
+        </p>
+      ) : null}
 
       {carried.length > 0 ? (
         <div className="overflow-x-auto rounded-md border border-line bg-surface-elevated">
