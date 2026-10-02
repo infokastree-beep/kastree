@@ -31,6 +31,10 @@ def _delete_org(org_id: uuid.UUID) -> None:
         session.execute(text("RESET ROLE"))
         oid = str(org_id)
         session.execute(
+            text("DELETE FROM findraft_source_documents WHERE org_id = :oid"),
+            {"oid": oid},
+        )
+        session.execute(
             text("DELETE FROM findraft_draft_versions WHERE org_id = :oid"),
             {"oid": oid},
         )
@@ -303,6 +307,107 @@ def test_repin_is_rejected(two_practices: tuple[dict, dict]) -> None:
                 ),
                 {"id": str(first["year_end_id"])},
             )
+        session.rollback()
+
+
+def _insert_document(session, practice: dict, *, suffix: str) -> uuid.UUID:
+    document_id = uuid.uuid4()
+    session.execute(
+        text(
+            """
+            INSERT INTO findraft_source_documents (
+              id, org_id, company_id, storage_key, original_filename,
+              detected_type, byte_size, sha256, idempotency_key
+            ) VALUES (
+              :id, :org, :company, :key, 'notes.pdf',
+              'pdf', 12, :sha, :idem
+            )
+            """
+        ),
+        {
+            "id": str(document_id),
+            "org": str(practice["org_id"]),
+            "company": str(practice["company_id"]),
+            "key": f"practices/{practice['org_id']}/companies/{practice['company_id']}/documents/{document_id}",
+            "sha": "ab" * 32,
+            "idem": f"idem-{suffix}",
+        },
+    )
+    return document_id
+
+
+def test_source_document_unset_context_returns_no_rows(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        try:
+            _as_login_superuser(session)
+            _insert_document(session, first, suffix="a")
+            _insert_document(session, second, suffix="b")
+            _as_app_role(session)
+            count = session.execute(
+                text("SELECT count(*) FROM findraft_source_documents")
+            ).scalar_one()
+            assert count == 0
+        finally:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+
+
+def test_source_document_app_role_sees_only_its_practice(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        try:
+            _as_login_superuser(session)
+            own_id = _insert_document(session, first, suffix="own")
+            other_id = _insert_document(session, second, suffix="other")
+            _as_app_role(session)
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(first["org_id"])},
+            )
+            seen = session.execute(
+                text("SELECT id FROM findraft_source_documents")
+            ).scalars().all()
+            assert seen == [own_id]
+            assert other_id not in seen
+        finally:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+
+
+def test_source_document_with_check_rejects_cross_tenant_insert(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        try:
+            _as_app_role(session)
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(first["org_id"])},
+            )
+            with pytest.raises(ProgrammingError, match="row-level security"):
+                _insert_document(session, second, suffix="cross")
+            session.rollback()
+        finally:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+
+
+def test_source_document_composite_fk_rejects_mismatched_company(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        _as_login_superuser(session)
+        mixed = dict(second)
+        mixed["org_id"] = first["org_id"]
+        with pytest.raises(IntegrityError):
+            _insert_document(session, mixed, suffix="fk")
         session.rollback()
 
 

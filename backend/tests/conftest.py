@@ -49,6 +49,7 @@ def _force_rls_on_all_tables() -> None:
         "waitlist_signups",
         "findraft_year_ends",
         "findraft_draft_versions",
+        "findraft_source_documents",
     )
     with SyncSessionLocal() as session:
         for table in tables:
@@ -256,6 +257,10 @@ def provisioned_org() -> Iterator[dict]:
                 "(SELECT id FROM companies WHERE client_id IN "
                 "(SELECT id FROM clients WHERE org_id = :oid))"
             ),
+            {"oid": str(data["org_id"])},
+        )
+        session.execute(
+            text("DELETE FROM findraft_source_documents WHERE org_id = :oid"),
             {"oid": str(data["org_id"])},
         )
         session.execute(
