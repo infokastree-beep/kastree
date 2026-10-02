@@ -1287,6 +1287,24 @@ found the phrase only. Week 2 therefore verifies the real file type
 The category list has to come from the specification before a classifier
 of those types can be built.
 
+### Week 4 fixed assets and size eligibility
+
+The journal parser stays cut with GL ingestion. Week 4 stores an immutable
+fixed-asset register and builds the movement grid with the engine's
+`build_fa_grid`. A re-import creates a new register version. It does not
+create a draft; draft creation stays the trial-balance path.
+
+The pinned Irish small pack now carries the size thresholds the specification
+states: turnover €15,000,000, balance sheet €7,500,000, 50 employees, 2 of 3,
+current year and preceding year. A first financial period is tested on the
+current year only. The Irish micro thresholds (€900,000 / €450,000 / 10
+employees) are stated in the specification and are not a second pack, so they
+are not applied here.
+
+The specification also names an excluded-entity eligibility check and does
+not list the excluded categories. That list was not invented. Week 4 applies
+the size test only.
+
 ### Week 3 trial-balance ingestion
 
 The four vendor-named parsers (Sage, Xero, QuickBooks, Big Red Book) stay

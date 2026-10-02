@@ -12,7 +12,9 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Integer,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -71,6 +73,13 @@ class YearEnd(Base):
     )
     first_financial_period: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
+    )
+    size_eligible: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    size_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    size_current_met: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    size_preceding_met: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    size_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     pack_id: Mapped[str] = mapped_column(String(64), nullable=False)
     pack_version: Mapped[str] = mapped_column(String(16), nullable=False)
