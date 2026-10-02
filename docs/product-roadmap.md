@@ -83,6 +83,36 @@ Natural-language questions answered from already-computed statement and
 variance data via the existing evidence graph — **not** a new calculation
 engine.
 
+### Sole trader and farm accounts — a Product 1 segment (positioning only)
+
+**Status: market consideration, recorded 2 October 2026. No new engineering.**
+
+A distinct customer segment, separate from Product 2. Local practices often
+carry a high volume of sole-trader and farm clients whose year-end work is
+Form 11-driven: a simple profit-and-loss summary, prepared so the accountant
+can complete the client's income-tax return. That work is already covered by
+Product 1 as it ships today:
+
+- Trial balance upload (Excel / CSV, and the existing GL-to-TB path where a
+  practice starts from a ledger).
+- AI-assisted mapping suggestions, confirmed by the accountant.
+- Variance commentary against a prior period, where one exists.
+
+Those engagements never need a statutory face, an FRS 102 line, or the
+continuation translator. The open Product 2 question — which canonical line
+has a single statutory home — does not apply here.
+
+This is a positioning choice, not a build. Targeted messaging for practices
+whose book is mostly simple sole-trader and farm clients is worth testing:
+that book is high-volume, the accounts are simple, and the tools built
+around company statutory packs are a poor fit for it. Kastree's live
+internal-review loop (upload, map, variance, commentary, export) is the
+product those practices can use now.
+
+Messaging stays inside the existing Product 1 posture. Kastree does not
+prepare or file Form 11, and it does not produce a statutory annual report
+for this segment. The practice remains the reviewer and the filer.
+
 ---
 
 ## Future directions (captured, not scheduled)
@@ -368,6 +398,7 @@ the product.
 | Track | State |
 |-------|--------|
 | **Product 1 (sellable)** | **Complete and ready to sell now.** Close, Medium, Copilot, evidence drill-down, **paywall** (pricing + tier limits + Stripe Checkout/webhook) — live-tested 2026-09-07. |
+| **Sole trader / farm accounts** | **Positioning only, on the live Product 1 surface.** High-volume Form 11 work (simple P&L summaries) is already served by upload, mapping, and variance commentary. No statutory translation and no new engineering. See the Product 1 segment note above. |
 | **Working Paper / Reconciliation Evidence** | First Product 1 build candidate **when** real customer signal appears. Contained scope on existing evidence anchors. |
 | **Product 2 (Statutory)** | Paused — legal consultation gate in [`tracked-gaps.md`](tracked-gaps.md). Only separate product. |
 | **Scenario / forecast / budget** | Captured; large architecture; internal-only; not casual. |
