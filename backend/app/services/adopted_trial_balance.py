@@ -22,10 +22,12 @@ from decimal import Decimal, InvalidOperation
 from typing import cast
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
 from app.models.account_mapping import AccountMapping
+from app.models.company import Company
 from app.models.fa_version import FixedAssetLine, FixedAssetVersion
 from app.models.prior_year_line import PriorYearLine
 from app.models.trial_balance import TrialBalance
@@ -36,7 +38,7 @@ from app.services.reconciliation import (
     build_reconciliation,
     statutory_lines,
 )
-from findraft.engine.pack import pack_dir
+from findraft.engine.pack import load_manifest, pack_dir, pin_pack_version
 from findraft.engine.reconciliation import check_prior_year_gate
 from findraft.engine.schemas import TBLine
 from findraft.models.year_end import YearEnd
@@ -436,6 +438,108 @@ async def adopt_confirmed_trial_balance(
     year_end.adopted_trial_balance_id = tb.id
     await session.flush()
     return carried
+
+
+async def continue_from_trial_balance(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    trial_balance: TrialBalance,
+    pack_id: str,
+    pack_version: str,
+) -> tuple[YearEnd, tuple[CarriedMapping, ...]]:
+    """Find or create the year end for this trial balance, then adopt it.
+
+    Does not insert a statutory trial-balance version. Confirmed Product 1
+    mappings are translated by ``adopt_confirmed_trial_balance``.
+    """
+    await aset_rls_org_id(session, org_id)
+    if trial_balance.status != "complete":
+        raise ReconciliationRejected(
+            "Trial balance is not a completed, confirmed Product 1 trial balance"
+        )
+    if trial_balance.period_start is None:
+        raise ReconciliationRejected("This trial balance has no period start")
+    if trial_balance.period_end < trial_balance.period_start:
+        raise ReconciliationRejected("period_end is before period_start")
+    company = await session.get(Company, trial_balance.company_id)
+    if (
+        company is None
+        or company.is_deleted
+        or company.org_id != org_id
+    ):
+        raise ReconciliationRejected("Trial balance not found", 404)
+    try:
+        manifest = load_manifest(pack_dir(pack_id, pack_version) / "pack.json")
+        pinned = pin_pack_version(
+            {},
+            manifest,
+            period_start=trial_balance.period_start.isoformat(),
+        )
+    except (ValueError, FileNotFoundError, OSError) as exc:
+        raise ReconciliationRejected(str(exc)) from exc
+    pinned_id = str(pinned["pack_id"])
+    pinned_version = str(pinned["pack_version"])
+    year_end = await _year_end_for_period(
+        session,
+        org_id=company.org_id,
+        company_id=company.id,
+        period_end=trial_balance.period_end,
+    )
+    if year_end is None:
+        created = YearEnd(
+            org_id=company.org_id,
+            company_id=company.id,
+            period_start=trial_balance.period_start,
+            period_end=trial_balance.period_end,
+            pack_id=pinned_id,
+            pack_version=pinned_version,
+        )
+        try:
+            async with session.begin_nested():
+                session.add(created)
+                await session.flush()
+        except IntegrityError:
+            year_end = await _year_end_for_period(
+                session,
+                org_id=company.org_id,
+                company_id=company.id,
+                period_end=trial_balance.period_end,
+            )
+            if year_end is None:
+                raise
+        else:
+            year_end = created
+    if year_end.pack_id != pinned_id or year_end.pack_version != pinned_version:
+        raise ReconciliationRejected(
+            "A year end for this period is already pinned to "
+            f"{year_end.pack_id} {year_end.pack_version}",
+            409,
+        )
+    carried = await adopt_confirmed_trial_balance(
+        session,
+        org_id=org_id,
+        year_end=year_end,
+        trial_balance_id=trial_balance.id,
+    )
+    return year_end, carried
+
+
+async def _year_end_for_period(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    company_id: uuid.UUID,
+    period_end: date,
+) -> YearEnd | None:
+    found: YearEnd | None = await session.scalar(
+        select(YearEnd).where(
+            YearEnd.org_id == org_id,
+            YearEnd.company_id == company_id,
+            YearEnd.period_end == period_end,
+        )
+    )
+    return found
 
 
 async def _year_end_supplements(

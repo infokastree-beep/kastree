@@ -20,6 +20,15 @@ class YearEndCreateRequest(BaseModel):
     pack_version: str = "2024.09"
 
 
+class StatutoryYearEndContinueRequest(BaseModel):
+    """Pin a year end from a Product 1 trial balance already on the statements page."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pack_id: str = "frs102-1a-ie"
+    pack_version: str = "2024.09"
+
+
 class YearEndResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", from_attributes=True)
 
