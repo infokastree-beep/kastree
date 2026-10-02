@@ -77,6 +77,51 @@ see [`product-roadmap.md`](product-roadmap.md).
    [LinkedIn ads](#linkedin-ads--accountants--fractional-cfos-after-hero-is-live).
    Ads validate the public funnel; they do not replace (4).
 
+## Live testing — confirmed limitations (2 October 2026)
+
+Two limits found on the live product. Recorded here so a later session can
+decide them. Neither is a change to make in passing.
+
+### Product 1 PPE does not always become one FRS 102 sub-line
+
+Product 1's `property_plant_equipment` line is one management bucket. The
+statutory translation (`engine_line_for_confirmed_mapping`) only assigns a
+tangible fixed-asset line when the account name itself names one home:
+motor, fixture or fitting, land or building, plant or machinery, or an
+accumulated-depreciation wording. A generic name such as "Fixed Assets -
+Office Equipment" matches none of those. Continuation then refuses with
+"has no single statutory line".
+
+That refusal is the correct behaviour. The translator does not guess an
+FRS 102 sub-line from a broad Product 1 category.
+
+**Future session.** Decide whether translation should detect more specific
+sub-categories (equipment is the live example), or whether a generic PPE
+name stays a case for manual resolution. Do not force a statutory line just
+so continuation succeeds.
+
+### Standard TB headers `Code` and `Account` are rejected as a pair
+
+A standard Trial balance (Excel/CSV) upload rejected column headers `Code`
+and `Account`. The same file with `Account Code` and `Account Name` was
+accepted.
+
+`parser._detect_columns` already treats a bare `code` header as the code
+column. A bare `account` header is used only as a combined code-and-name
+column, and only when neither a code column nor a name column was found.
+With both short headers present, `Code` fills the code slot and `Account`
+is not a name synonym, so detection stops: "Could not detect account code
+and account name columns."
+
+**Future session.** Recognize these short headers, with the same care as
+the earlier ERP column-shape work (Product 1's generic importer covers the
+Sage, Xero, and QuickBooks shapes; the four vendor-named parsers stay
+cut). Substring matches are the false-positive risk: `account` also sits
+inside `Account Code`, and `code` sits inside unrelated headings. Add a
+test for the real `Code` / `Account` pair, and tests that the new synonyms
+do not steal a column from a file that already uses `Account Code` and
+`Account Name`, before shipping.
+
 ## Archival write paths
 
 Clients, companies, and trial balances soft-delete write to `archived_records`. See
