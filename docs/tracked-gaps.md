@@ -79,14 +79,20 @@ see [`product-roadmap.md`](product-roadmap.md).
 
 ## Live testing — confirmed limitations (2 October 2026)
 
-Two limits found on the live product. The statutory-translation gap is the
-higher priority: continuation stops on the first account with no single
-statutory line, and that refusal hits ordinary charts, not only fixed assets.
-Neither item is a change to make in passing.
+Two limits found on the live product. The statutory-translation gap below
+is the single highest-priority item for the next dedicated Product 2
+session. Continuation stops on the first account with no single statutory
+line, and that refusal hits ordinary charts, not only fixed assets. The
+header-synonym item stays a later, separate change.
 
 ### Statutory continuation has no single line for common Product 1 categories
 
-**Status:** higher priority. Confirmed on a live continuation for both
+**Status:** accepted 2 October 2026 as the definitive scope for the next
+dedicated Product 2 session, and the single highest-priority item for that
+session. The work is real accounting judgment: decide, deliberately, the
+statutory home for each of the seven name-gated lines and the three
+untranslated mapping lines below. It is not a code change that forces a
+translation so testing can continue. Confirmed on a live continuation for both
 `property_plant_equipment` ("Fixed Assets - Office Equipment") and
 `operating_expenses` (ordinary names such as rent). Those are two of the
 most common canonical lines on a trial balance. The translator refuses with
@@ -176,10 +182,11 @@ it would also refuse: `gross_profit`, `operating_profit`,
 `total_equity`.
 
 The refusal is still the honest behaviour. The translator must not invent a
-statutory sub-line. The open decision is whether each name-gated or unmapped
-line above gets a defined home (a more specific detector, or an explicit
-default), or stays a manual resolution. Do not force a line just so
-continuation succeeds.
+statutory sub-line. This audit is the scope document for that session.
+Decide the statutory home for each of the seven name-gated lines and the
+three untranslated mapping lines — a defined detector, an explicit default,
+or a case that stays manual. Do not force a line just so continuation
+succeeds.
 
 ### Standard TB headers `Code` and `Account` are rejected as a pair
 
