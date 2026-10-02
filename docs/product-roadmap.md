@@ -85,13 +85,25 @@ engine.
 
 ### Sole trader and farm accounts — a Product 1 segment (positioning only)
 
-**Status: market consideration, recorded 2 October 2026. No new engineering.**
+**Status: confirmed 2 October 2026. Ready to pursue now. No new engineering.**
 
 A distinct customer segment, separate from Product 2. Local practices often
 carry a high volume of sole-trader and farm clients whose year-end work is
 Form 11-driven: a simple profit-and-loss summary, prepared so the accountant
-can complete the client's income-tax return. That work is already covered by
-Product 1 as it ships today:
+can complete the client's income-tax return.
+
+**Confirmed for Irish sole traders, including a farm carried on as a sole
+trade.** There is no mandatory financial-reporting framework. FRS 102
+(including Section 1A) and FRS 105 do not apply. Those standards apply to
+companies and to the other entities in their scope. A sole trader's accounts
+exist to support the Form 11 income-tax return. Presentation is flexible:
+nothing in those standards prescribes the face of the statements. Revenue
+still expects records that support the return. That is a tax record-keeping
+duty, not a requirement to follow FRS 102 or FRS 105. A farm or other client
+that is a limited company stays on the Product 2 side of this line.
+
+That confirmation is why Product 1, as it ships today, is already sufficient
+for this market. The live loop is the product:
 
 - Trial balance upload (Excel / CSV, and the existing GL-to-TB path where a
   practice starts from a ledger).
@@ -100,14 +112,14 @@ Product 1 as it ships today:
 
 Those engagements never need a statutory face, an FRS 102 line, or the
 continuation translator. The open Product 2 question — which canonical line
-has a single statutory home — does not apply here.
+has a single statutory home — does not apply here. No statutory translation
+work, and no further engineering, stands between the current product and
+this segment.
 
-This is a positioning choice, not a build. Targeted messaging for practices
-whose book is mostly simple sole-trader and farm clients is worth testing:
-that book is high-volume, the accounts are simple, and the tools built
-around company statutory packs are a poor fit for it. Kastree's live
-internal-review loop (upload, map, variance, commentary, export) is the
-product those practices can use now.
+This de-risks the opportunity and brings it forward. It is positioning on a
+product that is already proven, and it can be pursued now. The book is
+high-volume, the accounts are simple, and tools built around company
+statutory packs are a poor fit for it.
 
 Messaging stays inside the existing Product 1 posture. Kastree does not
 prepare or file Form 11, and it does not produce a statutory annual report
@@ -398,7 +410,7 @@ the product.
 | Track | State |
 |-------|--------|
 | **Product 1 (sellable)** | **Complete and ready to sell now.** Close, Medium, Copilot, evidence drill-down, **paywall** (pricing + tier limits + Stripe Checkout/webhook) — live-tested 2026-09-07. |
-| **Sole trader / farm accounts** | **Positioning only, on the live Product 1 surface.** High-volume Form 11 work (simple P&L summaries) is already served by upload, mapping, and variance commentary. No statutory translation and no new engineering. See the Product 1 segment note above. |
+| **Sole trader / farm accounts** | **Ready to pursue now. Positioning only, on the live Product 1 surface.** Confirmed 2 October 2026: an Irish sole trader (including a sole-trader farm) has no mandatory framework — not FRS 102, not FRS 105. Accounts support Form 11, with flexible presentation. Product 1 as it ships is sufficient. No statutory translation and no new engineering. A limited company stays with Product 2. |
 | **Working Paper / Reconciliation Evidence** | First Product 1 build candidate **when** real customer signal appears. Contained scope on existing evidence anchors. |
 | **Product 2 (Statutory)** | Paused — legal consultation gate in [`tracked-gaps.md`](tracked-gaps.md). Only separate product. |
 | **Scenario / forecast / budget** | Captured; large architecture; internal-only; not casual. |
