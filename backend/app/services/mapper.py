@@ -49,6 +49,12 @@ LLM_TEMPERATURE = 0.1
 # 1 initial attempt + 3 retries (Section 7.1: "3 retries with exponential backoff").
 LLM_MAX_ATTEMPTS = 4
 LLM_BACKOFF_SECONDS = (1, 2, 4)
+# The OpenAI SDK waits 600s per HTTP call and retries that call twice.
+# Four of our attempts on each of two models can therefore sit for hours.
+# One completion of a large batch is allowed a few minutes. The whole
+# tie-breaker, both models and every retry, stops at the overall deadline.
+TIER4_REQUEST_TIMEOUT_SECONDS = 180.0
+TIER4_OVERALL_TIMEOUT_SECONDS = 480.0
 
 # Appendix C ranges that resolve to exactly one canonical line.
 # Range defaults are specialised by name inside _tier3_code_range where a single
@@ -62,6 +68,15 @@ UNAMBIGUOUS_CODE_RANGES: tuple[tuple[int, int, str], ...] = (
 )
 
 SleepFn = Callable[[float], None]
+ClockFn = Callable[[], float]
+
+
+class MappingTieBreakerTimeout(TimeoutError):
+    """The whole Tier 4 batch exceeded its deadline.
+
+    Raised so the mapping job fails with this message. A bad model answer
+    still leaves accounts unmapped; only this deadline fails the job.
+    """
 
 
 @dataclass(frozen=True)
@@ -160,10 +175,18 @@ def map_accounts_with_llm(
     *,
     openai_client: OpenAI | None = None,
     sleep: SleepFn = time.sleep,
+    clock: ClockFn = time.monotonic,
+    overall_timeout_seconds: float = TIER4_OVERALL_TIMEOUT_SECONDS,
 ) -> list[MappingResult]:
     """Run Tiers 1–3, then Tier 4 LLM tie-breaker on any remaining unmapped accounts."""
     results = map_accounts(accounts, prior_confirmed)
-    return apply_llm_tie_breaker(results, openai_client=openai_client, sleep=sleep)
+    return apply_llm_tie_breaker(
+        results,
+        openai_client=openai_client,
+        sleep=sleep,
+        clock=clock,
+        overall_timeout_seconds=overall_timeout_seconds,
+    )
 
 
 def apply_llm_tie_breaker(
@@ -171,18 +194,29 @@ def apply_llm_tie_breaker(
     *,
     openai_client: OpenAI | None = None,
     sleep: SleepFn = time.sleep,
+    clock: ClockFn = time.monotonic,
+    overall_timeout_seconds: float = TIER4_OVERALL_TIMEOUT_SECONDS,
 ) -> list[MappingResult]:
     """Apply Tier 4 to results with method=None; leave other results unchanged.
 
-    Never raises on LLM failure — exhausted fallbacks leave those accounts as
-    method=None (Section 7.1).
+    A model that fails its retries leaves those accounts as method=None.
+    ``MappingTieBreakerTimeout`` is not caught: the mapping job fails with
+    that message once the overall deadline is spent.
     """
-    unmapped_indexes = [index for index, result in enumerate(results) if result.method is None]
+    unmapped_indexes = [
+        index for index, result in enumerate(results) if result.method is None
+    ]
     if not unmapped_indexes:
         return list(results)
 
     unmapped = [results[index] for index in unmapped_indexes]
-    llm_mapped = _llm_map_batch(unmapped, openai_client=openai_client, sleep=sleep)
+    llm_mapped = _llm_map_batch(
+        unmapped,
+        openai_client=openai_client,
+        sleep=sleep,
+        clock=clock,
+        overall_timeout_seconds=overall_timeout_seconds,
+    )
 
     merged = list(results)
     for index, mapped in zip(unmapped_indexes, llm_mapped, strict=True):
@@ -253,7 +287,11 @@ def _tier2_fuzzy(
     scored: list[tuple[Decimal, str]] = []
     for prior in prior_confirmed:
         ratio = Decimal(
-            str(Levenshtein.normalized_similarity(name_key, normalize_text(prior.source_name)))
+            str(
+                Levenshtein.normalized_similarity(
+                    name_key, normalize_text(prior.source_name)
+                )
+            )
         )
         scored.append((ratio, prior.canonical_line))
 
@@ -314,10 +352,18 @@ def _tier3_code_range(source_code: str, source_name: str) -> MappingResult | Non
             resolved = band_default
             specialised = False
             # Name carve-outs where a broad range default would mis-file a clear concept.
-            if start == 7000 and end == 7999 and _name_suggests_amortisation(source_name):
+            if (
+                start == 7000
+                and end == 7999
+                and _name_suggests_amortisation(source_name)
+            ):
                 resolved = "amortisation"
                 specialised = True
-            elif start == 6000 and end == 6999 and _name_suggests_depreciation(source_name):
+            elif (
+                start == 6000
+                and end == 6999
+                and _name_suggests_depreciation(source_name)
+            ):
                 resolved = "depreciation"
                 specialised = True
             else:
@@ -391,11 +437,7 @@ def _name_suggests_impairment_or_write_down(normalized: str) -> bool:
     """Impairment / write-down of investments or goodwill is not cost of sales."""
     return bool(
         re.search(
-            r"\b("
-            r"impairment|"
-            r"write[- ]?downs?|"
-            r"written down"
-            r")\b",
+            r"\b(" r"impairment|" r"write[- ]?downs?|" r"written down" r")\b",
             normalized,
         )
     )
@@ -687,49 +729,93 @@ def _apply_clear_expense_name_defaults(
     ]
 
 
+def _tie_breaker_client(openai_client: OpenAI | None) -> OpenAI:
+    """Use the supplied client, with the SDK's own retries turned off.
+
+    Our attempt loop is the retry policy. Leaving the SDK default (two extra
+    HTTP retries, 600s each) would hide attempts and stretch a hang for hours.
+    """
+    if openai_client is None:
+        return OpenAI(max_retries=0)
+    if isinstance(openai_client, OpenAI):
+        return openai_client.with_options(max_retries=0)
+    return openai_client
+
+
 def _llm_map_batch(
     unmapped: Sequence[MappingResult],
     *,
     openai_client: OpenAI | None,
     sleep: SleepFn,
+    clock: ClockFn,
+    overall_timeout_seconds: float,
 ) -> list[MappingResult]:
+    account_count = len(unmapped)
+    account_label = "account" if account_count == 1 else "accounts"
+    logger.info(
+        "Tier 4 mapping batch sent: %s %s; overall deadline %.0fs",
+        account_count,
+        account_label,
+        overall_timeout_seconds,
+    )
     try:
-        client = openai_client if openai_client is not None else OpenAI()
+        client = _tie_breaker_client(openai_client)
     except Exception as init_error:
         # Missing OPENAI_API_KEY (or other client config) — Tier 4 was attempted
         # but cannot run; leave method=None for the caller to persist as llm/unmapped.
         logger.error(
-            "OpenAI client init failed for mapping tie-breaker: %s; leaving accounts unmapped",
+            "Tier 4 mapping outcome: exhausted (client init failed: %s); "
+            "leaving %s accounts unmapped",
             init_error,
+            account_count,
         )
         return _apply_clear_expense_name_defaults(unmapped)
 
     user_prompt = _build_tie_breaker_user_prompt(unmapped)
+    deadline = clock() + overall_timeout_seconds
 
     try:
         payload = _complete_mapping_json(
             client,
             model=LLM_PRIMARY_MODEL,
             user_prompt=user_prompt,
-            expected_count=len(unmapped),
+            expected_count=account_count,
             sleep=sleep,
+            clock=clock,
+            deadline=deadline,
+            overall_timeout_seconds=overall_timeout_seconds,
         )
+    except MappingTieBreakerTimeout:
+        raise
     except Exception as primary_error:
         logger.warning(
-            "GPT-4o-mini mapping tie-breaker failed after retries: %s; falling back to GPT-4o",
+            "Tier 4 mapping model exhausted: model=%s attempts=%s error=%s; "
+            "falling back to %s",
+            LLM_PRIMARY_MODEL,
+            LLM_MAX_ATTEMPTS,
             primary_error,
+            LLM_FALLBACK_MODEL,
         )
         try:
             payload = _complete_mapping_json(
                 client,
                 model=LLM_FALLBACK_MODEL,
                 user_prompt=user_prompt,
-                expected_count=len(unmapped),
+                expected_count=account_count,
                 sleep=sleep,
+                clock=clock,
+                deadline=deadline,
+                overall_timeout_seconds=overall_timeout_seconds,
             )
+        except MappingTieBreakerTimeout:
+            raise
         except Exception as fallback_error:
             logger.error(
-                "GPT-4o mapping tie-breaker also failed after retries: %s; leaving accounts unmapped",
+                "Tier 4 mapping outcome: exhausted models=%s,%s accounts=%s "
+                "error=%s; leaving accounts unmapped",
+                LLM_PRIMARY_MODEL,
+                LLM_FALLBACK_MODEL,
+                account_count,
                 fallback_error,
             )
             return _apply_clear_expense_name_defaults(unmapped)
@@ -762,6 +848,10 @@ def _mapping_indexes_are_complete(payload: dict[str, Any], expected_count: int) 
     return sorted(indexes) == list(range(1, expected_count + 1))
 
 
+def _request_timeout(remaining: float) -> float:
+    return min(TIER4_REQUEST_TIMEOUT_SECONDS, remaining)
+
+
 def _complete_mapping_json(
     client: OpenAI,
     *,
@@ -769,14 +859,37 @@ def _complete_mapping_json(
     user_prompt: str,
     expected_count: int,
     sleep: SleepFn,
+    clock: ClockFn,
+    deadline: float,
+    overall_timeout_seconds: float,
 ) -> dict[str, Any]:
     last_error: Exception | None = None
     for attempt in range(LLM_MAX_ATTEMPTS):
+        remaining = deadline - clock()
+        if remaining <= 0:
+            message = (
+                f"Tier 4 mapping timed out after {overall_timeout_seconds:.0f}s "
+                f"on {model} attempt {attempt + 1} of {LLM_MAX_ATTEMPTS}. "
+                "The tie-breaker did not finish."
+            )
+            logger.error("Tier 4 mapping outcome: timed out (%s)", message)
+            raise MappingTieBreakerTimeout(message)
+        request_timeout = _request_timeout(remaining)
+        logger.info(
+            "Tier 4 mapping attempt: model=%s attempt=%s/%s "
+            "request_timeout=%.0fs accounts=%s",
+            model,
+            attempt + 1,
+            LLM_MAX_ATTEMPTS,
+            request_timeout,
+            expected_count,
+        )
         try:
             response = client.chat.completions.create(
                 model=model,
                 temperature=LLM_TEMPERATURE,
                 response_format={"type": "json_object"},
+                timeout=request_timeout,
                 messages=[
                     {"role": "system", "content": MAPPING_TIE_BREAKER_SYSTEM},
                     {"role": "user", "content": user_prompt},
@@ -791,14 +904,40 @@ def _complete_mapping_json(
             if not isinstance(payload["mappings"], list):
                 raise ValueError("LLM 'mappings' value is not a list")
             if not _mapping_indexes_are_complete(payload, expected_count):
-                raise ValueError(
-                    "LLM mappings omitted or renumbered an account index"
-                )
+                raise ValueError("LLM mappings omitted or renumbered an account index")
+            logger.info(
+                "Tier 4 mapping outcome: success model=%s attempt=%s/%s accounts=%s",
+                model,
+                attempt + 1,
+                LLM_MAX_ATTEMPTS,
+                expected_count,
+            )
             return payload
+        except MappingTieBreakerTimeout:
+            raise
         except Exception as exc:
             last_error = exc
-            if attempt < LLM_MAX_ATTEMPTS - 1:
-                sleep(LLM_BACKOFF_SECONDS[attempt])
+            if attempt >= LLM_MAX_ATTEMPTS - 1:
+                break
+            wait = float(LLM_BACKOFF_SECONDS[attempt])
+            remaining = deadline - clock()
+            if remaining <= wait:
+                message = (
+                    f"Tier 4 mapping timed out after {overall_timeout_seconds:.0f}s "
+                    f"on {model} attempt {attempt + 1} of {LLM_MAX_ATTEMPTS} "
+                    f"before a {wait:.0f}s retry wait. The tie-breaker did not finish."
+                )
+                logger.error("Tier 4 mapping outcome: timed out (%s)", message)
+                raise MappingTieBreakerTimeout(message) from exc
+            logger.info(
+                "Tier 4 mapping retry: model=%s attempt=%s/%s failed (%s); waiting %.0fs",
+                model,
+                attempt + 1,
+                LLM_MAX_ATTEMPTS,
+                exc,
+                wait,
+            )
+            sleep(wait)
     assert last_error is not None
     raise last_error
 

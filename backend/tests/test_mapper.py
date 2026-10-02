@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from decimal import Decimal
 from unittest.mock import MagicMock
 
+import pytest
+
 from app.services.llm import MAPPING_TIE_BREAKER_SYSTEM
 from app.services.mapper import (
     MappingResult,
+    MappingTieBreakerTimeout,
     PriorConfirmedMapping,
+    TIER4_OVERALL_TIMEOUT_SECONDS,
+    TIER4_REQUEST_TIMEOUT_SECONDS,
     apply_llm_tie_breaker,
     map_accounts,
     map_accounts_with_llm,
@@ -177,10 +183,14 @@ def test_tier3_7000_range_routes_amortisation_names_separately() -> None:
     """7000–7999 defaults to depreciation; amort*-named accounts → amortisation."""
     accounts = [
         FakeAccount(account_code="7000", account_name="Depreciation - Buildings"),
-        FakeAccount(account_code="7010", account_name="Depreciation - Plant & Machinery"),
+        FakeAccount(
+            account_code="7010", account_name="Depreciation - Plant & Machinery"
+        ),
         FakeAccount(account_code="7100", account_name="Amortisation - Software"),
         FakeAccount(account_code="7110", account_name="Amortisation - Goodwill"),
-        FakeAccount(account_code="7120", account_name="Amortization of patents"),  # US spelling
+        FakeAccount(
+            account_code="7120", account_name="Amortization of patents"
+        ),  # US spelling
     ]
 
     results = map_accounts(accounts, prior_confirmed=[])
@@ -225,16 +235,24 @@ def test_tier3_interest_polarity_income_vs_expense() -> None:
 def test_tier3_accumulated_depreciation_maps_to_ppe_not_depreciation() -> None:
     """Accumulated Depreciation is a BS contra-asset → property_plant_equipment."""
     accounts = [
-        FakeAccount(account_code="1450", account_name="Accumulated Depreciation - Buildings"),
+        FakeAccount(
+            account_code="1450", account_name="Accumulated Depreciation - Buildings"
+        ),
         FakeAccount(account_code="1460", account_name="Accumulated Depreciation"),
         FakeAccount(account_code="7000", account_name="Depreciation - Buildings"),
         FakeAccount(account_code="1450", account_name="Provision for Depreciation"),
         # Abbreviation variants that must still hit the BS-contra path (not P&L).
-        FakeAccount(account_code="1210", account_name="Motor Vehicles - Accum. Depreciation"),
-        FakeAccount(account_code="1110", account_name="Plant & Machinery - Accum. Depreciation"),
+        FakeAccount(
+            account_code="1210", account_name="Motor Vehicles - Accum. Depreciation"
+        ),
+        FakeAccount(
+            account_code="1110", account_name="Plant & Machinery - Accum. Depreciation"
+        ),
         FakeAccount(account_code="1210", account_name="Accum Depreciation - Vehicles"),
         FakeAccount(account_code="1210", account_name="Accum. Depn - Vehicles"),
-        FakeAccount(account_code="1210", account_name="Acc. Depreciation - Motor Vehicles"),
+        FakeAccount(
+            account_code="1210", account_name="Acc. Depreciation - Motor Vehicles"
+        ),
         FakeAccount(account_code="1210", account_name="A/Depn"),
         FakeAccount(account_code="1210", account_name="A/Depreciation"),
     ]
@@ -281,7 +299,9 @@ def test_bare_depreciation_charge_is_not_treated_as_bs_contra() -> None:
 def test_tier3_accumulated_amortisation_maps_to_intangibles_not_amortisation() -> None:
     """Accumulated Amortisation is a BS contra-asset → intangible_assets."""
     accounts = [
-        FakeAccount(account_code="1550", account_name="Accumulated Amortisation - Software"),
+        FakeAccount(
+            account_code="1550", account_name="Accumulated Amortisation - Software"
+        ),
         FakeAccount(account_code="7100", account_name="Amortisation - Software"),
         FakeAccount(account_code="1550", account_name="Provision for Amortisation"),
     ]
@@ -301,7 +321,9 @@ def test_allowance_for_doubtful_debts_nets_trade_receivables() -> None:
         FakeAccount(account_code="1610", account_name="Allowance for Doubtful Debts"),
         FakeAccount(account_code="1610", account_name="Provision for Doubtful Debts"),
         FakeAccount(account_code="1610", account_name="Provision for Bad Debts"),
-        FakeAccount(account_code="1610", account_name="Allowance for Expected Credit Losses"),
+        FakeAccount(
+            account_code="1610", account_name="Allowance for Expected Credit Losses"
+        ),
         FakeAccount(account_code="1600", account_name="Trade Debtors"),
         FakeAccount(account_code="6500", account_name="Bad Debts Written Off"),
         FakeAccount(account_code="6500", account_name="Bad Debt Expense"),
@@ -364,11 +386,19 @@ def test_tier3_name_contradiction_falls_through_for_non_appendix_c_coa() -> None
     """Option B: clear name-vs-band conflict → method=None (Tier 4), not wrong line."""
     accounts = [
         FakeAccount(account_code="7100", account_name="Rent - Office Premises"),
-        FakeAccount(account_code="7600", account_name="Bank Charges & Transaction Fees"),
-        FakeAccount(account_code="4000", account_name="Called Up Share Capital - Ordinary"),
+        FakeAccount(
+            account_code="7600", account_name="Bank Charges & Transaction Fees"
+        ),
+        FakeAccount(
+            account_code="4000", account_name="Called Up Share Capital - Ordinary"
+        ),
         FakeAccount(account_code="4010", account_name="Share Premium Account"),
-        FakeAccount(account_code="4100", account_name="Retained Earnings - Brought Forward"),
-        FakeAccount(account_code="5000", account_name="Sales - Manufactured Goods Domestic"),
+        FakeAccount(
+            account_code="4100", account_name="Retained Earnings - Brought Forward"
+        ),
+        FakeAccount(
+            account_code="5000", account_name="Sales - Manufactured Goods Domestic"
+        ),
         FakeAccount(account_code="6000", account_name="Cost of Sales - Materials Used"),
         # Appendix-C-aligned controls in the same bands must still hit code_range:
         FakeAccount(account_code="4200", account_name="Sales Revenue"),
@@ -437,7 +467,9 @@ def test_ambiguous_and_invalid_codes_fall_through_unmapped() -> None:
         FakeAccount(account_code="3100", account_name="Share capital"),  # equity
         FakeAccount(account_code="8100", account_name="Interest paid"),  # interest/tax
         FakeAccount(account_code="ABC-100", account_name="Suspense"),  # non-numeric
-        FakeAccount(account_code="10000", account_name="Out of range"),  # outside 1000–9999
+        FakeAccount(
+            account_code="10000", account_name="Out of range"
+        ),  # outside 1000–9999
     ]
 
     results = map_accounts(accounts, prior_confirmed=[])
@@ -545,7 +577,9 @@ def test_tier4_unmapped_response_path() -> None:
         }
     )
 
-    results = apply_llm_tie_breaker(unmapped, openai_client=client, sleep=lambda _: None)
+    results = apply_llm_tie_breaker(
+        unmapped, openai_client=client, sleep=lambda _: None
+    )
 
     assert results == [
         MappingResult("9000", "Misc clearing", None, Decimal("0.35"), "llm"),
@@ -583,6 +617,7 @@ def test_tier4_retry_then_succeed() -> None:
     ]
     assert client.chat.completions.create.call_count == 2
     assert sleep_calls == [1]
+
 
 def test_tier4_fallback_to_gpt4o_then_give_up_leaves_unmapped() -> None:
     unmapped = [
@@ -728,3 +763,112 @@ def test_expense_guard_does_not_rewrite_unrelated_accounts() -> None:
         assert result.method == "llm"
         assert result.confidence == Decimal("0.91")
 
+
+class _Clock:
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.now += seconds
+
+
+def _batch_payload(count: int) -> dict[str, object]:
+    return {
+        "mappings": [
+            {
+                "index": index,
+                "canonical_line": "operating_expenses",
+                "reasoning": "overhead",
+                "confidence": 0.8,
+            }
+            for index in range(1, count + 1)
+        ]
+    }
+
+
+def test_tier4_batch_logs_send_retries_and_success(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Forty accounts, two failed attempts, then a successful batch."""
+    count = 40
+    unmapped = [
+        MappingResult(str(5000 + index), f"Sundry overhead {index}", None, None, None)
+        for index in range(1, count + 1)
+    ]
+    client = MagicMock()
+    client.chat.completions.create.side_effect = [
+        RuntimeError("temporary outage"),
+        RuntimeError("still unavailable"),
+        _mock_completion(_batch_payload(count)),
+    ]
+    clock = _Clock()
+    with caplog.at_level(logging.INFO, logger="app.services.mapper"):
+        results = apply_llm_tie_breaker(
+            unmapped,
+            openai_client=client,
+            sleep=clock.sleep,
+            clock=clock,
+        )
+
+    assert len(results) == count
+    assert all(result.canonical_line == "operating_expenses" for result in results)
+    assert client.chat.completions.create.call_count == 3
+    assert [
+        call.kwargs["timeout"] for call in client.chat.completions.create.call_args_list
+    ] == [
+        TIER4_REQUEST_TIMEOUT_SECONDS,
+        TIER4_REQUEST_TIMEOUT_SECONDS,
+        TIER4_REQUEST_TIMEOUT_SECONDS,
+    ]
+    text = caplog.text
+    assert "Tier 4 mapping batch sent: 40 accounts; overall deadline 480s" in text
+    assert "model=gpt-4o-mini attempt=1/4 request_timeout=180s accounts=40" in text
+    assert (
+        "Tier 4 mapping retry: model=gpt-4o-mini attempt=1/4 failed "
+        "(temporary outage); waiting 1s" in text
+    )
+    assert "model=gpt-4o-mini attempt=2/4 request_timeout=180s accounts=40" in text
+    assert (
+        "Tier 4 mapping retry: model=gpt-4o-mini attempt=2/4 failed "
+        "(still unavailable); waiting 2s" in text
+    )
+    assert "model=gpt-4o-mini attempt=3/4 request_timeout=180s accounts=40" in text
+    assert (
+        "Tier 4 mapping outcome: success model=gpt-4o-mini attempt=3/4 accounts=40"
+        in text
+    )
+
+
+def test_tier4_overall_deadline_fails_the_job(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The combined budget stops the batch instead of waiting out every retry."""
+    unmapped = [
+        MappingResult(str(6000 + index), f"Clearing account {index}", None, None, None)
+        for index in range(1, 13)
+    ]
+    client = MagicMock()
+    client.chat.completions.create.side_effect = RuntimeError("hung upstream")
+    clock = _Clock()
+    with caplog.at_level(logging.INFO, logger="app.services.mapper"):
+        with pytest.raises(
+            MappingTieBreakerTimeout, match="timed out after 3s"
+        ) as raised:
+            apply_llm_tie_breaker(
+                unmapped,
+                openai_client=client,
+                sleep=clock.sleep,
+                clock=clock,
+                overall_timeout_seconds=3,
+            )
+    assert "The tie-breaker did not finish." in str(raised.value)
+    text = caplog.text
+    assert "Tier 4 mapping batch sent: 12 accounts; overall deadline 3s" in text
+    assert "request_timeout=3s" in text
+    assert "waiting 1s" in text
+    assert "Tier 4 mapping outcome: timed out" in text
+    assert "leaving accounts unmapped" not in text
+    assert TIER4_OVERALL_TIMEOUT_SECONDS == 480.0
