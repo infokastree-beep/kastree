@@ -19,7 +19,7 @@ from fastapi import (
     status,
 )
 from sqlalchemy import func, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -54,7 +54,12 @@ from app.schemas.year_end import (
     StatementResponse,
     SizeEligibilityRequest,
     SizeEligibilityResponse,
+    AdoptedTrialBalanceResponse,
+    AdoptableTrialBalanceList,
+    AdoptableTrialBalanceOut,
+    AdoptTrialBalanceRequest,
     CanonicalLinesResponse,
+    CarriedMappingOut,
     TrialBalanceLineOut,
     TrialBalanceLinesResponse,
     TrialBalanceVersionCreate,
@@ -88,6 +93,11 @@ from app.services.prior_year import (
     mark_first_financial_period,
     reconciliation_gate,
 )
+from app.services.adopted_trial_balance import (
+    adopt_confirmed_trial_balance,
+    list_adoptable_trial_balances,
+    reconcile_adopted,
+)
 from app.services.reconciliation import (
     ReconciliationRejected,
     ReconciliationReport,
@@ -120,6 +130,7 @@ from app.services.statutory_evidence import evidence_for_version
 from app.services.statutory_present import evidence_response, statement_response
 from app.services.statutory_statements import (
     StatutoryStatements,
+    statements_for_adopted,
     statements_for_version,
     write_statement_pdf,
 )
@@ -257,6 +268,163 @@ async def list_canonical_lines(
     """Mapping targets the statutory pack accepts. No balances."""
     del auth
     return CanonicalLinesResponse(lines=sorted(statutory_lines()))
+
+
+def _adoption_error(exc: ReconciliationRejected) -> HTTPException:
+    return HTTPException(status_code=exc.status_code, detail=exc.detail)
+
+
+@router.get(
+    "/{year_end_id}/adoptable-trial-balances",
+    response_model=AdoptableTrialBalanceList,
+)
+async def get_adoptable_trial_balances(
+    year_end_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> AdoptableTrialBalanceList:
+    """Completed Product 1 trial balances whose confirmed mappings all carry."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    rows = await list_adoptable_trial_balances(
+        session, org_id=auth.org_id, year_end=year_end
+    )
+    return AdoptableTrialBalanceList(
+        items=[
+            AdoptableTrialBalanceOut(
+                id=row.id,
+                period_end=row.period_end,
+                currency=row.currency,
+                account_count=row.account_count,
+            )
+            for row in rows
+        ]
+    )
+
+
+@router.post(
+    "/{year_end_id}/adopt-trial-balance",
+    response_model=AdoptedTrialBalanceResponse,
+)
+async def post_adopt_trial_balance(
+    year_end_id: uuid.UUID,
+    body: AdoptTrialBalanceRequest,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> AdoptedTrialBalanceResponse:
+    """Select a confirmed Product 1 trial balance. Does not copy it."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        carried = await adopt_confirmed_trial_balance(
+            session,
+            org_id=auth.org_id,
+            year_end=year_end,
+            trial_balance_id=body.trial_balance_id,
+        )
+    except ReconciliationRejected as exc:
+        raise _adoption_error(exc) from exc
+    except DBAPIError as exc:
+        message = str(exc.orig) if exc.orig is not None else str(exc)
+        if "adopted trial balance" in message:
+            raise HTTPException(
+                status_code=400, detail="Trial balance cannot be adopted"
+            ) from exc
+        raise
+    return AdoptedTrialBalanceResponse(
+        year_end_id=year_end.id,
+        trial_balance_id=body.trial_balance_id,
+        lines=[
+            CarriedMappingOut(
+                nominal_code=line.nominal_code,
+                account_name=line.account_name,
+                product1_line=line.product1_line,
+                canonical_line=line.canonical_line,
+            )
+            for line in carried
+        ],
+    )
+
+
+@router.get(
+    "/{year_end_id}/adopted-trial-balance/reconciliation",
+    response_model=ReconciliationResponse,
+)
+async def get_adopted_reconciliation(
+    year_end_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> ReconciliationResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        report = await reconcile_adopted(
+            session, org_id=auth.org_id, year_end=year_end
+        )
+    except ReconciliationRejected as exc:
+        raise _adoption_error(exc) from exc
+    return _report_response(report)
+
+
+@router.get(
+    "/{year_end_id}/adopted-trial-balance/statements",
+    response_model=StatementResponse,
+)
+async def get_adopted_statements(
+    year_end_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> StatementResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        document = await statements_for_adopted(
+            session, org_id=auth.org_id, year_end=year_end
+        )
+    except ReconciliationRejected as exc:
+        raise _adoption_error(exc) from exc
+    return statement_response(document)
+
+
+@router.get("/{year_end_id}/adopted-trial-balance/statements.pdf")
+async def get_adopted_statement_pdf(
+    year_end_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> Response:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        document = await statements_for_adopted(
+            session, org_id=auth.org_id, year_end=year_end
+        )
+    except ReconciliationRejected as exc:
+        raise _adoption_error(exc) from exc
+    if not document.renderable or document.html is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Statutory statements are not renderable",
+        )
+    pdf = write_statement_pdf(document.html)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": (
+                'inline; filename="statutory-statements-draft.pdf"'
+            )
+        },
+    )
 
 
 @router.post(

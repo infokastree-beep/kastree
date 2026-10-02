@@ -31,6 +31,7 @@ class YearEndResponse(BaseModel):
     pack_version: str
     prior_year_validated: bool
     first_financial_period: bool
+    adopted_trial_balance_id: uuid.UUID | None = None
 
 
 class TrialBalanceVersionCreate(BaseModel):
@@ -462,3 +463,41 @@ class RenderJobResponse(BaseModel):
     job_id: uuid.UUID
     status: Literal["pending", "running", "ready", "failed"]
     error_message: str | None = None
+
+
+class AdoptableTrialBalanceOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    period_end: date
+    currency: str | None
+    account_count: int
+
+
+class AdoptableTrialBalanceList(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[AdoptableTrialBalanceOut]
+
+
+class AdoptTrialBalanceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    trial_balance_id: uuid.UUID
+
+
+class CarriedMappingOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nominal_code: str
+    account_name: str
+    product1_line: str
+    canonical_line: str
+
+
+class AdoptedTrialBalanceResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    year_end_id: uuid.UUID
+    trial_balance_id: uuid.UUID
+    lines: list[CarriedMappingOut]
