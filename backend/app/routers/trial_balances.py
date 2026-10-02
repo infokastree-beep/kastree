@@ -408,6 +408,14 @@ def _file_extension(filename: str) -> str:
     raise HTTPException(status_code=400, detail="Only .xlsx and .csv files are accepted")
 
 
+def _reject_inverted_period(period_start: date | None, period_end: date) -> None:
+    if period_start is not None and period_start > period_end:
+        raise HTTPException(
+            status_code=400,
+            detail="Period start must be on or before period end.",
+        )
+
+
 def _progress_for_tb(tb: TrialBalance, jobs: list[ProcessingJob]) -> tuple[int, str | None]:
     status_pct = {
         "pending": 0,
@@ -640,8 +648,10 @@ async def upload_trial_balance(
     period_end: Annotated[date, Form()],
     file: Annotated[UploadFile, File()],
     currency: Annotated[str, Form()] = "GBP",
+    period_start: Annotated[date | None, Form()] = None,
 ) -> UploadAcceptedResponse:
     await aset_rls_org_id(session, auth.org_id)
+    _reject_inverted_period(period_start, period_end)
     company = await get_owned_company(session, company_id=company_id, org_id=auth.org_id)
 
     filename = file.filename or "upload.xlsx"
@@ -708,10 +718,12 @@ async def upload_trial_balance(
         tb.error_message = None
         tb.status = "pending"
         tb.currency = currency_code
+        tb.period_start = period_start
     else:
         tb = TrialBalance(
             company_id=company.id,
             period_end=period_end,
+            period_start=period_start,
             file_url=file_url,
             file_type=file_type,
             file_size_bytes=len(content),
