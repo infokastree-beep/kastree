@@ -85,7 +85,13 @@ class Settings(BaseSettings):
 
     # Platform admin allowlist — comma-separated emails and/or Clerk user ids (user_…)
     # permitted to access /admin in addition to require_roles("owner").
+    # Production Product 2 (statutory year-ends) uses the same allowlist.
     platform_admin_emails: str = ""
+
+    # When true, creating a trial-balance version queues parsing after the
+    # 202 response. Tests turn this off and call the worker themselves so the
+    # import is still pending when the response returns.
+    tb_import_background: bool = True
 
     # Observability — Sentry error tracking (optional; unset = disabled).
     sentry_dsn: str | None = None

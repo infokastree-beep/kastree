@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import aset_rls_org_id
 from app.dependencies import (
     AuthContext,
+    enforce_product2_production_access,
     get_db_session,
     require_member_work,
     require_reader,
@@ -29,7 +30,11 @@ from app.services.source_storage import (
 )
 from app.services.upload_security import UploadRejected, inspect_upload
 
-router = APIRouter(prefix="/source-documents", tags=["source-documents"])
+router = APIRouter(
+    prefix="/source-documents",
+    tags=["source-documents"],
+    dependencies=[Depends(enforce_product2_production_access)],
+)
 
 _IDEMPOTENCY_MAX = 200
 

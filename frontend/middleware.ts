@@ -11,6 +11,7 @@ const isDashboardRoute = createRouteMatcher([
   "/notifications(.*)",
   "/settings(.*)",
   "/admin(.*)",
+  "/statutory(.*)",
   "/onboarding(.*)",
 ]);
 

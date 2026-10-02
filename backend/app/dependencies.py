@@ -320,6 +320,24 @@ def require_platform_admin():
     return _dependency
 
 
+async def enforce_product2_production_access(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> AuthContext:
+    """Production gate for Product 2 statutory routes.
+
+    Qualified-reviewer sign-off is still pending, so a production caller must
+    be on PLATFORM_ADMIN_EMAILS (the same allowlist as /admin). Development
+    and test keep the route's own role check, so the suite can run as an
+    ordinary owner.
+    """
+    if settings.app_env == "production" and not is_platform_admin(auth):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to access this resource.",
+        )
+    return auth
+
+
 async def get_db(
     session: AsyncSession = Depends(get_db_session),
     auth: AuthContext = Depends(get_auth_context),
