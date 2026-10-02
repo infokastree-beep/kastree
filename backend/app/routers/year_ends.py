@@ -9,14 +9,24 @@ import uuid
 from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    Response,
+    status,
+)
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db import aset_rls_org_id
 from app.dependencies import (
     AuthContext,
+    enforce_product2_production_access,
     get_db_session,
     require_client_admin,
     require_member_work,
@@ -25,7 +35,7 @@ from app.dependencies import (
 from app.models.company import Company
 from app.models.fa_version import FixedAssetLine, FixedAssetVersion
 from app.models.source_document import SourceDocument
-from app.models.tb_version import TrialBalanceVersion
+from app.models.tb_version import TrialBalanceLine, TrialBalanceVersion
 from app.schemas.year_end import (
     FixedAssetLineOut,
     FixedAssetTotalOut,
@@ -44,6 +54,9 @@ from app.schemas.year_end import (
     StatementResponse,
     SizeEligibilityRequest,
     SizeEligibilityResponse,
+    CanonicalLinesResponse,
+    TrialBalanceLineOut,
+    TrialBalanceLinesResponse,
     TrialBalanceVersionCreate,
     TrialBalanceVersionResponse,
     YearEndCreateRequest,
@@ -80,6 +93,7 @@ from app.services.reconciliation import (
     ReconciliationReport,
     confirm_mappings,
     reconcile_version,
+    statutory_lines,
 )
 from app.services.draft_workflow import (
     Dashboard,
@@ -101,6 +115,7 @@ from app.services.render_jobs import (
     job_for_version,
 )
 from app.services.source_storage import SourceObjectStorage, get_source_storage
+from app.services.tb_import_worker import run_tb_import_job
 from app.services.statutory_evidence import evidence_for_version
 from app.services.statutory_present import evidence_response, statement_response
 from app.services.statutory_statements import (
@@ -114,7 +129,11 @@ from findraft.models.draft_version import DraftVersion
 from findraft.models.render_job import RenderJob
 from findraft.models.year_end import YearEnd
 
-router = APIRouter(prefix="/year-ends", tags=["year-ends"])
+router = APIRouter(
+    prefix="/year-ends",
+    tags=["year-ends"],
+    dependencies=[Depends(enforce_product2_production_access)],
+)
 
 
 def _idempotency_key(value: str | None) -> str:
@@ -149,6 +168,27 @@ def _version_response(
         error_message=version.error_message,
         draft_version_number=draft_number,
         draft_id=draft_id,
+    )
+
+
+async def _queue_tb_import(
+    session: AsyncSession,
+    background_tasks: BackgroundTasks,
+    *,
+    org_id: uuid.UUID,
+    version_id: uuid.UUID,
+    version_status: str,
+    storage: SourceObjectStorage,
+) -> None:
+    """Commit the pending row, then parse it after the 202 is returned."""
+    if not settings.tb_import_background or version_status != "pending":
+        return
+    await session.commit()
+    background_tasks.add_task(
+        run_tb_import_job,
+        org_id=org_id,
+        version_id=version_id,
+        storage=storage,
     )
 
 
@@ -210,6 +250,15 @@ async def create_year_end(
     return year_end
 
 
+@router.get("/canonical-lines", response_model=CanonicalLinesResponse)
+async def list_canonical_lines(
+    auth: Annotated[AuthContext, Depends(require_reader)],
+) -> CanonicalLinesResponse:
+    """Mapping targets the statutory pack accepts. No balances."""
+    del auth
+    return CanonicalLinesResponse(lines=sorted(statutory_lines()))
+
+
 @router.post(
     "/{year_end_id}/trial-balance-versions",
     status_code=status.HTTP_202_ACCEPTED,
@@ -220,6 +269,8 @@ async def create_trial_balance_version(
     body: TrialBalanceVersionCreate,
     auth: Annotated[AuthContext, Depends(require_member_work)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    storage: Annotated[SourceObjectStorage, Depends(get_source_storage)],
+    background_tasks: BackgroundTasks,
     idempotency_key: Annotated[str | None, Header()] = None,
 ) -> TrialBalanceVersionResponse:
     key = _idempotency_key(idempotency_key)
@@ -241,7 +292,16 @@ async def create_trial_balance_version(
             and existing.year_end_id == year_end.id
         ):
             draft_id, draft_number = await _latest_draft_ref(session, existing.id)
-            return _version_response(existing, draft_number, draft_id)
+            response = _version_response(existing, draft_number, draft_id)
+            await _queue_tb_import(
+                session,
+                background_tasks,
+                org_id=auth.org_id,
+                version_id=existing.id,
+                version_status=existing.status,
+                storage=storage,
+            )
+            return response
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Idempotency-Key was already used for a different import",
@@ -289,7 +349,16 @@ async def create_trial_balance_version(
             status_code=status.HTTP_409_CONFLICT,
             detail="Idempotency-Key was already used for a different import",
         ) from exc
-    return _version_response(version, None)
+    response = _version_response(version, None)
+    await _queue_tb_import(
+        session,
+        background_tasks,
+        org_id=auth.org_id,
+        version_id=version.id,
+        version_status=version.status,
+        storage=storage,
+    )
+    return response
 
 
 @router.get(
@@ -315,6 +384,53 @@ async def get_trial_balance_version(
         raise HTTPException(status_code=404, detail="Trial balance version not found")
     draft_id, draft_number = await _latest_draft_ref(session, version.id)
     return _version_response(version, draft_number, draft_id)
+
+
+@router.get(
+    "/{year_end_id}/trial-balance-versions/{version_id}/lines",
+    response_model=TrialBalanceLinesResponse,
+)
+async def list_trial_balance_lines(
+    year_end_id: uuid.UUID,
+    version_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> TrialBalanceLinesResponse:
+    """Nominal lines for mapping. Amounts are the parsed trial balance, unchanged."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    version = await _owned_tb_version(
+        session, year_end=year_end, version_id=version_id, org_id=auth.org_id
+    )
+    if version.status != "ready":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Trial balance version is not ready",
+        )
+    rows = (
+        await session.scalars(
+            select(TrialBalanceLine)
+            .where(
+                TrialBalanceLine.tb_version_id == version.id,
+                TrialBalanceLine.org_id == auth.org_id,
+            )
+            .order_by(TrialBalanceLine.line_no)
+        )
+    ).all()
+    return TrialBalanceLinesResponse(
+        lines=[
+            TrialBalanceLineOut(
+                line_no=row.line_no,
+                nominal_code=row.nominal_code,
+                account_name=row.account_name,
+                debit=amount_text(row.debit),
+                credit=amount_text(row.credit),
+            )
+            for row in rows
+        ]
+    )
 
 
 @router.post(

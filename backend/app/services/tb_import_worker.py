@@ -11,7 +11,7 @@ import uuid
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from app.db import set_rls_org_id
+from app.db import SyncSessionLocal, set_rls_org_id
 from app.models.company import Company
 from app.models.source_document import SourceDocument
 from app.models.tb_version import TrialBalanceLine, TrialBalanceVersion
@@ -28,6 +28,22 @@ from findraft.engine.reconciliation import check_tb_integrity
 from findraft.engine.schemas import TBLine
 from findraft.models.draft_version import DraftVersion
 from findraft.models.year_end import YearEnd
+
+
+def run_tb_import_job(
+    *,
+    org_id: uuid.UUID,
+    version_id: uuid.UUID,
+    storage: SourceObjectStorage,
+) -> None:
+    """Parse one pending version after the HTTP handler has committed it."""
+    with SyncSessionLocal() as session:
+        process_tb_version(
+            session,
+            org_id=org_id,
+            version_id=version_id,
+            storage=storage,
+        )
 
 
 def process_tb_version(
