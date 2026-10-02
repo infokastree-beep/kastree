@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import aset_rls_org_id
 from app.dependencies import (
     AuthContext,
+    enforce_product2_production_access,
     get_db_session,
     require_client_admin,
     require_reader,
@@ -22,7 +23,11 @@ from app.services.beta import (
     beta_acknowledged,
 )
 
-router = APIRouter(prefix="/beta", tags=["beta"])
+router = APIRouter(
+    prefix="/beta",
+    tags=["beta"],
+    dependencies=[Depends(enforce_product2_production_access)],
+)
 
 
 @router.get("", response_model=BetaPositionResponse)

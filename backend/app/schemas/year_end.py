@@ -52,6 +52,28 @@ class TrialBalanceVersionResponse(BaseModel):
     draft_id: uuid.UUID | None = None
 
 
+class TrialBalanceLineOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    line_no: int
+    nominal_code: str
+    account_name: str
+    debit: str
+    credit: str
+
+
+class TrialBalanceLinesResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lines: list[TrialBalanceLineOut]
+
+
+class CanonicalLinesResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lines: list[str]
+
+
 class PriorYearLineIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

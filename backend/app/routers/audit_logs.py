@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import aset_rls_org_id
 from app.dependencies import (
     AuthContext,
+    enforce_product2_production_access,
     get_db_session,
     require_member_work,
     require_reader,
@@ -24,7 +25,11 @@ from app.services.retention import (
     STATUTORY_FLOOR_YEARS,
 )
 
-router = APIRouter(prefix="/audit-logs", tags=["audit-logs"])
+router = APIRouter(
+    prefix="/audit-logs",
+    tags=["audit-logs"],
+    dependencies=[Depends(enforce_product2_production_access)],
+)
 
 
 @router.get("/policy", response_model=RetentionPolicyResponse)

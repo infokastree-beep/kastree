@@ -41,11 +41,13 @@ export function AdminNavLink() {
   }
 
   return (
-    <Link
-      href="/admin"
-      className="transition-colors hover:text-accent"
-    >
-      Admin
-    </Link>
+    <>
+      <Link href="/statutory" className="transition-colors hover:text-accent">
+        Statutory
+      </Link>
+      <Link href="/admin" className="transition-colors hover:text-accent">
+        Admin
+      </Link>
+    </>
   );
 }

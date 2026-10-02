@@ -86,6 +86,19 @@ def _patch_request_auth_to_test_hs256(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _product2_import_stays_pending_until_the_test_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """HTTP import returns 202 pending. Parsing is a separate worker.
+
+    Production queues that worker after the response. This suite calls
+    ``process_tb_version`` itself and asserts the row is still pending, so
+    the background hook stays off unless a test turns it back on.
+    """
+    monkeypatch.setattr(settings, "tb_import_background", False)
+
+
+@pytest.fixture(autouse=True)
 def _tests_skip_clerk_webhook_signature(monkeypatch: pytest.MonkeyPatch) -> None:
     """Unsigned Clerk webhook fixtures skip verification in development only.
 
