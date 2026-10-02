@@ -297,6 +297,13 @@ class EvidenceResponse(BaseModel):
     lines: list[EvidenceLineOut]
 
 
+class StatutoryPageOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    heading: str
+    paragraphs: list[str]
+
+
 class StatementResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -312,6 +319,8 @@ class StatementResponse(BaseModel):
     income: list[StatementRowOut]
     notes: list[StatementNoteOut]
     rounding_flags: list[RoundingFlagOut]
+    company_name: str = ""
+    pages: list[StatutoryPageOut] = Field(default_factory=list)
 
 
 class SizeEligibilityResponse(BaseModel):
@@ -423,3 +432,11 @@ class FinaliseResponse(BaseModel):
     pack_id: str
     pack_version: str
     traffic: Literal["red", "amber", "green"]
+
+
+class RenderJobResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: uuid.UUID
+    status: Literal["pending", "running", "ready", "failed"]
+    error_message: str | None = None

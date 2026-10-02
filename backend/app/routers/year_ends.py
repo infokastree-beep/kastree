@@ -58,6 +58,7 @@ from app.schemas.year_end import (
     DraftStatusResponse,
     FinaliseResponse,
     NewDraftVersionResponse,
+    RenderJobResponse,
     amount_text,
 )
 from app.services.ownership import get_owned_company
@@ -93,6 +94,13 @@ from app.services.draft_workflow import (
     set_disclosure_answer,
     dashboard_for_draft,
 )
+from app.services.render_jobs import (
+    DOCX_MEDIA,
+    find_docx_job,
+    insert_docx_job,
+    job_for_version,
+)
+from app.services.source_storage import SourceObjectStorage, get_source_storage
 from app.services.statutory_evidence import evidence_for_version
 from app.services.statutory_present import evidence_response, statement_response
 from app.services.statutory_statements import (
@@ -103,6 +111,7 @@ from app.services.statutory_statements import (
 from findraft.engine.notes import build_fa_grid
 from findraft.engine.pack import load_manifest, pack_dir, pin_pack_version
 from findraft.models.draft_version import DraftVersion
+from findraft.models.render_job import RenderJob
 from findraft.models.year_end import YearEnd
 
 router = APIRouter(prefix="/year-ends", tags=["year-ends"])
@@ -1148,3 +1157,167 @@ async def post_draft_new_version(
     except DraftRejected as exc:
         raise _draft_error(exc) from exc
     return NewDraftVersionResponse.model_validate(created)
+
+
+def _job_response(job: RenderJob) -> RenderJobResponse:
+    return RenderJobResponse.model_validate(
+        {
+            "job_id": job.id,
+            "status": job.status,
+            "error_message": job.error_message,
+        }
+    )
+
+
+async def _docx_watermark(
+    *,
+    year_end: YearEnd,
+    version: TrialBalanceVersion,
+    auth: AuthContext,
+    session: AsyncSession,
+) -> tuple[bool, str]:
+    frozen = await frozen_snapshot(
+        session, org_id=auth.org_id, tb_version_id=version.id
+    )
+    if frozen is not None:
+        statement = frozen.get("statement")
+        if not isinstance(statement, dict):
+            raise HTTPException(status_code=500, detail="FINAL snapshot is missing")
+        parsed = StatementResponse.model_validate(statement)
+        return parsed.renderable, "FINAL"
+    try:
+        document = await statements_for_version(
+            session, org_id=auth.org_id, year_end=year_end, version=version
+        )
+    except ReconciliationRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    return document.renderable, document.watermark
+
+
+@router.post(
+    "/{year_end_id}/trial-balance-versions/{version_id}/statements.docx",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=RenderJobResponse,
+)
+async def post_statement_docx(
+    year_end_id: uuid.UUID,
+    version_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    idempotency_key: Annotated[str | None, Header()] = None,
+) -> RenderJobResponse:
+    key = _idempotency_key(idempotency_key)
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    version = await _owned_tb_version(
+        session, year_end=year_end, version_id=version_id, org_id=auth.org_id
+    )
+    existing = await find_docx_job(session, org_id=auth.org_id, idempotency_key=key)
+    if existing is not None:
+        if existing.tb_version_id != version.id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Idempotency-Key was already used for a different "
+                    "trial balance version"
+                ),
+            )
+        return _job_response(existing)
+    renderable, watermark = await _docx_watermark(
+        year_end=year_end, version=version, auth=auth, session=session
+    )
+    if not renderable:
+        raise HTTPException(
+            status_code=400,
+            detail="Statutory statements are not renderable",
+        )
+    try:
+        job = await insert_docx_job(
+            session,
+            org_id=year_end.org_id,
+            company_id=year_end.company_id,
+            tb_version_id=version.id,
+            idempotency_key=key,
+            watermark=watermark,
+        )
+    except IntegrityError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Idempotency-Key was already used for a different "
+                "trial balance version"
+            ),
+        ) from exc
+    return _job_response(job)
+
+
+@router.get(
+    "/{year_end_id}/trial-balance-versions/{version_id}/render-jobs/{job_id}",
+    response_model=RenderJobResponse,
+)
+async def get_render_job(
+    year_end_id: uuid.UUID,
+    version_id: uuid.UUID,
+    job_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> RenderJobResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    version = await _owned_tb_version(
+        session, year_end=year_end, version_id=version_id, org_id=auth.org_id
+    )
+    job = await job_for_version(
+        session,
+        org_id=auth.org_id,
+        tb_version_id=version.id,
+        job_id=job_id,
+    )
+    if job is None:
+        raise HTTPException(status_code=404, detail="DOCX job not found")
+    return _job_response(job)
+
+
+@router.get(
+    "/{year_end_id}/trial-balance-versions/{version_id}/render-jobs/{job_id}/download",
+)
+async def download_render_job(
+    year_end_id: uuid.UUID,
+    version_id: uuid.UUID,
+    job_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    storage: Annotated[SourceObjectStorage, Depends(get_source_storage)],
+) -> Response:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    version = await _owned_tb_version(
+        session, year_end=year_end, version_id=version_id, org_id=auth.org_id
+    )
+    job = await job_for_version(
+        session,
+        org_id=auth.org_id,
+        tb_version_id=version.id,
+        job_id=job_id,
+    )
+    if job is None:
+        raise HTTPException(status_code=404, detail="DOCX job not found")
+    if job.status != "ready" or job.storage_key is None:
+        raise HTTPException(status_code=409, detail="DOCX is not ready")
+    filename = (
+        "statutory-statements-final.docx"
+        if job.watermark == "FINAL"
+        else "statutory-statements-draft.docx"
+    )
+    body = storage.get(key=job.storage_key)
+    return Response(
+        content=body,
+        media_type=DOCX_MEDIA,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
