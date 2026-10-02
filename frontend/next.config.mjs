@@ -13,6 +13,23 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_GIT_SHA: gitSha,
   },
+  async rewrites() {
+    const upstream = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(
+      /\/$/,
+      "",
+    );
+    if (!upstream) {
+      return [];
+    }
+    // Browser calls /backend-api/... on kastree.ie. This server forwards them
+    // to the API so the browser never opens a cross-site connection.
+    return [
+      {
+        source: "/backend-api/:path*",
+        destination: `${upstream}/:path*`,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

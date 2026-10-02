@@ -8,7 +8,8 @@
     "start": "next start -p 43123",
     "lint": "next lint",
     "test:period-presets": "node --experimental-strip-types --test lib/period-presets.test.ts",
-    "test:export-download": "node --experimental-strip-types --test lib/export-download.test.ts"
+    "test:export-download": "node --experimental-strip-types --test lib/export-download.test.ts",
+    "test:api-base": "node --experimental-strip-types --test lib/api-base.test.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^5.7.6",
