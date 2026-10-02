@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -250,6 +251,49 @@ class StatementNoteOut(BaseModel):
     body: str
     lines: list[NoteLineOut]
     fa_rows: list[FixedAssetGridRowOut]
+
+
+class EvidenceAccountOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tb_line_id: uuid.UUID | None
+    nominal_code: str
+    account_name: str
+    mapped_line: str
+    presented_line: str
+    balance: str
+    contribution: str
+    source_document_id: uuid.UUID | None
+
+
+class EvidenceLineOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    statement: str
+    label: str
+    amount: str
+    accounts: list[EvidenceAccountOut]
+    components: list[str]
+
+
+class EvidenceDocumentOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    filename: str
+    detected_type: str
+    role: Literal["trial_balance"]
+
+
+class EvidenceResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    renderable: bool
+    blocked: bool
+    build_error: str | None
+    checks: list[ReconciliationCheckOut]
+    documents: list[EvidenceDocumentOut]
+    lines: list[EvidenceLineOut]
 
 
 class StatementResponse(BaseModel):
