@@ -1,9 +1,10 @@
-"""Week 6: confirmed mappings and TB / balance-sheet / retained-earnings checks."""
+"""Week 6 and Week 7 reconciliation checks."""
 
 from __future__ import annotations
 
 import csv
 import io
+import json
 import uuid
 from collections.abc import Iterator
 from decimal import Decimal
@@ -15,17 +16,24 @@ from sqlalchemy import text
 
 from app.db import SyncSessionLocal
 from app.main import app
-from app.services.reconciliation import build_reconciliation, statutory_lines
+from app.services.fa_import_worker import process_fa_version
+from app.services.reconciliation import (
+    ReconciliationReport,
+    build_reconciliation,
+    statutory_lines,
+)
 from app.services.source_storage import LocalPracticeStorage, get_source_storage
 from app.services.tb_import_worker import process_tb_version
 from findraft.engine.schemas import TBLine
 from tests.conftest import auth_headers, make_access_token
 from tests.test_organisations_api import _add_org_user
 from tests.test_role_enforcement import _set_role
+from tests.test_fa_ingestion import _csv_bytes
 from tests.test_tb_ingestion import _upload, _year_end
 
 _FORBIDDEN = "You don't have permission to access this resource."
-_LATER = {"V-FA-001", "V-BANK-001", "V-CMP-001", "V-CMP-002"}
+_BANK = "V-BANK-001"
+_CORE = ("V-TB-001", "V-MAP-001", "V-BS-001", "V-FA-001", "V-RE-001")
 
 # Copied from the golden fixture. That module imports engine.* and is not a package.
 _TB: tuple[tuple[str, str, int, int], ...] = (
@@ -120,10 +128,32 @@ def _mapping_payload(mappings: dict[str, str]) -> dict[str, list[dict[str, str]]
     }
 
 
-def _passed(body: dict[str, object]) -> dict[str, bool]:
+def _passed(body: dict[str, object]) -> list[tuple[str, bool]]:
     checks = body["checks"]
     assert isinstance(checks, list)
-    return {str(item["code"]): bool(item["passed"]) for item in checks}
+    return [(str(item["code"]), bool(item["passed"])) for item in checks]
+
+
+def _report_pairs(report: ReconciliationReport) -> list[tuple[str, bool]]:
+    return [(item.code, item.passed) for item in report.checks]
+
+
+def _assert_statement_checks(
+    pairs: list[tuple[str, bool]], *, fa_passed: bool = True
+) -> None:
+    core = [(code, passed) for code, passed in pairs if code in _CORE]
+    assert core == [
+        ("V-TB-001", True),
+        ("V-MAP-001", True),
+        ("V-BS-001", True),
+        ("V-FA-001", fa_passed),
+        ("V-RE-001", True),
+    ]
+    comparative = [passed for code, passed in pairs if code == "V-CMP-001"]
+    assert comparative
+    assert all(comparative)
+    assert all(code != "V-CMP-002" for code, _ok in pairs)
+    assert all(code != _BANK for code, _ok in pairs)
 
 
 async def _import_csv(
@@ -177,24 +207,61 @@ def test_statutory_lines_include_sign_homes_and_refuse_loans() -> None:
     assert "LOANS" not in allowed
 
 
+_FA_REGISTER = {
+    "Plant & machinery": {
+        "opening_cost": Decimal("120000"),
+        "additions": Decimal("30000"),
+        "disposals": Decimal("0"),
+        "opening_dep": Decimal("35600"),
+        "charge": Decimal("16400"),
+    },
+    "Motor vehicles": {
+        "opening_cost": Decimal("45000"),
+        "additions": Decimal("15000"),
+        "disposals": Decimal("0"),
+        "opening_dep": Decimal("18000"),
+        "charge": Decimal("6000"),
+    },
+}
+
+
 def test_golden_fixture_reconciles() -> None:
+    from findraft.engine.reconciliation import check_fa_rollforward
+
     report = build_reconciliation(
         prior_year_validated=True,
         tb_lines=_lines(_TB),
         mappings=_MAPPINGS,
         prior_retained_earnings=Decimal("-322062.00"),
+        prior_canonical={
+            "FA_PLANT_COST": Decimal("111400.00"),
+            "RETAINED_EARNINGS": Decimal("-322062.00"),
+        },
+        fa_register=_FA_REGISTER,
     )
     assert report.blocked is False
     assert report.build_error is None
-    assert [(item.code, item.passed) for item in report.checks] == [
-        ("V-TB-001", True),
-        ("V-MAP-001", True),
-        ("V-BS-001", True),
-        ("V-RE-001", True),
-    ]
+    _assert_statement_checks(_report_pairs(report))
     assert report.net_assets == Decimal("455812.00")
     assert report.profit == Decimal("157650.00")
-    assert _LATER.isdisjoint(item.code for item in report.checks)
+    engine_fa = check_fa_rollforward(
+        Decimal("111400"),
+        Decimal("45000"),
+        Decimal("22400"),
+        Decimal("0"),
+        Decimal("134000"),
+    )
+    fa = next(item for item in report.checks if item.code == "V-FA-001")
+    assert fa.passed is True
+    assert fa.message == engine_fa.message
+    tangible = next(
+        item
+        for item in report.checks
+        if item.code == "V-CMP-001" and "Comparative TANGIBLE_ASSETS:" in item.message
+    )
+    assert tangible.passed is True
+    assert "111400" in tangible.message.replace(",", "")
+    assert all(not item.code.startswith("R-") for item in report.checks)
 
 
 def test_unbalanced_tb_fails_integrity() -> None:
@@ -231,6 +298,8 @@ def test_loans_is_a_build_error() -> None:
     assert report.profit is None
     assert "V-BS-001" not in {item.code for item in report.checks}
     assert "V-RE-001" not in {item.code for item in report.checks}
+    assert "V-FA-001" not in {item.code for item in report.checks}
+    assert _BANK not in {item.code for item in report.checks}
 
 
 def test_director_loan_sign_home_reaches_the_statements() -> None:
@@ -245,14 +314,10 @@ def test_director_loan_sign_home_reaches_the_statements() -> None:
         prior_retained_earnings=Decimal("0.00"),
     )
     assert report.build_error is None
-    assert [(item.code, item.passed) for item in report.checks] == [
-        ("V-TB-001", True),
-        ("V-MAP-001", True),
-        ("V-BS-001", True),
-        ("V-RE-001", True),
-    ]
+    _assert_statement_checks(_report_pairs(report))
     assert report.net_assets == Decimal("50.00")
     assert report.profit == Decimal("0.00")
+    assert all(not item.code.startswith("R-") for item in report.checks)
 
 
 def test_closed_gate_stops_later_checks() -> None:
@@ -269,6 +334,107 @@ def test_closed_gate_stops_later_checks() -> None:
     ]
     assert report.net_assets is None
     assert report.profit is None
+
+
+def test_disposal_register_rolls_net_book_value_forward() -> None:
+    rows = (
+        ("2130", "Bank current account", 100, 0),
+        ("3000", "Called up share capital", 0, 100),
+    )
+    report = build_reconciliation(
+        prior_year_validated=True,
+        tb_lines=_lines(rows),
+        mappings={"2130": "CASH", "3000": "SHARE_CAPITAL"},
+        prior_retained_earnings=Decimal("0.00"),
+        fa_register={
+            "Plant": {
+                "opening_cost": Decimal("100000"),
+                "additions": Decimal("0"),
+                "disposals": Decimal("20000"),
+                "disposals_dep": Decimal("5000"),
+                "opening_dep": Decimal("10000"),
+                "charge": Decimal("4000"),
+            }
+        },
+    )
+    fa = next(item for item in report.checks if item.code == "V-FA-001")
+    assert fa.passed is True
+    assert "71,000" in fa.message
+
+
+def test_missing_register_fails_when_the_face_shows_fixed_assets() -> None:
+    rows = (
+        ("1500", "Plant", 100, 0),
+        ("3000", "Called up share capital", 0, 100),
+    )
+    report = build_reconciliation(
+        prior_year_validated=True,
+        tb_lines=_lines(rows),
+        mappings={"1500": "FA_PLANT_COST", "3000": "SHARE_CAPITAL"},
+        prior_retained_earnings=Decimal("0.00"),
+    )
+    _assert_statement_checks(_report_pairs(report), fa_passed=False)
+    dep = next(item for item in report.checks if item.code == "R-DEP-001")
+    assert dep.passed is False
+    assert dep.severity == "WARNING"
+
+
+def test_dividends_above_accumulated_profits_are_critical() -> None:
+    rows = (
+        ("2130", "Bank", 20, 0),
+        ("8500", "Dividends", 80, 0),
+        ("3000", "Share capital", 0, 100),
+    )
+    report = build_reconciliation(
+        prior_year_validated=True,
+        tb_lines=_lines(rows),
+        mappings={
+            "2130": "CASH",
+            "8500": "DIVIDENDS",
+            "3000": "SHARE_CAPITAL",
+        },
+        prior_retained_earnings=Decimal("0.00"),
+    )
+    dividend = next(item for item in report.checks if item.code == "R-DIV-001")
+    assert dividend.passed is False
+    assert dividend.severity == "CRITICAL"
+    assert _BANK not in {item.code for item in report.checks}
+
+
+def test_unevaluable_pack_rule_stays_critical(tmp_path: Path) -> None:
+    rules = tmp_path / "review-rules.json"
+    rules.write_text(
+        json.dumps(
+            {
+                "rules": [
+                    {
+                        "id": "R-BROKEN-001",
+                        "scope": "client",
+                        "severity": "WARNING",
+                        "when": "not_a_real_input > 0",
+                        "message": "should not pass",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    rows = (
+        ("2130", "Bank", 100, 0),
+        ("3000", "Share capital", 0, 100),
+    )
+    report = build_reconciliation(
+        prior_year_validated=True,
+        tb_lines=_lines(rows),
+        mappings={"2130": "CASH", "3000": "SHARE_CAPITAL"},
+        prior_retained_earnings=Decimal("0.00"),
+        pack_rules_path=rules,
+    )
+    broken = next(item for item in report.checks if item.code == "R-BROKEN-001")
+    assert broken.passed is False
+    assert broken.severity == "CRITICAL"
+    assert report.build_error is None
+    assert "could not be evaluated" in broken.message
 
 
 @pytest.mark.asyncio
@@ -294,10 +460,38 @@ async def test_golden_upload_confirms_and_reconciles(
         f"/year-ends/{year_end_id}/prior-year",
         headers=headers,
         json={
-            "lines": [{"canonical_line": "RETAINED_EARNINGS", "amount": "-322062.00"}]
+            "lines": [
+                {"canonical_line": "FA_PLANT_COST", "amount": "111400.00"},
+                {"canonical_line": "RETAINED_EARNINGS", "amount": "-322062.00"},
+            ]
         },
     )
     assert prior.status_code == 200, prior.text
+    fa_document = await _upload(
+        api_client,
+        provisioned_org,
+        name="fa.csv",
+        content=_csv_bytes(),
+        key="golden-fa-file",
+        content_type="text/csv",
+    )
+    fa_headers = auth_headers(provisioned_org["token"])
+    fa_headers["Idempotency-Key"] = "golden-fa-version"
+    queued = await api_client.post(
+        f"/year-ends/{year_end_id}/fixed-asset-versions",
+        headers=fa_headers,
+        json={"source_document_id": fa_document},
+    )
+    assert queued.status_code == 202, queued.text
+    with SyncSessionLocal() as session:
+        processed = process_fa_version(
+            session,
+            org_id=provisioned_org["org_id"],
+            version_id=uuid.UUID(str(queued.json()["id"])),
+            storage=stored_files,
+        )
+        assert processed is not None
+        assert processed.status == "ready"
     confirmed = await api_client.post(
         f"/year-ends/{year_end_id}/trial-balance-versions/{version_id}/mappings",
         headers=headers,
@@ -313,15 +507,18 @@ async def test_golden_upload_confirms_and_reconciles(
     body = report.json()
     assert body["blocked"] is False
     assert body["build_error"] is None
-    assert _passed(body) == {
-        "V-TB-001": True,
-        "V-MAP-001": True,
-        "V-BS-001": True,
-        "V-RE-001": True,
-    }
-    assert _LATER.isdisjoint(_passed(body))
+    _assert_statement_checks(_passed(body))
     assert body["net_assets"] == "455812.00"
     assert body["profit"] == "157650.00"
+    assert all(not code.startswith("R-") for code, _ok in _passed(body))
+    tangible = next(
+        item
+        for item in body["checks"]
+        if item["code"] == "V-CMP-001"
+        and "Comparative TANGIBLE_ASSETS:" in item["message"]
+    )
+    assert tangible["passed"] is True
+    assert "111400" in tangible["message"].replace(",", "")
 
 
 @pytest.mark.asyncio
@@ -402,7 +599,7 @@ async def test_unmapped_ready_version_stops_before_the_balance_sheet(
     assert report.status_code == 200, report.text
     body = report.json()
     assert body["blocked"] is False
-    assert _passed(body) == {"V-TB-001": True, "V-MAP-001": False}
+    assert _passed(body) == [("V-TB-001", True), ("V-MAP-001", False)]
     assert body["net_assets"] is None
     assert body["profit"] is None
     assert body["build_error"] is None
@@ -444,14 +641,57 @@ async def test_first_period_tiny_trial_balance_articulates(
     )
     assert report.status_code == 200, report.text
     body = report.json()
-    assert _passed(body) == {
-        "V-TB-001": True,
-        "V-MAP-001": True,
-        "V-BS-001": True,
-        "V-RE-001": True,
-    }
+    _assert_statement_checks(_passed(body))
+    assert all(not code.startswith("R-") for code, _ok in _passed(body))
     assert body["net_assets"] == "100.00"
     assert body["profit"] == "0.00"
+
+
+@pytest.mark.asyncio
+async def test_fixed_assets_without_a_register_fail_the_roll_forward(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+    stored_files: LocalPracticeStorage,
+) -> None:
+    year_end_id = await _year_end(api_client, provisioned_org)
+    headers = auth_headers(provisioned_org["token"])
+    marked = await api_client.post(
+        f"/year-ends/{year_end_id}/first-financial-period",
+        headers=headers,
+    )
+    assert marked.status_code == 200, marked.text
+    version_id = await _import_csv(
+        api_client,
+        provisioned_org,
+        stored_files,
+        year_end_id=year_end_id,
+        name="plant.csv",
+        content=(
+            "Account Code,Account Name,Debit,Credit\n"
+            "1500,Plant,100.00,0.00\n"
+            "3000,Called up share capital,0.00,100.00\n"
+        ).encode(),
+        file_key="plant-file",
+        version_key="plant-version",
+        process=True,
+    )
+    confirmed = await api_client.post(
+        f"/year-ends/{year_end_id}/trial-balance-versions/{version_id}/mappings",
+        headers=headers,
+        json=_mapping_payload({"1500": "FA_PLANT_COST", "3000": "SHARE_CAPITAL"}),
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    report = await api_client.get(
+        f"/year-ends/{year_end_id}/trial-balance-versions/{version_id}/reconciliation",
+        headers=headers,
+    )
+    assert report.status_code == 200, report.text
+    body = report.json()
+    _assert_statement_checks(_passed(body), fa_passed=False)
+    dep = next(item for item in body["checks"] if item["code"] == "R-DEP-001")
+    assert dep["passed"] is False
+    assert dep["severity"] == "WARNING"
+    assert _BANK not in {item["code"] for item in body["checks"]}
 
 
 @pytest.mark.asyncio
