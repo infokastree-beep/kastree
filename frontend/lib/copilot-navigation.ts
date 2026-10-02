@@ -13,7 +13,8 @@ export type StatementsTab =
   | "SOFP"
   | "SOCIE"
   | "Variance"
-  | "Risk";
+  | "Risk"
+  | "Statutory";
 
 export type CopilotNavigateTarget = {
   page: CopilotCitePage;
@@ -84,7 +85,8 @@ export function parseStatementsTab(
     value === "SOFP" ||
     value === "SOCIE" ||
     value === "Variance" ||
-    value === "Risk"
+    value === "Risk" ||
+    value === "Statutory"
   ) {
     return value;
   }

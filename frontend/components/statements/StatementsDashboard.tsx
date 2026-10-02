@@ -9,7 +9,11 @@ import { ApiError, apiFetch } from "@/lib/api";
 import { formatCurrency, formatCurrencyCode } from "@/lib/currency";
 import { DISCLAIMER_TEXT } from "@/lib/constants";
 import { formatDate } from "@/lib/utils";
-import { statementsPath, parseStatementsTab } from "@/lib/copilot-navigation";
+import {
+  statementsPath,
+  parseStatementsTab,
+  type StatementsTab,
+} from "@/lib/copilot-navigation";
 import type {
   StatementBlock,
   StatementLine,
@@ -22,12 +26,20 @@ import { MaterialitySuggestionBanner } from "./MaterialitySuggestionBanner";
 import { RiskFlagsPanel } from "./RiskFlagsPanel";
 import { StatementLineDrilldown } from "./StatementLineDrilldown";
 import { VariancePanel } from "./VariancePanel";
+import { StatutoryContinuation } from "./StatutoryContinuation";
 import { useTbWorkspace } from "./TbWorkspaceProvider";
 
-type Tab = "SOPL" | "SOFP" | "SOCIE" | "Variance" | "Risk";
+type Tab = StatementsTab;
 
 const STATEMENT_TABS: Tab[] = ["SOPL", "SOFP", "SOCIE"];
-const ALL_TABS: Tab[] = ["SOPL", "SOFP", "SOCIE", "Variance", "Risk"];
+const ALL_TABS: Tab[] = [
+  "SOPL",
+  "SOFP",
+  "SOCIE",
+  "Variance",
+  "Risk",
+  "Statutory",
+];
 
 /** Grand-total face lines — stronger weight than intermediate subtotals. */
 function isGrandTotal(line: StatementLine): boolean {
@@ -595,6 +607,7 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
                   <button
                     key={name}
                     type="button"
+                    data-testid={`statements-tab-${name}`}
                     onClick={() => setTab(name)}
                     className={`px-3 py-2.5 text-sm font-semibold transition-colors ${
                       tab === name
@@ -617,6 +630,13 @@ export function StatementsDashboard({ tbId }: { tbId: string }) {
               />
             ) : null}
             {tab === "Risk" ? <RiskFlagsPanel tbId={tbId} /> : null}
+            {tab === "Statutory" ? (
+              <StatutoryContinuation
+                tbId={tbId}
+                periodEnd={statementsData.period_end}
+                currencyCode={currencyCode}
+              />
+            ) : null}
             {isStatementTab ? (
               block ? (
                 <StatementTable

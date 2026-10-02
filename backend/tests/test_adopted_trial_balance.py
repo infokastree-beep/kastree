@@ -149,6 +149,7 @@ def _insert_tb(
     rows: tuple[tuple[str, str, str, str, str, str], ...],
     status: str = "complete",
     period_end: date = date(2026, 12, 31),
+    period_start: date | None = None,
     confirmed: bool = True,
 ) -> uuid.UUID:
     tb_id = uuid.uuid4()
@@ -159,6 +160,7 @@ def _insert_tb(
                 id=tb_id,
                 company_id=company_id,
                 period_end=period_end,
+                period_start=period_start,
                 file_url=f"file:///tmp/{tb_id}.csv",
                 file_type="csv",
                 status=status,
@@ -652,3 +654,249 @@ def test_findraft_app_cannot_adopt_another_practices_trial_balance() -> None:
     finally:
         _delete_org(first["org_id"])
         _delete_org(second["org_id"])
+
+
+def _year_end_row(
+    company_id: uuid.UUID, period_end: date
+) -> tuple[str, str | None] | None:
+    with SyncSessionLocal() as session:
+        row = session.execute(
+            text(
+                "SELECT id::text, adopted_trial_balance_id::text "
+                "FROM findraft_year_ends "
+                "WHERE company_id = :company AND period_end = :period"
+            ),
+            {"company": str(company_id), "period": period_end},
+        ).one_or_none()
+    if row is None:
+        return None
+    return str(row[0]), None if row[1] is None else str(row[1])
+
+
+_CASH_PAIR = (
+    ("2130", "Bank current account", "100.00", "0.00", "100.00", "cash"),
+    (
+        "3000",
+        "Called up share capital",
+        "0.00",
+        "100.00",
+        "-100.00",
+        "share_capital",
+    ),
+)
+
+
+@pytest.mark.asyncio
+async def test_statements_trial_balance_opens_a_statutory_year_end(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """The statements page adopts the TB already loaded. No statutory copy."""
+    year_end_id = await _year_end(api_client, provisioned_org)
+    tb_id = _insert_tb(
+        org_id=provisioned_org["org_id"],
+        company_id=provisioned_org["company_id"],
+        rows=_golden_rows(),
+        period_start=date(2026, 1, 1),
+    )
+    headers = auth_headers(provisioned_org["token"])
+    first = await api_client.post(
+        f"/trial-balances/{tb_id}/statutory-year-end",
+        headers=headers,
+        json={},
+    )
+    assert first.status_code == 200, first.text
+    body = first.json()
+    assert body["year_end_id"] == year_end_id
+    assert body["trial_balance_id"] == str(tb_id)
+    assert {
+        line["nominal_code"]: line["canonical_line"] for line in body["lines"]
+    } == _MAPPINGS
+    assert _pointer(year_end_id) == str(tb_id)
+    assert _statutory_copy_counts(provisioned_org["org_id"], year_end_id) == (0, 0)
+
+    second = await api_client.post(
+        f"/trial-balances/{tb_id}/statutory-year-end",
+        headers=headers,
+        json={"pack_id": "frs102-1a-ie", "pack_version": "2024.09"},
+    )
+    assert second.status_code == 200, second.text
+    assert second.json()["year_end_id"] == year_end_id
+    assert _statutory_copy_counts(provisioned_org["org_id"], year_end_id) == (0, 0)
+
+    blocked = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
+        headers=headers,
+    )
+    assert blocked.status_code == 200, blocked.text
+    assert blocked.json()["renderable"] is False
+    assert any(
+        check["code"] == "V-GATE-001" and check["passed"] is False
+        for check in blocked.json()["checks"]
+    )
+
+    opened = await api_client.post(
+        f"/year-ends/{year_end_id}/first-financial-period",
+        headers=headers,
+    )
+    assert opened.status_code == 200, opened.text
+    statements = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
+        headers=headers,
+    )
+    assert statements.status_code == 200, statements.text
+    assert _statutory_copy_counts(provisioned_org["org_id"], year_end_id) == (0, 0)
+
+
+@pytest.mark.asyncio
+async def test_statutory_continuation_creates_the_year_end_when_missing(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    tb_id = _insert_tb(
+        org_id=provisioned_org["org_id"],
+        company_id=provisioned_org["company_id"],
+        rows=_CASH_PAIR,
+        period_start=date(2026, 1, 1),
+    )
+    response = await api_client.post(
+        f"/trial-balances/{tb_id}/statutory-year-end",
+        headers=auth_headers(provisioned_org["token"]),
+        json={},
+    )
+    assert response.status_code == 200, response.text
+    stored = _year_end_row(provisioned_org["company_id"], date(2026, 12, 31))
+    assert stored is not None
+    assert stored[0] == response.json()["year_end_id"]
+    assert stored[1] == str(tb_id)
+    assert _statutory_copy_counts(provisioned_org["org_id"], stored[0]) == (0, 0)
+
+
+@pytest.mark.asyncio
+async def test_statutory_continuation_refuses_unconfirmed_incomplete_and_early_periods(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    headers = auth_headers(provisioned_org["token"])
+    org_id = provisioned_org["org_id"]
+    company_id = provisioned_org["company_id"]
+
+    unconfirmed = _insert_tb(
+        org_id=org_id,
+        company_id=company_id,
+        rows=_CASH_PAIR,
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 12, 31),
+        confirmed=False,
+    )
+    refused = await api_client.post(
+        f"/trial-balances/{unconfirmed}/statutory-year-end",
+        headers=headers,
+        json={},
+    )
+    assert refused.status_code == 400, refused.text
+    assert "is not confirmed" in refused.json()["detail"]
+    assert _year_end_row(company_id, date(2026, 12, 31)) is None
+
+    incomplete = _insert_tb(
+        org_id=org_id,
+        company_id=company_id,
+        rows=(
+            ("2131", "Deposit account", "40.00", "0.00", "40.00", "cash"),
+            ("3001", "Ordinary shares", "0.00", "40.00", "-40.00", "share_capital"),
+        ),
+        status="mapping",
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 6, 30),
+    )
+    not_ready = await api_client.post(
+        f"/trial-balances/{incomplete}/statutory-year-end",
+        headers=headers,
+        json={},
+    )
+    assert not_ready.status_code == 400, not_ready.text
+    assert "not a completed" in not_ready.json()["detail"]
+    assert _year_end_row(company_id, date(2026, 6, 30)) is None
+
+    missing_start = _insert_tb(
+        org_id=org_id,
+        company_id=company_id,
+        rows=(
+            ("2132", "Petty cash", "5.00", "0.00", "5.00", "cash"),
+            ("3003", "Founder shares", "0.00", "5.00", "-5.00", "share_capital"),
+        ),
+        period_end=date(2026, 9, 30),
+    )
+    no_start = await api_client.post(
+        f"/trial-balances/{missing_start}/statutory-year-end",
+        headers=headers,
+        json={},
+    )
+    assert no_start.status_code == 400, no_start.text
+    assert no_start.json()["detail"] == "This trial balance has no period start"
+    assert _year_end_row(company_id, date(2026, 9, 30)) is None
+
+    early = _insert_tb(
+        org_id=org_id,
+        company_id=company_id,
+        rows=(
+            ("2134", "Cash float", "12.00", "0.00", "12.00", "cash"),
+            ("3005", "Subscriber shares", "0.00", "12.00", "-12.00", "share_capital"),
+        ),
+        period_start=date(2025, 1, 1),
+        period_end=date(2025, 12, 31),
+    )
+    too_early = await api_client.post(
+        f"/trial-balances/{early}/statutory-year-end",
+        headers=headers,
+        json={},
+    )
+    assert too_early.status_code == 400, too_early.text
+    assert "2026-01-01" in too_early.json()["detail"]
+    assert _year_end_row(company_id, date(2025, 12, 31)) is None
+
+
+@pytest.mark.asyncio
+async def test_statutory_continuation_refuses_a_different_pinned_pack(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    org_id = provisioned_org["org_id"]
+    company_id = provisioned_org["company_id"]
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        session.execute(
+            text(
+                """
+                INSERT INTO findraft_year_ends (
+                  id, org_id, company_id, period_start, period_end,
+                  pack_id, pack_version
+                ) VALUES (
+                  :id, :org, :company, DATE '2026-01-01', DATE '2026-12-31',
+                  'other-pack', '1999.01'
+                )
+                """
+            ),
+            {
+                "id": str(uuid.uuid4()),
+                "org": str(org_id),
+                "company": str(company_id),
+            },
+        )
+        session.commit()
+    tb_id = _insert_tb(
+        org_id=org_id,
+        company_id=company_id,
+        rows=_CASH_PAIR,
+        period_start=date(2026, 1, 1),
+    )
+    response = await api_client.post(
+        f"/trial-balances/{tb_id}/statutory-year-end",
+        headers=auth_headers(provisioned_org["token"]),
+        json={},
+    )
+    assert response.status_code == 409, response.text
+    assert "other-pack 1999.01" in response.json()["detail"]
+    stored = _year_end_row(company_id, date(2026, 12, 31))
+    assert stored is not None
+    assert stored[1] is None

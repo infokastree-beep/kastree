@@ -21,7 +21,7 @@ from fastapi import (
 )
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -29,6 +29,7 @@ from app.config import settings
 from app.db import SyncSessionLocal, aset_rls_org_id, set_rls_org_id
 from app.dependencies import (
     AuthContext,
+    enforce_product2_production_access,
     get_db_session,
     require_member_work,
     require_reader,
@@ -49,7 +50,14 @@ from app.services.statements import (
     iter_nil_filtered_face_lines,
 )
 from app.services.comparative_statements import merge_comparative_face_lines
+from app.schemas.year_end import (
+    AdoptedTrialBalanceResponse,
+    CarriedMappingOut,
+    StatutoryYearEndContinueRequest,
+)
+from app.services.adopted_trial_balance import continue_from_trial_balance
 from app.services.archival import archive_trial_balance_user_deleted
+from app.services.reconciliation import ReconciliationRejected
 from app.schemas.materiality import MaterialitySuggestionResponse
 from app.schemas.pdf_extract import ExtractedTbRowOut, PdfTbExtractResponse
 from app.schemas.gl_convert import GlConvertResponse
@@ -1916,5 +1924,55 @@ async def get_materiality_suggestion(
         current_abs=f"{suggestion.current_abs:.2f}",
         dismissed=suggestion.dismissed,
         disclaimer=suggestion.disclaimer,
+    )
+
+
+@router.post(
+    "/{tb_id}/statutory-year-end",
+    response_model=AdoptedTrialBalanceResponse,
+    dependencies=[Depends(enforce_product2_production_access)],
+)
+async def continue_statutory_year_end(
+    tb_id: uuid.UUID,
+    body: StatutoryYearEndContinueRequest,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> AdoptedTrialBalanceResponse:
+    """Adopt the statements-page trial balance into a statutory year end.
+
+    Creates the year end when this company and period do not have one.
+    Does not upload a file or create a statutory trial-balance version.
+    """
+    await aset_rls_org_id(session, auth.org_id)
+    trial_balance = await _get_owned_tb(session, tb_id=tb_id, org_id=auth.org_id)
+    try:
+        year_end, carried = await continue_from_trial_balance(
+            session,
+            org_id=auth.org_id,
+            trial_balance=trial_balance,
+            pack_id=body.pack_id,
+            pack_version=body.pack_version,
+        )
+    except ReconciliationRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    except DBAPIError as exc:
+        message = str(exc.orig) if exc.orig is not None else str(exc)
+        if "adopted trial balance" in message:
+            raise HTTPException(
+                status_code=400, detail="Trial balance cannot be adopted"
+            ) from exc
+        raise
+    return AdoptedTrialBalanceResponse(
+        year_end_id=year_end.id,
+        trial_balance_id=trial_balance.id,
+        lines=[
+            CarriedMappingOut(
+                nominal_code=line.nominal_code,
+                account_name=line.account_name,
+                product1_line=line.product1_line,
+                canonical_line=line.canonical_line,
+            )
+            for line in carried
+        ],
     )
 
