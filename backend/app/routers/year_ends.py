@@ -6,6 +6,7 @@ Parsing runs in the worker (`tb_import_worker`), not in this request handler.
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
@@ -17,6 +18,7 @@ from app.db import aset_rls_org_id
 from app.dependencies import (
     AuthContext,
     get_db_session,
+    require_client_admin,
     require_member_work,
     require_reader,
 )
@@ -35,25 +37,27 @@ from app.schemas.year_end import (
     PriorYearConfirmRequest,
     PriorYearLineOut,
     PriorYearResponse,
-    EvidenceAccountOut,
-    EvidenceDocumentOut,
-    EvidenceLineOut,
     EvidenceResponse,
-    FixedAssetGridRowOut,
-    NoteLineOut,
     ReconciliationCheckOut,
     ReconciliationGateResponse,
     ReconciliationResponse,
-    RoundingFlagOut,
-    StatementNoteOut,
     StatementResponse,
-    StatementRowOut,
     SizeEligibilityRequest,
     SizeEligibilityResponse,
     TrialBalanceVersionCreate,
     TrialBalanceVersionResponse,
     YearEndCreateRequest,
     YearEndResponse,
+    AdjustmentPostRequest,
+    AdjustmentPostResponse,
+    DashboardResponse,
+    DashboardCheckOut,
+    DisclosureAnswerRequest,
+    DisclosureAnswerResponse,
+    DraftMutationRequest,
+    DraftStatusResponse,
+    FinaliseResponse,
+    NewDraftVersionResponse,
     amount_text,
 )
 from app.services.ownership import get_owned_company
@@ -76,7 +80,21 @@ from app.services.reconciliation import (
     confirm_mappings,
     reconcile_version,
 )
-from app.services.statutory_evidence import EvidenceGraph, evidence_for_version
+from app.services.draft_workflow import (
+    Dashboard,
+    DraftRejected,
+    PostedLine,
+    finalise_draft,
+    frozen_snapshot,
+    lock_draft,
+    new_version_from_locked,
+    post_adjustment,
+    recompute_draft,
+    set_disclosure_answer,
+    dashboard_for_draft,
+)
+from app.services.statutory_evidence import evidence_for_version
+from app.services.statutory_present import evidence_response, statement_response
 from app.services.statutory_statements import (
     StatutoryStatements,
     statements_for_version,
@@ -109,7 +127,9 @@ async def _owned_year_end(
 
 
 def _version_response(
-    version: TrialBalanceVersion, draft_number: int | None
+    version: TrialBalanceVersion,
+    draft_number: int | None,
+    draft_id: uuid.UUID | None = None,
 ) -> TrialBalanceVersionResponse:
     return TrialBalanceVersionResponse(
         id=version.id,
@@ -119,17 +139,24 @@ def _version_response(
         status=version.status,
         error_message=version.error_message,
         draft_version_number=draft_number,
+        draft_id=draft_id,
     )
 
 
-async def _draft_number(session: AsyncSession, version_id: uuid.UUID) -> int | None:
-    return (
+async def _latest_draft_ref(
+    session: AsyncSession, version_id: uuid.UUID
+) -> tuple[uuid.UUID | None, int | None]:
+    row = (
         await session.execute(
-            select(DraftVersion.version_number).where(
-                DraftVersion.tb_version_id == version_id
-            )
+            select(DraftVersion.id, DraftVersion.version_number)
+            .where(DraftVersion.tb_version_id == version_id)
+            .order_by(DraftVersion.version_number.desc())
+            .limit(1)
         )
-    ).scalar_one_or_none()
+    ).first()
+    if row is None:
+        return None, None
+    return row.id, row.version_number
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=YearEndResponse)
@@ -204,9 +231,8 @@ async def create_trial_balance_version(
             existing.source_document_id == body.source_document_id
             and existing.year_end_id == year_end.id
         ):
-            return _version_response(
-                existing, await _draft_number(session, existing.id)
-            )
+            draft_id, draft_number = await _latest_draft_ref(session, existing.id)
+            return _version_response(existing, draft_number, draft_id)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Idempotency-Key was already used for a different import",
@@ -278,7 +304,8 @@ async def get_trial_balance_version(
         or version.org_id != auth.org_id
     ):
         raise HTTPException(status_code=404, detail="Trial balance version not found")
-    return _version_response(version, await _draft_number(session, version.id))
+    draft_id, draft_number = await _latest_draft_ref(session, version.id)
+    return _version_response(version, draft_number, draft_id)
 
 
 @router.post(
@@ -459,82 +486,37 @@ async def get_reconciliation(
     return _report_response(report)
 
 
-def _statement_response(document: StatutoryStatements) -> StatementResponse:
-    return StatementResponse(
-        watermark=document.watermark,
-        renderable=document.renderable,
-        blocked=document.blocked,
-        build_error=document.build_error,
+def _pence(value: str) -> Decimal:
+    try:
+        amount = Decimal(value)
+    except InvalidOperation as exc:
+        raise HTTPException(status_code=400, detail="amount is not a number") from exc
+    places = amount.as_tuple().exponent
+    if isinstance(places, int) and places < -2:
+        raise HTTPException(status_code=400, detail="amount must be in pence")
+    return amount
+
+
+def _draft_error(exc: DraftRejected) -> HTTPException:
+    return HTTPException(status_code=exc.status_code, detail=exc.detail)
+
+
+def _dashboard_response(board: Dashboard) -> DashboardResponse:
+    return DashboardResponse(
+        draft_id=board.draft_id,
+        status=board.status,
+        row_version=board.row_version,
+        traffic=board.traffic,
+        can_finalise=board.can_finalise,
+        unanswered_disclosures=list(board.unanswered_disclosures),
         checks=[
-            ReconciliationCheckOut(
+            DashboardCheckOut(
                 code=item.code,
                 severity=item.severity,
                 passed=item.passed,
                 message=item.message,
             )
-            for item in document.checks
-        ],
-        net_assets=None
-        if document.net_assets is None
-        else amount_text(document.net_assets),
-        profit=None if document.profit is None else amount_text(document.profit),
-        compliance_statement=document.compliance_statement,
-        sofp=[
-            StatementRowOut(
-                label=row.label,
-                current=amount_text(row.current),
-                prior=None if row.prior is None else amount_text(row.prior),
-            )
-            for row in document.sofp
-        ],
-        income=[
-            StatementRowOut(
-                label=row.label,
-                current=amount_text(row.current),
-                prior=None if row.prior is None else amount_text(row.prior),
-            )
-            for row in document.income
-        ],
-        notes=[
-            StatementNoteOut(
-                code=note.code,
-                title=note.title,
-                body=note.body,
-                lines=[
-                    NoteLineOut(
-                        line=line.line,
-                        current=amount_text(line.current),
-                        prior=amount_text(line.prior),
-                    )
-                    for line in note.lines
-                ],
-                fa_rows=[
-                    FixedAssetGridRowOut(
-                        asset_class=row.asset_class,
-                        opening_cost=amount_text(row.opening_cost),
-                        additions=amount_text(row.additions),
-                        disposals=amount_text(row.disposals),
-                        disposals_dep=amount_text(row.disposals_dep),
-                        closing_cost=amount_text(row.closing_cost),
-                        opening_dep=amount_text(row.opening_dep),
-                        charge=amount_text(row.charge),
-                        closing_dep=amount_text(row.closing_dep),
-                        nbv_close=amount_text(row.nbv_close),
-                        nbv_open=amount_text(row.nbv_open),
-                    )
-                    for row in note.fa_rows
-                ],
-            )
-            for note in document.notes
-        ],
-        rounding_flags=[
-            RoundingFlagOut(
-                statement_line_id=flag.statement_line_id,
-                flagged=flag.flagged,
-                gap=amount_text(flag.gap),
-                deeplink=flag.deeplink,
-            )
-            for flag in document.rounding_flags
+            for item in board.checks
         ],
     )
 
@@ -571,13 +553,24 @@ async def get_statements(
     auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> StatementResponse:
+    frozen = await _frozen_for_version(
+        year_end_id=year_end_id,
+        version_id=version_id,
+        auth=auth,
+        session=session,
+    )
+    if frozen is not None:
+        statement = frozen.get("statement")
+        if not isinstance(statement, dict):
+            raise HTTPException(status_code=500, detail="FINAL snapshot is missing")
+        return StatementResponse.model_validate(statement)
     document = await _load_statements(
         year_end_id=year_end_id,
         version_id=version_id,
         auth=auth,
         session=session,
     )
-    return _statement_response(document)
+    return statement_response(document)
 
 
 @router.get(
@@ -589,72 +582,39 @@ async def get_statement_pdf(
     auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Response:
-    document = await _load_statements(
+    frozen = await _frozen_for_version(
         year_end_id=year_end_id,
         version_id=version_id,
         auth=auth,
         session=session,
     )
-    if not document.renderable or document.html is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Statutory statements are not renderable",
+    if frozen is not None:
+        html = frozen.get("html")
+        if not isinstance(html, str) or not html:
+            raise HTTPException(
+                status_code=400,
+                detail="Statutory statements are not renderable",
+            )
+        filename = "statutory-statements-final.pdf"
+    else:
+        document = await _load_statements(
+            year_end_id=year_end_id,
+            version_id=version_id,
+            auth=auth,
+            session=session,
         )
-    pdf = write_statement_pdf(document.html)
+        if not document.renderable or document.html is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Statutory statements are not renderable",
+            )
+        html = document.html
+        filename = "statutory-statements-draft.pdf"
+    pdf = write_statement_pdf(html)
     return Response(
         content=pdf,
         media_type="application/pdf",
-        headers={
-            "Content-Disposition": 'inline; filename="statutory-statements-draft.pdf"',
-        },
-    )
-
-
-def _evidence_response(graph: EvidenceGraph) -> EvidenceResponse:
-    return EvidenceResponse(
-        renderable=graph.renderable,
-        blocked=graph.blocked,
-        build_error=graph.build_error,
-        checks=[
-            ReconciliationCheckOut(
-                code=item.code,
-                severity=item.severity,
-                passed=item.passed,
-                message=item.message,
-            )
-            for item in graph.checks
-        ],
-        documents=[
-            EvidenceDocumentOut(
-                id=document.id,
-                filename=document.filename,
-                detected_type=document.detected_type,
-                role=document.role,
-            )
-            for document in graph.documents
-        ],
-        lines=[
-            EvidenceLineOut(
-                statement=line.statement,
-                label=line.label,
-                amount=amount_text(line.amount),
-                components=list(line.components),
-                accounts=[
-                    EvidenceAccountOut(
-                        tb_line_id=account.tb_line_id,
-                        nominal_code=account.nominal_code,
-                        account_name=account.account_name,
-                        mapped_line=account.mapped_line,
-                        presented_line=account.presented_line,
-                        balance=amount_text(account.balance),
-                        contribution=amount_text(account.contribution),
-                        source_document_id=account.source_document_id,
-                    )
-                    for account in line.accounts
-                ],
-            )
-            for line in graph.lines
-        ],
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
 
 
@@ -668,6 +628,17 @@ async def get_statement_evidence(
     auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> EvidenceResponse:
+    frozen = await _frozen_for_version(
+        year_end_id=year_end_id,
+        version_id=version_id,
+        auth=auth,
+        session=session,
+    )
+    if frozen is not None:
+        evidence = frozen.get("evidence")
+        if not isinstance(evidence, dict):
+            raise HTTPException(status_code=500, detail="FINAL snapshot is missing")
+        return EvidenceResponse.model_validate(evidence)
     await aset_rls_org_id(session, auth.org_id)
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
@@ -681,7 +652,24 @@ async def get_statement_evidence(
         )
     except ReconciliationRejected as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
-    return _evidence_response(graph)
+    return evidence_response(graph)
+
+
+async def _frozen_for_version(
+    *,
+    year_end_id: uuid.UUID,
+    version_id: uuid.UUID,
+    auth: AuthContext,
+    session: AsyncSession,
+) -> dict[str, object] | None:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    version = await _owned_tb_version(
+        session, year_end=year_end, version_id=version_id, org_id=auth.org_id
+    )
+    return await frozen_snapshot(session, org_id=auth.org_id, tb_version_id=version.id)
 
 
 def _fa_response(
@@ -946,3 +934,217 @@ async def get_size_eligibility(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
     return _size_response(year_end)
+
+
+@router.get(
+    "/{year_end_id}/drafts/{draft_id}/dashboard",
+    response_model=DashboardResponse,
+)
+async def get_draft_dashboard(
+    year_end_id: uuid.UUID,
+    draft_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        board = await dashboard_for_draft(
+            session, org_id=auth.org_id, year_end=year_end, draft_id=draft_id
+        )
+    except DraftRejected as exc:
+        raise _draft_error(exc) from exc
+    return _dashboard_response(board)
+
+
+@router.post(
+    "/{year_end_id}/drafts/{draft_id}/adjustments",
+    response_model=AdjustmentPostResponse,
+)
+async def post_draft_adjustment(
+    year_end_id: uuid.UUID,
+    draft_id: uuid.UUID,
+    body: AdjustmentPostRequest,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    idempotency_key: Annotated[str | None, Header()] = None,
+) -> AdjustmentPostResponse:
+    key = _idempotency_key(idempotency_key)
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        posted = await post_adjustment(
+            session,
+            org_id=auth.org_id,
+            year_end=year_end,
+            draft_id=draft_id,
+            row_version=body.row_version,
+            narration=body.narration,
+            lines=[
+                PostedLine(
+                    nominal_code=line.nominal_code,
+                    account_name=line.account_name,
+                    canonical_line=line.canonical_line,
+                    debit=_pence(line.debit),
+                    credit=_pence(line.credit),
+                )
+                for line in body.lines
+            ],
+            idempotency_key=key,
+        )
+    except DraftRejected as exc:
+        raise _draft_error(exc) from exc
+    return AdjustmentPostResponse.model_validate(posted)
+
+
+@router.post(
+    "/{year_end_id}/drafts/{draft_id}/disclosures",
+    response_model=DisclosureAnswerResponse,
+)
+async def post_draft_disclosure(
+    year_end_id: uuid.UUID,
+    draft_id: uuid.UUID,
+    body: DisclosureAnswerRequest,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DisclosureAnswerResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        saved = await set_disclosure_answer(
+            session,
+            org_id=auth.org_id,
+            year_end=year_end,
+            draft_id=draft_id,
+            row_version=body.row_version,
+            flag_name=body.flag_name,
+            answer=body.answer,
+        )
+    except DraftRejected as exc:
+        raise _draft_error(exc) from exc
+    return DisclosureAnswerResponse.model_validate(saved)
+
+
+@router.post(
+    "/{year_end_id}/drafts/{draft_id}/lock",
+    response_model=DraftStatusResponse,
+)
+async def post_draft_lock(
+    year_end_id: uuid.UUID,
+    draft_id: uuid.UUID,
+    body: DraftMutationRequest,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DraftStatusResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        locked = await lock_draft(
+            session,
+            org_id=auth.org_id,
+            year_end=year_end,
+            draft_id=draft_id,
+            row_version=body.row_version,
+        )
+    except DraftRejected as exc:
+        raise _draft_error(exc) from exc
+    return DraftStatusResponse.model_validate(locked)
+
+
+@router.post(
+    "/{year_end_id}/drafts/{draft_id}/recompute",
+    response_model=DashboardResponse,
+)
+async def post_draft_recompute(
+    year_end_id: uuid.UUID,
+    draft_id: uuid.UUID,
+    body: DraftMutationRequest,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    idempotency_key: Annotated[str | None, Header()] = None,
+) -> DashboardResponse:
+    key = _idempotency_key(idempotency_key)
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        board = await recompute_draft(
+            session,
+            org_id=auth.org_id,
+            year_end=year_end,
+            draft_id=draft_id,
+            row_version=body.row_version,
+            idempotency_key=key,
+        )
+    except DraftRejected as exc:
+        raise _draft_error(exc) from exc
+    return _dashboard_response(board)
+
+
+@router.post(
+    "/{year_end_id}/drafts/{draft_id}/finalise",
+    response_model=FinaliseResponse,
+)
+async def post_draft_finalise(
+    year_end_id: uuid.UUID,
+    draft_id: uuid.UUID,
+    body: DraftMutationRequest,
+    auth: Annotated[AuthContext, Depends(require_client_admin)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    idempotency_key: Annotated[str | None, Header()] = None,
+) -> FinaliseResponse:
+    key = _idempotency_key(idempotency_key)
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        stored = await finalise_draft(
+            session,
+            org_id=auth.org_id,
+            year_end=year_end,
+            draft_id=draft_id,
+            row_version=body.row_version,
+            user_id=auth.user_id,
+            idempotency_key=key,
+        )
+    except DraftRejected as exc:
+        raise _draft_error(exc) from exc
+    return FinaliseResponse.model_validate(stored)
+
+
+@router.post(
+    "/{year_end_id}/drafts/{draft_id}/new-version",
+    response_model=NewDraftVersionResponse,
+)
+async def post_draft_new_version(
+    year_end_id: uuid.UUID,
+    draft_id: uuid.UUID,
+    body: DraftMutationRequest,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> NewDraftVersionResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        created = await new_version_from_locked(
+            session,
+            org_id=auth.org_id,
+            year_end=year_end,
+            draft_id=draft_id,
+            row_version=body.row_version,
+        )
+    except DraftRejected as exc:
+        raise _draft_error(exc) from exc
+    return NewDraftVersionResponse.model_validate(created)
