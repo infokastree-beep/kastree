@@ -6,18 +6,34 @@ contradictions (Option B): clear conflicts with the band default leave the
 account for Tier 4 instead of returning a confidently wrong line. On LLM
 outage after the mini→4o fallback chain, those accounts remain method=None
 rather than failing the whole mapping request.
+
+FinDraft statutory suggestions live in ``suggest_statutory_mapping`` in this
+module. They use the pack keyword table and the exclusions ported below.
+``map_accounts`` still returns the Product 1 canonical lines.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import logging
 import re
 import time
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Any, Callable, Literal, Protocol, Sequence
+from functools import lru_cache
+from typing import Any, Callable, Literal, Protocol, Sequence, cast
+
+from findraft.engine.lines import CONSUMED, SIGN_HOMES
+from findraft.engine.mapping import (
+    BALANCE_SHEET_LINES,
+    MULTI_BOOST,
+    PRIOR_CODE,
+    PRIOR_EXACT,
+    THRESHOLDS,
+)
 
 from openai import OpenAI
 from rapidfuzz.distance import Levenshtein
@@ -42,6 +58,21 @@ FUZZY_RATIO_TIE_TOLERANCE = Decimal("1e-9")
 # fall through to Tier 4 instead of returning a wrong line (Option B).
 CODE_RANGE_CONFIDENCE = Decimal("0.50")
 EXACT_CONFIDENCE = Decimal("1.00")
+
+# Ported from findraft/engine/mapping.py suggest_mapping. Same expressions.
+# Liability / director names, and tax-term names, never suggest CASH.
+# P&L wording never suggests a balance-sheet line.
+_LIABILITY_OR_DIRECTOR_NEVER_CASH = re.compile(
+    r"\b(loans?|borrowings?|mortgages?|overdrafts?|directors?'?s?|"
+    r"hire purchase|finance lease|credit card)\b"
+)
+_TAX_TERM_NEVER_CASH = re.compile(r"\b(vat|paye|prsi|usc|corporation tax|income tax)\b")
+_PL_WORDING_NEVER_BALANCE_SHEET = re.compile(
+    r"\b(charges?|expenses?|interest|discounts?|fees?|"
+    r"hire(?! purchase)|repairs?|running|commissions?|written off)\b"
+)
+# Mirrors the pack scores for "accumulated depreciation" and "overdraft".
+_STATEMENT_NAME_SCORE = 40
 
 LLM_PRIMARY_MODEL = "gpt-4o-mini"
 LLM_FALLBACK_MODEL = "gpt-4o"
@@ -177,7 +208,9 @@ def apply_llm_tie_breaker(
     Never raises on LLM failure — exhausted fallbacks leave those accounts as
     method=None (Section 7.1).
     """
-    unmapped_indexes = [index for index, result in enumerate(results) if result.method is None]
+    unmapped_indexes = [
+        index for index, result in enumerate(results) if result.method is None
+    ]
     if not unmapped_indexes:
         return list(results)
 
@@ -202,11 +235,15 @@ def _map_one(
         return exact
 
     fuzzy = _tier2_fuzzy(source_code, source_name, prior_confirmed)
-    if fuzzy is not None:
+    if fuzzy is not None and not _product1_suggestion_excluded(
+        source_name, fuzzy.canonical_line
+    ):
         return fuzzy
 
     code_range = _tier3_code_range(source_code, source_name)
-    if code_range is not None:
+    if code_range is not None and not _product1_suggestion_excluded(
+        source_name, code_range.canonical_line
+    ):
         return code_range
 
     return MappingResult(
@@ -253,7 +290,11 @@ def _tier2_fuzzy(
     scored: list[tuple[Decimal, str]] = []
     for prior in prior_confirmed:
         ratio = Decimal(
-            str(Levenshtein.normalized_similarity(name_key, normalize_text(prior.source_name)))
+            str(
+                Levenshtein.normalized_similarity(
+                    name_key, normalize_text(prior.source_name)
+                )
+            )
         )
         scored.append((ratio, prior.canonical_line))
 
@@ -314,10 +355,18 @@ def _tier3_code_range(source_code: str, source_name: str) -> MappingResult | Non
             resolved = band_default
             specialised = False
             # Name carve-outs where a broad range default would mis-file a clear concept.
-            if start == 7000 and end == 7999 and _name_suggests_amortisation(source_name):
+            if (
+                start == 7000
+                and end == 7999
+                and _name_suggests_amortisation(source_name)
+            ):
                 resolved = "amortisation"
                 specialised = True
-            elif start == 6000 and end == 6999 and _name_suggests_depreciation(source_name):
+            elif (
+                start == 6000
+                and end == 6999
+                and _name_suggests_depreciation(source_name)
+            ):
                 resolved = "depreciation"
                 specialised = True
             else:
@@ -391,11 +440,7 @@ def _name_suggests_impairment_or_write_down(normalized: str) -> bool:
     """Impairment / write-down of investments or goodwill is not cost of sales."""
     return bool(
         re.search(
-            r"\b("
-            r"impairment|"
-            r"write[- ]?downs?|"
-            r"written down"
-            r")\b",
+            r"\b(" r"impairment|" r"write[- ]?downs?|" r"written down" r")\b",
             normalized,
         )
     )
@@ -791,9 +836,7 @@ def _complete_mapping_json(
             if not isinstance(payload["mappings"], list):
                 raise ValueError("LLM 'mappings' value is not a list")
             if not _mapping_indexes_are_complete(payload, expected_count):
-                raise ValueError(
-                    "LLM mappings omitted or renumbered an account index"
-                )
+                raise ValueError("LLM mappings omitted or renumbered an account index")
             return payload
         except Exception as exc:
             last_error = exc
@@ -863,7 +906,10 @@ def _parse_llm_mappings(
                 method="llm",
             )
         )
-    return results
+    return [
+        _refuse_excluded_product1_suggestion(account, result)
+        for account, result in zip(unmapped, results, strict=True)
+    ]
 
 
 def _parse_llm_confidence(raw: object) -> Decimal | None:
@@ -889,3 +935,268 @@ def _parse_llm_confidence(raw: object) -> Decimal | None:
     elif value > 1:
         value = Decimal("1")
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def findraft_excluded_lines(account_name: str) -> frozenset[str]:
+    """Lines ``suggest_mapping`` refuses for this name.
+
+    The three patterns are the FinDraft exclusions. ``BALANCE_SHEET_LINES``
+    still comes from the engine registry — it is not retyped here.
+    """
+    name = account_name.lower()
+    excluded: set[str] = set()
+    if _LIABILITY_OR_DIRECTOR_NEVER_CASH.search(name):
+        excluded.add("CASH")
+    if _TAX_TERM_NEVER_CASH.search(name):
+        excluded.add("CASH")
+    if _PL_WORDING_NEVER_BALANCE_SHEET.search(name):
+        excluded.update(BALANCE_SHEET_LINES)
+    return frozenset(excluded)
+
+
+@lru_cache(maxsize=1)
+def _product1_balance_sheet_lines() -> frozenset[str]:
+    from app.services.validator import ASSET_LINES, EQUITY_LINES_SOFP, LIABILITY_LINES
+
+    return ASSET_LINES | LIABILITY_LINES | EQUITY_LINES_SOFP
+
+
+def _product1_suggestion_excluded(source_name: str, canonical_line: str | None) -> bool:
+    """True when a Product 1 line is one the FinDraft exclusions forbid."""
+    if canonical_line is None:
+        return False
+    if canonical_line == "cash" and "CASH" in findraft_excluded_lines(source_name):
+        return True
+    return bool(
+        canonical_line in _product1_balance_sheet_lines()
+        and _PL_WORDING_NEVER_BALANCE_SHEET.search(source_name.lower())
+    )
+
+
+def _refuse_excluded_product1_suggestion(
+    account: MappingResult,
+    result: MappingResult,
+) -> MappingResult:
+    if not _product1_suggestion_excluded(account.source_name, result.canonical_line):
+        return result
+    return MappingResult(
+        source_code=result.source_code,
+        source_name=result.source_name,
+        canonical_line=None,
+        confidence=result.confidence,
+        method=result.method,
+    )
+
+
+def _statutory_vocabulary() -> frozenset[str]:
+    """Lines Product 2 can map onto: presented lines plus sign-home sources."""
+    return CONSUMED | frozenset(SIGN_HOMES)
+
+
+@dataclass(frozen=True)
+class StatutorySuggestion:
+    """Engine canonical line for Product 2 statement generation.
+
+    ``confidence`` is the engine integer score. 100 is only a human-confirmed
+    prior-year exact match. Every heuristic is capped below pre-select (80).
+    """
+
+    canonical_line: str | None
+    confidence: int
+    signals: tuple[str, ...]
+
+
+def _name_suggests_intangible_cost(source_name: str) -> bool:
+    """Capitalised intangibles. Amortisation charges stay off this line."""
+    if _contra_asset_canonical_from_name(source_name) is not None:
+        return False
+    normalized = normalize_text(source_name)
+    if re.search(r"\bamort", normalized):
+        return False
+    return bool(
+        re.search(
+            r"\b(goodwill|patents?|trademarks?|intangible assets?|development costs?)\b",
+            normalized,
+        )
+    )
+
+
+def _statutory_name_override(source_name: str, excluded: frozenset[str]) -> str | None:
+    """Statement lines the pack keyword table does not emit on its own."""
+    if (
+        "FA_INTANGIBLE_AMORT" not in excluded
+        and _contra_asset_canonical_from_name(source_name) == "intangible_assets"
+    ):
+        return "FA_INTANGIBLE_AMORT"
+    if "BANK_OVERDRAFT" not in excluded and re.search(
+        r"\boverdrafts?\b", source_name.lower()
+    ):
+        return "BANK_OVERDRAFT"
+    if "FA_INTANGIBLE_COST" not in excluded and _name_suggests_intangible_cost(
+        source_name
+    ):
+        return "FA_INTANGIBLE_COST"
+    return None
+
+
+def _keyword_score(
+    name: str,
+    keyword_scores: Mapping[str, tuple[str, int]],
+    excluded: frozenset[str],
+) -> tuple[int, str | None]:
+    """Best word-boundary keyword, longest key first. Same rule as the engine."""
+    padded = " " + name.lower().strip() + " "
+    best_score = 0
+    best_line: str | None = None
+    for keyword, (line, score) in sorted(
+        keyword_scores.items(), key=lambda item: -len(item[0])
+    ):
+        if line in excluded or score <= best_score:
+            continue
+        if re.search(r"\b" + re.escape(keyword.lower()) + r"\b", padded):
+            best_score = score
+            best_line = line
+    return best_score, best_line
+
+
+def _pack_code_range_score(
+    code: str,
+    code_ranges: Mapping[tuple[int, int], str],
+) -> tuple[int, str | None]:
+    try:
+        parsed = int(code)
+    except ValueError:
+        return 0, None
+    for (low, high), line in code_ranges.items():
+        if low <= parsed <= high:
+            return 20, line
+    return 0, None
+
+
+@lru_cache(maxsize=1)
+def _pack_mapping_tables() -> (
+    tuple[
+        dict[str, tuple[str, int]],
+        dict[tuple[int, int], str],
+    ]
+):
+    from findraft.engine.pack import pack_dir
+
+    path = pack_dir() / "mapping-defaults.py"
+    spec = importlib.util.spec_from_file_location(
+        "findraft_pack_mapping_defaults", path
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Cannot load pack mapping defaults from {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    keywords = cast(dict[str, tuple[str, int]], module.KEYWORD_SCORES)
+    ranges = cast(dict[tuple[int, int], str], module.CODE_RANGES)
+    return keywords, ranges
+
+
+def _confirmed_engine_prior(
+    source_code: str,
+    source_name: str,
+    prior_confirmed: Sequence[PriorConfirmedMapping],
+) -> StatutorySuggestion | None:
+    """100 for the same confirmed name and code; 60 for the same code only.
+
+    A confirmed Product 1 line (``revenue``, ``cash``, …) is not an engine line
+    and does not become the statutory suggestion.
+    """
+    vocabulary = _statutory_vocabulary()
+    code_key = source_code.strip()
+    name_key = source_name.strip().lower()
+    exact: list[str] = []
+    code_lines: list[str] = []
+    for prior in prior_confirmed:
+        if prior.canonical_line not in vocabulary:
+            continue
+        if prior.source_code.strip() != code_key:
+            continue
+        code_lines.append(prior.canonical_line)
+        if prior.source_name.strip().lower() == name_key:
+            exact.append(prior.canonical_line)
+    exact_unique = set(exact)
+    if len(exact_unique) == 1:
+        return StatutorySuggestion(exact[0], PRIOR_EXACT, ("prior_exact",))
+    if len(set(code_lines)) == 1 and code_lines:
+        return StatutorySuggestion(code_lines[0], PRIOR_CODE, ("prior_code",))
+    return None
+
+
+def suggest_statutory_mapping(
+    source_code: str,
+    source_name: str,
+    prior_confirmed: Sequence[PriorConfirmedMapping] = (),
+    *,
+    keyword_scores: Mapping[str, tuple[str, int]] | None = None,
+    code_ranges: Mapping[tuple[int, int], str] | None = None,
+) -> StatutorySuggestion:
+    """Suggest one engine canonical line for Product 2 statements.
+
+    Heuristics use the pinned pack table unless a caller passes a table
+    (the confidence-cap test does). Unconfirmed suggestions stay here —
+    ``aggregate`` is not called.
+    """
+    prior_hit = _confirmed_engine_prior(source_code, source_name, prior_confirmed)
+    if prior_hit is not None:
+        return prior_hit
+
+    if keyword_scores is None or code_ranges is None:
+        pack_keywords, pack_ranges = _pack_mapping_tables()
+        if keyword_scores is None:
+            keyword_scores = pack_keywords
+        if code_ranges is None:
+            code_ranges = pack_ranges
+
+    excluded = findraft_excluded_lines(source_name)
+    keyword_score, keyword_line = _keyword_score(source_name, keyword_scores, excluded)
+    override = _statutory_name_override(source_name, excluded)
+    if override is not None:
+        corrects_overdraft = (
+            override == "BANK_OVERDRAFT" and keyword_line == "LOANS_LT1Y"
+        )
+        if (
+            keyword_line is None
+            or corrects_overdraft
+            or keyword_score <= _STATEMENT_NAME_SCORE
+        ):
+            keyword_score = max(keyword_score, _STATEMENT_NAME_SCORE)
+            keyword_line = override
+
+    range_score, range_line = _pack_code_range_score(source_code, code_ranges)
+    if range_line in excluded:
+        range_score, range_line = 0, None
+    # The pack files a bare overdraft under LOANS_LT1Y. Statements present that
+    # balance on BANK_OVERDRAFT. When the keyword and the code range agreed on
+    # the loan line, they still agree after the line is renamed.
+    if (
+        override == "BANK_OVERDRAFT"
+        and keyword_line == "BANK_OVERDRAFT"
+        and range_line == "LOANS_LT1Y"
+    ):
+        range_line = "BANK_OVERDRAFT"
+
+    signals: list[tuple[str, int, str]] = []
+    if keyword_score and keyword_line is not None:
+        signals.append(("keyword", keyword_score, keyword_line))
+    if range_score and range_line is not None:
+        signals.append(("code_range", range_score, range_line))
+    if not signals:
+        return StatutorySuggestion(None, 0, ())
+
+    distinct = {line for _, _, line in signals}
+    best_line = max(signals, key=lambda item: item[1])[2]
+    best_score = max(item[1] for item in signals)
+    if len(distinct) == 1 and len(signals) > 1:
+        best_score = min(100, best_score + MULTI_BOOST)
+    best_score = min(best_score, THRESHOLDS["pre_select"] - 1)
+    if best_line not in _statutory_vocabulary():
+        return StatutorySuggestion(None, 0, ())
+    return StatutorySuggestion(
+        best_line,
+        best_score,
+        tuple(item[0] for item in signals),
+    )
