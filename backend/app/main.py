@@ -28,6 +28,7 @@ from app.routers import (
     variance,
     waitlist,
     webhooks,
+    year_ends,
 )
 
 # Initialise before the FastAPI app so integrations wrap the ASGI stack.
@@ -60,6 +61,7 @@ app.include_router(organisations.router)
 app.include_router(billing.router)
 app.include_router(trial_balances.router)
 app.include_router(source_documents.router)
+app.include_router(year_ends.router)
 app.include_router(variance.router)
 app.include_router(waitlist.router)
 app.include_router(contact.router)

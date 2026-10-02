@@ -1287,6 +1287,15 @@ found the phrase only. Week 2 therefore verifies the real file type
 The category list has to come from the specification before a classifier
 of those types can be built.
 
+### Week 3 trial-balance ingestion
+
+The four vendor-named parsers (Sage, Xero, QuickBooks, Big Red Book) stay
+cut. Week 3 parses with Product 1's generic CSV/XLSX importer, then stores
+an immutable trial-balance version. A re-import creates a new draft version.
+Prior-year figures are entered as canonical-line amounts, or the year end is
+marked as a first financial period. `V-GATE-001` is the engine gate. The
+manual entry surface is this API. A second frontend was not added.
+
 ### Row 13 scope decision (2026-09-30)
 
 Checklist row 13 of the v7.6 specification is **DECIDED**. Phase 1 proceeds

@@ -39,6 +39,12 @@ class YearEnd(Base):
             "pack_version",
             name="findraft_year_ends_pin_key",
         ),
+        UniqueConstraint(
+            "id",
+            "org_id",
+            "company_id",
+            name="findraft_year_ends_id_org_company_key",
+        ),
         ForeignKeyConstraint(
             ["org_id", "company_id"],
             ["companies.org_id", "companies.id"],
@@ -61,6 +67,9 @@ class YearEnd(Base):
     period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     period_end: Mapped[date] = mapped_column(Date, nullable=False)
     prior_year_validated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    first_financial_period: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
     pack_id: Mapped[str] = mapped_column(String(64), nullable=False)
