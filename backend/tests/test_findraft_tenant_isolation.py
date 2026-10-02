@@ -74,6 +74,15 @@ def _delete_org(org_id: uuid.UUID) -> None:
             )
         )
         session.execute(
+            text(
+                "ALTER TABLE audit_logs DISABLE TRIGGER findraft_audit_log_append_only"
+            )
+        )
+        session.execute(
+            text("DELETE FROM audit_logs WHERE org_id = :oid"),
+            {"oid": oid},
+        )
+        session.execute(
             text("DELETE FROM findraft_render_jobs WHERE org_id = :oid"),
             {"oid": oid},
         )
@@ -195,6 +204,9 @@ def _delete_org(org_id: uuid.UUID) -> None:
         session.execute(
             text("DELETE FROM organisations WHERE id = :oid"),
             {"oid": oid},
+        )
+        session.execute(
+            text("ALTER TABLE audit_logs ENABLE TRIGGER findraft_audit_log_append_only")
         )
         session.commit()
 
@@ -454,6 +466,166 @@ def test_render_job_with_check_rejects_cross_tenant_insert(
             )
             with pytest.raises(ProgrammingError, match="row-level security"):
                 _insert_render_job(session, second, version_id, suffix="cross")
+            session.rollback()
+        finally:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+
+
+_GENESIS = "0" * 64
+
+
+def _insert_audit_row(
+    session,
+    practice: dict,
+    *,
+    chain_seq: int,
+    prev_hash: str,
+    row_hash: str,
+) -> uuid.UUID:
+    row_id = uuid.uuid4()
+    session.execute(
+        text(
+            """
+            INSERT INTO audit_logs (
+              id, org_id, action, entity_type, entity_id,
+              chain_seq, prev_hash, row_hash
+            ) VALUES (
+              :id, :org, 'recorded', 'client', :entity,
+              :seq, :prev, :row_hash
+            )
+            """
+        ),
+        {
+            "id": str(row_id),
+            "org": str(practice["org_id"]),
+            "entity": str(practice["company_id"]),
+            "seq": chain_seq,
+            "prev": prev_hash,
+            "row_hash": row_hash,
+        },
+    )
+    return row_id
+
+
+def test_audit_log_unset_context_returns_no_rows(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        try:
+            _as_login_superuser(session)
+            _insert_audit_row(
+                session,
+                first,
+                chain_seq=1,
+                prev_hash=_GENESIS,
+                row_hash="a" * 64,
+            )
+            _insert_audit_row(
+                session,
+                second,
+                chain_seq=1,
+                prev_hash=_GENESIS,
+                row_hash="b" * 64,
+            )
+            _as_app_role(session)
+            count = session.execute(
+                text("SELECT count(*) FROM audit_logs")
+            ).scalar_one()
+            assert count == 0
+        finally:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+
+
+def test_audit_log_app_role_cannot_update_or_delete(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, _second = two_practices
+    with SyncSessionLocal() as session:
+        try:
+            _as_app_role(session)
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(first["org_id"])},
+            )
+            row_id = _insert_audit_row(
+                session,
+                first,
+                chain_seq=1,
+                prev_hash=_GENESIS,
+                row_hash="c" * 64,
+            )
+            with pytest.raises(DBAPIError, match="permission denied"):
+                session.execute(
+                    text("UPDATE audit_logs SET action = 'tamper' WHERE id = :id"),
+                    {"id": str(row_id)},
+                )
+            session.rollback()
+            session.execute(text("SET ROLE findraft_app"))
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(first["org_id"])},
+            )
+            row_id = _insert_audit_row(
+                session,
+                first,
+                chain_seq=1,
+                prev_hash=_GENESIS,
+                row_hash="c" * 64,
+            )
+            with pytest.raises(DBAPIError, match="permission denied"):
+                session.execute(
+                    text("DELETE FROM audit_logs WHERE id = :id"),
+                    {"id": str(row_id)},
+                )
+            session.rollback()
+        finally:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+
+
+def test_audit_log_trigger_refuses_owner_update(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, _second = two_practices
+    with SyncSessionLocal() as session:
+        _as_login_superuser(session)
+        row_id = _insert_audit_row(
+            session,
+            first,
+            chain_seq=1,
+            prev_hash=_GENESIS,
+            row_hash="d" * 64,
+        )
+        with pytest.raises(DBAPIError, match="audit log is append-only"):
+            session.execute(
+                text("UPDATE audit_logs SET action = 'tamper' WHERE id = :id"),
+                {"id": str(row_id)},
+            )
+        session.rollback()
+
+
+def test_audit_log_with_check_rejects_cross_tenant_insert(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        try:
+            _as_app_role(session)
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(first["org_id"])},
+            )
+            with pytest.raises(ProgrammingError, match="row-level security"):
+                _insert_audit_row(
+                    session,
+                    second,
+                    chain_seq=1,
+                    prev_hash=_GENESIS,
+                    row_hash="e" * 64,
+                )
             session.rollback()
         finally:
             session.rollback()

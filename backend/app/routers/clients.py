@@ -21,6 +21,7 @@ from app.models.account_mapping import AccountMapping
 from app.models.client import Client
 from app.models.company import Company
 from app.models.organisation import Organisation
+from app.schemas.audit import ErasureResponse
 from app.schemas.client import (
     ClientCreateRequest,
     ClientListResponse,
@@ -36,7 +37,9 @@ from app.schemas.company import (
     MappingListItem,
 )
 from app.services.archival import archive_client_user_deleted
+from app.services.erasure import erase_client
 from app.services.ownership import get_owned_client
+from app.services.retention import RETAINED_ON_ERASURE
 from app.services.tier_limits import (
     client_limit_for_tier,
     format_client_limit_message,
@@ -166,6 +169,29 @@ async def soft_delete_client(
         archived_at=now,
     )
     return client
+
+
+@router.post("/{client_id}/erasure", response_model=ErasureResponse)
+async def erase_client_personal_data(
+    client_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_client_admin)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> ErasureResponse:
+    """Replace the client name. Accounting records and the audit log stay."""
+    await aset_rls_org_id(session, auth.org_id)
+    changed, statement = await erase_client(
+        session,
+        org_id=auth.org_id,
+        client_id=client_id,
+        actor_user_id=auth.user_id,
+    )
+    return ErasureResponse(
+        entity_type="client",
+        entity_id=client_id,
+        erased=changed,
+        retained=list(RETAINED_ON_ERASURE),
+        statement=statement,
+    )
 
 
 @router.post(

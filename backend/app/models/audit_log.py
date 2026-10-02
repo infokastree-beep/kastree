@@ -3,7 +3,17 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -13,6 +23,11 @@ from app.models.base import Base
 class AuditLog(Base):
     __tablename__ = "audit_logs"
     __table_args__ = (
+        UniqueConstraint("org_id", "chain_seq", name="audit_logs_chain_key"),
+        CheckConstraint(
+            "char_length(prev_hash) = 64 AND char_length(row_hash) = 64",
+            name="audit_logs_hash_length_check",
+        ),
         Index("idx_audit_logs_org_id", "org_id"),
         Index("idx_audit_logs_entity", "entity_type", "entity_id"),
         Index("idx_audit_logs_created_at", "created_at"),
@@ -34,8 +49,11 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String, nullable=False)
     entity_type: Mapped[str] = mapped_column(String, nullable=False)
     entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    old_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    new_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    old_value: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    new_value: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    chain_seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    prev_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    row_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     ip_address: Mapped[str | None] = mapped_column(INET, nullable=True)
     user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
