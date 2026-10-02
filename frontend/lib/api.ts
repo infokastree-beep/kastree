@@ -1,8 +1,12 @@
 /**
  * Browser → FastAPI helper.
  *
- * Calls go to NEXT_PUBLIC_API_BASE_URL with Clerk Bearer tokens.
- * CORS must allow the frontend origin on the API (see backend CORSMiddleware).
+ * In the browser, calls stay on this site at `/backend-api`. Next rewrites that
+ * prefix to NEXT_PUBLIC_API_BASE_URL, so a privacy setting that blocks
+ * cross-site requests to the Railway host still lets Clients and Upload load.
+ * Server-side calls use the upstream URL directly.
+ *
+ * Clerk Bearer tokens are sent on both paths.
  */
 
 export class ApiError extends Error {
@@ -74,7 +78,10 @@ export function existingTbStatusFromConflict(error: unknown): string | null {
     : null;
 }
 
-export function getApiBaseUrl(): string {
+/** Same-origin prefix. next.config.mjs rewrites this to the upstream API. */
+export const SAME_ORIGIN_API_PREFIX = "/backend-api";
+
+function upstreamApiBaseUrl(): string {
   const base = process.env.NEXT_PUBLIC_API_BASE_URL;
   if (!base) {
     throw new Error(
@@ -82,6 +89,14 @@ export function getApiBaseUrl(): string {
     );
   }
   return base.replace(/\/$/, "");
+}
+
+export function getApiBaseUrl(): string {
+  const upstream = upstreamApiBaseUrl();
+  if (typeof window !== "undefined") {
+    return SAME_ORIGIN_API_PREFIX;
+  }
+  return upstream;
 }
 
 type TokenGetter = () => Promise<string | null>;
@@ -103,7 +118,7 @@ export async function apiFetch<T>(
   }
   // ngrok free tier serves an HTML interstitial to browser cross-origin requests unless
   // this header is present (ERR_NGROK_6024). Harmless on non-ngrok backends.
-  if (getApiBaseUrl().includes("ngrok")) {
+  if (upstreamApiBaseUrl().includes("ngrok")) {
     headers.set("ngrok-skip-browser-warning", "true");
   }
 
