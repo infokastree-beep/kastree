@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterator
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from sqlalchemy import text
 
 from app.db import SyncSessionLocal, set_rls_org_id
 from app.main import app
+from app.services.mapper import stored_statutory_suggestion, suggest_statutory_mapping
 from app.services.source_storage import LocalPracticeStorage, get_source_storage
 from app.services.tb_import_worker import process_tb_version
 from findraft.engine.reconciliation import check_prior_year_gate
@@ -362,6 +364,96 @@ async def test_viewer_cannot_import(
     )
     assert response.status_code == 403, response.text
     assert response.json()["detail"] == _FORBIDDEN
+
+
+@pytest.mark.asyncio
+async def test_fresh_statutory_upload_gets_mapping_suggestions(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+    stored_files: LocalPracticeStorage,
+) -> None:
+    """A parsed statutory trial balance stores suggest_statutory_mapping output.
+
+    Named accounts are pre-filled. An account the engine cannot place stays
+    empty so the screen can still show Select.
+    """
+    year_end_id = await _year_end(api_client, provisioned_org)
+    document_id = await _upload(
+        api_client,
+        provisioned_org,
+        name="suggested.csv",
+        content=_csv(
+            "Account Code,Account Name,Debit,Credit\n"
+            "1200,Bank current account,150.00,0.00\n"
+            "5000,Cost of sales,50.00,0.00\n"
+            "4000,Sales,0.00,180.00\n"
+            "9999,Sundry suspense,0.00,20.00\n"
+        ),
+        key="tb-suggestions",
+        content_type="text/csv",
+    )
+    headers = auth_headers(provisioned_org["token"])
+    headers["Idempotency-Key"] = "import-suggestions"
+    created = await api_client.post(
+        f"/year-ends/{year_end_id}/trial-balance-versions",
+        headers=headers,
+        json={"source_document_id": document_id},
+    )
+    assert created.status_code == 202, created.text
+    version_id = created.json()["id"]
+    with SyncSessionLocal() as session:
+        processed = process_tb_version(
+            session,
+            org_id=provisioned_org["org_id"],
+            version_id=uuid.UUID(version_id),
+            storage=stored_files,
+        )
+        assert processed is not None
+        assert processed.status == "ready"
+
+    listed = await api_client.get(
+        f"/year-ends/{year_end_id}/trial-balance-versions/{version_id}/lines",
+        headers=auth_headers(provisioned_org["token"]),
+    )
+    assert listed.status_code == 200, listed.text
+    by_code = {row["nominal_code"]: row for row in listed.json()["lines"]}
+    expected = {
+        "1200": "CASH",
+        "4000": "REVENUE",
+        "5000": "COST_OF_SALES",
+        "9999": None,
+    }
+    for code, name in (
+        ("1200", "Bank current account"),
+        ("4000", "Sales"),
+        ("5000", "Cost of sales"),
+        ("9999", "Sundry suspense"),
+    ):
+        suggestion = suggest_statutory_mapping(code, name)
+        stored_line, stored_confidence, stored_method = stored_statutory_suggestion(
+            code, name
+        )
+        assert stored_line == suggestion.canonical_line
+        row = by_code[code]
+        assert row["suggested_canonical_line"] == expected[code]
+        assert row["suggested_canonical_line"] == stored_line
+        assert row["method"] == stored_method
+        if stored_confidence is None:
+            assert row["confidence"] is None
+            assert suggestion.canonical_line is None
+        else:
+            assert Decimal(row["confidence"]) == stored_confidence
+            assert stored_confidence > 0
+            assert suggestion.confidence < 80
+
+    catalogue = await api_client.get(
+        "/year-ends/canonical-lines",
+        headers=auth_headers(provisioned_org["token"]),
+    )
+    assert catalogue.status_code == 200, catalogue.text
+    choices = set(catalogue.json()["lines"])
+    for code in ("1200", "4000", "5000"):
+        assert by_code[code]["suggested_canonical_line"] in choices
 
 
 def test_request_handler_does_not_parse_the_workbook() -> None:

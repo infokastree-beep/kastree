@@ -13,8 +13,10 @@ from sqlalchemy.orm import Session
 
 from app.db import SyncSessionLocal, set_rls_org_id
 from app.models.company import Company
+from app.models.confirmed_mapping import ConfirmedMapping
 from app.models.source_document import SourceDocument
 from app.models.tb_version import TrialBalanceLine, TrialBalanceVersion
+from app.services.mapper import PriorConfirmedMapping, stored_statutory_suggestion
 from app.services.parser import ParseError, UnbalancedTrialBalanceError, parse_tb_file
 from app.services.source_storage import SourceObjectStorage
 from app.services.spreadsheet_import import (
@@ -89,6 +91,7 @@ def process_tb_version(
         )
         engine_lines: list[TBLine] = []
         stored: list[TrialBalanceLine] = []
+        prior = _prior_statutory_mappings(session, version.company_id)
         for index, row in enumerate(parsed, start=1):
             debit = money(row.debit)
             credit = money(row.credit)
@@ -98,6 +101,9 @@ def process_tb_version(
             code = escape_formula_text(row.account_code)
             if len(name) > 500 or len(code) > 64:
                 raise ParseError("Account code or name is too long")
+            suggested_line, confidence, method = stored_statutory_suggestion(
+                code, name, prior
+            )
             engine_lines.append(
                 TBLine(nominal_code=code, account_name=name, debit=debit, credit=credit)
             )
@@ -111,6 +117,9 @@ def process_tb_version(
                     account_name=name,
                     debit=debit,
                     credit=credit,
+                    suggested_canonical_line=suggested_line,
+                    suggestion_confidence=confidence,
+                    suggestion_method=method,
                 )
             )
         integrity = check_tb_integrity(engine_lines)
@@ -168,6 +177,38 @@ def process_tb_version(
         failed.error_message = str(exc)[:500]
         session.commit()
         return failed
+
+
+def _prior_statutory_mappings(
+    session: Session, company_id: uuid.UUID
+) -> list[PriorConfirmedMapping]:
+    """Confirmed statutory lines for this company, for the prior-match tier.
+
+    Product 1 canonical lines are not included. ``suggest_statutory_mapping``
+    ignores a prior line that is not an engine line.
+    """
+    rows = session.execute(
+        select(
+            ConfirmedMapping.nominal_code,
+            TrialBalanceLine.account_name,
+            ConfirmedMapping.canonical_line,
+        )
+        .join(
+            TrialBalanceLine,
+            (TrialBalanceLine.tb_version_id == ConfirmedMapping.tb_version_id)
+            & (TrialBalanceLine.nominal_code == ConfirmedMapping.nominal_code)
+            & (TrialBalanceLine.org_id == ConfirmedMapping.org_id),
+        )
+        .where(ConfirmedMapping.company_id == company_id)
+    ).all()
+    return [
+        PriorConfirmedMapping(
+            source_code=code,
+            source_name=name,
+            canonical_line=line,
+        )
+        for code, name, line in rows
+    ]
 
 
 def _enforce_sheet_caps(content: bytes, detected_type: str) -> None:

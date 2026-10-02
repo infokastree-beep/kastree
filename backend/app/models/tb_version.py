@@ -151,6 +151,13 @@ class TrialBalanceLine(Base):
     account_name: Mapped[str] = mapped_column(String(500), nullable=False)
     debit: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False)
     credit: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False)
+    suggested_canonical_line: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    suggestion_confidence: Mapped[Decimal | None] = mapped_column(
+        Numeric(5, 2), nullable=True
+    )
+    suggestion_method: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

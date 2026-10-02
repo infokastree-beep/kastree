@@ -1200,3 +1200,24 @@ def suggest_statutory_mapping(
         best_score,
         tuple(item[0] for item in signals),
     )
+
+
+def stored_statutory_suggestion(
+    source_code: str,
+    source_name: str,
+    prior_confirmed: Sequence[PriorConfirmedMapping] = (),
+) -> tuple[str | None, Decimal | None, str | None]:
+    """Suggestion columns for one parsed statutory account.
+
+    Calls ``suggest_statutory_mapping`` and does not score the account again.
+    Confidence is that engine score divided by 100 (79 -> 0.79), which is the
+    scale Product 1 already shows on the mapping screen.
+    """
+    suggestion = suggest_statutory_mapping(source_code, source_name, prior_confirmed)
+    if suggestion.canonical_line is None:
+        return None, None, None
+    confidence = (Decimal(suggestion.confidence) / Decimal("100")).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    method = "+".join(suggestion.signals) if suggestion.signals else None
+    return suggestion.canonical_line, confidence, method
