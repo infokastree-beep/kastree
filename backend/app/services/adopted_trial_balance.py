@@ -3,7 +3,8 @@
 The year end stores ``trial_balances.id``. This module does not insert
 ``findraft_tb_versions``, ``findraft_tb_lines``, or
 ``findraft_confirmed_mappings``, and it does not ask for a second
-confirmation. Confirmed ``account_mappings`` are read live.
+confirmation. Confirmed ``account_mappings`` are read live. Continuation
+inserts one draft whose trial-balance version id stays null.
 
 Product 1 canonical lines (``revenue``, ``cash``, ``loans``) are not engine
 lines. ``engine_line_for_confirmed_mapping`` is the only translation.
@@ -13,6 +14,8 @@ are not consulted.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import uuid
 from collections.abc import Mapping, Sequence
@@ -41,7 +44,13 @@ from app.services.reconciliation import (
 from findraft.engine.pack import load_manifest, pack_dir, pin_pack_version
 from findraft.engine.reconciliation import check_prior_year_gate
 from findraft.engine.schemas import TBLine
+from findraft.models.draft_version import DraftVersion
 from findraft.models.year_end import YearEnd
+
+MAPPING_NOTICE = (
+    "Product 1 confirmed mappings changed after this draft was acknowledged. "
+    "This draft now uses the current mappings."
+)
 
 _DIRECT: dict[str, str] = {
     "revenue": "REVENUE",
@@ -450,8 +459,9 @@ async def continue_from_trial_balance(
 ) -> tuple[YearEnd, tuple[CarriedMapping, ...]]:
     """Find or create the year end for this trial balance, then adopt it.
 
-    Does not insert a statutory trial-balance version. Confirmed Product 1
-    mappings are translated by ``adopt_confirmed_trial_balance``.
+    Inserts one draft with a null trial-balance version id. Does not insert
+    a statutory trial-balance version. Confirmed Product 1 mappings are
+    translated by ``adopt_confirmed_trial_balance``.
     """
     await aset_rls_org_id(session, org_id)
     if trial_balance.status != "complete":
@@ -522,6 +532,7 @@ async def continue_from_trial_balance(
         year_end=year_end,
         trial_balance_id=trial_balance.id,
     )
+    await ensure_adopted_draft(session, org_id=org_id, year_end=year_end)
     return year_end, carried
 
 
@@ -593,13 +604,12 @@ async def _year_end_supplements(
     return prior_canonical, fa_register
 
 
-async def load_adopted_inputs(
+async def _adopted_bundle(
     session: AsyncSession,
     *,
     org_id: uuid.UUID,
     year_end: YearEnd,
-) -> ConfirmedInputs:
-    """Confirmed Product 1 rows and mappings, plus this year end's supplements."""
+) -> tuple[ConfirmedInputs, tuple[CarriedMapping, ...]]:
     await aset_rls_org_id(session, org_id)
     if year_end.adopted_trial_balance_id is None:
         raise ReconciliationRejected("No confirmed trial balance is selected", 404)
@@ -609,13 +619,13 @@ async def load_adopted_inputs(
         trial_balance_id=year_end.adopted_trial_balance_id,
     )
     mappings = await _mappings_for_company(session, year_end.company_id)
-    tb_lines, engine_by_code, _carried = carry_confirmed_accounts(
+    tb_lines, engine_by_code, carried = carry_confirmed_accounts(
         source_accounts_from_parsed(tb.parsed_data), mappings
     )
     prior_canonical, fa_register = await _year_end_supplements(
         session, org_id=org_id, year_end=year_end
     )
-    return ConfirmedInputs(
+    loaded = ConfirmedInputs(
         tb_lines=tb_lines,
         mappings=engine_by_code,
         prior_canonical=prior_canonical,
@@ -626,6 +636,259 @@ async def load_adopted_inputs(
         pack_rules_path=pack_dir(year_end.pack_id, year_end.pack_version)
         / "review-rules.json",
     )
+    return loaded, carried
+
+
+async def load_adopted_inputs(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+) -> ConfirmedInputs:
+    """Confirmed Product 1 rows and mappings, plus this year end's supplements."""
+    loaded, _carried = await _adopted_bundle(
+        session, org_id=org_id, year_end=year_end
+    )
+    return loaded
+
+
+def mapping_fingerprint(carried: Sequence[CarriedMapping]) -> str:
+    """Hash of the carried engine mapping that affects the statutory face."""
+    rows: list[dict[str, str]] = [
+        {
+            "account_name": item.account_name,
+            "canonical_line": item.canonical_line,
+            "nominal_code": item.nominal_code,
+            "product1_line": item.product1_line,
+        }
+        for item in carried
+    ]
+    rows.sort(key=lambda row: (row["nominal_code"], row["account_name"]))
+    encoded = json.dumps(rows, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+async def current_mapping_fingerprint(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+) -> str:
+    _loaded, carried = await _adopted_bundle(
+        session, org_id=org_id, year_end=year_end
+    )
+    return mapping_fingerprint(carried)
+
+
+def freeze_payload(loaded: ConfirmedInputs) -> dict[str, object]:
+    """Computation base captured when a draft stops being the live report."""
+    lines: list[dict[str, str]] = [
+        {
+            "nominal_code": line.nominal_code,
+            "account_name": line.account_name,
+            "debit": str(line.debit),
+            "credit": str(line.credit),
+        }
+        for line in loaded.tb_lines
+    ]
+    fa_register: dict[str, dict[str, str]] | None
+    if loaded.fa_register is None:
+        fa_register = None
+    else:
+        fa_register = {
+            asset: {key: str(amount) for key, amount in sorted(fields.items())}
+            for asset, fields in sorted(loaded.fa_register.items())
+        }
+    payload: dict[str, object] = {
+        "tb_lines": lines,
+        "mappings": dict(sorted(loaded.mappings.items())),
+        "prior_canonical": {
+            key: str(amount)
+            for key, amount in sorted(loaded.prior_canonical.items())
+        },
+        "prior_retained_earnings": str(loaded.prior_retained_earnings),
+        "fa_register": fa_register,
+    }
+    return payload
+
+
+def _frozen_unreadable() -> ReconciliationRejected:
+    return ReconciliationRejected("Frozen draft inputs are unreadable")
+
+
+def inputs_from_frozen(
+    payload: dict[str, object], year_end: YearEnd
+) -> ConfirmedInputs:
+    """Restore a frozen computation base. Pack rules stay on disk."""
+    raw_lines = payload.get("tb_lines")
+    raw_mappings = payload.get("mappings")
+    raw_prior = payload.get("prior_canonical")
+    if (
+        not isinstance(raw_lines, list)
+        or not isinstance(raw_mappings, dict)
+        or not isinstance(raw_prior, dict)
+        or "prior_retained_earnings" not in payload
+    ):
+        raise _frozen_unreadable()
+    tb_lines: list[TBLine] = []
+    for item in raw_lines:
+        if not isinstance(item, dict):
+            raise _frozen_unreadable()
+        tb_lines.append(
+            TBLine(
+                nominal_code=str(item.get("nominal_code", "")),
+                account_name=str(item.get("account_name", "")),
+                debit=Decimal(str(item.get("debit", "0"))),
+                credit=Decimal(str(item.get("credit", "0"))),
+            )
+        )
+    mappings = {str(key): str(value) for key, value in raw_mappings.items()}
+    prior_canonical = {
+        str(key): Decimal(str(value)) for key, value in raw_prior.items()
+    }
+    raw_fa = payload.get("fa_register")
+    fa_register: dict[str, dict[str, Decimal]] | None
+    if raw_fa is None:
+        fa_register = None
+    elif isinstance(raw_fa, dict):
+        fa_register = {}
+        for asset, fields in raw_fa.items():
+            if not isinstance(fields, dict):
+                raise _frozen_unreadable()
+            fa_register[str(asset)] = {
+                str(key): Decimal(str(amount)) for key, amount in fields.items()
+            }
+    else:
+        raise _frozen_unreadable()
+    return ConfirmedInputs(
+        tb_lines=tb_lines,
+        mappings=mappings,
+        prior_canonical=prior_canonical,
+        prior_retained_earnings=Decimal(str(payload["prior_retained_earnings"])),
+        fa_register=fa_register,
+        pack_rules_path=pack_dir(year_end.pack_id, year_end.pack_version)
+        / "review-rules.json",
+    )
+
+
+async def inputs_for_adopted_draft(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+    draft: DraftVersion | None,
+) -> ConfirmedInputs:
+    """Live Product 1 inputs, or the snapshot once the draft is frozen."""
+    if draft is not None and draft.is_frozen:
+        if not isinstance(draft.frozen_inputs, dict):
+            raise _frozen_unreadable()
+        return inputs_from_frozen(draft.frozen_inputs, year_end)
+    return await load_adopted_inputs(session, org_id=org_id, year_end=year_end)
+
+
+async def _latest_draft(
+    session: AsyncSession, *, org_id: uuid.UUID, year_end_id: uuid.UUID
+) -> DraftVersion | None:
+    await aset_rls_org_id(session, org_id)
+    return (
+        await session.scalars(
+            select(DraftVersion)
+            .where(
+                DraftVersion.org_id == org_id,
+                DraftVersion.year_end_id == year_end_id,
+            )
+            .order_by(DraftVersion.version_number.desc())
+            .limit(1)
+        )
+    ).first()
+
+
+async def active_adopted_draft(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+) -> DraftVersion | None:
+    """Latest adopted draft that still re-reads Product 1 mappings."""
+    await aset_rls_org_id(session, org_id)
+    return (
+        await session.scalars(
+            select(DraftVersion)
+            .where(
+                DraftVersion.org_id == org_id,
+                DraftVersion.year_end_id == year_end.id,
+                DraftVersion.tb_version_id.is_(None),
+                DraftVersion.is_frozen.is_(False),
+            )
+            .order_by(DraftVersion.version_number.desc())
+            .limit(1)
+        )
+    ).first()
+
+
+async def ensure_adopted_draft(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+) -> DraftVersion:
+    """Insert one null-version draft. A later continuation does not add another."""
+    await aset_rls_org_id(session, org_id)
+    existing = await _latest_draft(
+        session, org_id=org_id, year_end_id=year_end.id
+    )
+    if existing is not None:
+        return existing
+    fingerprint = await current_mapping_fingerprint(
+        session, org_id=org_id, year_end=year_end
+    )
+    created = DraftVersion(
+        org_id=year_end.org_id,
+        company_id=year_end.company_id,
+        year_end_id=year_end.id,
+        version_number=1,
+        pack_id=year_end.pack_id,
+        pack_version=year_end.pack_version,
+        status="draft",
+        tb_version_id=None,
+        mappings_sha256=fingerprint,
+        is_frozen=False,
+        row_version=1,
+    )
+    try:
+        async with session.begin_nested():
+            session.add(created)
+            await session.flush()
+    except IntegrityError:
+        found = await _latest_draft(
+            session, org_id=org_id, year_end_id=year_end.id
+        )
+        if found is None:
+            raise
+        return found
+    return created
+
+
+async def mapping_notice_for(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+    draft: DraftVersion,
+) -> str | None:
+    """Notice on the active adopted draft when live mappings have moved."""
+    if (
+        draft.tb_version_id is not None
+        or draft.is_frozen
+        or draft.mappings_sha256 is None
+    ):
+        return None
+    live = await current_mapping_fingerprint(
+        session, org_id=org_id, year_end=year_end
+    )
+    if live == draft.mappings_sha256:
+        return None
+    return MAPPING_NOTICE
 
 
 async def reconcile_adopted(

@@ -1414,15 +1414,17 @@ statutory draft on the Statements tab opens that address, and opening it
 again reloads the year end. When a statutory trial-balance version has been
 imported, the page shows the dashboard and posts adjustments, disclosure
 answers, and lock through the routes above. Continuing from a Product 1
-trial balance still does not create a trial-balance version or a draft row.
-That year end's page reloads the adopted pack and says the working draft is
-not there yet.
+trial balance inserts one draft row with `tb_version_id` null and leaves
+`findraft_tb_versions` empty. That page reloads the adopted pack through
+the active draft.
 
-### Statutory workflow — decided, not yet connected
+### Statutory workflow — decided, and connected
 
-**Status:** decided. Not built, except where a row below says already built.
-Copying a Product 1 trial balance into `findraft_tb_versions` on adopt is
-rejected. The draft stays a pointer and reads the live confirmed mappings.
+**Status:** the four connections below are built. A Product 1 trial balance
+stays in `trial_balances`. Continuation does not copy it into
+`findraft_tb_versions`. FINAL evidence and DOCX stay on the statutory
+version path (`evidence_for_version` reads `findraft_tb_lines` and
+`source_document_id`; `findraft_render_jobs.tb_version_id` is NOT NULL).
 
 Four decisions:
 
@@ -1431,13 +1433,12 @@ Four decisions:
    the tab links back when a year end already exists for that company and
    period.
 
-2. **Live Product 1 mappings.** Decided, not connected. The current active
-   draft re-reads Product 1 `account_mappings` on each computation, through
+2. **Live Product 1 mappings.** Built. The current active draft re-reads
+   Product 1 `account_mappings` on each computation, through
    `load_adopted_inputs`. A change made in Product 1 after the draft started
-   flows into that active draft with no copy step. The page must show a
-   clear notice when the live mapping set differs from the set this draft
-   last acknowledged. That comparison is not stored yet.
-   `findraft_draft_versions` has no mapping hash.
+   flows into that active draft. `mappings_sha256` stores the acknowledged
+   fingerprint. The page shows a notice when the live set differs, and
+   acknowledgement is the only way that notice clears.
 
 3. **Save as you go.** Already built for disclosure answers and
    adjustments, on a draft that already exists. `set_disclosure_answer`
@@ -1447,42 +1448,38 @@ Four decisions:
    these into a final submit: Yes and No each POST
    `/drafts/{id}/disclosures` immediately, and Post adjustment POSTs
    `/drafts/{id}/adjustments` for that journal immediately. Reload reads
-   them back from the dashboard. This does nothing on a continuation year
-   end until decision 2 creates the draft row, because those buttons render
-   only when `GET /year-ends/{id}/draft` returns one. Free-text note
+   them back from the dashboard. On a continuation year end those buttons
+   render once `GET /year-ends/{id}/draft` returns the draft row
+   continuation inserted. Free-text note
    overrides and text blocks stay the row 13 cut. They are not a third
    save path.
 
-4. **A new draft is a separate report.** Decided, not built. Explicitly
-   starting another draft for the same trial balance creates a new
-   `DraftVersion` with its own id and an empty history. It does not copy
-   the previous draft's adjustments or disclosure answers. The previous
-   draft keeps the history it already saved and stops being the active
-   live draft. `new_version_from_locked` is the opposite of this: it copies
-   journals and answers forward, and it only starts from a locked draft.
-   That route stays the lock-and-continue path. It is not the new-report
-   action.
+4. **A new draft is a separate report.** Built. Explicitly starting another
+   draft for the same trial balance creates a new `DraftVersion` with its
+   own id and an empty history. It does not copy the previous draft's
+   adjustments or disclosure answers. The previous draft keeps the history
+   it already saved, stores `frozen_inputs`, and stops being the active
+   live draft. `new_version_from_locked` stays the lock-and-continue path:
+   it copies journals and answers forward, and it only starts from a locked
+   draft. The new-report action is `POST /drafts/{id}/new-report`.
 
-What still has to be connected, and nothing else:
+What this connection does:
 
 - On continuation, insert one `DraftVersion` with `tb_version_id` null.
-  The column is already nullable. No copy into `findraft_tb_versions`.
-- Point `dashboard_for_draft`, `post_adjustment`, `_disclosure_check`, and
-  `recompute_draft` at `load_adopted_inputs` when the version id is null,
-  and pass that draft's adjustments and disclosure flags through
-  `statements_for_adopted`. The builder already accepts both. The adopted
-  wrapper currently passes neither, and those four callers currently raise
-  "Draft has no trial balance".
-- Store a mapping fingerprint on the draft and show the notice when the
-  live Product 1 set differs. Acknowledge updates the fingerprint. Only
-  the active (latest) draft stays live. Starting a new report freezes the
-  previous one so later Product 1 edits do not rewrite its history.
-- Add the new-report action. Do not reuse `new_version_from_locked` for it.
-- FINAL evidence and DOCX stay version-shaped (`evidence_for_version`
-  reads `findraft_tb_lines` and `source_document_id`;
-  `findraft_render_jobs.tb_version_id` is NOT NULL). They are not part of
-  this connection. An adopted draft can be worked on and saved before
-  those two learn the Product 1 source.
+  A second continuation leaves that row in place. `findraft_tb_versions`
+  stays empty.
+- `dashboard_for_draft`, `post_adjustment`, `_disclosure_check`, and
+  `recompute_draft` read `load_adopted_inputs` when the version id is null.
+  `statements_for_adopted` passes that draft's adjustments and disclosure
+  flags into the statement builder. A frozen draft reads `frozen_inputs`
+  instead of the live Product 1 mappings.
+- `mappings_sha256` is the acknowledged fingerprint. The active draft shows
+  the notice when the live Product 1 set differs. Acknowledge updates the
+  fingerprint. Starting a new report freezes the previous draft so later
+  Product 1 edits do not rewrite its history.
+- `finalise_draft` still requires a trial-balance version. An adopted draft
+  can be worked on and saved. FINAL evidence and DOCX remain out of this
+  connection.
 
 ### Week 9 statutory evidence graph
 

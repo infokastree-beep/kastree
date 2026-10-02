@@ -30,7 +30,10 @@ from app.models.organisation import Organisation
 from app.services.draft_inputs import adjusted_for_draft, latest_draft
 from app.services.statutory_pages import StatutoryPage, build_statutory_pages
 from app.models.tb_version import TrialBalanceVersion
-from app.services.adopted_trial_balance import load_adopted_inputs
+from app.services.adopted_trial_balance import (
+    active_adopted_draft,
+    inputs_for_adopted_draft,
+)
 from app.services.reconciliation import (
     ReconciliationCheck,
     ReconciliationRejected,
@@ -889,8 +892,14 @@ async def statements_for_adopted(
     org_id: uuid.UUID,
     year_end: YearEnd,
     watermark: str = WATERMARK,
+    use_draft: DraftVersion | None = None,
 ) -> StatutoryStatements:
-    """Render from the adopted Product 1 trial balance. No draft adjustments."""
+    """Render the adopted Product 1 trial balance plus one draft's own work.
+
+    With no draft argument, the active adopted draft supplies adjustments
+    and disclosure flags. A frozen draft uses the snapshot taken when the
+    next report started. A live draft re-reads Product 1 mappings.
+    """
     if year_end.adopted_trial_balance_id is None:
         raise ReconciliationRejected("No confirmed trial balance is selected", 404)
     if not year_end.prior_year_validated:
@@ -901,7 +910,36 @@ async def statements_for_adopted(
             prior_retained_earnings=Decimal("0"),
             watermark=watermark,
         )
-    loaded = await load_adopted_inputs(session, org_id=org_id, year_end=year_end)
+    draft = use_draft
+    if draft is None:
+        draft = await active_adopted_draft(
+            session, org_id=org_id, year_end=year_end
+        )
+    elif (
+        draft.org_id != org_id
+        or draft.year_end_id != year_end.id
+        or draft.tb_version_id is not None
+    ):
+        raise ReconciliationRejected("Draft not found", 404)
+    if draft is not None and draft.status == "final":
+        raise ReconciliationRejected("FINAL output is stored on the draft", 409)
+    loaded = await inputs_for_adopted_draft(
+        session, org_id=org_id, year_end=year_end, draft=draft
+    )
+    flags: dict[str, bool] | None = None
+    tb_lines = loaded.tb_lines
+    mappings = loaded.mappings
+    if draft is not None:
+        adjusted = await adjusted_for_draft(
+            session,
+            org_id=org_id,
+            draft=draft,
+            tb_lines=loaded.tb_lines,
+            mappings=loaded.mappings,
+        )
+        tb_lines = adjusted.tb_lines
+        mappings = adjusted.mappings
+        flags = adjusted.flags or None
     await aset_rls_org_id(session, org_id)
     company = await session.scalar(
         select(Company).where(
@@ -916,8 +954,8 @@ async def statements_for_adopted(
     )
     return build_statutory_statements(
         prior_year_validated=True,
-        tb_lines=loaded.tb_lines,
-        mappings=loaded.mappings,
+        tb_lines=tb_lines,
+        mappings=mappings,
         prior_retained_earnings=loaded.prior_retained_earnings,
         prior_canonical=loaded.prior_canonical,
         fa_register=loaded.fa_register,
@@ -925,6 +963,7 @@ async def statements_for_adopted(
         pack_id=year_end.pack_id,
         pack_version=year_end.pack_version,
         entity=entity_from_company(company),
+        disclosure_flags=flags,
         watermark=watermark,
         practice_name="" if organisation is None else organisation.name,
         period_end=year_end.period_end.isoformat(),

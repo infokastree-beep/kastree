@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Literal
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
@@ -27,14 +28,22 @@ from app.services.draft_inputs import (
     latest_draft,
 )
 from app.services.reconciliation import (
+    ConfirmedInputs,
     ReconciliationCheck,
     ReconciliationRejected,
     load_confirmed_inputs,
 )
 from app.services.statutory_evidence import evidence_for_version
 from app.services.statutory_present import evidence_response, statement_response
+from app.services.adopted_trial_balance import (
+    current_mapping_fingerprint,
+    freeze_payload,
+    inputs_for_adopted_draft,
+    load_adopted_inputs,
+)
 from app.services.statutory_statements import (
     StatutoryStatements,
+    statements_for_adopted,
     statements_for_version,
 )
 from findraft.engine.mapping import aggregate
@@ -189,6 +198,11 @@ def _expect_version(draft: DraftVersion, row_version: int) -> None:
         raise DraftRejected("row_version does not match", 409)
 
 
+def _refuse_frozen(draft: DraftVersion) -> None:
+    if draft.is_frozen:
+        raise DraftRejected("draft is frozen; writes are refused", 409)
+
+
 async def _replay(
     session: AsyncSession,
     *,
@@ -235,6 +249,27 @@ async def _remember(
     await session.flush()
 
 
+async def _loaded_for_check(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+    draft: DraftVersion,
+) -> ConfirmedInputs:
+    if draft.tb_version_id is None:
+        return await inputs_for_adopted_draft(
+            session, org_id=org_id, year_end=year_end, draft=draft
+        )
+    from app.models.tb_version import TrialBalanceVersion
+
+    version = await session.get(TrialBalanceVersion, draft.tb_version_id)
+    if version is None or version.org_id != org_id:
+        raise DraftRejected("Trial balance version is not ready")
+    return await load_confirmed_inputs(
+        session, org_id=org_id, year_end=year_end, version=version
+    )
+
+
 async def _disclosure_check(
     session: AsyncSession,
     *,
@@ -242,16 +277,12 @@ async def _disclosure_check(
     year_end: YearEnd,
     draft: DraftVersion,
 ) -> ReconciliationCheck | None:
-    if draft.tb_version_id is None:
-        raise DraftRejected("Draft has no trial balance")
-    from app.models.tb_version import TrialBalanceVersion
-
-    version = await session.get(TrialBalanceVersion, draft.tb_version_id)
-    if version is None or version.org_id != org_id:
-        raise DraftRejected("Trial balance version is not ready")
-    loaded = await load_confirmed_inputs(
-        session, org_id=org_id, year_end=year_end, version=version
-    )
+    try:
+        loaded = await _loaded_for_check(
+            session, org_id=org_id, year_end=year_end, draft=draft
+        )
+    except ReconciliationRejected as exc:
+        raise DraftRejected(exc.detail, exc.status_code) from exc
     adjusted = await adjusted_for_draft(
         session,
         org_id=org_id,
@@ -311,20 +342,29 @@ async def dashboard_for_draft(
             checks=tuple(checks),
             unanswered_disclosures=(),
         )
-    if draft.tb_version_id is None:
-        raise DraftRejected("Draft has no trial balance")
-    from app.models.tb_version import TrialBalanceVersion
+    try:
+        if draft.tb_version_id is None:
+            document = await statements_for_adopted(
+                session,
+                org_id=org_id,
+                year_end=year_end,
+                use_draft=draft,
+            )
+        else:
+            from app.models.tb_version import TrialBalanceVersion
 
-    version = await session.get(TrialBalanceVersion, draft.tb_version_id)
-    if version is None or version.org_id != org_id:
-        raise DraftRejected("Trial balance version is not ready")
-    document = await statements_for_version(
-        session,
-        org_id=org_id,
-        year_end=year_end,
-        version=version,
-        use_draft=draft,
-    )
+            version = await session.get(TrialBalanceVersion, draft.tb_version_id)
+            if version is None or version.org_id != org_id:
+                raise DraftRejected("Trial balance version is not ready")
+            document = await statements_for_version(
+                session,
+                org_id=org_id,
+                year_end=year_end,
+                version=version,
+                use_draft=draft,
+            )
+    except ReconciliationRejected as exc:
+        raise DraftRejected(exc.detail, exc.status_code) from exc
     disc = await _disclosure_check(
         session, org_id=org_id, year_end=year_end, draft=draft
     )
@@ -422,6 +462,7 @@ async def post_adjustment(
     _expect_version(draft, row_version)
     if draft.status != "draft":
         raise DraftRejected(f"draft is {draft.status}; writes are refused", 409)
+    _refuse_frozen(draft)
     journal = AdjustmentJournal(
         org_id=draft.org_id,
         company_id=draft.company_id,
@@ -446,17 +487,24 @@ async def post_adjustment(
             )
         )
     await session.flush()
-    if draft.tb_version_id is None:
-        raise DraftRejected("Draft has no trial balance")
-    from app.models.tb_version import TrialBalanceVersion
-
-    version = await session.get(TrialBalanceVersion, draft.tb_version_id)
-    if version is None or version.org_id != org_id or version.status != "ready":
-        raise DraftRejected("Trial balance version is not ready")
     try:
-        loaded = await load_confirmed_inputs(
-            session, org_id=org_id, year_end=year_end, version=version
-        )
+        if draft.tb_version_id is None:
+            loaded = await inputs_for_adopted_draft(
+                session, org_id=org_id, year_end=year_end, draft=draft
+            )
+        else:
+            from app.models.tb_version import TrialBalanceVersion
+
+            version = await session.get(TrialBalanceVersion, draft.tb_version_id)
+            if (
+                version is None
+                or version.org_id != org_id
+                or version.status != "ready"
+            ):
+                raise DraftRejected("Trial balance version is not ready")
+            loaded = await load_confirmed_inputs(
+                session, org_id=org_id, year_end=year_end, version=version
+            )
         await adjusted_for_draft(
             session,
             org_id=org_id,
@@ -505,6 +553,7 @@ async def set_disclosure_answer(
     _expect_version(draft, row_version)
     if draft.status != "draft":
         raise DraftRejected(f"draft is {draft.status}; writes are refused", 409)
+    _refuse_frozen(draft)
     existing = await session.scalar(
         select(DisclosureAnswer).where(
             DisclosureAnswer.org_id == org_id,
@@ -553,6 +602,7 @@ async def lock_draft(
     _expect_version(draft, row_version)
     if draft.status != "draft":
         raise DraftRejected(f"draft is {draft.status}; writes are refused", 409)
+    _refuse_frozen(draft)
     draft.status = "locked"
     draft.row_version = row_version + 1
     draft.updated_at = datetime.now(UTC)
@@ -663,6 +713,121 @@ async def new_version_from_locked(
     }
 
 
+async def acknowledge_mappings(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+    draft_id: uuid.UUID,
+    row_version: int,
+) -> dict[str, object]:
+    """Store the live Product 1 mapping fingerprint on this draft."""
+    draft = await _draft_for_update(
+        session, org_id=org_id, year_end=year_end, draft_id=draft_id
+    )
+    _expect_version(draft, row_version)
+    if draft.tb_version_id is not None:
+        raise DraftRejected("This draft does not read Product 1 mappings", 409)
+    if draft.status == "final":
+        raise DraftRejected("FINAL output is never recomputed", 409)
+    _refuse_frozen(draft)
+    try:
+        fingerprint = await current_mapping_fingerprint(
+            session, org_id=org_id, year_end=year_end
+        )
+    except ReconciliationRejected as exc:
+        raise DraftRejected(exc.detail, exc.status_code) from exc
+    draft.mappings_sha256 = fingerprint
+    draft.row_version = row_version + 1
+    draft.updated_at = datetime.now(UTC)
+    await session.flush()
+    return {
+        "draft_id": str(draft.id),
+        "status": draft.status,
+        "row_version": draft.row_version,
+    }
+
+
+async def start_new_report(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+    draft_id: uuid.UUID,
+    row_version: int,
+) -> dict[str, object]:
+    """Open an empty adopted draft and freeze the one it replaces.
+
+    Journals and disclosure answers stay on the previous draft. This path
+    does not call ``new_version_from_locked``.
+    """
+    await aset_rls_org_id(session, org_id)
+    await session.scalars(
+        select(YearEnd)
+        .where(YearEnd.id == year_end.id, YearEnd.org_id == org_id)
+        .with_for_update()
+    )
+    draft = await _draft_for_update(
+        session, org_id=org_id, year_end=year_end, draft_id=draft_id
+    )
+    _expect_version(draft, row_version)
+    if draft.tb_version_id is not None or year_end.adopted_trial_balance_id is None:
+        raise DraftRejected(
+            "A new statutory report starts from the adopted draft", 409
+        )
+    if draft.status == "final":
+        raise DraftRejected("FINAL output is never recomputed", 409)
+    current = (
+        await session.scalar(
+            select(func.max(DraftVersion.version_number)).where(
+                DraftVersion.year_end_id == year_end.id
+            )
+        )
+    ) or 0
+    if draft.is_frozen or draft.version_number != int(current):
+        raise DraftRejected("This draft is not the active report", 409)
+    try:
+        loaded = await load_adopted_inputs(
+            session, org_id=org_id, year_end=year_end
+        )
+        fingerprint = await current_mapping_fingerprint(
+            session, org_id=org_id, year_end=year_end
+        )
+    except ReconciliationRejected as exc:
+        raise DraftRejected(exc.detail, exc.status_code) from exc
+    created = DraftVersion(
+        org_id=draft.org_id,
+        company_id=draft.company_id,
+        year_end_id=draft.year_end_id,
+        version_number=int(current) + 1,
+        pack_id=draft.pack_id,
+        pack_version=draft.pack_version,
+        status="draft",
+        tb_version_id=None,
+        mappings_sha256=fingerprint,
+        is_frozen=False,
+        row_version=1,
+    )
+    try:
+        async with session.begin_nested():
+            draft.is_frozen = True
+            draft.frozen_inputs = freeze_payload(loaded)
+            draft.row_version = row_version + 1
+            draft.updated_at = datetime.now(UTC)
+            session.add(created)
+            await session.flush()
+    except IntegrityError as exc:
+        raise DraftRejected(
+            "A report for this year end was just started", 409
+        ) from exc
+    return {
+        "draft_id": str(created.id),
+        "version_number": created.version_number,
+        "row_version": created.row_version,
+        "status": created.status,
+    }
+
+
 async def recompute_draft(
     session: AsyncSession,
     *,
@@ -672,6 +837,11 @@ async def recompute_draft(
     row_version: int,
     idempotency_key: str,
 ) -> Dashboard:
+    """Recompute through the dashboard.
+
+    An adopted draft reads ``load_adopted_inputs`` there. A frozen draft
+    reads the snapshot stored when the next report started.
+    """
     request_sha = _sha({"row_version": row_version, "action": "recompute"})
     replay = await _replay(
         session, org_id=org_id, key=idempotency_key, request_sha=request_sha

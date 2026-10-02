@@ -31,6 +31,8 @@ type WorkingDraft = {
   status: string;
   row_version: number;
   tb_version_id: string | null;
+  mapping_notice: string | null;
+  frozen: boolean;
 };
 
 type DashboardCheck = {
@@ -182,7 +184,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
 
   const forbidden = meQuery.data?.is_platform_admin === false;
   const dashboard = dashboardQuery.data;
-  const writable = draft?.status === "draft" && busy === null;
+  const writable = draft?.status === "draft" && !draft.frozen && busy === null;
   const priorYearBlocked =
     statementsQuery.data?.checks.some(
       (check) => check.code === "V-GATE-001" && !check.passed,
@@ -264,6 +266,52 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
         getToken,
         body: JSON.stringify({ row_version: dashboard.row_version }),
       });
+      await refreshDraft();
+    } catch (caught) {
+      setError(messageFrom(caught));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function acknowledgeMappings(): Promise<void> {
+    if (!draft || !dashboard) {
+      return;
+    }
+    setError(null);
+    setBusy("Acknowledging the current mappings…");
+    try {
+      await apiFetch(
+        `/year-ends/${yearEndId}/drafts/${draft.draft_id}/acknowledge-mappings`,
+        {
+          method: "POST",
+          getToken,
+          body: JSON.stringify({ row_version: dashboard.row_version }),
+        },
+      );
+      await refreshDraft();
+    } catch (caught) {
+      setError(messageFrom(caught));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function startNewReport(): Promise<void> {
+    if (!draft || !dashboard) {
+      return;
+    }
+    setError(null);
+    setBusy("Starting a new statutory report…");
+    try {
+      await apiFetch(
+        `/year-ends/${yearEndId}/drafts/${draft.draft_id}/new-report`,
+        {
+          method: "POST",
+          getToken,
+          body: JSON.stringify({ row_version: dashboard.row_version }),
+        },
+      );
       await refreshDraft();
     } catch (caught) {
       setError(messageFrom(caught));
@@ -431,6 +479,24 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       {busy ? <p className="text-sm text-soft">{busy}</p> : null}
       {draftQuery.error ? (
         <p className="text-sm text-red-800">{messageFrom(draftQuery.error)}</p>
+      ) : null}
+
+      {draft?.mapping_notice ? (
+        <section
+          className="space-y-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          data-testid="statutory-mapping-notice"
+        >
+          <p>{draft.mapping_notice}</p>
+          <button
+            type="button"
+            disabled={busy !== null || !dashboard}
+            onClick={() => void acknowledgeMappings()}
+            className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:opacity-50"
+            data-testid="statutory-acknowledge-mappings"
+          >
+            Acknowledge
+          </button>
+        </section>
       ) : null}
 
       {draft === null && draftQuery.isSuccess ? (
@@ -614,7 +680,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
         </section>
       ) : null}
 
-      {draft?.status === "locked" && dashboard ? (
+      {draft?.status === "locked" && draft.tb_version_id !== null && dashboard ? (
         <button
           type="button"
           disabled={busy !== null}
@@ -623,6 +689,18 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
           data-testid="statutory-new-version"
         >
           Open the next draft version
+        </button>
+      ) : null}
+
+      {draft && draft.tb_version_id === null && !draft.frozen && dashboard ? (
+        <button
+          type="button"
+          disabled={busy !== null}
+          onClick={() => void startNewReport()}
+          className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:opacity-50"
+          data-testid="statutory-new-report"
+        >
+          Start a new statutory report
         </button>
       ) : null}
 

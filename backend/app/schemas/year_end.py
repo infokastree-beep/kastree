@@ -465,6 +465,8 @@ class WorkingDraftResponse(BaseModel):
     status: str
     row_version: int
     tb_version_id: uuid.UUID | None
+    mapping_notice: str | None = None
+    frozen: bool = False
 
 
 class NewDraftVersionResponse(BaseModel):
