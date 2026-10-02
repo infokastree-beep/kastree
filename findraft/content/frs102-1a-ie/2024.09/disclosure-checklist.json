@@ -1,0 +1,671 @@
+{
+  "pack": "frs102-1a-ie",
+  "standard": "FRS 102 (September 2024), Section 1A + Appendix D",
+  "effective": "Accounting periods beginning on or after 1 January 2026",
+  "jurisdiction": "IE",
+  "materiality_rule": "1A.17A: omit any 1AD disclosure if not material, except where Companies Act 2014 requires regardless of materiality",
+  "ordering_rule": "1AD.2: notes in the order items appear in SoFP then income statement",
+  "items": [
+    {
+      "id": "1AD.1",
+      "topic": "Minimum Appendix D disclosures when relevant",
+      "note": null,
+      "statuteRefStatus": "verified-vs-sept2024-pdf (no explicit statute cite in text)",
+      "statuteRef": "See requirement text in FRS 102 Appendix D (no standalone statutory citation)",
+      "evidence": {
+        "licensed_pdf_page": 44,
+        "quote": "1AD.1 As a minimum, when relevant to its transactions, other events and conditions, a small entity in the Republic of Ireland shall provide the disclo"
+      }
+    },
+    {
+      "id": "1AD.2",
+      "topic": "Note ordering (SoFP then income statement order)",
+      "note": "_engine",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Sch 3A paras 43(2)",
+      "evidence": {
+        "licensed_pdf_page": 44,
+        "quote": "the statement of financial position and in the income statement. (Schedule 3A, paragraph 43(2)) Paragraphs 8.3 and 8.4 address similar requireme"
+      }
+    },
+    {
+      "id": "1AD.3",
+      "topic": "Basis of preparation statement incl. Section 1A compliance and any material departures",
+      "note": "N1_POLICIES",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "CA 2014 s.291(7)",
+      "evidence": {
+        "licensed_pdf_page": 44,
+        "quote": "f the departure and the reasons for it are noted in the financial statements .23 (Section 291(7) of the Companies Act 2014) Accounting policies 1A"
+      },
+      "extractionNote": "Citation and requirement confirmed verbatim in the licensed FRS 102 (September 2024) PDF, page 44: \"1AD.3 A small entity shall ensure that its financial statements include a statement as to whether they have be…\""
+    },
+    {
+      "id": "1AD.4",
+      "topic": "Accounting policies for SoFP and income statement items",
+      "note": "N1_POLICIES",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "CA 2014 s.321(1)",
+      "evidence": {
+        "licensed_pdf_page": 44,
+        "quote": "position; and (b) the items and amounts to be included in its income statement. (Section 321(1) of the Companies Act 2014) Paragraphs 8.5 and 8.5"
+      },
+      "extractionNote": "Citation and requirement confirmed verbatim in the licensed FRS 102 (September 2024) PDF, page 44: \"1AD.4 A small entity shall disclose in the notes to its financial statements the accounting policies adopted b…\""
+    },
+    {
+      "id": "1AD.5",
+      "topic": "Development costs capitalised: write-off period and reasons",
+      "note": "N2_FA",
+      "includeWhen": "INTANGIBLE_ASSETS > 0 AND DEV_COSTS > 0",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Sch 3A paras 24(2)",
+      "evidence": {
+        "licensed_pdf_page": 45,
+        "quote": "off; and (b) the reasons for capitalising the costs in question. (Schedule 3A, paragraph 24(2)) Paragraph 18.27(a) addresses similar requirement"
+      }
+    },
+    {
+      "id": "1AD.6",
+      "topic": "Development costs treated as asset but not realised loss: circumstances",
+      "note": "N2_FA",
+      "includeWhen": "DEV_COSTS_UNREALISED > 0",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "CA 2014 s.120(3)",
+      "evidence": {
+        "licensed_pdf_page": 45,
+        "quote": "statements shall state the circumstances and that it is not a realised loss .24 (Section 120(3) of the Companies Act 2014) 1AD.7 In any case wher"
+      },
+      "extractionNote": "Citation and requirement confirmed verbatim in the licensed FRS 102 (September 2024) PDF, page 45: \"1AD.6 Where development costs are shown as an asset in the small entity’s financial statements and the amount …\""
+    },
+    {
+      "id": "1AD.7",
+      "topic": "Goodwill: write-off period chosen and reasons",
+      "note": "N2_FA",
+      "includeWhen": "GOODWILL > 0",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Sch 3A paras 25(4)",
+      "evidence": {
+        "licensed_pdf_page": 45,
+        "quote": "period shall be disclosed in a note to the financial statements. (Schedule 3A, paragraph 25(4)) Paragraph 19.25(g) addresses similar requirement"
+      }
+    },
+    {
+      "id": "1AD.8",
+      "topic": "Change in SoFP/income statement format: reasons and particulars",
+      "note": "N1_POLICIES",
+      "includeWhen": "FORMAT_CHANGE == true",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Sch 3A paras 3(2)",
+      "evidence": {
+        "licensed_pdf_page": 45,
+        "quote": "he financial statements in which the new format is first adopted. (Schedule 3A, paragraph 3(2)) Paragraphs 3.12 and 3.13 address similar require"
+      }
+    },
+    {
+      "id": "1AD.9",
+      "topic": "Accounting policy change: reason and practicable impact",
+      "note": "N1_POLICIES",
+      "includeWhen": "POLICY_CHANGE == true",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "CA 2014 s.321(3)",
+      "evidence": {
+        "licensed_pdf_page": 45,
+        "quote": "e current reporting period and on the financial statements of preceding periods. (Section 321(3) of the Companies Act 2014) Paragraphs 10.13 and 1"
+      }
+    },
+    {
+      "id": "1AD.10",
+      "topic": "Non-comparable prior-year amounts: particulars of adjustment",
+      "note": "N1_POLICIES",
+      "includeWhen": "PRIOR_RECLASS == true",
+      "statuteRef": "Sch 3A paras 5(1)",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 45,
+        "quote": "s therefor shall be given in a note to the financial stat ements. (Schedule 3A, paragraph 5(1)) 24 The disclosure requirements in paragraph 1AD."
+      }
+    },
+    {
+      "id": "1AD.11",
+      "topic": "Going-concern departure: reasons, method, effect",
+      "note": "N1_POLICIES",
+      "includeWhen": "GOING_CONCERN_DEPARTURE == true",
+      "critical": true,
+      "statuteRef": "CA 2014 s.291(6)",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 46,
+        "quote": "on and income statement shall be given in the notes to the financial statements. (Section 291(6) of the Companies Act 2014 and Schedule 3A, paragr"
+      }
+    },
+    {
+      "id": "1AD.12",
+      "topic": "Asset/liability relating to more than one SoFP item: breakdown of amounts",
+      "note": "_line_level",
+      "includeWhen": "MULTI_ITEM_ASSET == true",
+      "statuteRef": "Sch 3A paras 4(7)",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 46,
+        "quote": "em where it is shown or in the notes to the financial statements. (Schedule 3A, paragraph 4(7)) Fixed assets 1AD.13 In respect of each item whic"
+      }
+    },
+    {
+      "id": "1AD.13",
+      "topic": "Fixed assets: movements (acquisitions, disposals, depreciation/impairment) in the period for each FA item",
+      "note": "N2_FA",
+      "includeWhen": "FIXED_ASSETS_NBV != 0",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Schedule 3A, paragraphs 45(1) and 45(2)",
+      "evidence": {
+        "licensed_pdf_page": 46,
+        "quote": "l entity to and from that item during the reporting period. (Schedule 3A, paragraphs 45(1) and 45(2))"
+      }
+    },
+    {
+      "id": "1AD.14",
+      "topic": "Fixed assets: opening NBV, depreciation method/rate/life or useful life, NBV vs cost/revaluation basis",
+      "note": "N2_FA",
+      "includeWhen": "FIXED_ASSETS_NBV != 0",
+      "statuteRef": "Sch 3A 45(3) (opening/closing accum dep, charge, dep on disposals, other adjustments)",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 46,
+        "quote": "espect of any such value adjustments during the reporting period. (Schedule 3A, paragraph 45(3))"
+      }
+    },
+    {
+      "id": "1AD.15",
+      "topic": "Revalued assets: items affected and basis of valuation",
+      "note": "N2_FA",
+      "includeWhen": "REVALUATION_RESERVE != 0",
+      "statuteRef": "Sch 3A paras 35(2)",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 47,
+        "quote": "such item shall be disclosed in the note on accounting policies. (Schedule 3A, paragraph 35(2)) These requirements apply when: • Investments in"
+      }
+    },
+    {
+      "id": "1AD.16",
+      "topic": "Revalued asset historical cost equivalent: cost and accumulated depreciation",
+      "note": "N2_FA",
+      "includeWhen": "REVALUATION_RESERVE != 0",
+      "statuteRef": "Sch 3A paras 35(3)",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 47,
+        "quote": "t of financial position or in a note to the financial statements. (Schedule 3A, paragraph 35(3)) The comparable amounts refers to the aggregate a"
+      }
+    },
+    {
+      "id": "1AD.17",
+      "topic": "Transfers to/from revaluation reserve",
+      "note": "N6_CAPITAL",
+      "includeWhen": "REVAL_TRANSFER != 0",
+      "statuteRef": "Sch 3A paras 49",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 48,
+        "quote": "ource and application respectively of any amounts so transferred. (Schedule 3A, paragraph 49) Paragraph 6.3A addresses similar requirements. T"
+      }
+    },
+    {
+      "id": "1AD.18",
+      "topic": "Taxation treatment of revaluation reserve movements",
+      "note": "N6_CAPITAL",
+      "includeWhen": "REVALUATION_RESERVE != 0",
+      "statuteRef": "Sch 3A paras 36(6)",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 48,
+        "quote": "eserve shall be disclosed in a note to the financial stat ements. (Schedule 3A, paragraph 36(6)) Paragraph 29.27(a) addresses similar requirement"
+      }
+    },
+    {
+      "id": "1AD.19",
+      "topic": "Capitalised borrowing costs included in asset cost",
+      "note": "N2_FA",
+      "includeWhen": "CAPITALISED_BORROWING > 0",
+      "statuteRef": "Sch 3A paras 29(3)",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 48,
+        "quote": "t so included is disclosed in a note to the financial statements. (Schedule 3A, paragraph 29(3)) Paragraph 25.3A(a) addresses a similar requireme"
+      }
+    },
+    {
+      "id": "1AD.20",
+      "topic": "Impairment value adjustments on fixed assets",
+      "note": "N2_FA",
+      "includeWhen": "IMPAIRMENT != 0",
+      "statuteRef": "Sch 3A paras 23(1)–(2)",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 48,
+        "quote": "cial statements if not shown separately in the income statement. (Schedule 3A, paragraphs 23(1) and (2)) Paragraph 27.32(a) addresses similar req"
+      }
+    },
+    {
+      "id": "1AD.21",
+      "topic": "Reversal of impairment adjustments: reasons",
+      "note": "N2_FA",
+      "includeWhen": "IMPAIRMENT_REVERSAL != 0",
+      "statuteRef": "Sch 3A paras 23(3)",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 48,
+        "quote": "ncial statements if not shown separately in the income statement. (Schedule 3A, paragraph 23(3)) Paragraph 27.32(b) addresses similar requirement"
+      }
+    },
+    {
+      "id": "1AD.22",
+      "topic": "Financial instruments at fair value through P&L: basis of valuation",
+      "note": "N3_DEBTORS",
+      "includeWhen": "FI_FVPL != 0",
+      "statuteRef": "Sch 3A paras 46(2)(a)–(b)",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 49,
+        "quote": "inancial instruments or assets other than financial instruments. (Schedule 3A, paragraphs 46(2)(a) and (b)) This does not apply where financial i"
+      }
+    },
+    {
+      "id": "1AD.23",
+      "topic": "Non-FI assets at fair value: particulars and valuation basis",
+      "note": "N3_DEBTORS",
+      "includeWhen": "NONFI_FV != 0",
+      "statuteRef": "Sch 3A para 46(2)(c)",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 49,
+        "quote": "may affect the amount, timing and certainty of future cash flows. (Schedule 3A, paragraph 46(2)(c)) 1AD.24 Where financial instruments or assets"
+      }
+    },
+    {
+      "id": "1AD.24",
+      "topic": "Difference between FV carrying amount and historical cost: particulars",
+      "note": "N3_DEBTORS",
+      "includeWhen": "FV_VS_HC_DIFFERS == true",
+      "statuteRef": "Sch 3A para 46(2)(d)",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 49,
+        "quote": "movements in the fair value reserve during the reporting period. (Schedule 3A, paragraph 46(2)(d)) Paragraphs 6.3A, 12.29(c) and 12.29(d) addres"
+      }
+    },
+    {
+      "id": "1AD.25",
+      "topic": "Instruments designated FVPL under IFRS-consistent treatment: particulars",
+      "note": null,
+      "includeWhen": "FV_DESIGNATION != 0",
+      "phase2": true,
+      "statuteRef": "Sch 3A paras 38(1)",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 49,
+        "quote": "A apply, provided that the disclosures required by IFRS are made. (Schedule 3A, paragraph 38(1)) This applies to all financial instruments measur"
+      }
+    },
+    {
+      "id": "1AD.26",
+      "topic": "Creditors: aggregate amounts of loans repayable >5 years and >1yr<=5yrs, per creditor item",
+      "note": "N4_CREDITORS",
+      "includeWhen": "CREDITORS != 0",
+      "statuteRef": "Sch 3A paras 50(1)",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 50,
+        "quote": "e years beginning with the day next following the reporting date. (Schedule 3A, paragraph 50(1)) 1AD.27 In respect of each item shown under ‘cred"
+      }
+    },
+    {
+      "id": "1AD.27",
+      "topic": "Creditors: aggregate amounts secured, per creditor item",
+      "note": "N4_CREDITORS",
+      "includeWhen": "SECURED_CREDITORS != 0",
+      "statuteRef": "Sch 3A paras 50(2)",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 50,
+        "quote": "; and (b) an indication of the nature of the securities so given. (Schedule 3A, paragraph 50(2)) Paragraphs 11.46, 13.22(e), 16.10(c), 17.32(a) a"
+      }
+    },
+    {
+      "id": "1AD.28",
+      "topic": "Charges on assets: particulars",
+      "note": "N9_COMMITMENTS",
+      "includeWhen": "CHARGES_EXIST == true",
+      "statuteRef": "Sch 3A paras 51(1)",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 50,
+        "quote": "y other person, including, where practicable, the amount secured. (Schedule 3A, paragraph 51(1)) 1AD.29 Particulars and the total amount or estim"
+      }
+    },
+    {
+      "id": "1AD.29",
+      "topic": "Guarantees/security given: particulars incl. estimated liability",
+      "note": "N9_COMMITMENTS",
+      "includeWhen": "GUARANTEES_EXIST == true",
+      "statuteRef": "Sch 3A paras 51(2)",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 50,
+        "quote": "tingency not provided for in the statement of financial position. (Schedule 3A, paragraph 51(2)) The aggregate amount of any such commitments, gu"
+      }
+    },
+    {
+      "id": "1AD.30",
+      "topic": "Nature/form of valuable security given by entity",
+      "note": "N9_COMMITMENTS",
+      "includeWhen": "GUARANTEES_EXIST == true",
+      "statuteRef": "Sch 3A paras 51(3)",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 50,
+        "quote": "ovided for in the statement of financial position shall be given. (Schedule 3A, paragraph 51(3)) Paragraphs 11.46, 13.22(e), 16.10(c), 17.32(a) a"
+      }
+    },
+    {
+      "id": "1AD.31",
+      "topic": "Commitments not provided for: total amount/estimate, nature, timing",
+      "note": "N9_COMMITMENTS",
+      "includeWhen": "UNCOMMITTED != 0",
+      "statuteRef": "Sch 3A paras 51(4)",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 50,
+        "quote": "ion concerning retirement benefits shall be disclosed separately. (Schedule 3A, paragraph 51(4)) 1AD.32 Particulars, including details of signifi"
+      }
+    },
+    {
+      "id": "1AD.32",
+      "topic": "Retirement benefit commitments: particulars incl. valuation assumptions",
+      "note": "N9_COMMITMENTS",
+      "includeWhen": "PENSION_COMMITMENT == true",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Sch 3A paras 51(5)",
+      "evidence": {
+        "licensed_pdf_page": 50,
+        "quote": "tments which are included in the statement of financial position. (Schedule 3A, paragraph 51(5)) 1AD.33 Where any commitment referred to in parag"
+      }
+    },
+    {
+      "id": "1AD.33",
+      "topic": "Retirement-benefit commitments to past directors: separate particulars",
+      "note": "N7_RPT",
+      "includeWhen": "PAST_DIRECTOR_PENSION_COMMITMENTS == true",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Schedule 3A, paragraph 51(6)",
+      "evidence": {
+        "licensed_pdf_page": 50,
+        "quote": "ny, separate particulars shall be given of that commitment. (Schedule 3A, paragraph 51(6)) A small entity that is n"
+      }
+    },
+    {
+      "id": "1AD.34",
+      "topic": "Off-SoFP arrangements: nature, business purpose, risks, financial impact",
+      "note": "N9_COMMITMENTS",
+      "includeWhen": "OFF_BALANCE_ARRANGEMENT == true",
+      "phase2": true,
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Sections 323(1) and 323(1A) of the Companies Act 2014",
+      "evidence": {
+        "licensed_pdf_page": 51,
+        "quote": "y for assessing the financial position of the small entity. (Sections 323(1) and 323(1A) of the Companies Act 2014) Examples of off-balance"
+      }
+    },
+    {
+      "id": "1AD.35",
+      "topic": "Dividends: aggregate amounts to be shown",
+      "note": "_line_level",
+      "includeWhen": "DIVIDENDS_PAID != 0",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Schedule 3A, paragraph 48",
+      "evidence": {
+        "licensed_pdf_page": 51,
+        "quote": "or loss carried forward at the end of the reporting period. (Schedule 3A, paragraph 48) Paragraph 6.3(c) address"
+      }
+    },
+    {
+      "id": "1AD.36",
+      "topic": "Income statement items: disclosure of amounts where required by Sch3A in notes",
+      "note": "_line_level",
+      "includeWhen": "REQUIRED_BY_FORMAT == true",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Sch 3A paras 53",
+      "evidence": {
+        "licensed_pdf_page": 51,
+        "quote": "expenditure that are exceptional by virtue of size or incidence. (Schedule 3A, paragraph 53) Paragraph 5.9A addresses a similar requirement i"
+      }
+    },
+    {
+      "id": "1AD.37",
+      "topic": "Average number of employees in the period",
+      "note": "N8_EMPLOYEES",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Sections 317(1)(a) and 317(7A) of the Companies Act 2014; Sections 305 and 306 of the Companies Act 2014",
+      "evidence": {
+        "licensed_pdf_page": 52,
+        "quote": "rsons employed by the small entity in the reporting period. (Sections 317(1)(a) and 317(7A) of the Companies Act 2014) Related party disclosure"
+      }
+    },
+    {
+      "id": "1AD.38",
+      "topic": "Directors' remuneration - aggregate",
+      "note": "N7_RPT",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Sections 305(1) and 305(12)(b) of the Companies Act 2014; Section 305(13)(b) of the Companies Act 2014",
+      "evidence": {
+        "licensed_pdf_page": 52,
+        "quote": "small entity; and (ii) amounts in respect of other offices. (Sections 305(1) and 305(12)(b) of the Companies Act 2014) The aggregate amounts in"
+      }
+    },
+    {
+      "id": "1AD.39",
+      "topic": "Past directors: retirement benefits and related amounts",
+      "note": "N7_RPT",
+      "includeWhen": "PAST_DIRECTOR_BENEFITS == true",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Sections 305(2) and 305(10) of the Companies Act 2014; Sections 305(2) and 305(12)(b) of the Companies Act 2014; Section 305(13)(b) of the Companies Act 2014; Section 306(1); Section 305(13)(a) of the Companies Act 2014; Sections 305A and 306 of the Companies Act 2014",
+      "evidence": {
+        "licensed_pdf_page": 52,
+        "quote": "or of the small entity; and (ii) other retirement benefits; (Sections 305(2) and 305(10) of the Companies Act 2014) 48 FRS 102 (September 20"
+      }
+    },
+    {
+      "id": "1AD.40",
+      "topic": "Consideration paid to third parties for making directors' services available",
+      "note": "N5_LOANS",
+      "includeWhen": "THIRD_PARTY_DIRECTOR_SERVICES == true",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Section 305A(1) and 305A(2) of the Companies Act 2014; Section 305A(4)(a)(ii) of the Companies Act 2014; Sections 307 to 309 of the Companies Act 2014",
+      "evidence": {
+        "licensed_pdf_page": 53,
+        "quote": "ries, any parent of the small entity and any other persons. (Section 305A(1) and 305A(2) of the Companies Act 2014) The nature of any consid"
+      }
+    },
+    {
+      "id": "1AD.41",
+      "topic": "Directors' loans, quasi-loans, credit transactions, guarantees and security (lead-in to 1AD.42–1AD.45)",
+      "note": "N5_LOANS",
+      "includeWhen": "DIRECTOR_LOANS != 0 OR DIRECTOR_LOAN_AGREEMENTS == true OR DIRECTOR_GUARANTEES == true OR DIRECTOR_GUARANTEE_AGREEMENTS == true",
+      "statuteRefStatus": "verified-vs-sept2024-pdf (no explicit statute cite in text)",
+      "statuteRef": "No standalone statutory citation — lead-in paragraph to 1AD.42–1AD.45",
+      "evidence": {
+        "licensed_pdf_page": 53,
+        "quote": "The financial statements of a small entity shall disclose, both for the current and the preceding reporti"
+      }
+    },
+    {
+      "id": "1AD.42",
+      "topic": "Loans, quasi-loans and credit transactions with directors and connected persons: particulars",
+      "note": "N5_LOANS",
+      "includeWhen": "DIRECTOR_LOANS != 0 OR CONNECTED_LOANS != 0",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Section 307(3) of the Companies Act 2014; Section 307(8)(a) and (c) of the Companies Act 2014; Section 307(9) of the Companies Act 2014",
+      "evidence": {
+        "licensed_pdf_page": 54,
+        "quote": "rest rate; and (h) the arrangements’ other main conditions. (Section 307(3) of the Companies Act 2014) Additionally, a separate"
+      }
+    },
+    {
+      "id": "1AD.43",
+      "topic": "Agreements to enter into loans, quasi-loans or credit transactions with directors: particulars",
+      "note": "N5_LOANS",
+      "includeWhen": "DIRECTOR_LOAN_AGREEMENTS == true",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Section 307(4) of the Companies Act 2014; Sections 307(1)(e) and 307(7) of the Companies Act 2014; Sections 308(3), 308(5) and 308(6) of the Companies Act 2014",
+      "evidence": {
+        "licensed_pdf_page": 54,
+        "quote": ", and additionally the value of the arrangements agreed to. (Section 307(4) of the Companies Act 2014) The disclosures shall be"
+      }
+    },
+    {
+      "id": "1AD.44",
+      "topic": "Guarantees and security provided for directors and connected persons: particulars",
+      "note": "N5_LOANS",
+      "includeWhen": "DIRECTOR_GUARANTEES == true",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Section 307(5) of the Companies Act 2014; Section 307(8)(b) of the Companies Act 2014; Section 307(9) of the Companies Act 2014",
+      "evidence": {
+        "licensed_pdf_page": 55,
+        "quote": "oss of the security); and (d) the arrangements’ main terms. (Section 307(5) of the Companies Act 2014) Additionally, a separate"
+      }
+    },
+    {
+      "id": "1AD.45",
+      "topic": "Agreements to provide guarantees or security for directors and connected persons: particulars",
+      "note": "N5_LOANS",
+      "includeWhen": "DIRECTOR_GUARANTEE_AGREEMENTS == true",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Section 307(6) of the Companies Act 2014",
+      "evidence": {
+        "licensed_pdf_page": 55,
+        "quote": "hose of subparagraphs (a), (b) and (d) of paragraph 1AD.44. (Section 307(6) of the Companies Act 2014) The disclosures shall be"
+      }
+    },
+    {
+      "id": "1AD.46",
+      "topic": "Directors' arrangements above the aggregate threshold: disclosure",
+      "note": "N5_LOANS",
+      "includeWhen": "DIRECTOR_LOANS != 0 OR DIRECTOR_LOAN_AGREEMENTS == true OR DIRECTOR_GUARANTEES == true OR DIRECTOR_GUARANTEE_AGREEMENTS == true",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "CA 2014 s.307(10)",
+      "evidence": {
+        "licensed_pdf_page": 55,
+        "quote": "ount shall be stated and the percentage of net assets that the total represents. (Section 307(10) of the Companies Act 2014) 1AD.47 In the event th"
+      }
+    },
+    {
+      "id": "1AD.47",
+      "topic": "Parent taking advantage of small-group exemption: state parent and exemption relied on",
+      "note": "N6_CAPITAL",
+      "includeWhen": "SMALL_GROUP_EXEMPTION == true",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Sections 307(1)(e) and 307(7) of the Companies Act 2014; Sections 308(3), 308(5) and 308(6) of the Companies Act 2014; Section 308(4) of the Companies Act 2014",
+      "evidence": {
+        "licensed_pdf_page": 54,
+        "quote": "on or liability, would have fallen under these disclosures. (Sections 307(1)(e) and 307(7) of the Companies Act 2014) 29 Exemption: The disclo"
+      }
+    },
+    {
+      "id": "1AD.48",
+      "topic": "Other arrangements or transactions in which a director has a material interest",
+      "note": "N7_RPT",
+      "includeWhen": "DIRECTOR_MATERIAL_INTEREST == true",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Section 309 of the Companies Act 2014; Section 309(6) of the Companies Act 2014; Section 309(7) of the Companies Act 2014",
+      "evidence": {
+        "licensed_pdf_page": 56,
+        "quote": "5,000 and 1% of the value of the small entity’s net assets. (Section 309(6) of the Companies Act 2014) In the event that the sm"
+      }
+    },
+    {
+      "id": "1AD.49",
+      "topic": "Company's own shares held by the entity or its nominee: particulars",
+      "note": "N6_CAPITAL",
+      "includeWhen": "OWN_SHARES_HELD == true",
+      "statuteRef": "Section 275(3) of the Companies Act 2014; Section 320 of the Companies Act 2014",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 56,
+        "quote": "r expenses of the partnership in the event of a winding up. (Section 275(3) of the Companies Act 2014) 52 FRS 102 (September 20"
+      }
+    },
+    {
+      "id": "1AD.50",
+      "topic": "Parent + subsidiary: state parent undertaking and ultimate parent",
+      "note": "N6_CAPITAL",
+      "includeWhen": "IS_SUBSIDIARY == true",
+      "statuteRef": "Sch 3A para 57 and 58",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 57,
+        "quote": "unincorporated, the address of its principal place of business. (Schedule 3A, paragraphs 57 and 58) Paragraph 33.5 addresses a similar requir"
+      }
+    },
+    {
+      "id": "1AD.51",
+      "topic": "Transactions with related parties: particulars",
+      "note": "N7_RPT",
+      "includeWhen": "RPT_EXISTS == true",
+      "statuteRef": "Schedule 3A, paragraph 55",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "evidence": {
+        "licensed_pdf_page": 57,
+        "quote": "ors of the small entity or of a parent of the small entity. (Schedule 3A, paragraph 55) A small entity that is n"
+      }
+    },
+    {
+      "id": "1AD.52",
+      "topic": "Entity details: registered office, registration number, directors in office",
+      "note": "N0_ENTITY",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "CA 2014 s.291(3A)",
+      "evidence": {
+        "licensed_pdf_page": 58,
+        "quote": "ti ty commences within one year after the date on which it has changed its name. (Section 291(3A) of the Companies Act 2014) Paragraph 3.24(a) addr"
+      }
+    },
+    {
+      "id": "1AD.53",
+      "topic": "Format-line Arabic numbering: particulars of items combined where Sch3A format permits",
+      "note": "_line_level",
+      "includeWhen": "FORMAT_COMBINED == true",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Sch 3A paras 4(5)",
+      "evidence": {
+        "licensed_pdf_page": 58,
+        "quote": "ombined shall be disclosed in a note to the financial statements. (Schedule 3A, paragraph 4(5)) 1AD.54 The particulars and financial impact of m"
+      }
+    },
+    {
+      "id": "1AD.54",
+      "topic": "Post balance sheet events: particulars and financial impact of material events",
+      "note": "N9_COMMITMENTS",
+      "includeWhen": "SUBSEQUENT_EVENTS == true",
+      "needsInput": true,
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Sch 3A paras 56",
+      "evidence": {
+        "licensed_pdf_page": 58,
+        "quote": "g period shall be given in the notes to the financial statements. (Schedule 3A, paragraph 56) Paragraphs 32.10 and 32.11 address similar requi"
+      }
+    },
+    {
+      "id": "1AD.55",
+      "topic": "Set-off within asset/income items: particulars",
+      "note": "_line_level",
+      "includeWhen": "SET_OFF_USED == true",
+      "statuteRefStatus": "verified-vs-sept2024-pdf",
+      "statuteRef": "Sch 3A paras 7",
+      "evidence": {
+        "licensed_pdf_page": 58,
+        "quote": "ross amounts are disclosed in a note to the financial statements. (Schedule 3A, paragraph 7) 31 The disclosure requirements in sub- paragraph"
+      }
+    }
+  ],
+  "remediationNote": "v7.4: every statuteRef checked against the licensed FRS 102 (September 2024) text, Appendix D. All 55 items now carry references taken from the licensed text, each with a page and a quote containing the citation, except 1AD.1 and 1AD.41, which have no standalone statutory citation (1AD.1 is the general minimum-disclosure rule; 1AD.41 introduces 1AD.42–1AD.45). Topic text no longer embeds citations; statuteRef is the single authority."
+}

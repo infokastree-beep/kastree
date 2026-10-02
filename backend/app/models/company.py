@@ -1,11 +1,23 @@
 """Company SQLAlchemy model — entity under a client group."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, func, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+    func,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -14,6 +26,8 @@ from app.models.base import Base
 class Company(Base):
     __tablename__ = "companies"
     __table_args__ = (
+        UniqueConstraint("org_id", "id", name="companies_org_id_id_key"),
+        Index("idx_companies_org_id", "org_id"),
         Index("idx_companies_client_id", "client_id"),
         Index("idx_companies_client_deleted", "client_id", "is_deleted"),
     )
@@ -26,7 +40,21 @@ class Company(Base):
         ForeignKey("clients.id", ondelete="CASCADE"),
         nullable=False,
     )
+    # Tenant key for Product 2 composite FKs. Same organisation id RLS already
+    # uses via app.current_org_id. The insert trigger copies it from the client
+    # when omitted and rejects a mismatch.
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organisations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     name: Mapped[str] = mapped_column(String, nullable=False)
+    # Statutory entity record captured once (v7.6 §4.7). Nullable until entered.
+    registered_office: Mapped[str | None] = mapped_column(String, nullable=True)
+    directors: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB, nullable=True)
+    secretary: Mapped[str | None] = mapped_column(String, nullable=True)
+    financial_year_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    average_employees: Mapped[int | None] = mapped_column(Integer, nullable=True)
     functional_currency: Mapped[str] = mapped_column(
         String(3), nullable=False, server_default=text("'GBP'")
     )

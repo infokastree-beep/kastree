@@ -1,0 +1,39 @@
+{
+  "rules": [
+    {
+      "id": "R-NEG-001",
+      "scope": "line",
+      "severity": "WARNING",
+      "when": "category == 'EXPENSE' and balance < 0",
+      "message": "Negative expense in {line}: {balance}"
+    },
+    {
+      "id": "R-RND-001",
+      "scope": "line",
+      "severity": "WARNING",
+      "when": "category == 'EXPENSE' and abs(balance) > 10000 and balance % 1000 == 0",
+      "message": "Round number {balance} in {line}"
+    },
+    {
+      "id": "R-DIR-001",
+      "scope": "line",
+      "severity": "WARNING",
+      "when": "is_director_line and abs(balance) > 5000",
+      "message": "Large director transaction {balance} in {line}"
+    },
+    {
+      "id": "R-DEP-001",
+      "scope": "client",
+      "severity": "WARNING",
+      "when": "has_fixed_assets and not has_depreciation",
+      "message": "Fixed assets exist but no depreciation charge detected"
+    },
+    {
+      "id": "R-DIV-001",
+      "scope": "client",
+      "severity": "CRITICAL",
+      "when": "dividends > 0 and dividends > opening_re + profit_for_year",
+      "message": "Dividends {dividends} exceed accumulated profits ({opening_re} b/f + {profit_for_year} for the year)"
+    }
+  ]
+}

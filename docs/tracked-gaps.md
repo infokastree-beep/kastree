@@ -1273,6 +1273,46 @@ This is a **real, upfront legal gate before building**, not a retrofit after
 UI exists. Internal confidence that “just an assistant” sounds reasonable is
 **not** confirmed legal grounding — counsel must say so for this use case.
 
+Qualified reviewer sign-off of statutory wording remains pending and still
+gates client use. Phase 1 below is schema, the pure engine, and the golden
+suite. It produces no client-facing statutory output.
+
+### Row 13 scope decision (2026-09-30)
+
+Checklist row 13 of the v7.6 specification is **DECIDED**. Phase 1 proceeds
+on Product 1’s mapping suggestions, Clerk auth, and RLS (`app.current_org_id`).
+
+Accepted cuts:
+
+- Four vendor trial-balance parsers. Product 1’s generic CSV/XLSX importer
+  already covers the Sage, Xero, and QuickBooks column shapes.
+- GL ingestion and evidence-graph depth beyond trial-balance accounts. See
+  the deferred note below.
+- In-app editing. DOCX export remains the later editing path.
+- Bank reconciliation.
+- The auditor’s-report attachment slot.
+- The UK pack and the full-FRS roadmap.
+
+The pack selector stays **DECIDED** and is not reopened. Billing stays the
+row 1 decision: included in existing Kastree tiers.
+
+The beta-practice filing-workflow conversation, including iXBRL and CT1, is a
+real-world validation step to hold in parallel with Week 1. It is not a
+feature and it does not block Phase 1.
+
+### GL ingestion and evidence-graph depth — deferred
+
+**Status:** deferred. Do not build this speculatively.
+
+Product 1 already converts a general-ledger file into a trial balance
+(`backend/app/services/gl_to_tb.py`) and does not keep the transactions.
+Persistent journal storage, and a drill-down from a statutory statement
+figure through the trial balance to those journals, is a separate capability.
+Row 13 drops it from the current build.
+
+Revisit only if a real beta practice specifically asks for transaction-level
+drill-down in statutory statements.
+
 ### Model evaluation when Product 2 is scheduled (do not pre-select now)
 
 When Product 2 (statutory report drafting) eventually begins, run a **real,

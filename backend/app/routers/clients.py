@@ -188,6 +188,7 @@ async def create_company_for_client(
     currency = (body.functional_currency or org.functional_currency or "GBP").upper()
     company = Company(
         client_id=client.id,
+        org_id=client.org_id,
         name=body.name.strip(),
         company_number=body.company_number,
         industry=body.industry,

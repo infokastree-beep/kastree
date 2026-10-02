@@ -1,0 +1,31 @@
+{
+  "title": "5. Loans",
+  "sourceRef": [
+    "1AD.40",
+    "1AD.41",
+    "1AD.42",
+    "1AD.43",
+    "1AD.44",
+    "1AD.45",
+    "1AD.46"
+  ],
+  "jurisdiction": [
+    "IE",
+    "UK"
+  ],
+  "includeWhen": "LOANS != 0 OR DIRECTOR_LOANS != 0",
+  "bodyTemplate": "Details of loans outstanding at the reporting date are set out below. Amounts due after more than one year are analysed in Note 4.",
+  "tableSpec": {
+    "columns": [
+      "lender",
+      "rate",
+      "terms",
+      "current",
+      "prior",
+      "due_gt1yr"
+    ],
+    "needsInput": true
+  },
+  "directorLoansClause": "Advances and credits to directors and officers, and guarantees entered into on their behalf, are disclosed in accordance with Schedule 3A to the Companies Act 2014.",
+  "needsInput": true
+}
