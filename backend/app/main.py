@@ -13,6 +13,7 @@ from app.routers import (
     archived_records,
     audit_logs,
     auth,
+    beta,
     billing,
     clients,
     commentary,
@@ -44,7 +45,9 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="FinDraft API", version="0.1.0", lifespan=lifespan)
 
-_origins = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
+_origins = [
+    origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
@@ -74,6 +77,7 @@ app.include_router(commentary.router)
 app.include_router(copilot.router)
 app.include_router(notifications.router)
 app.include_router(audit_logs.router)
+app.include_router(beta.router)
 app.include_router(archived_records.clients_router)
 app.include_router(archived_records.org_router)
 app.include_router(archived_records.records_router)
