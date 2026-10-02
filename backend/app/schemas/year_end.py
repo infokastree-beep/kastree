@@ -61,6 +61,9 @@ class TrialBalanceLineOut(BaseModel):
     account_name: str
     debit: str
     credit: str
+    suggested_canonical_line: str | None = None
+    confidence: str | None = None
+    method: str | None = None
 
 
 class TrialBalanceLinesResponse(BaseModel):

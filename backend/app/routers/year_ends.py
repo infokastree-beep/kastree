@@ -595,6 +595,11 @@ async def list_trial_balance_lines(
                 account_name=row.account_name,
                 debit=amount_text(row.debit),
                 credit=amount_text(row.credit),
+                suggested_canonical_line=row.suggested_canonical_line,
+                confidence=None
+                if row.suggestion_confidence is None
+                else amount_text(row.suggestion_confidence),
+                method=row.suggestion_method,
             )
             for row in rows
         ]

@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch, getApiBaseUrl } from "@/lib/api";
 import { formatCurrency } from "@/lib/currency";
+import { confidenceBadgeClass, formatConfidence } from "@/lib/utils";
 import type { ClientListResponse, CompanyListResponse, ICompany } from "@/types";
 
 type UserMe = {
@@ -51,7 +52,18 @@ type TbLine = {
   account_name: string;
   debit: string;
   credit: string;
+  suggested_canonical_line: string | null;
+  confidence: string | null;
+  method: string | null;
 };
+
+function confidenceNumber(value: string | null): number | null {
+  if (value === null || value === "") {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 type StatementRow = {
   label: string;
@@ -310,7 +322,13 @@ export function StatutoryWorkbench() {
       ]);
       setLines(loadedLines.lines);
       setCatalogue(loadedCatalogue.lines);
-      setMappings({});
+      const suggested: Record<string, string> = {};
+      for (const line of loadedLines.lines) {
+        if (line.suggested_canonical_line) {
+          suggested[line.nominal_code] = line.suggested_canonical_line;
+        }
+      }
+      setMappings(suggested);
       setPack(null);
     } catch (caught) {
       setError(messageFrom(caught));
@@ -616,6 +634,10 @@ export function StatutoryWorkbench() {
           <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
             Mappings
           </h2>
+          <p className="text-sm text-stone-600">
+            Each account is pre-filled from the statutory mapping engine.
+            Check the suggestion and its confidence, then confirm.
+          </p>
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-sm">
               <thead className="border-b border-stone-200 text-xs uppercase tracking-wide text-stone-500">
@@ -625,6 +647,8 @@ export function StatutoryWorkbench() {
                   <th className="px-2 py-2 font-medium">Debit</th>
                   <th className="px-2 py-2 font-medium">Credit</th>
                   <th className="px-2 py-2 font-medium">Canonical line</th>
+                  <th className="px-2 py-2 font-medium">Confidence</th>
+                  <th className="px-2 py-2 font-medium">Method</th>
                 </tr>
               </thead>
               <tbody>
@@ -637,7 +661,11 @@ export function StatutoryWorkbench() {
                     <td className="px-2 py-2">
                       <select
                         className="w-full min-w-48 rounded border border-stone-300 px-2 py-1"
-                        value={mappings[line.nominal_code] ?? ""}
+                        value={
+                          mappings[line.nominal_code] ??
+                          line.suggested_canonical_line ??
+                          ""
+                        }
                         onChange={(event) =>
                           setMappings((current) => ({
                             ...current,
@@ -652,6 +680,22 @@ export function StatutoryWorkbench() {
                           </option>
                         ))}
                       </select>
+                    </td>
+                    <td className="px-2 py-2">
+                      <span
+                        className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${confidenceBadgeClass(confidenceNumber(line.confidence))}`}
+                      >
+                        {formatConfidence(confidenceNumber(line.confidence))}
+                      </span>
+                    </td>
+                    <td className="px-2 py-2">
+                      {line.method ? (
+                        <span className="rounded bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-700">
+                          {line.method}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                   </tr>
                 ))}
