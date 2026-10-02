@@ -30,6 +30,7 @@ from app.models.organisation import Organisation
 from app.services.draft_inputs import adjusted_for_draft, latest_draft
 from app.services.statutory_pages import StatutoryPage, build_statutory_pages
 from app.models.tb_version import TrialBalanceVersion
+from app.services.adopted_trial_balance import load_adopted_inputs
 from app.services.reconciliation import (
     ReconciliationCheck,
     ReconciliationRejected,
@@ -875,6 +876,55 @@ async def statements_for_version(
         pack_version=year_end.pack_version,
         entity=entity_from_company(company),
         disclosure_flags=flags,
+        watermark=watermark,
+        practice_name="" if organisation is None else organisation.name,
+        period_end=year_end.period_end.isoformat(),
+        size_eligible=year_end.size_eligible,
+    )
+
+
+async def statements_for_adopted(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+    watermark: str = WATERMARK,
+) -> StatutoryStatements:
+    """Render from the adopted Product 1 trial balance. No draft adjustments."""
+    if year_end.adopted_trial_balance_id is None:
+        raise ReconciliationRejected("No confirmed trial balance is selected", 404)
+    if not year_end.prior_year_validated:
+        return build_statutory_statements(
+            prior_year_validated=False,
+            tb_lines=[],
+            mappings={},
+            prior_retained_earnings=Decimal("0"),
+            watermark=watermark,
+        )
+    loaded = await load_adopted_inputs(session, org_id=org_id, year_end=year_end)
+    await aset_rls_org_id(session, org_id)
+    company = await session.scalar(
+        select(Company).where(
+            Company.id == year_end.company_id,
+            Company.org_id == org_id,
+        )
+    )
+    if company is None or company.is_deleted:
+        raise ReconciliationRejected("Company not found", 404)
+    organisation = await session.scalar(
+        select(Organisation).where(Organisation.id == org_id)
+    )
+    return build_statutory_statements(
+        prior_year_validated=True,
+        tb_lines=loaded.tb_lines,
+        mappings=loaded.mappings,
+        prior_retained_earnings=loaded.prior_retained_earnings,
+        prior_canonical=loaded.prior_canonical,
+        fa_register=loaded.fa_register,
+        pack_rules_path=loaded.pack_rules_path,
+        pack_id=year_end.pack_id,
+        pack_version=year_end.pack_version,
+        entity=entity_from_company(company),
         watermark=watermark,
         practice_name="" if organisation is None else organisation.name,
         period_end=year_end.period_end.isoformat(),

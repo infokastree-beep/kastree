@@ -21,6 +21,21 @@ type YearEnd = {
   pack_version: string;
   prior_year_validated: boolean;
   first_financial_period: boolean;
+  adopted_trial_balance_id: string | null;
+};
+
+type AdoptableTrialBalance = {
+  id: string;
+  period_end: string;
+  currency: string | null;
+  account_count: number;
+};
+
+type CarriedMapping = {
+  nominal_code: string;
+  account_name: string;
+  product1_line: string;
+  canonical_line: string;
 };
 
 type TbVersion = {
@@ -109,6 +124,8 @@ export function StatutoryWorkbench() {
   const [periodStart, setPeriodStart] = useState("2026-01-01");
   const [periodEnd, setPeriodEnd] = useState("2026-12-31");
   const [yearEnd, setYearEnd] = useState<YearEnd | null>(null);
+  const [selectedTbId, setSelectedTbId] = useState("");
+  const [carried, setCarried] = useState<CarriedMapping[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [version, setVersion] = useState<TbVersion | null>(null);
   const [lines, setLines] = useState<TbLine[]>([]);
@@ -117,6 +134,16 @@ export function StatutoryWorkbench() {
   const [pack, setPack] = useState<StatementPack | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+
+  const adoptableQuery = useQuery({
+    queryKey: ["adoptable-trial-balances", yearEnd?.id],
+    queryFn: () =>
+      apiFetch<{ items: AdoptableTrialBalance[] }>(
+        `/year-ends/${yearEnd?.id}/adoptable-trial-balances`,
+        { getToken },
+      ),
+    enabled: yearEnd !== null,
+  });
 
   const company: ICompany | undefined = useMemo(
     () => companiesQuery.data?.items.find((item) => item.id === companyId),
@@ -172,6 +199,8 @@ export function StatutoryWorkbench() {
         }),
       });
       setYearEnd(created);
+      setSelectedTbId("");
+      setCarried([]);
       setVersion(null);
       setLines([]);
       setPack(null);
@@ -194,6 +223,38 @@ export function StatutoryWorkbench() {
         { method: "POST", getToken },
       );
       setYearEnd(updated);
+    } catch (caught) {
+      setError(messageFrom(caught));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function useConfirmedTrialBalance() {
+    if (!yearEnd || selectedTbId.length === 0) {
+      return;
+    }
+    setError(null);
+    setBusy("Using the confirmed trial balance…");
+    try {
+      const adopted = await apiFetch<{
+        trial_balance_id: string;
+        lines: CarriedMapping[];
+      }>(`/year-ends/${yearEnd.id}/adopt-trial-balance`, {
+        method: "POST",
+        getToken,
+        body: JSON.stringify({ trial_balance_id: selectedTbId }),
+      });
+      setCarried(adopted.lines);
+      setVersion(null);
+      setLines([]);
+      setMappings({});
+      const statements = await apiFetch<StatementPack>(
+        `/year-ends/${yearEnd.id}/adopted-trial-balance/statements`,
+        { getToken },
+      );
+      setPack(statements);
+      setYearEnd({ ...yearEnd, adopted_trial_balance_id: adopted.trial_balance_id });
     } catch (caught) {
       setError(messageFrom(caught));
     } finally {
@@ -291,7 +352,15 @@ export function StatutoryWorkbench() {
   }
 
   async function downloadPdf() {
-    if (!yearEnd || !version) {
+    if (!yearEnd) {
+      return;
+    }
+    const pdfPath = version
+      ? `/year-ends/${yearEnd.id}/trial-balance-versions/${version.id}/statements.pdf`
+      : yearEnd.adopted_trial_balance_id
+        ? `/year-ends/${yearEnd.id}/adopted-trial-balance/statements.pdf`
+        : null;
+    if (!pdfPath) {
       return;
     }
     setError(null);
@@ -299,7 +368,7 @@ export function StatutoryWorkbench() {
     try {
       const token = await getToken();
       const response = await fetch(
-        `${getApiBaseUrl()}/year-ends/${yearEnd.id}/trial-balance-versions/${version.id}/statements.pdf`,
+        `${getApiBaseUrl()}${pdfPath}`,
         { headers: token ? { Authorization: `Bearer ${token}` } : {} },
       );
       if (!response.ok) {
@@ -338,8 +407,10 @@ export function StatutoryWorkbench() {
         <h1 className="text-2xl font-semibold tracking-tight">Statutory accounts</h1>
         <p className="mt-1 max-w-3xl text-sm text-stone-600">
           Draft only. The Irish FRS 102 Section 1A pack is not signed off for
-          filing, and this screen is limited to platform administrators. Figures
-          come from the trial balance. Nothing here recalculates them.
+          filing, and this screen is limited to platform administrators. A
+          completed Product 1 trial balance can be selected with its confirmed
+          mappings. Figures come from that trial balance. Nothing here
+          recalculates them.
         </p>
       </div>
 
@@ -450,7 +521,74 @@ export function StatutoryWorkbench() {
 
       <section className="space-y-3 rounded border border-stone-200 bg-white p-4">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
-          Trial balance
+          Confirmed trial balance
+        </h2>
+        <p className="text-sm text-stone-600">
+          Choose a completed Product 1 trial balance for this company and
+          period. Its confirmed mappings are carried forward. This does not
+          upload a new file or ask you to confirm those mappings again.
+        </p>
+        {adoptableQuery.isLoading ? (
+          <p className="text-sm text-stone-600">Loading trial balances…</p>
+        ) : (adoptableQuery.data?.items.length ?? 0) === 0 ? (
+          <p className="text-sm text-stone-600">
+            No completed, fully confirmed trial balance matches this year end.
+          </p>
+        ) : (
+          <label className="block text-sm">
+            <span className="mb-1 block text-stone-600">Trial balance</span>
+            <select
+              className="w-full rounded border border-stone-300 px-2 py-2"
+              value={selectedTbId}
+              onChange={(event) => setSelectedTbId(event.target.value)}
+            >
+              <option value="">Select a trial balance</option>
+              {adoptableQuery.data?.items.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.period_end} · {item.account_count} accounts
+                  {item.currency ? ` · ${item.currency}` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <button
+          type="button"
+          className="rounded bg-stone-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          disabled={busy !== null || !yearEnd || selectedTbId.length === 0}
+          onClick={() => void useConfirmedTrialBalance()}
+        >
+          Use confirmed trial balance
+        </button>
+        {carried.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="border-b border-stone-200 text-xs uppercase tracking-wide text-stone-500">
+                <tr>
+                  <th className="px-2 py-2 font-medium">Code</th>
+                  <th className="px-2 py-2 font-medium">Account</th>
+                  <th className="px-2 py-2 font-medium">Confirmed line</th>
+                  <th className="px-2 py-2 font-medium">Statutory line</th>
+                </tr>
+              </thead>
+              <tbody>
+                {carried.map((line) => (
+                  <tr key={line.nominal_code} className="border-b border-stone-100">
+                    <td className="px-2 py-2">{line.nominal_code}</td>
+                    <td className="px-2 py-2">{line.account_name}</td>
+                    <td className="px-2 py-2">{line.product1_line}</td>
+                    <td className="px-2 py-2">{line.canonical_line}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="space-y-3 rounded border border-stone-200 bg-white p-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
+          Or upload a new file
         </h2>
         <input
           type="file"
