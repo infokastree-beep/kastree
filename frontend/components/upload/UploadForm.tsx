@@ -16,6 +16,7 @@ import {
   MAX_UPLOAD_BYTES,
 } from "@/lib/constants";
 import {
+  formatIsoDate,
   rangeForPreset,
   type PeriodPreset,
 } from "@/lib/period-presets";
@@ -65,6 +66,24 @@ function currencyForCompany(company: ICompany | undefined): string {
   return company?.functional_currency ?? "GBP";
 }
 
+/** Standard uploads default to 1 Jan through the last day of the prior month. */
+function defaultTrialBalanceDates(today: Date = new Date()): {
+  start: string;
+  end: string;
+} {
+  const end = new Date(today.getFullYear(), today.getMonth(), 0);
+  return {
+    start: formatIsoDate(end.getFullYear(), 0, 1),
+    end: formatIsoDate(end.getFullYear(), end.getMonth(), end.getDate()),
+  };
+}
+
+type PendingUpload = {
+  file?: File;
+  periodStart: string;
+  periodEnd: string;
+};
+
 /** Format YYYY-MM-DD for the prior-period indicator (readable, locale-stable). */
 function formatPeriodEndLabel(isoDate: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
@@ -97,21 +116,13 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
   const [pdfExtract, setPdfExtract] = useState<PdfTbExtractResponse | null>(null);
   const [glConvert, setGlConvert] = useState<GlConvertResponse | null>(null);
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>("full_year");
-  const [periodStart, setPeriodStart] = useState(
-    () => rangeForPreset("full_year").start,
-  );
+  const [periodDefaults] = useState(defaultTrialBalanceDates);
+  const [periodStart, setPeriodStart] = useState(periodDefaults.start);
   const [openingBalanceMode, setOpeningBalanceMode] =
     useState<OpeningBalanceMode>("C");
-  const [periodEnd, setPeriodEnd] = useState(() => {
-    // Trial-balance uploads default to last day of the prior month.
-    // GL conversion uses presets (Full year on first GL selection).
-    const d = new Date();
-    d.setDate(0);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  });
+  // Trial-balance uploads default to 1 Jan through the last day of the prior
+  // month. GL conversion replaces both dates with a preset on selection.
+  const [periodEnd, setPeriodEnd] = useState(periodDefaults.end);
   const [currency, setCurrency] = useState("GBP");
   const [clientId, setClientId] = useState("");
   // Do not seed companyId from the deep-link prop alone — clientId is still empty on
@@ -325,8 +336,8 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
   });
 
   const uploadMutation = useMutation({
-    mutationFn: async (uploadFile?: File) => {
-      const nextFile = uploadFile ?? file;
+    mutationFn: async (pending: PendingUpload) => {
+      const nextFile = pending.file ?? file;
       if (!nextFile) throw new Error("Choose a file first");
       // Defence in depth: PDFs never enter /upload — only confirmed CSV from review.
       if (nextFile.name.toLowerCase().endsWith(".pdf")) {
@@ -335,10 +346,17 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
         );
       }
       if (!companyId) throw new Error("Select a company before uploading");
+      if (!pending.periodStart || !pending.periodEnd) {
+        throw new Error("Enter a period start and period end.");
+      }
+      if (pending.periodStart > pending.periodEnd) {
+        throw new Error("Period start must be on or before period end.");
+      }
       const form = new FormData();
       form.append("file", nextFile);
       form.append("company_id", companyId);
-      form.append("period_end", periodEnd);
+      form.append("period_start", pending.periodStart);
+      form.append("period_end", pending.periodEnd);
       form.append("currency", currency);
       return apiFetch<UploadAcceptedResponse>("/trial-balances/upload", {
         method: "POST",
@@ -346,10 +364,10 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
         body: form,
       });
     },
-    onSuccess: (data) => {
+    onSuccess: (data, pending) => {
       // Persist prior choice so Variance tab boots to the same comparison.
-      if (companyId && periodEnd && effectivePriorTbId) {
-        writePreferredPriorTbId(companyId, periodEnd, effectivePriorTbId);
+      if (companyId && pending.periodEnd && effectivePriorTbId) {
+        writePreferredPriorTbId(companyId, pending.periodEnd, effectivePriorTbId);
       }
       router.push(`/mapping/${data.tb_id}`);
     },
@@ -513,16 +531,23 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
     setPdfExtract(null);
     setGlConvert(null);
     setUploadKind("excel_csv");
-    uploadMutation.mutate(csvFile);
+    uploadMutation.mutate({ file: csvFile, periodStart, periodEnd });
   };
 
   const onConfirmGlConvert = (rows: EditableExtractedRow[]) => {
+    if (!glConvert) return;
     const csvFile = extractedRowsToCsvFile(rows, "converted-trial-balance.csv");
+    const confirmedStart = glConvert.period_start;
+    const confirmedEnd = glConvert.period_end;
     setFile(csvFile);
     setGlConvert(null);
     setPdfExtract(null);
     setUploadKind("excel_csv");
-    uploadMutation.mutate(csvFile);
+    uploadMutation.mutate({
+      file: csvFile,
+      periodStart: confirmedStart,
+      periodEnd: confirmedEnd,
+    });
   };
 
   const applyPeriodPreset = useCallback((preset: PeriodPreset) => {
@@ -807,15 +832,28 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
         ) : null}
 
         {!isGlKind(uploadKind) ? (
-          <label className="block text-sm">
-            <span className="mb-1 block text-stone-600">Period end</span>
-            <input
-              type="date"
-              className="w-full rounded border border-stone-300 px-3 py-2"
-              value={periodEnd}
-              onChange={(e) => setPeriodEnd(e.target.value)}
-            />
-          </label>
+          <>
+            <label className="block text-sm">
+              <span className="mb-1 block text-stone-600">Period start</span>
+              <input
+                type="date"
+                data-testid="tb-period-start"
+                className="w-full rounded border border-stone-300 px-3 py-2"
+                value={periodStart}
+                onChange={(e) => setPeriodStart(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-stone-600">Period end</span>
+              <input
+                type="date"
+                data-testid="tb-period-end"
+                className="w-full rounded border border-stone-300 px-3 py-2"
+                value={periodEnd}
+                onChange={(e) => setPeriodEnd(e.target.value)}
+              />
+            </label>
+          </>
         ) : null}
         <label className="block text-sm">
           <span className="mb-1 block text-stone-600">Currency</span>
@@ -954,12 +992,18 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
         disabled={
           !file ||
           !companyId ||
+          !periodStart ||
+          !periodEnd ||
+          periodStart > periodEnd ||
           uploadMutation.isPending ||
           extractPdfMutation.isPending ||
-          convertGlMutation.isPending ||
-          (isGlKind(uploadKind) && (!periodStart || !periodEnd))
+          convertGlMutation.isPending
         }
         onClick={() => {
+          if (!periodStart || !periodEnd || periodStart > periodEnd) {
+            setLocalError("Period start must be on or before period end.");
+            return;
+          }
           if (uploadKind === "pdf") {
             if (!file) return;
             extractPdfMutation.mutate(file);
@@ -967,10 +1011,6 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
           }
           if (isGlKind(uploadKind)) {
             if (!file) return;
-            if (periodStart > periodEnd) {
-              setLocalError("Period start must be on or before period end.");
-              return;
-            }
             convertGlMutation.mutate(file);
             return;
           }
@@ -980,7 +1020,7 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
             );
             return;
           }
-          uploadMutation.mutate(undefined);
+          uploadMutation.mutate({ periodStart, periodEnd });
         }}
         className="rounded bg-stone-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
       >
