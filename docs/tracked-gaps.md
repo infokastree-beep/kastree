@@ -1418,6 +1418,77 @@ trial balance still does not create a trial-balance version or a draft row.
 That year end's page reloads the adopted pack and says the working draft is
 not there yet.
 
+### Continuation year end has no working draft — deeper gap, not a bug
+
+**Status:** open. Do not paper over it by inventing a draft on the page.
+The "no working draft yet" message is fail-closed. A year end created by
+Continue to statutory accounts (adopting an existing Product 1 trial
+balance) produces a read-only statement pack. Adjustments, disclosure
+answers, and locking — the Week 10–12 working draft — run only for a trial
+balance uploaded through the `/statutory` admin flow.
+
+This sits under the continuation fix. Continuation was built not to create
+`findraft_tb_versions`, `findraft_tb_lines`, or `findraft_confirmed_mappings`.
+It stores `trial_balances.id` on the year end and reads `parsed_data` plus
+the live Product 1 `account_mappings`, translated by
+`engine_line_for_confirmed_mapping`. `load_adopted_inputs` already returns
+the same `ConfirmedInputs` shape a draft applies journals onto.
+`statements_for_adopted` then renders that pack and, by its own contract,
+applies no draft adjustments and no disclosure flags.
+
+The working-draft *row* is the small part. `findraft_draft_versions.tb_version_id`
+is already nullable. `set_disclosure_answer` and `lock_draft` do not read a
+trial-balance version. Inserting one `DraftVersion` with a null version id
+at continuation time would let those two writes succeed, and it would not
+need a migration.
+
+The working-draft *computation* assumes a ready `findraft_tb_versions` row.
+These refuse, or cannot run, without one:
+
+- `dashboard_for_draft`, `post_adjustment`, and `_disclosure_check` raise
+  "Draft has no trial balance" when `tb_version_id` is null, then call
+  `statements_for_version` and `load_confirmed_inputs` (statutory lines and
+  `findraft_confirmed_mappings` for that version).
+- `recompute_draft` calls the dashboard.
+- `finalise_draft` does the same, then `evidence_for_version` and
+  `_inputs_sha`. The evidence graph walks `findraft_tb_lines` and the
+  version's `source_document_id`. There is no adopted evidence function.
+  An adjustment line still has no trial-balance row id; that rule is
+  already Week 10.
+- `findraft_render_jobs.tb_version_id` is NOT NULL, so the DOCX job cannot
+  be queued for a draft that has no version.
+
+Two ways to close it, neither of which is a one-line connection:
+
+1. **Copy a statutory version on adopt.** Insert a trial-balance version,
+   its lines, confirmed statutory mappings, a source document, and a
+   `DraftVersion`. The existing dashboard, adjustments, lock, FINAL,
+   evidence, and DOCX then work unchanged. This undoes the continuation
+   rule that adoption is a pointer, not a second trial balance. It also
+   freezes lines and mappings. Product 1 can still edit `account_mappings`
+   afterwards; the copy would not follow unless something rebuilds it.
+   Evidence would cite the new source document unless that document is
+   deliberately the Product 1 upload.
+
+2. **Let the draft read the adopted trial balance.** Keep the pointer.
+   Insert the nullable-version `DraftVersion` on continuation. Point the
+   four "no trial balance" branches at `load_adopted_inputs`, and teach
+   `statements_for_adopted` to pass that draft's adjustments and disclosure
+   flags into `build_statutory_statements` (the builder already accepts
+   both; the adopted wrapper does not). Adjustment checks already run on
+   `ConfirmedInputs`. FINAL and DOCX stay the deeper piece: evidence and
+   render jobs are version-shaped, and an adopted FINAL needs a graph back
+   to the Product 1 trial balance, not to `findraft_tb_lines`. The adopted
+   base is also live. `load_adopted_inputs` re-reads Product 1 mappings on
+   every call. Lock does not snapshot them. Only FINAL snapshots the
+   computed statement. A later remap of the Product 1 trial balance would
+   move the draft's opening figures. That is a product decision, not a
+   missing insert.
+
+Copying is how the current code is shaped. Accepting the adopted trial
+balance directly is how continuation was shaped. The page must keep saying
+there is no working draft until one of those two is chosen and built.
+
 ### Week 9 statutory evidence graph
 
 A renderable DRAFT can be read as a graph from each face figure back to the
