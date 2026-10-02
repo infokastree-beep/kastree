@@ -230,7 +230,7 @@ export function StatutoryWorkbench() {
     }
   }
 
-  async function useConfirmedTrialBalance() {
+  async function adoptConfirmedTrialBalance() {
     if (!yearEnd || selectedTbId.length === 0) {
       return;
     }
@@ -556,7 +556,7 @@ export function StatutoryWorkbench() {
           type="button"
           className="rounded bg-stone-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           disabled={busy !== null || !yearEnd || selectedTbId.length === 0}
-          onClick={() => void useConfirmedTrialBalance()}
+          onClick={() => void adoptConfirmedTrialBalance()}
         >
           Use confirmed trial balance
         </button>
