@@ -1252,6 +1252,22 @@ after build starts. Working-paper / reconciliation evidence is **not** a
 separate product — it is a future Product 1 add-on (same internal-review
 liability posture).
 
+### Create year end — never show a raw “API 500”
+
+The Statutory **Create year end** screen must never show a raw “API 500” (or
+any other raw error code) to the user. Every real failure needs a clear,
+specific, honest message — the same quality already proven on the pack-date
+validation message (the period-start rejection that names the pack, the
+version, and the date the period actually starts).
+
+At minimum, catch unexpected server errors and show something like: “Something
+went wrong creating this year end — please try again, or contact support if
+this persists.” Do not expose the status code.
+
+Once this screen moves beyond platform-admin-only testing, review every error
+state on it to that same standard: each failure the user can actually hit
+gets its own specific message, not a generic code.
+
 ### Legal gate — “AI-assisted SaaS, not filer/signer of record” (upfront)
 
 **Before any development begins** on full statutory financial statement
