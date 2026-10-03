@@ -192,12 +192,33 @@ made. Lines 159–168 stay blank.
 
 ## What is easier than FRS 102, and what is not
 
-There is no disclosure note, no fixed-asset class, and no refusal for an
-ordinary overhead. Insurance, advertising, and "Other expenses" all have a
+The reporting framework is simpler. There is no disclosure note and no
+fixed-asset class. An ordinary overhead with no named box has a reporting
 home: line 143.
 
+That residual box does not close the tax judgment. The summary must flag
+each of these for the accountant. It must not treat a placed box as a
+decision that the figure is ready to key:
+
+- **Capital versus revenue.** A name that says improvement, addition,
+  capital, or asset, on an expense line, is flagged. It is not dropped into
+  repairs (139) or other expenses (143). A fixed-asset account stays out of
+  the expense boxes.
+- **Drawings.** A name that says drawings, owner's wages, or proprietor is
+  suggested at line 146 and flagged, because staff wages (133) must not
+  include it. A wages, motor, or light-and-heat account with no private-use
+  split is flagged too. The summary does not assume the whole balance is
+  allowable.
+- **Depreciation and capital allowances.** The profit-and-loss depreciation
+  charge is suggested at line 141 and flagged. Line 141 is the accounts
+  figure. It is not the capital-allowance deduction, and lines 159–168 are
+  not calculated to turn one into the other.
+- **VAT.** Accounts are flagged when the trial balance mixes a VAT control
+  with amounts that the names do not show as inclusive or exclusive, and
+  when a VAT account itself is not a creditor at line 155. The summary does
+  not gross-up or strip VAT.
+
 The rules still do not invent a box the form does not have. Government
-payments stay out of turnover. The owner's wages stay out of staff wages.
-RCT subcontractors are not assumed from the bare word "subcontractor".
-Purchases are not assumed from the whole of cost of sales. The tax
-add-backs are not calculated.
+payments stay out of turnover. RCT subcontractors are not assumed from the
+bare word "subcontractor". Purchases are not assumed from the whole of cost
+of sales. The tax add-backs are not calculated.
