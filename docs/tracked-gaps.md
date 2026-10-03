@@ -1011,9 +1011,11 @@ not be required to understand the product. Specifically:
 - Visual redesign / new component library work (unless copy structure forces a
   light layout tweak).
 - Pricing, waitlist, or auth flows.
-- Demo video / sample company (tracked separately below).
+- Demo video / sample company (tracked separately below, and again in the
+  [later landing refresh](#landing-page-refresh--after-product-2-is-demonstrable)).
 - Inventing capabilities that are not live (do not promise auto-file,
-  GL sync, or unattended “push to client”).
+  GL sync, unattended “push to client”, or Product 2 statutory statements
+  before that product exists and works).
 
 ### Done when
 
@@ -1065,6 +1067,41 @@ page. There is no video walkthrough and no public read-only sample company.
 screen-recording of a real upload → map → statements → Ask flow on the landing
 “How it works” section. A guest/sample-company explorer is deferred (auth/RLS
 exceptions + seed maintenance).
+
+The fuller demo — Product 1’s complete workflow, and later Product 2 statement
+generation — waits for the
+[landing page refresh after Product 2 is demonstrable](#landing-page-refresh--after-product-2-is-demonstrable).
+Do not record that film, or rewrite the page around it, before Product 2 can
+actually be shown.
+
+## Landing page refresh — after Product 2 is demonstrable
+
+**Status:** scheduled for **after** Product 2 reaches a genuinely demonstrable
+state. **Not urgent. Do not do this tonight.** Product 2 here means statutory
+financial statements (see
+[Product 2 planning notes](#product-2-statutory-reports--planning-notes)):
+built and working, not a roadmap heading or a mock.
+
+This is separate from the
+[Product 1 landing copy revision](#landing-page-copy--revision-brief-high-priority),
+which sells what already exists. Do not update marketing copy to claim Product 2
+capability before Product 2 actually exists and works.
+
+When that bar is met, the refresh is:
+
+1. **Add Product 2 as a real, new selling point.** Statutory financial
+   statements go on the landing page only once the feature is built and
+   working. Specific language is TBD — write it from the real functionality,
+   so the claim matches what a prospect can be shown.
+2. **Revisit heading hierarchy and visual polish.** Already flagged on the
+   current page. Do it in this later pass, not as a side edit to the Product 1
+   copy brief.
+3. **Build the real demo video.** Already discussed and correctly deferred
+   (see [public product demo](#public-product-demo-without-signup-follow-up)).
+   Worth doing once there is genuinely more to show: the Product 1 complete
+   workflow, and eventually Product 2’s statement generation too.
+
+Until Product 2 can be demonstrated, the live page stays a Product 1 page.
 
 ## Intake completeness — PDF-TB and GL→TB (Intake Completion Initiative)
 
@@ -1251,6 +1288,10 @@ Product 3). Capture hard gates here so they are not treated as optional polish
 after build starts. Working-paper / reconciliation evidence is **not** a
 separate product — it is a future Product 1 add-on (same internal-review
 liability posture).
+
+Marketing stays behind the build. The landing page does not claim statutory
+statements until Product 2 is genuinely demonstrable — see
+[Landing page refresh — after Product 2 is demonstrable](#landing-page-refresh--after-product-2-is-demonstrable).
 
 ### Legal gate — “AI-assisted SaaS, not filer/signer of record” (upfront)
 
