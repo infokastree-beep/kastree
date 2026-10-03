@@ -170,11 +170,16 @@ def _presented_comparatives(
     admin = face.get("Administrative expenses (including depreciation)")
     admin_prior = validated.get("ADMIN_EXPENSES")
     depreciation = validated.get("DEPRECIATION")
+    amortisation = validated.get("AMORTISATION", Decimal("0"))
     if admin is not None and admin_prior is not None and depreciation is not None:
-        expected = money(-(admin_prior + depreciation))
+        expected = money(-(admin_prior + depreciation + amortisation))
         if admin == expected:
             presented["ADMIN_EXPENSES"] = admin_prior
             presented["DEPRECIATION"] = depreciation
+            # Zero stays in the key space. prior_from_mapped always emits
+            # AMORTISATION, and a missing presented key fails V-CMP-001.
+            # V-CMP-002 ignores a zero comparative that an older prior lacks.
+            presented["AMORTISATION"] = amortisation
     return presented
 
 

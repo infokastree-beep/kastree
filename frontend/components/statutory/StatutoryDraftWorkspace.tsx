@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch, getApiBaseUrl } from "@/lib/api";
+import { StatutorySublineReview } from "@/components/statutory/StatutorySublineReview";
 
 const SIGNOFF =
   "Draft statutory packs stay limited to platform administrators until a qualified reviewer signs off the wording.";
@@ -479,6 +480,13 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       {busy ? <p className="text-sm text-soft">{busy}</p> : null}
       {draftQuery.error ? (
         <p className="text-sm text-red-800">{messageFrom(draftQuery.error)}</p>
+      ) : null}
+
+      {yearEnd.adopted_trial_balance_id ? (
+        <StatutorySublineReview
+          yearEndId={yearEndId}
+          onConfirmed={refreshDraft}
+        />
       ) : null}
 
       {draft?.mapping_notice ? (

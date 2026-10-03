@@ -527,6 +527,41 @@ class CarriedMappingOut(BaseModel):
     account_name: str
     product1_line: str
     canonical_line: str
+    suggested_line: str | None = None
+    suggestion_confidence: str | None = None
+
+
+class StatutorySublineRowOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nominal_code: str
+    account_name: str
+    product1_line: str
+    suggested_line: str | None
+    suggestion_confidence: str | None
+    statutory_line: str | None
+    choices: list[str]
+
+
+class StatutorySublineReviewResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    blocked: bool
+    rows: list[StatutorySublineRowOut]
+
+
+class StatutorySublineChoiceIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nominal_code: str
+    account_name: str
+    statutory_line: str
+
+
+class StatutorySublineConfirmRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lines: list[StatutorySublineChoiceIn]
 
 
 class AdoptedTrialBalanceResponse(BaseModel):

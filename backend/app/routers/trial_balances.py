@@ -2012,7 +2012,13 @@ async def continue_statutory_year_end(
                 nominal_code=line.nominal_code,
                 account_name=line.account_name,
                 product1_line=line.product1_line,
-                canonical_line=line.canonical_line,
+                canonical_line=line.canonical_line or "",
+                suggested_line=line.suggested_line,
+                suggestion_confidence=(
+                    None
+                    if line.suggestion_confidence is None
+                    else f"{line.suggestion_confidence:.2f}"
+                ),
             )
             for line in carried
         ],
