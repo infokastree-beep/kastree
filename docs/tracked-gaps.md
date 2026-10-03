@@ -1252,6 +1252,33 @@ after build starts. Working-paper / reconciliation evidence is **not** a
 separate product — it is a future Product 1 add-on (same internal-review
 liability posture).
 
+### Pre-2026 FRS 102 Section 1A — real, significant gap
+
+**Status: real and significant. Not a minor note. Near-term once real beta
+testing begins — not a someday item.**
+
+The only Irish statutory content pack is `frs102-1a-ie` version `2024.09`
+(FRS 102 September 2024, the Periodic Review 2024 amendments). `pack.json`
+sets `effective_from` to `2026-01-01`. `pin_pack_version` refuses any period
+whose start is earlier. There is no sibling pack for the previous FRS 102
+Section 1A (the standard in force before those amendments).
+
+A company with a 2025 or earlier year-end, or a year that starts in 2025 and
+ends in 2026 and has not elected early adoption, cannot use Product 2 at all.
+That is the likely shape of the first real client's accounts. Most companies
+will not yet have a period that began on 1 January 2026 or later.
+
+FRC paragraph 1.37 makes those amendments mandatory for accounting periods
+beginning on or after 1 January 2026, and permits early application if all of
+them are applied at the same time. This codebase does not offer that
+election. A start date before 2026-01-01 is rejected outright.
+
+**Address before real beta clients.** Either build the pre-Periodic-Review-2024
+Section 1A pack as its own immutable directory, or add an explicit
+early-adoption path that applies the `2024.09` pack in full and records the
+election. Until one of those exists, Product 2's client scope is periods
+beginning on or after 1 January 2026 only.
+
 ### Legal gate — “AI-assisted SaaS, not filer/signer of record” (upfront)
 
 **Before any development begins** on full statutory financial statement

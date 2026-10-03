@@ -126,6 +126,18 @@ is actually required, and how that differs from Product 1’s settled
 internal-review-only positioning. Framing that merely *sounds* reasonable is
 **not** enough.
 
+**Real, significant gap — pre-2026 periods (near-term once beta starts, not a
+someday item):** The only built pack, `frs102-1a-ie` `2024.09`, supports
+periods beginning on or after 1 January 2026. The previous FRS 102 Section 1A
+standard (pre-Periodic-Review-2024) has not been built as a separate pack. A
+2025 or earlier year-end, or a 2025/2026 year that has not elected early
+adoption, cannot use Product 2 at all. That is likely to block the first real
+client, because most companies will not yet have a clean 2026-01-01-onward
+year. Building that earlier pack, or an early-adoption toggle (FRC guidance
+permits early application if the amendments are applied in full), is a
+near-term priority when real beta testing begins. Detail in
+[`tracked-gaps.md`](tracked-gaps.md) (Product 2 — pre-2026 FRS 102 Section 1A).
+
 Scoped capabilities (after the gate clears — still not scheduled):
 
 - **Toggle-based note / disclosure content library** (Accurri-style) — FRS 102
