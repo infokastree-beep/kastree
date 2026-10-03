@@ -83,6 +83,110 @@ Natural-language questions answered from already-computed statement and
 variance data via the existing evidence graph — **not** a new calculation
 engine.
 
+### Sole trader and farm accounts — a Product 1 segment (positioning only)
+
+**Status: confirmed 2 October 2026. Positioning only. The reporting
+framework is simpler than FRS 102. The tax judgment is not.**
+
+A distinct customer segment, separate from Product 2. Local practices often
+carry a high volume of sole-trader and farm clients whose year-end work is
+Form 11-driven: a simple profit-and-loss summary, prepared so the accountant
+can complete the client's income-tax return.
+
+**Confirmed for Irish sole traders, including a farm carried on as a sole
+trade.** There is no mandatory financial-reporting framework. FRS 102
+(including Section 1A) and FRS 105 do not apply. Those standards apply to
+companies and to the other entities in their scope. A sole trader's accounts
+exist to support the Form 11 income-tax return. Presentation is flexible:
+nothing in those standards prescribes the face of the statements. Revenue
+still expects records that support the return. That is a tax record-keeping
+duty, not a requirement to follow FRS 102 or FRS 105. A farm or other client
+that is a limited company stays on the Product 2 side of this line.
+
+The reporting framework is genuinely simpler than FRS 102. There is no
+statutory sub-category and no disclosure note. That is not a claim that the
+compliance work is done. Real accounting judgment is still required before
+any figure is ready for Form 11:
+
+- Capital versus revenue. An improvement is not a repair, and a fixed-asset
+  addition is not an expense.
+- Drawings stay out of expenses. That includes the owner's wages and private
+  costs paid through the business.
+- Depreciation in the accounts is not the capital-allowance deduction on
+  the return.
+- VAT has to be treated consistently. A mix of VAT-inclusive and
+  VAT-exclusive amounts is not a finished extract.
+
+Product 1's live loop is the internal review a practice can use today:
+
+- Trial balance upload (Excel / CSV, and the existing GL-to-TB path where a
+  practice starts from a ledger).
+- AI-assisted mapping suggestions, confirmed by the accountant.
+- Variance commentary against a prior period, where one exists.
+
+Those engagements do not need an FRS 102 face or the continuation
+translator. They also do not perform the four checks above. The open
+Product 2 question — which canonical line has a single statutory home —
+does not apply to this segment. The tax judgment still does.
+
+The book is high-volume, and tools built around company statutory packs are
+a poor fit for the reporting framework. That is the positioning. It is not
+a finished Form 11 product.
+
+Messaging stays inside the existing Product 1 posture. Kastree does not
+prepare or file Form 11, and it does not produce a statutory annual report
+for this segment. The practice remains the reviewer and the filer.
+
+#### Form 11 Summary — considered, not built
+
+**Status: design recorded 2 October 2026. No code.** The line-by-line rules
+are in [`form11-summary-rules.md`](form11-summary-rules.md), pinned to Form
+11 2025 (tax year 2025), lines 124–168, as described in Revenue's *Guide to
+Completing 2025 Pay and File Tax Returns*. A later year's form is a new
+line map.
+
+Confirmed structure of the Extracts from Accounts. The panel is extracts
+from the accounts. Revenue says it is not a tax-adjustment computation.
+The accounts-extract boxes are a small fixed set:
+
+| Lines | What Revenue asks for |
+| --- | --- |
+| 124–125 | Accounts period, from and to |
+| 128 | Sales / Receipts / Turnover, excluding Government payments |
+| 129 | Receipts from Government Agencies (GMS, Department of Agriculture payments, and the like) |
+| 130 | Other trading income, including tax-exempt trading income. Not rental, dividends, or interest |
+| 131–132 | Purchases, then gross trading profit |
+| 133–144 | Expenses: wages, additional staff costs, RCT subcontractors, other subcontractors, professional fees, motor travel and subsistence as one box, repairs, rental expenses, depreciation and goodwill write-off, bad-debt provisions, then **Other Expenses** (143) for every other profit-and-loss expense, and 144 for expense credits |
+| 145–156 | Capital and balance-sheet extracts: capital introduced, drawings, closing capital, stock, debtors, cash, borrowings, creditors, tax creditors, net assets |
+| 157–158 | Net trade profit, or loss, per the accounts |
+| 159–168 | Adjusted-profit add-backs and deductions. Not an extract from the trial balance |
+
+Motor and travelling are not separate extract boxes. Line 138 is "Motor,
+Travel and Subsistence", and the guide says to add those accounts together.
+Line 160, "Motor Expenses", is the private-use add-back in the tax
+computation. "Other Expenses" (143) is Revenue's own residual: every other
+profit-and-loss expense that is not one of the named boxes.
+
+The reporting boxes are a smaller set than FRS 102 Section 1A. There are no
+disclosure notes and no fixed-asset class split. Line 143 is Revenue's
+residual reporting box for a profit-and-loss expense that has no named box.
+It is not a decision that the amount is revenue rather than capital,
+allowable, or VAT-consistent.
+
+The feature, when it is built, is a second choice on the existing Reporting
+framework dropdown beside "FRS 102 Section 1A (Ireland)": **Sole Trader /
+Form 11 Summary**. It uses the trial balance and the confirmed Product 1
+mappings already on the page. It does not upload a new file and it does not
+ask for a new mapping pass. It does not generate a statutory pack. It lists
+each Revenue box, the amount, and the accounts behind it, so the accountant
+can key the figures into ROS. Lines 159–168 are left blank. Kastree still
+does not file the return.
+
+This is worth consideration as a smaller build than the statutory
+translation. It does not replace the four checks above. The summary has to
+handle them, or flag each one for the accountant. It must not assume them
+away. The rules in the design note are for review before any code.
+
 ---
 
 ## Future directions (captured, not scheduled)
@@ -368,6 +472,8 @@ the product.
 | Track | State |
 |-------|--------|
 | **Product 1 (sellable)** | **Complete and ready to sell now.** Close, Medium, Copilot, evidence drill-down, **paywall** (pricing + tier limits + Stripe Checkout/webhook) — live-tested 2026-09-07. |
+| **Sole trader / farm accounts** | **Positioning only.** Confirmed 2 October 2026: an Irish sole trader (including a sole-trader farm) has no mandatory reporting framework — not FRS 102, not FRS 105. The reporting framework is simpler than FRS 102. Capital versus revenue, drawings, capital allowances, and VAT consistency are still real checks. A limited company stays with Product 2. |
+| **Form 11 Summary** | **Design only, not built.** A second Reporting-framework choice beside FRS 102 Section 1A. Maps the confirmed trial balance onto Form 11 2025 extracts (lines 124–168). Other Expenses is a residual reporting box, not a substitute for those checks. The summary must flag them for review. Rules in [`form11-summary-rules.md`](form11-summary-rules.md). |
 | **Working Paper / Reconciliation Evidence** | First Product 1 build candidate **when** real customer signal appears. Contained scope on existing evidence anchors. |
 | **Product 2 (Statutory)** | Paused — legal consultation gate in [`tracked-gaps.md`](tracked-gaps.md). Only separate product. |
 | **Scenario / forecast / budget** | Captured; large architecture; internal-only; not casual. |
