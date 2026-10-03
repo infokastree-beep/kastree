@@ -137,11 +137,15 @@ def prior_from_mapped(prior_mapped: dict) -> dict:
     for label, cur, _ in build_income_statement(prior_mapped, {})["rows"]:
         key, sign = IS_KEYS[label]
         out[key] = money(sign * cur)
-    # ONE convention for every prior dict: ADMIN_EXPENSES EXCLUDES depreciation,
-    # DEPRECIATION is separate, and the income statement adds them together.
+    # ADMIN_EXPENSES in this dict excludes the two charges. The income
+    # statement adds both back into the administrative-expenses face line.
+    # AMORTISATION_CHARGE stays off DEPRECIATION so the tangible note is not
+    # mixed with intangible amortisation.
     dep = money(_m(prior_mapped, "DEPRECIATION_CHARGE"))
-    out["ADMIN_EXPENSES"] = money(out["ADMIN_EXPENSES"] - dep)
+    amort = money(_m(prior_mapped, "AMORTISATION_CHARGE"))
+    out["ADMIN_EXPENSES"] = money(out["ADMIN_EXPENSES"] - dep - amort)
     out["DEPRECIATION"] = dep
+    out["AMORTISATION"] = amort
     return out
 
 
@@ -149,7 +153,11 @@ def build_income_statement(mapped: dict, prior: dict) -> dict:
     turnover = money(-_m(mapped,"REVENUE"))
     cos = money(_m(mapped,"COST_OF_SALES"))
     dist = money(_m(mapped,"DISTRIBUTION_COSTS"))
-    admin = money(_m(mapped,"ADMIN_EXPENSES") + _m(mapped,"DEPRECIATION_CHARGE"))
+    admin = money(
+        _m(mapped, "ADMIN_EXPENSES")
+        + _m(mapped, "DEPRECIATION_CHARGE")
+        + _m(mapped, "AMORTISATION_CHARGE")
+    )
     other_inc = money(-_m(mapped,"OTHER_OPERATING_INCOME"))
     int_rec = money(-_m(mapped,"INTEREST_RECEIVABLE"))
     int_pay = money(_m(mapped,"INTEREST_PAYABLE"))
@@ -160,8 +168,15 @@ def build_income_statement(mapped: dict, prior: dict) -> dict:
     profit = money(pbt - tax)
     def neg(k: str) -> Dec | None:  # prior costs stored positive -> present as current
         return None if prior.get(k) is None else -prior[k]
-    prior_admin = (None if prior.get("ADMIN_EXPENSES") is None
-                   else -(prior["ADMIN_EXPENSES"] + prior.get("DEPRECIATION", Dec("0"))))
+    prior_admin = (
+        None
+        if prior.get("ADMIN_EXPENSES") is None
+        else -(
+            prior["ADMIN_EXPENSES"]
+            + prior.get("DEPRECIATION", Dec("0"))
+            + prior.get("AMORTISATION", Dec("0"))
+        )
+    )
     rows = [("Turnover", turnover, prior.get("REVENUE")),
             ("Cost of sales", -cos, neg("COST_OF_SALES")),
             ("Gross profit", gross, prior.get("GROSS_PROFIT")),

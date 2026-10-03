@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -30,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
 from app.models.account_mapping import AccountMapping
+from app.services.audit import append_audit_log
 from app.models.company import Company
 from app.models.fa_version import FixedAssetLine, FixedAssetVersion
 from app.models.prior_year_line import PriorYearLine
@@ -40,6 +40,11 @@ from app.services.reconciliation import (
     ReconciliationReport,
     build_reconciliation,
     statutory_lines,
+)
+from app.services.statutory_sublines import (
+    allowed_sublines,
+    needs_statutory_subline,
+    suggest_subline,
 )
 from findraft.engine.pack import load_manifest, pack_dir, pin_pack_version
 from findraft.engine.reconciliation import check_prior_year_gate
@@ -78,24 +83,6 @@ _DIRECT: dict[str, str] = {
     "investments": "FA_INVESTMENTS",
 }
 
-_LONG_TERM = (
-    "after more than one year",
-    "more than one year",
-    "more than 1 year",
-    "non-current",
-    "non current",
-    "long-term",
-    "long term",
-)
-_SHORT_TERM = (
-    "within one year",
-    "less than one year",
-    "less than 1 year",
-    "short-term",
-    "short term",
-)
-
-
 @dataclass(frozen=True)
 class SourceAccount:
     nominal_code: str
@@ -110,6 +97,7 @@ class ConfirmedAccount:
     canonical_line: str
     is_confirmed: bool
     is_ignored: bool
+    statutory_line: str | None = None
 
 
 @dataclass(frozen=True)
@@ -117,7 +105,9 @@ class CarriedMapping:
     nominal_code: str
     account_name: str
     product1_line: str
-    canonical_line: str
+    canonical_line: str | None
+    suggested_line: str | None = None
+    suggestion_confidence: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -128,126 +118,60 @@ class AdoptableTrialBalance:
     account_count: int
 
 
-def _token(name: str, token: str) -> bool:
-    """True when ``token`` starts a word, so plurals and 'administrative' match."""
-    return re.search(rf"\b{re.escape(token)}", name) is not None
+def _subline_gap(product1_line: str, account_name: str) -> str:
+    return (
+        f"Product 1 line '{product1_line}' on '{account_name.strip()}' "
+        "needs a statutory sub-line"
+    )
 
 
-def _tangible(name: str) -> str | None:
-    if "accumulat" in name:
-        return "FA_ACCUM_DEP"
-    if _token(name, "motor"):
-        return "FA_MOTOR_COST"
-    if _token(name, "fixture") or _token(name, "fitting"):
-        return "FA_FIXTURES_COST"
-    if _token(name, "land") or _token(name, "building"):
-        return "FA_LAND_BUILDINGS"
-    if _token(name, "plant") or _token(name, "machinery"):
-        return "FA_PLANT_COST"
-    return None
+def resolve_engine_line(
+    product1_line: str,
+    account_name: str,
+    statutory_line: str | None = None,
+) -> str | None:
+    """Posted engine line, or None when a sub-line is still unconfirmed.
 
-
-def _depreciation(name: str) -> str | None:
-    if "accumulat" in name:
-        return "FA_ACCUM_DEP"
-    if (
-        _token(name, "charge")
-        or _token(name, "expense")
-        or _token(name, "depreciation")
-    ):
-        return "DEPRECIATION_CHARGE"
-    return None
-
-
-def _loans(name: str) -> str | None:
-    if _token(name, "overdraft"):
-        return "BANK_OVERDRAFT"
-    if any(phrase in name for phrase in _LONG_TERM):
-        return "LOANS_GT1Y"
-    if any(phrase in name for phrase in _SHORT_TERM):
-        return "LOANS_LT1Y"
-    return None
-
-
-def _tax(name: str) -> str | None:
-    if _token(name, "charge") or _token(name, "expense"):
-        return "TAX_CHARGE"
-    if (
-        "corporation tax" in name
-        or "corp tax" in name
-        or _token(name, "payable")
-        or _token(name, "creditor")
-        or _token(name, "liability")
-    ):
-        return "CORP_TAX"
-    return None
-
-
-def _operating_expenses(name: str) -> str | None:
-    if (
-        _token(name, "distribution")
-        or _token(name, "selling")
-        or _token(name, "carriage")
-    ):
-        return "DISTRIBUTION_COSTS"
-    if _token(name, "admin") or _token(name, "overhead"):
-        return "ADMIN_EXPENSES"
-    return None
-
-
-def _intangible(name: str) -> str | None:
-    if (
-        "accumulat" in name
-        or _token(name, "amortisation")
-        or _token(name, "amortization")
-    ):
-        return "FA_INTANGIBLE_AMORT"
-    if any(
-        _token(name, token)
-        for token in ("cost", "intangible", "goodwill", "software", "patent")
-    ):
-        return "FA_INTANGIBLE_COST"
-    return None
-
-
-def _amortisation(name: str) -> str | None:
-    if "accumulat" in name:
-        return "FA_INTANGIBLE_AMORT"
-    return None
-
-
-def engine_line_for_confirmed_mapping(product1_line: str, account_name: str) -> str:
-    """One statutory line for a confirmed Product 1 mapping, or a refusal."""
+    A name-pattern suggestion is never returned here. Direct Product 1 lines
+    ignore ``statutory_line``. An unknown line, or a sub-line outside the
+    dropdown for that Product 1 line, raises.
+    """
     line = product1_line.strip().casefold()
-    name = account_name.strip().casefold()
+    name = account_name.strip()
     if not line or not name:
         raise ReconciliationRejected(
             "Each confirmed mapping needs a Product 1 line and an account name"
         )
-    engine: str | None
     if line in _DIRECT:
         engine = _DIRECT[line]
-    elif line == "property_plant_equipment":
-        engine = _tangible(name)
-    elif line == "depreciation":
-        engine = _depreciation(name)
-    elif line == "loans":
-        engine = _loans(name)
-    elif line == "tax":
-        engine = _tax(name)
-    elif line == "operating_expenses":
-        engine = _operating_expenses(name)
-    elif line == "intangible_assets":
-        engine = _intangible(name)
-    elif line == "amortisation":
-        engine = _amortisation(name)
-    else:
-        engine = None
-    if engine is None or engine not in statutory_lines():
-        raise ReconciliationRejected(
-            f"Product 1 line '{line}' on '{account_name.strip()}' "
-            "has no single statutory line"
-        )
+        if engine not in statutory_lines():
+            raise ReconciliationRejected(
+                f"Product 1 line '{line}' on '{name}' has no single statutory line"
+            )
+        return engine
+    if needs_statutory_subline(line):
+        chosen = (statutory_line or "").strip()
+        if not chosen:
+            return None
+        if chosen not in allowed_sublines(line) or chosen not in statutory_lines():
+            raise ReconciliationRejected(
+                f"Statutory sub-line '{chosen}' is not a home for '{line}'"
+            )
+        return chosen
+    raise ReconciliationRejected(
+        f"Product 1 line '{line}' on '{name}' has no single statutory line"
+    )
+
+
+def engine_line_for_confirmed_mapping(
+    product1_line: str,
+    account_name: str,
+    statutory_line: str | None = None,
+) -> str:
+    """One statutory line for a confirmed Product 1 mapping, or a refusal."""
+    engine = resolve_engine_line(product1_line, account_name, statutory_line)
+    if engine is None:
+        raise ReconciliationRejected(_subline_gap(product1_line, account_name))
     return engine
 
 
@@ -295,11 +219,33 @@ def source_accounts_from_parsed(parsed: object) -> list[SourceAccount]:
     return accounts
 
 
+def _suggestion_fields(
+    product1_line: str, account_name: str, statutory_line: str | None
+) -> tuple[str | None, Decimal | None]:
+    if not needs_statutory_subline(product1_line):
+        return None, None
+    chosen = (statutory_line or "").strip()
+    if chosen and chosen in allowed_sublines(product1_line):
+        return chosen, Decimal("1.00")
+    hit = suggest_subline(product1_line, account_name)
+    if hit is None:
+        return None, None
+    confidence = (Decimal(hit.score) / Decimal("100")).quantize(Decimal("0.01"))
+    return hit.engine_line, confidence
+
+
 def carry_confirmed_accounts(
     accounts: Sequence[SourceAccount],
     mappings: Mapping[tuple[str, str], ConfirmedAccount],
+    *,
+    require_sublines: bool = True,
 ) -> tuple[list[TBLine], dict[str, str], tuple[CarriedMapping, ...]]:
-    """Carry every confirmed, non-ignored account. Refuses a gap or a clash."""
+    """Carry every confirmed, non-ignored account. Refuses a gap or a clash.
+
+    When ``require_sublines`` is false, an unconfirmed sub-line is carried
+    with no engine line so the draft can open. Statement generation uses
+    the default and refuses that gap.
+    """
     lines: list[TBLine] = []
     engine_by_code: dict[str, str] = {}
     carried: list[CarriedMapping] = []
@@ -322,8 +268,22 @@ def carry_confirmed_accounts(
                 f"Duplicate nominal code: {account.nominal_code}"
             )
         seen.add(account.nominal_code)
-        engine = engine_line_for_confirmed_mapping(
-            mapping.canonical_line, account.account_name
+        engine = resolve_engine_line(
+            mapping.canonical_line,
+            account.account_name,
+            mapping.statutory_line,
+        )
+        if engine is None:
+            if require_sublines:
+                raise ReconciliationRejected(
+                    _subline_gap(mapping.canonical_line, account.account_name)
+                )
+        else:
+            engine_by_code[account.nominal_code] = engine
+        suggested, confidence = _suggestion_fields(
+            mapping.canonical_line,
+            account.account_name,
+            mapping.statutory_line,
         )
         lines.append(
             TBLine(
@@ -333,13 +293,14 @@ def carry_confirmed_accounts(
                 credit=account.credit,
             )
         )
-        engine_by_code[account.nominal_code] = engine
         carried.append(
             CarriedMapping(
                 nominal_code=account.nominal_code,
                 account_name=account.account_name,
                 product1_line=mapping.canonical_line.strip().casefold(),
                 canonical_line=engine,
+                suggested_line=suggested,
+                suggestion_confidence=confidence,
             )
         )
     if not carried:
@@ -355,6 +316,7 @@ def _confirmed_index(
             canonical_line=row.canonical_line,
             is_confirmed=row.is_confirmed,
             is_ignored=row.is_ignored,
+            statutory_line=row.statutory_line,
         )
         for row in rows
     }
@@ -396,7 +358,9 @@ async def list_adoptable_trial_balances(
     for tb in balances:
         try:
             _lines, _engine, carried = carry_confirmed_accounts(
-                source_accounts_from_parsed(tb.parsed_data), mappings
+                source_accounts_from_parsed(tb.parsed_data),
+                mappings,
+                require_sublines=False,
             )
         except ReconciliationRejected:
             continue
@@ -442,7 +406,9 @@ async def adopt_confirmed_trial_balance(
     )
     mappings = await _mappings_for_company(session, year_end.company_id)
     _lines, _engine, carried = carry_confirmed_accounts(
-        source_accounts_from_parsed(tb.parsed_data), mappings
+        source_accounts_from_parsed(tb.parsed_data),
+        mappings,
+        require_sublines=False,
     )
     year_end.adopted_trial_balance_id = tb.id
     await session.flush()
@@ -657,7 +623,7 @@ def mapping_fingerprint(carried: Sequence[CarriedMapping]) -> str:
     rows: list[dict[str, str]] = [
         {
             "account_name": item.account_name,
-            "canonical_line": item.canonical_line,
+            "canonical_line": item.canonical_line or "",
             "nominal_code": item.nominal_code,
             "product1_line": item.product1_line,
         }
@@ -674,8 +640,20 @@ async def current_mapping_fingerprint(
     org_id: uuid.UUID,
     year_end: YearEnd,
 ) -> str:
-    _loaded, carried = await _adopted_bundle(
-        session, org_id=org_id, year_end=year_end
+    """Hash the live mapping, including rows whose sub-line is still open."""
+    await aset_rls_org_id(session, org_id)
+    if year_end.adopted_trial_balance_id is None:
+        raise ReconciliationRejected("No confirmed trial balance is selected", 404)
+    tb = await _owned_complete_tb(
+        session,
+        year_end=year_end,
+        trial_balance_id=year_end.adopted_trial_balance_id,
+    )
+    mappings = await _mappings_for_company(session, year_end.company_id)
+    _lines, _engine, carried = carry_confirmed_accounts(
+        source_accounts_from_parsed(tb.parsed_data),
+        mappings,
+        require_sublines=False,
     )
     return mapping_fingerprint(carried)
 
@@ -915,4 +893,157 @@ async def reconcile_adopted(
         prior_canonical=loaded.prior_canonical,
         fa_register=loaded.fa_register,
         pack_rules_path=loaded.pack_rules_path,
+    )
+
+
+@dataclass(frozen=True)
+class SublineReviewRow:
+    nominal_code: str
+    account_name: str
+    product1_line: str
+    suggested_line: str | None
+    suggestion_confidence: Decimal | None
+    statutory_line: str | None
+    choices: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SublineChoice:
+    nominal_code: str
+    account_name: str
+    statutory_line: str
+
+
+async def review_statutory_sublines(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+) -> tuple[SublineReviewRow, ...]:
+    """Rows on the seven lines, with a suggestion and the confirmed choice."""
+    await aset_rls_org_id(session, org_id)
+    if year_end.adopted_trial_balance_id is None:
+        raise ReconciliationRejected("No confirmed trial balance is selected", 404)
+    tb = await _owned_complete_tb(
+        session,
+        year_end=year_end,
+        trial_balance_id=year_end.adopted_trial_balance_id,
+    )
+    mappings = await _mappings_for_company(session, year_end.company_id)
+    rows: list[SublineReviewRow] = []
+    ordered = sorted(
+        source_accounts_from_parsed(tb.parsed_data),
+        key=lambda item: (item.row_index, item.nominal_code),
+    )
+    for account in ordered:
+        mapping = mappings.get((account.nominal_code, account.account_name))
+        if mapping is None or mapping.is_ignored or not mapping.is_confirmed:
+            continue
+        if not needs_statutory_subline(mapping.canonical_line):
+            continue
+        suggested, confidence = _suggestion_fields(
+            mapping.canonical_line,
+            account.account_name,
+            mapping.statutory_line,
+        )
+        stored = (mapping.statutory_line or "").strip() or None
+        rows.append(
+            SublineReviewRow(
+                nominal_code=account.nominal_code,
+                account_name=account.account_name,
+                product1_line=mapping.canonical_line.strip().casefold(),
+                suggested_line=suggested,
+                suggestion_confidence=confidence,
+                statutory_line=stored,
+                choices=allowed_sublines(mapping.canonical_line),
+            )
+        )
+    return tuple(rows)
+
+
+async def confirm_statutory_sublines(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+    user_id: uuid.UUID,
+    choices: Sequence[SublineChoice],
+) -> tuple[SublineReviewRow, ...]:
+    """Store the accountant's sub-line. Does not change the Product 1 line."""
+    if not choices:
+        raise ReconciliationRejected("Choose a statutory sub-line")
+    await aset_rls_org_id(session, org_id)
+    pending = {
+        (row.nominal_code, row.account_name): row
+        for row in await review_statutory_sublines(
+            session, org_id=org_id, year_end=year_end
+        )
+    }
+    stored_rows = (
+        await session.scalars(
+            select(AccountMapping).where(
+                AccountMapping.company_id == year_end.company_id
+            )
+        )
+    ).all()
+    by_key = {
+        ((row.source_code or "").strip(), row.source_name.strip()): row
+        for row in stored_rows
+    }
+    seen: set[tuple[str, str]] = set()
+    changes: list[dict[str, str | None]] = []
+    for choice in choices:
+        key = (choice.nominal_code.strip(), choice.account_name.strip())
+        if key in seen:
+            raise ReconciliationRejected(f"Duplicate account {key[0]}")
+        seen.add(key)
+        review = pending.get(key)
+        if review is None:
+            raise ReconciliationRejected(
+                f"Account {key[0]} {key[1]} is not waiting for a sub-line",
+                404,
+            )
+        chosen = choice.statutory_line.strip()
+        if chosen not in review.choices or chosen not in statutory_lines():
+            raise ReconciliationRejected(
+                f"Statutory sub-line '{chosen}' is not a home for "
+                f"'{review.product1_line}'"
+            )
+        mapping = by_key.get(key)
+        if mapping is None:
+            raise ReconciliationRejected(
+                f"Account {key[0]} {key[1]} is not waiting for a sub-line",
+                404,
+            )
+        previous = mapping.statutory_line
+        mapping.statutory_line = chosen
+        changes.append(
+            {
+                "nominal_code": key[0],
+                "account_name": key[1],
+                "from": previous,
+                "to": chosen,
+            }
+        )
+    await session.flush()
+    draft = await _latest_draft(session, org_id=org_id, year_end_id=year_end.id)
+    if (
+        draft is not None
+        and not draft.is_frozen
+        and draft.tb_version_id is None
+    ):
+        draft.mappings_sha256 = await current_mapping_fingerprint(
+            session, org_id=org_id, year_end=year_end
+        )
+    await append_audit_log(
+        session,
+        org_id=org_id,
+        user_id=user_id,
+        action="statutory_subline_confirmed",
+        entity_type="year_end",
+        entity_id=year_end.id,
+        new_value={"lines": changes},
+    )
+    return await review_statutory_sublines(
+        session, org_id=org_id, year_end=year_end
     )

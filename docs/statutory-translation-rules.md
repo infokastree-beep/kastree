@@ -1,9 +1,15 @@
-# Statutory translation rules — proposal for review
+# Statutory translation rules
 
-**Status: design only. Not accepted. Not implemented.** No change to
-`engine_line_for_confirmed_mapping` until this is approved.
+**Status: approved 3 October 2026, except the permanent block on an
+amortisation charge.** That block is not kept. `AMORTISATION_CHARGE` is in
+this build. It is the profit-and-loss amortisation expense, parallel to
+`DEPRECIATION_CHARGE`: the face still shows it inside administrative
+expenses, and it is not added into the tangible depreciation figure.
 
-Recorded 3 October 2026. This is the Phase 1 rule set for the seven Product 1
+The other eight confirmation items are approved as written, including
+advertising and marketing as a distribution-cost suggestion at 35.
+
+Recorded 3 October 2026. This is the rule set for the seven Product 1
 lines that have no single statutory home: `property_plant_equipment`,
 `operating_expenses`, `loans`, `tax`, `depreciation`, `amortisation`,
 `intangible_assets`.
@@ -172,10 +178,9 @@ the engine sub-line.
 The 23 Product 1 lines that already have one statutory home for every name
 stay direct. There is nothing to ask.
 
-One limit is not a dropdown problem. Where the engine has no honest line,
-the dropdown must not offer a wrong one. The amortisation charge is that
-case. The row stays unresolved and the draft stays blocked, with the
-reason on the row. That is a fail-closed stop, not a guess.
+`AMORTISATION_CHARGE` is the honest home for an amortisation expense.
+The dropdown offers that charge and the accumulated-amortisation contra.
+It does not offer `DEPRECIATION_CHARGE`.
 
 ## 1. `property_plant_equipment`
 
@@ -401,33 +406,27 @@ expenses, and the cumulative amount belongs in the intangible movement
 (1AD.13 and 1AD.14, the same movement used for goodwill and other
 intangibles, 1AD.5 to 1AD.7).
 
-The engine has `FA_INTANGIBLE_AMORT` for the contra. It has no
-amortisation-charge line. `DEPRECIATION_CHARGE` is the tangible charge.
-Using it here would put the amount inside administrative expenses and
-would also make the tangible depreciation figure wrong for the note.
+The engine has `FA_INTANGIBLE_AMORT` for the contra and
+`AMORTISATION_CHARGE` for the profit-and-loss charge. The charge is added
+into administrative expenses on the face, the same way
+`DEPRECIATION_CHARGE` is, and it stays off that tangible charge so the
+depreciation note is not mixed with intangible amortisation.
 
 **Suggestions**
 
 | Phrase | Line | Score | Does not fire when |
 | --- | --- | --- | --- |
-| accumulated amortisation; accumulated amortization; provision for amortisation; provision for amortization; amortisation brought forward | `FA_INTANGIBLE_AMORT` | 40 | — including when the name also says goodwill or software |
+| accumulated amortisation; accumulated amortization; provision for amortisation; provision for amortization; amortisation brought forward | `FA_INTANGIBLE_AMORT` | 40 | the name also states a charge phrase |
+| amortisation charge; amortisation expense; amortisation for the year; charge for amortisation, and the American spellings | `AMORTISATION_CHARGE` | 40 | the name also states an accumulated phrase |
 
 Match amortisation, amortization, amortised, amortized, and unamortised as
-whole words. Do not use a bare "amort" prefix. The leading-only form is
-how unrelated words get pulled in.
+whole words. Do not use a bare "amort" prefix.
 
-**Needs review — and the dropdown must not invent a charge line**
+**Needs review — dropdown is `AMORTISATION_CHARGE` and `FA_INTANGIBLE_AMORT`**
 
-Amortisation. Amortisation charge. Amortisation expense. Amortisation of
-goodwill. Amortisation of software. The only engine line available is the
-contra, which is the wrong home for a charge. The dropdown does not offer
-`DEPRECIATION_CHARGE` and does not offer `FA_INTANGIBLE_AMORT` as a
-pretend charge. The row cannot be confirmed. The draft stays blocked, and
-the row says the engine has no amortisation charge line.
-
-That is the fail-closed case. A path forward exists for every other
-ambiguous name in this document, because an honest line exists. It does
-not exist here until a charge line exists.
+Amortisation. Amortisation of goodwill. Amortisation of software. A name
+that states both a charge and an accumulated amount. The row stays empty
+until the accountant picks one. It is not offered `DEPRECIATION_CHARGE`.
 
 ## 7. `intangible_assets`
 
@@ -467,7 +466,7 @@ The draft is not generated while any of these is true:
 
 - A row on one of these seven lines has no selected engine line.
 - Two phrases disagreed, and the accountant has not picked one.
-- An amortisation charge is still present, because no honest line exists.
+- An amortisation row is still empty. The charge now has `AMORTISATION_CHARGE`; it is not forced onto `DEPRECIATION_CHARGE`.
 - The selected line is not one of the lines listed for that Product 1 line.
 
 The draft is never completed by substituting plant, administrative
@@ -478,8 +477,8 @@ Product 1 row still blocks, as it does today.
 ## What this changes from today's refuser
 
 Today a miss aborts the whole continuation with "has no single statutory
-line". Under this proposal that miss opens a review row, except the
-amortisation charge, which stays blocked because the missing line is real.
+line". Under this rule set that miss opens a review row. An amortisation
+charge suggests `AMORTISATION_CHARGE` and can be confirmed there.
 
 The name lists, if accepted, also change what is suggested:
 
@@ -523,8 +522,9 @@ The name lists, if accepted, also change what is suggested:
 12. Bare "Corporation tax" left empty. VAT and PAYE suggested to their own
     lines even when the name says payable.
 13. Bare "Depreciation" left empty.
-14. The amortisation charge has no honest line. The row blocks the draft
-    and is not offered `DEPRECIATION_CHARGE`.
+14. An amortisation charge suggests `AMORTISATION_CHARGE`. Bare
+    "Amortisation" stays empty, with that charge and the contra in the
+    dropdown. It is not offered `DEPRECIATION_CHARGE`.
 15. Goodwill, patents, licences, development costs, and software suggest
     `FA_INTANGIBLE_COST`, subject to the fee and subscription exclusions.
     Bare "Intangible assets" stays empty.

@@ -151,7 +151,7 @@ _SPECS: dict[str, _LineSpec] = {
     "Distribution costs": _leaf("income", frozenset({"DISTRIBUTION_COSTS"}), -1),
     "Administrative expenses (including depreciation)": _leaf(
         "income",
-        frozenset({"ADMIN_EXPENSES", "DEPRECIATION_CHARGE"}),
+        frozenset({"ADMIN_EXPENSES", "DEPRECIATION_CHARGE", "AMORTISATION_CHARGE"}),
         -1,
     ),
     "Other operating income": _leaf(

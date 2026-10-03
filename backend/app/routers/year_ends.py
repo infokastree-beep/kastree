@@ -60,6 +60,9 @@ from app.schemas.year_end import (
     AdoptTrialBalanceRequest,
     CanonicalLinesResponse,
     CarriedMappingOut,
+    StatutorySublineConfirmRequest,
+    StatutorySublineReviewResponse,
+    StatutorySublineRowOut,
     TrialBalanceLineOut,
     TrialBalanceLinesResponse,
     TrialBalanceVersionCreate,
@@ -95,10 +98,14 @@ from app.services.prior_year import (
     reconciliation_gate,
 )
 from app.services.adopted_trial_balance import (
+    SublineChoice,
+    SublineReviewRow,
     adopt_confirmed_trial_balance,
+    confirm_statutory_sublines,
     list_adoptable_trial_balances,
     mapping_notice_for,
     reconcile_adopted,
+    review_statutory_sublines,
 )
 from app.services.reconciliation import (
     ReconciliationRejected,
@@ -331,6 +338,28 @@ async def get_working_draft(
     )
 
 
+def _subline_row(row: SublineReviewRow) -> StatutorySublineRowOut:
+    confidence = row.suggestion_confidence
+    return StatutorySublineRowOut(
+        nominal_code=row.nominal_code,
+        account_name=row.account_name,
+        product1_line=row.product1_line,
+        suggested_line=row.suggested_line,
+        suggestion_confidence=None if confidence is None else f"{confidence:.2f}",
+        statutory_line=row.statutory_line,
+        choices=list(row.choices),
+    )
+
+
+def _subline_response(
+    rows: tuple[SublineReviewRow, ...],
+) -> StatutorySublineReviewResponse:
+    return StatutorySublineReviewResponse(
+        blocked=any(row.statutory_line is None for row in rows),
+        rows=[_subline_row(row) for row in rows],
+    )
+
+
 def _adoption_error(exc: ReconciliationRejected) -> HTTPException:
     return HTTPException(status_code=exc.status_code, detail=exc.detail)
 
@@ -404,7 +433,13 @@ async def post_adopt_trial_balance(
                 nominal_code=line.nominal_code,
                 account_name=line.account_name,
                 product1_line=line.product1_line,
-                canonical_line=line.canonical_line,
+                canonical_line=line.canonical_line or "",
+                suggested_line=line.suggested_line,
+                suggestion_confidence=(
+                    None
+                    if line.suggestion_confidence is None
+                    else f"{line.suggestion_confidence:.2f}"
+                ),
             )
             for line in carried
         ],
@@ -453,6 +488,64 @@ async def get_adopted_statements(
     except ReconciliationRejected as exc:
         raise _adoption_error(exc) from exc
     return statement_response(document)
+
+
+@router.get(
+    "/{year_end_id}/adopted-trial-balance/sub-lines",
+    response_model=StatutorySublineReviewResponse,
+)
+async def get_adopted_sublines(
+    year_end_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> StatutorySublineReviewResponse:
+    """Sub-line review for the seven Product 1 lines that have no single home."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        rows = await review_statutory_sublines(
+            session, org_id=auth.org_id, year_end=year_end
+        )
+    except ReconciliationRejected as exc:
+        raise _adoption_error(exc) from exc
+    return _subline_response(rows)
+
+
+@router.post(
+    "/{year_end_id}/adopted-trial-balance/sub-lines",
+    response_model=StatutorySublineReviewResponse,
+)
+async def post_adopted_sublines(
+    year_end_id: uuid.UUID,
+    body: StatutorySublineConfirmRequest,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> StatutorySublineReviewResponse:
+    """Remember the accountant's sub-line. The Product 1 line stays as it is."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        rows = await confirm_statutory_sublines(
+            session,
+            org_id=auth.org_id,
+            year_end=year_end,
+            user_id=auth.user_id,
+            choices=tuple(
+                SublineChoice(
+                    nominal_code=line.nominal_code,
+                    account_name=line.account_name,
+                    statutory_line=line.statutory_line,
+                )
+                for line in body.lines
+            ),
+        )
+    except ReconciliationRejected as exc:
+        raise _adoption_error(exc) from exc
+    return _subline_response(rows)
 
 
 @router.get("/{year_end_id}/adopted-trial-balance/statements.pdf")

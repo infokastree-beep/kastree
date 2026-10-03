@@ -30,6 +30,7 @@ from app.services.adopted_trial_balance import (
 )
 from app.services.fa_import_worker import process_fa_version
 from app.services.reconciliation import ReconciliationRejected
+from app.services.statutory_sublines import needs_statutory_subline, suggest_subline
 from app.services.source_storage import LocalPracticeStorage, get_source_storage
 from tests.conftest import auth_headers, make_access_token
 from tests.test_fa_ingestion import _csv_bytes
@@ -76,25 +77,40 @@ def stored_files(tmp_path: Path) -> Iterator[LocalPracticeStorage]:
     app.dependency_overrides.pop(get_source_storage, None)
 
 
-def test_golden_chart_translates_to_the_engine_map() -> None:
-    carried = {
-        code: engine_line_for_confirmed_mapping(_PRODUCT1[code], name)
-        for code, name, _debit, _credit in _TB
-    }
+def test_golden_chart_translates_once_the_subline_is_confirmed() -> None:
+    carried: dict[str, str] = {}
+    for code, name, _debit, _credit in _TB:
+        product1 = _PRODUCT1[code]
+        if needs_statutory_subline(product1):
+            hit = suggest_subline(product1, name)
+            assert hit is not None
+            assert hit.engine_line == _MAPPINGS[code]
+            with pytest.raises(ReconciliationRejected, match="needs a statutory sub-line"):
+                engine_line_for_confirmed_mapping(product1, name)
+            carried[code] = engine_line_for_confirmed_mapping(
+                product1, name, hit.engine_line
+            )
+        else:
+            carried[code] = engine_line_for_confirmed_mapping(product1, name)
     assert carried == _MAPPINGS
 
 
 def test_coarse_lines_without_one_statutory_home_are_refused() -> None:
     refused = (
-        ("loans", "Bank loan"),
-        ("operating_expenses", "Rent"),
         ("gross_profit", "Sales revenue"),
-        ("amortisation", "Amortisation charge"),
         ("unmapped", "Sundry"),
-        ("property_plant_equipment", "Sundry asset"),
     )
     for product1_line, account_name in refused:
         with pytest.raises(ReconciliationRejected, match="no single statutory line"):
+            engine_line_for_confirmed_mapping(product1_line, account_name)
+    needs_choice = (
+        ("loans", "Bank loan"),
+        ("operating_expenses", "Rent"),
+        ("amortisation", "Amortisation charge"),
+        ("property_plant_equipment", "Sundry asset"),
+    )
+    for product1_line, account_name in needs_choice:
+        with pytest.raises(ReconciliationRejected, match="needs a statutory sub-line"):
             engine_line_for_confirmed_mapping(product1_line, account_name)
 
 
@@ -151,6 +167,7 @@ def _insert_tb(
     period_end: date = date(2026, 12, 31),
     period_start: date | None = None,
     confirmed: bool = True,
+    confirm_sublines: bool = True,
 ) -> uuid.UUID:
     tb_id = uuid.uuid4()
     with SyncSessionLocal() as session:
@@ -174,6 +191,12 @@ def _insert_tb(
             )
         )
         for code, name, _debit, _credit, _net, line in rows:
+            statutory_line = None
+            if confirm_sublines:
+                if needs_statutory_subline(line):
+                    hit = suggest_subline(line, name)
+                    if hit is not None:
+                        statutory_line = hit.engine_line
             session.add(
                 AccountMapping(
                     company_id=company_id,
@@ -184,6 +207,7 @@ def _insert_tb(
                     method="manual",
                     is_confirmed=confirmed,
                     is_ignored=False,
+                    statutory_line=statutory_line,
                 )
             )
         session.commit()
@@ -476,20 +500,6 @@ async def test_adopt_refuses_incomplete_unconfirmed_and_other_company(
             ),
             {"status": "complete", "confirmed": False},
         ),
-        (
-            (
-                ("6100", "Rent", "25.00", "0.00", "25.00", "operating_expenses"),
-                (
-                    "3002",
-                    "Capital introduced",
-                    "0.00",
-                    "25.00",
-                    "-25.00",
-                    "share_capital",
-                ),
-            ),
-            {"status": "complete", "confirmed": True},
-        ),
     )
     for rows, options in same_period:
         tb_id = _insert_tb(
@@ -513,6 +523,38 @@ async def test_adopt_refuses_incomplete_unconfirmed_and_other_company(
         assert response.status_code == 400, response.text
         assert _pointer(year_end_id) is None
         _retire(tb_id)
+
+    # A confirmed chart that still needs a sub-line can be adopted. The
+    # draft opens; statement generation stays closed until the choice.
+    waiting = _insert_tb(
+        org_id=org_id,
+        company_id=company_id,
+        rows=(
+            ("6100", "Rent", "25.00", "0.00", "25.00", "operating_expenses"),
+            (
+                "3002",
+                "Capital introduced",
+                "0.00",
+                "25.00",
+                "-25.00",
+                "share_capital",
+            ),
+        ),
+        confirm_sublines=False,
+    )
+    listed = await api_client.get(
+        f"/year-ends/{year_end_id}/adoptable-trial-balances",
+        headers=headers,
+    )
+    assert listed.status_code == 200, listed.text
+    assert [item["id"] for item in listed.json()["items"]] == [str(waiting)]
+    _retire(waiting)
+    cleared = await api_client.get(
+        f"/year-ends/{year_end_id}/adoptable-trial-balances",
+        headers=headers,
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["items"] == []
 
     for tb_id, status in ((other_period, 400), (other_tb, 404), (uuid.uuid4(), 404)):
         response = await api_client.post(
@@ -1207,3 +1249,113 @@ async def test_adopted_draft_adjusts_discloses_notices_and_starts_a_new_report(
     assert refused.json()["detail"] == "Draft has no trial balance"
     assert _statutory_copy_counts(provisioned_org["org_id"], year_end_id) == (0, 0)
     assert _draft_count(year_end_id) == 2
+
+
+@pytest.mark.asyncio
+async def test_unresolved_subline_blocks_the_draft_until_confirmed(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """A generic name opens the draft and does not pick a statutory line."""
+    rows = (
+        ("6000", "Operating Expenses", "80.00", "0.00", "80.00", "operating_expenses"),
+        ("7100", "Amortisation charge", "20.00", "0.00", "20.00", "amortisation"),
+        ("3000", "Called up share capital", "0.00", "100.00", "-100.00", "share_capital"),
+    )
+    tb_id = _insert_tb(
+        org_id=provisioned_org["org_id"],
+        company_id=provisioned_org["company_id"],
+        rows=rows,
+        period_start=date(2026, 1, 1),
+        confirm_sublines=False,
+    )
+    headers = auth_headers(provisioned_org["token"])
+    opened = await api_client.post(
+        f"/trial-balances/{tb_id}/statutory-year-end",
+        headers=headers,
+        json={},
+    )
+    assert opened.status_code == 200, opened.text
+    year_end_id = opened.json()["year_end_id"]
+    by_code = {line["nominal_code"]: line for line in opened.json()["lines"]}
+    assert by_code["6000"]["canonical_line"] == ""
+    assert by_code["6000"]["suggested_line"] is None
+    assert by_code["7100"]["canonical_line"] == ""
+    assert by_code["7100"]["suggested_line"] == "AMORTISATION_CHARGE"
+    assert by_code["7100"]["suggestion_confidence"] == "0.40"
+    opened_gate = await api_client.post(
+        f"/year-ends/{year_end_id}/first-financial-period",
+        headers=headers,
+    )
+    assert opened_gate.status_code == 200, opened_gate.text
+    blocked = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
+        headers=headers,
+    )
+    assert blocked.status_code == 400, blocked.text
+    assert "needs a statutory sub-line" in blocked.json()["detail"]
+    review = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/sub-lines",
+        headers=headers,
+    )
+    assert review.status_code == 200, review.text
+    assert review.json()["blocked"] is True
+    refused = await api_client.post(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/sub-lines",
+        headers=headers,
+        json={
+            "lines": [
+                {
+                    "nominal_code": "6000",
+                    "account_name": "Operating Expenses",
+                    "statutory_line": "REVENUE",
+                }
+            ]
+        },
+    )
+    assert refused.status_code == 400, refused.text
+    confirmed = await api_client.post(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/sub-lines",
+        headers=headers,
+        json={
+            "lines": [
+                {
+                    "nominal_code": "6000",
+                    "account_name": "Operating Expenses",
+                    "statutory_line": "ADMIN_EXPENSES",
+                },
+                {
+                    "nominal_code": "7100",
+                    "account_name": "Amortisation charge",
+                    "statutory_line": "AMORTISATION_CHARGE",
+                },
+            ]
+        },
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["blocked"] is False
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
+        stored = session.execute(
+            text(
+                "SELECT canonical_line, statutory_line FROM account_mappings "
+                "WHERE company_id = :company AND source_code = '6000'"
+            ),
+            {"company": str(provisioned_org["company_id"])},
+        ).one()
+    assert stored[0] == "operating_expenses"
+    assert stored[1] == "ADMIN_EXPENSES"
+    statements = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
+        headers=headers,
+    )
+    assert statements.status_code == 200, statements.text
+    body = statements.json()
+    admin = next(
+        row
+        for row in body["income"]
+        if row["label"] == "Administrative expenses (including depreciation)"
+    )
+    assert admin["current"] == "-100.00"
+    assert body["profit"] == "-100.00"
+    assert all(row["label"] != "Amortisation charge" for row in body["income"])
