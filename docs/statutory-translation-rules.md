@@ -1,472 +1,530 @@
 # Statutory translation rules — proposal for review
 
-**Status: design only. Not accepted. Not implemented.** A name pattern
-suggests a sub-line. It does not lock one. An ambiguous name stays
-unmapped, and the accountant chooses on the statutory draft.
+**Status: design only. Not accepted. Not implemented.** No change to
+`engine_line_for_confirmed_mapping` until this is approved.
 
-Recorded 2 October 2026 for review before any change to
-`engine_line_for_confirmed_mapping`. This covers the seven Product 1 lines
-that have no single automatic statutory line: `property_plant_equipment`,
-`operating_expenses`, `loans`, `tax`,
-`depreciation`, `amortisation`, `intangible_assets`.
+Recorded 3 October 2026. This is the Phase 1 rule set for the seven Product 1
+lines that have no single statutory home: `property_plant_equipment`,
+`operating_expenses`, `loans`, `tax`, `depreciation`, `amortisation`,
+`intangible_assets`.
 
 The standard is FRS 102 (September 2024), Section 1A, the edition pinned by
-content pack `frs102-1a-ie/2024.09`. Irish small entities apply the formats
-in Part II of Schedule 3A to the Companies Act 2014 (FRS 102 footnotes to
-paragraphs 1A.12 and 1A.14). Paragraph numbers below are that edition.
-Wording here is a paraphrase. It is not a reproduction of the standard.
+content pack `frs102-1a-ie/2024.09`. Irish small entities take their formats
+from Part II of Schedule 3A to the Companies Act 2014 (FRS 102 1A.12 and
+1A.14). Paragraph numbers below are that edition. Wording here is a
+paraphrase, not a reproduction of the standard.
 
 ## What the statute actually requires
 
-The product presents the statutory small-company format, not the adapted
-minimum lists in paragraphs 1AA.3 and 1AB.3.
+Section 1A does not publish a closed list of trial-balance sub-accounts.
+It requires a format, and a movement note for each class the entity
+actually shows.
 
-- **1A.12.** The balance sheet follows Schedule 3A. On the face this product
-  already builds, tangible fixed assets are one line, **Tangible assets**,
-  and intangible assets are one line, **Intangible assets**.
-- **1A.14.** The profit and loss account follows Schedule 3A. This product
-  uses the function-of-expense format: turnover, cost of sales, distribution
-  costs, administrative expenses (the engine includes the depreciation
-  charge in that face line), other operating income, interest, and tax on
-  profit. Depreciation and amortisation are not face lines of their own.
+**Face formats this product already builds**
+
+- **1A.12 / Schedule 3A Part II balance sheet.** Tangible assets are one
+  face line. Intangible assets are one face line. Creditors are split only
+  by maturity: amounts falling due within one year, and amounts falling due
+  after more than one year. The engine's face follows that abridged format
+  (`findraft/content/frs102-1a-ie/2024.09/statements.py`).
+- **1A.14 / Schedule 3A Part II profit and loss, Format 1 (function).**
+  The face lines are turnover, cost of sales, distribution costs,
+  administrative expenses, other operating income, interest, and tax on
+  profit. Depreciation is not a Format 1 face line. The engine adds
+  `DEPRECIATION_CHARGE` into administrative expenses
+  (`findraft/engine/statements.py`). Format 2 (nature of expense) is the
+  format that has its own "depreciation and other amounts written off"
+  line. This product does not present Format 2.
+
+**What is a note, not a face line**
+
 - **1AD.13 and 1AD.14** (Schedule 3A, paragraphs 45(1) to 45(3)). For each
-  fixed-asset item shown on the face, or shown as its own class in the
-  notes, the notes give opening and closing cost, acquisitions, disposals,
-  transfers, and the opening, charge, disposal, and closing depreciation or
-  amortisation. The FRC note under 1AD.14 says an "item" is a class shown
-  separately on the face or in the notes. Section 1A does not prescribe the
-  class list.
-- **17.8.** Land and buildings are accounted for separately even when bought
-  together. That is a measurement rule. The engine has one combined line
-  for them.
-- **17.31.** Full FRS 102 asks for a movement by class of property, plant
-  and equipment. A Section 1A entity is not specifically required to give
-  the Section 8 to 35 disclosures (1A.17), except the movement Appendix D
-  already requires. Classes are whatever the entity shows.
-- **1AA.4(a) and (b).** Only if the entity adapts the balance-sheet format:
-  property, plant and equipment in classifications appropriate to that
-  entity, and goodwill shown apart from other intangible assets. This
-  product does not adapt the format, so those splits are not face lines.
+  fixed-asset item shown on the face or as its own class in the notes, the
+  notes give acquisitions, disposals, transfers, and the opening, charge,
+  disposal, and closing depreciation or amortisation. The FRC note under
+  1AD.14 treats an "item" as a class the entity shows. Section 1A does not
+  prescribe which classes those are. A Section 1A entity is not required to
+  give the Section 8 to 35 disclosures (1A.17), so paragraph 17.31's
+  class-movement disclosure is not an extra obligation here. The movement
+  that is obligatory is Appendix D.
+- **17.8.** Land and buildings are measured separately even when bought
+  together. The engine has one combined line, `FA_LAND_BUILDINGS`. This
+  proposal does not invent a split the engine cannot store.
 - **1AD.26** (Schedule 3A, paragraph 50(1)). For each creditor item, the
-  notes state the amount falling due after five years. That is a note
-  analysis. There is no fifth-year trial-balance line.
-- **1AA.3(o) and (p),** on an adapted balance sheet: current tax, and
-  deferred tax shown as non-current. The product's statutory format
-  already has a corporation-tax creditor inside amounts falling due within
-  one year, and a deferred-tax sign home.
+  notes give the amount repayable after five years, and the amount
+  repayable between one and five years. That is a maturity analysis of a
+  creditor already classified. It is not a fifth trial-balance line.
+  "After five years" still maps to the after-more-than-one-year line.
+- **1AD.5 to 1AD.7** (Schedule 3A paragraphs 24(2) and 25(4), and Companies
+  Act 2014 section 120(3) for the unrealised-loss case). Capitalised
+  development costs and goodwill need a write-off period and the reasons.
+  Those are disclosure facts. They are not extra engine lines.
+- **1AA.3 and 1AA.4** apply only when the entity adapts the statutory
+  formats. This product does not adapt them. Goodwill is not a separate
+  face line here, and current versus deferred tax is not taken from the
+  adapted-format list.
 
-The full Companies Act format (the longer Schedule 3 headings, before the
-small-company format collapses the Arabic-numeral lines) analyses tangible
-assets as land and buildings; plant and machinery; fixtures, fittings,
-tools and equipment; and payments on account and assets in the course of
-construction. **Motor vehicles are not one of those headings.** They are a
-class an entity may choose, and this engine already has a line for them.
-Office equipment is not a heading either. It can sit in "fixtures,
-fittings, tools and equipment" or in plant. That is why a generic
-"Office equipment" name gets no suggestion below, and the accountant
-chooses.
+**Full Schedule 3 headings, used only as the note-class vocabulary**
 
-## Rules that apply to every line
+Schedule 3A's abridged face collapses the Arabic-numeral lines. The longer
+Schedule 3 Format 1 headings are the conventional classes an Irish company
+may still show in the fixed-asset note. They are the source of the
+sub-lines below. They are not extra face lines.
 
-1. The accountant has already confirmed the Product 1 line. The rule reads
-   the account name only. Nominal-code ranges are not used. The Sage
-   defaults in `mapping-defaults.py` are not adopted: they send bare
-   "equipment" to plant and a bare "loan" to long-term.
-2. The only lines a suggestion or a dropdown may offer are engine lines
-   already in `statutory_lines()`. This proposal adds no lines.
-3. Matching is case-insensitive and on word boundaries, more specific
-   patterns first. A contra pattern wins over a cost pattern in the same
-   name.
-4. If two patterns point at different engine lines, there is no suggestion.
-   One account is not split.
-5. A pattern match is a suggestion. It is not written onto the draft until
-   the accountant confirms it. See the next section.
+Tangible assets (Schedule 3 Format 1, item B.II):
 
-In the seven sections below, "suggests" means a pre-filled dropdown and a
-confidence score. "Needs review" means the row stays empty. Neither one
-locks a classification, and neither one stops the draft with no way to
-choose.
+1. Land and buildings
+2. Plant and machinery
+3. Fixtures, fittings, tools and equipment
+4. Payments on account and assets in the course of construction
 
-## Suggest, ask, remember
+Intangible assets (Schedule 3 Format 1, item B.I):
 
-This follows the human-confirms pattern Product 1 already uses. A
-suggestion is shown with its confidence. The accountant picks the line.
-The choice is stored for that company and offered again next time. Nothing
-in that chain is silent.
+1. Development costs
+2. Concessions, patents, licences, trade marks and similar rights
+3. Goodwill
+4. Payments on account
 
-The scale is the one the mapping screen already shows. Product 1 stores
-confidence as a fraction from 0 to 1. The statutory suggester uses an
-integer score and divides by 100 before display, so 79 is shown as 0.79.
-A heuristic stays below the pre-select threshold of 0.80. A score of 1.00
-is only a human confirmation. That cap already applies to
-`suggest_statutory_mapping`.
+**Motor vehicles are not one of those headings.** They are a class an
+entity may choose. This engine already stores that class as
+`FA_MOTOR_COST`. Office equipment and computer equipment are not headings
+either. They can sit in fixtures or in plant. That choice is the
+accountant's.
 
-**A confident name is a suggestion.** "Motor Vehicles - Cost" on
-`property_plant_equipment` suggests `FA_MOTOR_COST`, with a confidence
-below 0.80 and the method recorded as the name pattern. The statutory
-draft pre-fills that line in the dropdown, the same way Product 1
-pre-fills a suggested canonical line. The accountant can change it before
-confirming. The statements do not use it until then.
+Profit and loss Format 1 has two function lines under gross profit:
+distribution costs, and administrative expenses. There is no statutory
+"operating expenses" line, and no statutory "other expenses" catch-all on
+this format.
 
-**An ambiguous name stays unmapped.** "Fixed Assets - Office Equipment"
-and "Operating Expenses" get no suggestion and no confidence. The row is
-needs-review, which is how Product 1 already treats a row whose suggestion
-is `unmapped`. The continuation does not abort with "has no single
-statutory line". That error is the current dead end: adoption runs
-`engine_line_for_confirmed_mapping` and stops the whole draft on the first
-miss, and the continuation screen only shows the error text.
+## How a name is matched
 
-**The draft offers a dropdown.** Each needs-review row, and each suggested
-row, has a dropdown of the engine lines listed for that Product 1 line in
-this document. Office equipment can be set to fixtures or to plant by the
-accountant. Operating expenses can be set to distribution costs or to
-administrative expenses. The dropdown is those homes, not the whole chart,
-because the Product 1 line is already confirmed and a fixed-asset account
-should not be offered Revenue. The native statutory upload screen already
-has a dropdown and a confidence badge; that screen lists every engine
-line because it has no Product 1 line to narrow it. This review is the
-same control, narrowed to the homes for the line being resolved.
+This uses the matcher already in `findraft/engine/mapping.py`
+(`_keyword_score`) and `backend/app/services/mapper.py` (`_keyword_score`),
+not the leading-only helper `_token` in `adopted_trial_balance.py`.
 
-The draft is not built until every one of these rows has a selection. That
-is the same gate as Product 1's mapping review: choose a line for every
-row, then confirm.
+1. Case-fold the name and collapse internal whitespace.
+2. A phrase matches only with a word boundary on both sides:
+   `\b` + phrase + `\b`. "rent" does not match "current". "motor" does not
+   match "motorway". "land" does not match "landlord". "plant" does not
+   match "plantation". "sales" does not match inside "cost of sales".
+3. Longer phrases are tested before shorter ones.
+4. An exclusion is tested before the phrase may fire. Exclusions are the
+   same idea as the three FinDraft exclusion sets already in the mapper:
+   liability and director words never suggest cash, tax words never suggest
+   cash, and profit-and-loss wording never suggests a balance-sheet line
+   (`findraft_excluded_lines`). The tables below add the collisions that
+   matter inside each of these seven lines.
+5. A contra phrase (accumulated, provision for, brought forward) beats a
+   cost phrase in the same name.
+6. If two phrases that are not in that precedence still point at different
+   engine lines, there is no suggestion. One account is not split.
+7. Nominal codes are not used. The Sage ranges and the long-term loan
+   default in `mapping-defaults.py` are not adopted. That file sends bare
+   "equipment" and "computer equipment" to plant, bare "motor" to motor
+   vehicles, bare "depreciation" to the charge, and bare "loan" and
+   "hire purchase" to long-term. Those are the guesses this design refuses.
 
-**A confirmed choice is remembered for that company.** Product 1 stores a
-confirmed mapping on `account_mappings`, unique on company, account code,
-and account name. The next file for that company is pre-filled from that
-row at confidence 1.00. The statutory upload path already does the
-equivalent for an engine line: `findraft_confirmed_mappings` for that
-company, and the next import suggests the same code and name at score 100.
-A manual sub-line choice is stored the same way, as an engine line. It
-does not replace the Product 1 canonical line. `property_plant_equipment`
-stays `property_plant_equipment` on `account_mappings`. Next period the
-same code and name come back pre-filled at 1.00, still visible, still
-changeable, and still confirmed again with the rest of the draft. A
-remembered choice is not a silent lock.
+**Scores.** The integer scale is the engine scale. A heuristic is capped
+at 79, one below the pre-select threshold of 80, which is what
+`suggest_mapping` already does. The screen shows that integer divided by
+100, so 40 is 0.40. A score of 100 is only a human confirmation of the
+same company, code, and name. Nothing in these tables is an auto-confirm.
+
+| Score | When |
+| --- | --- |
+| 100 | The accountant has already confirmed this engine line for this company, code, and name. |
+| 40 | A multi-word phrase that names one engine line, and no exclusion fires. |
+| 35 | One class word that names one engine line, and no exclusion fires. |
+| 0 | No suggestion. The row stays empty. |
+
+A suggestion pre-fills the dropdown. It does not post. The accountant can
+change it. Statements do not use it until they confirm it.
+
+## Suggest, ask, remember, then stop
+
+Product 1 has already confirmed the canonical line. This step only chooses
+the engine sub-line.
+
+- **Suggest** where one phrase scores 35 or 40. Pre-fill the dropdown.
+  Show the score. Leave it changeable.
+- **Needs review** where the score is 0. The row is empty. There is no
+  confidence. The continuation does not abort with "has no single statutory
+  line". That message is today's dead end.
+- **Dropdown** on the statutory draft, for every one of these rows,
+  suggested or empty. The options are only the engine lines listed for
+  that Product 1 line in this document. A fixed-asset account is not
+  offered Revenue. The native statutory upload screen already lists every
+  engine line, because that screen has no Product 1 line to narrow it.
+  This review is the same control, narrowed.
+- **Remember** a confirmed choice as an engine line for that company,
+  code, and name, the same way Product 1 remembers a confirmed mapping and
+  the same way `findraft_confirmed_mappings` returns a prior exact engine
+  line at 100. It does not replace the Product 1 canonical line.
+  `property_plant_equipment` stays `property_plant_equipment` on
+  `account_mappings`. Next time the same code and name come back at 100,
+  still visible and still changeable.
+- **Block** when, after that review, a row still has no selection. The
+  draft is not built. No default is substituted. An empty row is not
+  dropped into administrative expenses, plant, long-term loans, or the
+  depreciation charge. This is the same gate as Product 1's mapping
+  review: every row is resolved, or export does not proceed.
 
 The 23 Product 1 lines that already have one statutory home for every name
-stay direct. There is nothing to ask. This review is the seven lines in
-this document.
+stay direct. There is nothing to ask.
 
-One limit remains. The dropdown cannot offer a line the engine does not
-have. An amortisation charge still has no profit-and-loss line of its own,
-so the accountant cannot place that charge correctly until that line
-exists. Accumulated amortisation can be chosen. Office equipment can be
-chosen onto fixtures or plant. The missing charge line is a missing home,
-not a hidden guess.
+One limit is not a dropdown problem. Where the engine has no honest line,
+the dropdown must not offer a wrong one. The amortisation charge is that
+case. The row stays unresolved and the draft stays blocked, with the
+reason on the row. That is a fail-closed stop, not a guess.
 
 ## 1. `property_plant_equipment`
 
-**Face.** One line, Tangible assets, which is the sum of the engine's
-tangible lines. The note classes below are the lines the engine can hold.
-They are not a statutory closed list.
+**What exists**
 
-| Engine line | What it is |
+The face line is Tangible assets, the sum of the engine's tangible lines.
+The note classes the engine can hold are:
+
+| Engine line | Statutory class it can represent |
 | --- | --- |
-| `FA_LAND_BUILDINGS` | Land and buildings, one combined line. Paragraph 17.8 wants land and buildings separable; this engine cannot do that. |
-| `FA_PLANT_COST` | Plant and machinery. |
-| `FA_FIXTURES_COST` | Fixtures and fittings. |
-| `FA_MOTOR_COST` | Motor vehicles, an entity class this engine already stores. Not a Schedule 3 heading. |
-| `FA_ACCUM_DEP` | The only accumulated-depreciation line. It is pooled across those classes. |
-| `ROU_ASSETS` | A right-of-use asset (Section 20). Only when the name says so. |
+| `FA_LAND_BUILDINGS` | Schedule 3 Format 1 "land and buildings", combined. Paragraph 17.8 wants them separable. This engine cannot split them. |
+| `FA_PLANT_COST` | Schedule 3 Format 1 "plant and machinery". |
+| `FA_FIXTURES_COST` | Schedule 3 Format 1 "fixtures, fittings, tools and equipment". |
+| `FA_MOTOR_COST` | Motor vehicles, an entity class. Not a Schedule 3 Arabic heading. |
+| `FA_ACCUM_DEP` | The only accumulated-depreciation line. Pooled across those classes. The note cannot split it by class from this mapping. |
+| `ROU_ASSETS` | Right-of-use asset (Section 20), only when the name says so. |
 
-**Suggested cost names**
+Payments on account and assets in the course of construction have no
+engine line. Leasehold is not treated as land, and it is not treated as a
+right-of-use asset, unless the name says right-of-use.
 
-- Land and buildings, freehold land, freehold buildings, freehold property,
-  premises → `FA_LAND_BUILDINGS`.
-- Plant, machinery, plant and machinery → `FA_PLANT_COST`.
-- Fixtures, fittings, furniture, office furniture → `FA_FIXTURES_COST`.
-- Motor vehicles, motor vans, vans, lorries, trucks → `FA_MOTOR_COST`.
-  The word "motor" on its own does not match.
-- Right-of-use asset, right of use asset → `ROU_ASSETS`.
+**Suggestions**
 
-**Accumulated depreciation**
+| Phrase (both-side word boundary) | Line | Score | Does not fire when |
+| --- | --- | --- | --- |
+| accumulated depreciation; provision for depreciation; depreciation brought forward | `FA_ACCUM_DEP` | 40 | the name also matches an amortisation word (that row is not this Product 1 line) |
+| land and buildings; freehold land; freehold property; freehold buildings | `FA_LAND_BUILDINGS` | 40 | the name contains leasehold, investment property, or right-of-use |
+| land; buildings; premises | `FA_LAND_BUILDINGS` | 35 | leasehold, investment property, right-of-use, or landlord |
+| plant and machinery | `FA_PLANT_COST` | 40 | — |
+| plant; machinery | `FA_PLANT_COST` | 35 | the name is office equipment, computer equipment, or equipment on its own |
+| fixtures and fittings; fixtures, fittings | `FA_FIXTURES_COST` | 40 | — |
+| fixtures; fittings; furniture | `FA_FIXTURES_COST` | 35 | — |
+| motor vehicles; motor vans | `FA_MOTOR_COST` | 40 | the name also contains expense, expenses, running, repairs, fuel, or insurance |
+| vans; lorries; trucks | `FA_MOTOR_COST` | 35 | the same expense words |
+| right-of-use asset; right of use asset | `ROU_ASSETS` | 40 | — |
 
-Any name that says accumulated depreciation, provision for depreciation,
-or depreciation brought forward → `FA_ACCUM_DEP`, including when the name
-also names a class ("Accumulated depreciation - motor vehicles"). The face
-has one contra line, so the class is not stored. The fixed-asset note
-cannot then show that class's own depreciation movement (1AD.14) from this
-mapping alone. Confirm this pooling before it is built. A right-of-use
-accumulated-depreciation name gets no suggestion: there is no right-of-use
-contra line. The accountant can still pick one of the tangible lines below.
+"Motor" on its own does not match. "Equipment" does not match. "Property"
+on its own does not match.
 
-**Needs review**
+**Needs review — dropdown is the six lines in the table**
 
-These names get an empty row. The dropdown is the six lines in the table
-above.
+Fixed assets. Tangible assets. Office equipment. Computer equipment.
+Equipment. Assets under construction. Payments on account. Leasehold.
+Leasehold improvements. Investment property (that name is not a tangible
+class; the Product 1 line itself may be wrong, and this dropdown must not
+silently send it to land). Any name where two of the phrases above point
+at different lines.
 
-- Fixed assets, tangible assets, PPE, property, sundry assets, additions,
-  disposals, capital expenditure.
-- Office equipment, equipment, computer equipment, IT equipment. Computer
-  equipment has its own life in the product's tangible-asset policy and no
-  engine line. Folding it into plant would be a guess. Office equipment is
-  the worked example: fixtures and plant are both defensible, so the
-  accountant chooses.
-- Assets under construction, assets in course of construction, payments on
-  account. Those are a full-format heading with no engine line.
-- Leasehold, leasehold property, leasehold improvements. Leasehold can be
-  a right-of-use asset or, for improvements, fixtures or buildings.
-- Investment property. That is a different engine line, and the confirmed
-  Product 1 line says tangible assets. It is not offered in this dropdown.
-  The accountant changes the Product 1 mapping, which is already remembered
-  for that company.
+A class-named accumulated depreciation ("Accumulated depreciation - motor
+vehicles") still suggests `FA_ACCUM_DEP` at 40. The class is not stored.
+The confirmation screen should say that the note cannot analyse that pool
+by class.
 
 ## 2. `operating_expenses`
 
-**Face.** Two function lines, and no further statutory analysis:
+**What exists**
 
-| Engine line | Face label |
+Format 1 has two homes, and the engine has both:
+
+| Engine line | Face line |
 | --- | --- |
 | `DISTRIBUTION_COSTS` | Distribution costs |
-| `ADMIN_EXPENSES` | Administrative expenses (the depreciation charge is added on the face by the engine; it is not chosen here) |
+| `ADMIN_EXPENSES` | Administrative expenses |
 
-Rent, rates, wages, insurance and the rest are not statutory lines. They
-are components of one of those two functions. The standard does not assign
-them. A name is suggested only when it states the function, or when it is
-an establishment or administration cost with no credible distribution
-reading. The accountant confirms or changes it.
-Cost of sales, interest, tax, and depreciation stay on their own Product 1
-lines and are not reclassified here.
+There is no third statutory bucket. "Operating expenses", "overheads", and
+"other expenses" are not Format 1 lines.
 
-**Suggested administrative expenses**
+**Suggestions**
 
-Rent, rates, service charges, insurance, light and heat, electricity, gas,
-heating, telephone, broadband, postage, stationery, printing, accountancy,
-audit, legal fees, professional fees, bank charges, bank fees,
-subscriptions. Also a name that itself says administrative,
-administration, office salaries, or admin wages.
+| Phrase | Line | Score | Does not fire when |
+| --- | --- | --- | --- |
+| distribution costs; carriage outwards; sales commission; sales wages | `DISTRIBUTION_COSTS` | 40 | the name contains inwards or inward (carriage inwards is cost of sales, not this line) |
+| distribution; selling; delivery | `DISTRIBUTION_COSTS` | 35 | inwards, or the name is "selling" only as part of a fixed-asset phrase |
+| administrative expenses; administration expenses | `ADMIN_EXPENSES` | 40 | — |
+| rent and rates; light and heat; professional fees; accountancy fees; audit fees; bank charges | `ADMIN_EXPENSES` | 40 | the name contains income, receivable, or received (rental income is not this expense) |
+| rent; rates; insurance; telephone; stationery; accountancy; audit; legal; subscriptions | `ADMIN_EXPENSES` | 35 | income, receivable, received, or the word administrator (an insolvency office, not this expense) |
+| advertising; marketing | `DISTRIBUTION_COSTS` | 35 | the name contains wages or salaries (a marketing wage is still a wage; leave it empty) |
 
-**Suggested distribution costs**
+"Admin" matches only as the whole word, or as administrative /
+administration. It does not match administrator.
 
-Distribution, selling, sales commission, carriage outwards, freight
-outwards, delivery costs, sales wages, selling wages, delivery wages.
+**Needs review — dropdown is the two lines above**
 
-**Please confirm — advertising and marketing**
+Operating expenses. Overheads. General expenses. Sundry expenses. Wages,
+salaries, payroll, staff costs, employers' PRSI, and pension contributions,
+unless the name itself contains administrative or selling or distribution.
+Motor expenses. Motor running. Travel. Repairs. Repairs and maintenance.
+Office expenses. Hire, when the name does not say hire purchase (hire
+purchase is not an operating expense; if it has been confirmed on this
+Product 1 line, the row stays empty rather than being called
+administrative). Any name that matches both a distribution phrase and an
+administrative phrase.
 
-Proposed home: `DISTRIBUTION_COSTS`, as the selling function on a Format 1
-profit and loss account. Some charts book advertising in administrative
-expenses. Until that is confirmed, these names are needs-review, not a
-suggestion.
+Today's code treats "overhead" as administrative expenses. This proposal
+stops that.
 
-**Needs review**
-
-The dropdown is the two lines in the table above.
-
-- Operating expenses, overheads, general expenses, sundry expenses,
-  miscellaneous, other expenses. "Overheads" gets no suggestion on purpose.
-  The current code treats it as administrative expenses.
-- Wages, salaries, payroll, staff costs, employers' PRSI, pension
-  contributions, unless the name itself says administrative or selling.
-- Motor expenses, motor running, travel, repairs, repairs and maintenance.
-- Office expenses.
+Advertising is the judgment in this table. It is proposed as distribution
+because Format 1 puts selling costs there. If that is not accepted, the
+phrase is removed and advertising stays empty. It is not proposed as a
+silent default.
 
 ## 3. `loans`
 
-**Face.** Maturity, not lender:
+**What exists**
+
+Schedule 3A classifies creditors by maturity, not by lender. 1AD.26 then
+analyses the longer portion. The engine lines are:
 
 | Engine line | Where it sits |
 | --- | --- |
 | `LOANS_LT1Y` | Creditors falling due within one year |
 | `LOANS_GT1Y` | Creditors falling due after more than one year |
 | `BANK_OVERDRAFT` | Its own line inside creditors falling due within one year |
-| `DIRECTOR_LOAN` | Not borrowings. Sign sends it to other debtors or other creditors. Directors' advances are the 1AD.41 to 1AD.45 disclosure. |
-| `LEASE_LIABILITY_LT1Y` / `LEASE_LIABILITY_GT1Y` | Section 20 lease liabilities, including hire purchase under the September 2024 lease section |
+| `DIRECTOR_LOAN` | Not borrowings. Sign sends a debit to other debtors and a credit to other creditors. Directors' advances are the 1AD.41 to 1AD.45 disclosure. |
+| `LEASE_LIABILITY_LT1Y` / `LEASE_LIABILITY_GT1Y` | Section 20 lease liabilities. Hire purchase is in that lease section from the September 2024 amendments. |
 
-A name that says repayable after five years suggests `LOANS_GT1Y`.
-The five-year amount is the 1AD.26 note, not a translation target.
+A name that says repayable after five years suggests `LOANS_GT1Y` only.
+The five-year split stays in the note.
 
-**Suggested**
+**Suggestions**
 
-- Overdraft → `BANK_OVERDRAFT`.
-- Director's loan, directors' loan, director loan, director current
-  account → `DIRECTOR_LOAN`.
-- A loan or borrowing whose name states "within one year", "less than one
-  year", or "short-term" → `LOANS_LT1Y`.
-- A loan or borrowing whose name states "after more than one year", "more
-  than one year", "non-current", or "long-term" → `LOANS_GT1Y`.
-- Finance lease, lease liability, or hire purchase, and the name also
-  states one of those maturity phrases → the matching lease-liability line.
+| Phrase | Line | Score | Does not fire when |
+| --- | --- | --- | --- |
+| bank overdraft; overdraft | `BANK_OVERDRAFT` | 40 | — |
+| director's loan; directors' loan; director loan; directors loan; director current account; directors current account | `DIRECTOR_LOAN` | 40 | — |
+| within one year; less than one year; less than 1 year; short-term; short term | `LOANS_LT1Y` | 40 | the name is a director loan (already matched), or the name says lease, hire purchase, or finance lease (those use the lease lines below) |
+| after more than one year; more than one year; more than 1 year; non-current; non current; long-term; long term; after five years; after 5 years | `LOANS_GT1Y` | 40 | the same director-loan and lease exceptions |
+| finance lease / hire purchase / lease liability, together with a within-one-year phrase | `LEASE_LIABILITY_LT1Y` | 40 | the name says leasehold, right-of-use, or ROU asset (those are assets, not the liability) |
+| finance lease / hire purchase / lease liability, together with an after-more-than-one-year phrase | `LEASE_LIABILITY_GT1Y` | 40 | the same asset words |
 
-**Needs review**
+The maturity phrase is required for a loan that is not an overdraft and
+not a director loan. "Current" on its own is not a maturity phrase. It can
+mean a current account.
 
-The dropdown is the lines in the table above. Loan, bank loan, mortgage,
-borrowings, hire purchase, finance lease, lease liability, invoice
-finance, intercompany loan, and loan account get no suggestion whenever
-the name does not state the maturity. "Current" on its own is not a
-maturity: it can mean a current account. There is no default to long-term.
-The accountant picks the maturity, the overdraft line, the director-loan
-line, or a lease liability.
+**Needs review — dropdown is the six lines in the table**
+
+Loan. Bank loan. Mortgage. Borrowings. Loan account. Intercompany loan.
+Invoice finance. Hire purchase. Finance lease. Lease liability. Any of
+those without a maturity phrase. There is no long-term default. The pack
+file's bare "loan" → `LOANS_GT1Y` and bare "hire purchase" → `LOANS_GT1Y`
+are not used.
 
 ## 4. `tax`
 
-**Homes**
+**What exists**
+
+Format 1 has one profit-and-loss line, tax on profit. The balance sheet
+then has to separate what is actually a creditor or a debtor. The engine
+lines are:
 
 | Engine line | What it is |
 | --- | --- |
-| `TAX_CHARGE` | Tax expense on the profit and loss account, including a deferred-tax charge |
+| `TAX_CHARGE` | The profit-and-loss tax line, including a deferred-tax charge |
 | `CORP_TAX` | Corporation-tax creditor, inside creditors falling due within one year |
 | `DEFERRED_TAX` | Deferred tax. Sign splits the asset and the non-current liability |
-| `VAT_CONTROL` | VAT. Sign splits the asset and the creditor. Not corporation tax |
-| `PAYE_PRSI` | PAYE, PRSI, USC. Not corporation tax |
+| `VAT_CONTROL` | VAT. Sign splits the asset and the creditor. Not tax on profit |
+| `PAYE_PRSI` | PAYE, PRSI, USC. Not tax on profit |
 
-**Suggested, in this order**
+**Suggestions, first match wins**
 
-1. VAT or value added tax → `VAT_CONTROL`, even if the name also says
-   payable.
-2. PAYE, PRSI, or USC → `PAYE_PRSI`, even if the name also says payable.
-3. Deferred tax charge, or deferred tax expense → `TAX_CHARGE`.
-4. Deferred tax, deferred tax asset, deferred tax liability, or deferred
-   tax provision, with no charge or expense word → `DEFERRED_TAX`.
-5. Corporation tax charge, corporation tax expense, corp tax charge, tax
-   charge, tax expense → `TAX_CHARGE`.
-6. Corporation tax payable, corporation tax creditor, corporation tax
-   liability, or corporation tax provision → `CORP_TAX`.
+| Order | Phrase | Line | Score | Does not fire when |
+| --- | --- | --- | --- | --- |
+| 1 | vat; value added tax | `VAT_CONTROL` | 40 | — including when the name also says payable, recoverable, or receivable |
+| 2 | paye; prsi; usc | `PAYE_PRSI` | 40 | — including when the name also says payable |
+| 3 | deferred tax charge; deferred tax expense | `TAX_CHARGE` | 40 | — |
+| 4 | deferred tax | `DEFERRED_TAX` | 35 | the name says charge or expense (order 3 already took those) |
+| 5 | corporation tax charge; corporation tax expense; corp tax charge; tax charge; tax expense | `TAX_CHARGE` | 40 | the name says vat, paye, prsi, or usc |
+| 6 | corporation tax payable; corporation tax creditor; corporation tax liability; corporation tax provision; corp tax payable | `CORP_TAX` | 40 | the name says vat, paye, prsi, or usc |
 
-**Needs review**
+"Payable" does not by itself select corporation tax. That is the collision
+in today's `_tax`: a VAT account named "VAT payable" can be sent to
+`CORP_TAX`. Order 1 stops that.
 
-The dropdown is the five lines in the table above. Tax, taxation,
-corporation tax, and corp tax get no suggestion when the name does not say
-whether it is the charge or the creditor. Income tax gets no suggestion: it
-may be a misnamed corporation-tax account or a different withholding. The
-accountant chooses.
+**Needs review — dropdown is the five lines above**
+
+Tax. Taxation. Corporation tax. Corp tax. Income tax. Any of those without
+a charge word or a creditor word. Income tax is left empty because it may
+be a misnamed corporation-tax account or a withholding, and those are
+different lines.
 
 ## 5. `depreciation`
 
-**Presentation.** The charge is `DEPRECIATION_CHARGE`. The income statement
-adds it into administrative expenses and does not show it as its own face
-line. The contra is `FA_ACCUM_DEP`, inside Tangible assets. The note's
-period charge (1AD.14) is the charge line; the cumulative amount is the
-contra. A name has to say which of the two it is.
+**What exists**
 
-**Suggested**
+The charge is `DEPRECIATION_CHARGE`. The income statement adds it into
+administrative expenses and does not show it on its own. The contra is
+`FA_ACCUM_DEP`, inside Tangible assets. 1AD.14's period charge is the
+charge line. The cumulative amount is the contra. The name has to say
+which of the two it is.
 
-- Accumulated depreciation, provision for depreciation, depreciation
-  brought forward → `FA_ACCUM_DEP`.
-- Depreciation charge, depreciation expense, charge for depreciation,
-  depreciation for the year → `DEPRECIATION_CHARGE`. A right-of-use
-  depreciation charge suggests the same profit-and-loss line. Right-of-use
-  accumulated depreciation gets no suggestion, as under tangible assets.
+**Suggestions**
 
-**Needs review**
+| Phrase | Line | Score | Does not fire when |
+| --- | --- | --- | --- |
+| accumulated depreciation; provision for depreciation; depreciation brought forward; depreciation b/fwd | `FA_ACCUM_DEP` | 40 | the name matches amortisation (that is the next section) |
+| depreciation charge; depreciation expense; charge for depreciation; depreciation for the year | `DEPRECIATION_CHARGE` | 40 | the name matches amortisation |
 
-The dropdown is `DEPRECIATION_CHARGE` and `FA_ACCUM_DEP`. Depreciation,
-depn, and "Depreciation - motor vehicles" or any other class-named
-depreciation that does not say accumulated, provision, charge, or expense
-stay empty until the accountant picks one. A name that says amortisation
-is not offered a tangible line here; it belongs on the amortisation
-review.
+A right-of-use depreciation charge suggests `DEPRECIATION_CHARGE` at 40,
+because that is the only depreciation charge line. Right-of-use
+accumulated depreciation gets no suggestion: `FA_ACCUM_DEP` is the tangible
+pool, and there is no right-of-use accumulated-depreciation line.
 
-The current code treats the bare word "depreciation" as the charge. This
-proposal stops that.
+**Needs review — dropdown is `DEPRECIATION_CHARGE` and `FA_ACCUM_DEP`**
+
+Depreciation. Depn. "Depreciation - motor vehicles", and any other
+class-named depreciation that does not say accumulated, provision, charge,
+expense, or for the year.
+
+The abbreviation "acc" on its own does not match. It collides with
+account and accrued. "a/dep" matches the contra only when the name also
+contains depreciation or depn.
+
+Today's code treats the bare word "depreciation" as the charge, because
+`_token(name, "depreciation")` is true for every depreciation account.
+This proposal stops that.
 
 ## 6. `amortisation`
 
-**Presentation.** Format 1 has no amortisation line. The charge belongs in
-administrative expenses, and the cumulative amount belongs in the
-intangible movement (1AD.13 and 1AD.14, the same movement Appendix D
-points at for goodwill and other intangibles).
+**What exists**
+
+Format 1 has no amortisation line. The charge belongs in administrative
+expenses, and the cumulative amount belongs in the intangible movement
+(1AD.13 and 1AD.14, the same movement used for goodwill and other
+intangibles, 1AD.5 to 1AD.7).
 
 The engine has `FA_INTANGIBLE_AMORT` for the contra. It has no
-amortisation-charge line. `DEPRECIATION_CHARGE` is the tangible charge. Using
-it for amortisation would put the amount inside administrative expenses and
+amortisation-charge line. `DEPRECIATION_CHARGE` is the tangible charge.
+Using it here would put the amount inside administrative expenses and
 would also make the tangible depreciation figure wrong for the note.
 
-**Suggested**
+**Suggestions**
 
-Accumulated amortisation, provision for amortisation, amortisation brought
-forward → `FA_INTANGIBLE_AMORT`, including when the name also says
-goodwill or software.
+| Phrase | Line | Score | Does not fire when |
+| --- | --- | --- | --- |
+| accumulated amortisation; accumulated amortization; provision for amortisation; provision for amortization; amortisation brought forward | `FA_INTANGIBLE_AMORT` | 40 | — including when the name also says goodwill or software |
 
-**Needs review**
+Match amortisation, amortization, amortised, amortized, and unamortised as
+whole words. Do not use a bare "amort" prefix. The leading-only form is
+how unrelated words get pulled in.
 
-Amortisation, amortisation charge, amortisation expense, amortisation of
-goodwill, amortisation of software. The only line the dropdown can offer
-today is `FA_INTANGIBLE_AMORT`, which is the contra, not the charge. The
-profit-and-loss charge still has no line that hits administrative expenses
-and stays identifiable as intangible amortisation. This proposal does not
-borrow `DEPRECIATION_CHARGE`. That charge remains the one case with no
-honest choice until a line exists.
+**Needs review — and the dropdown must not invent a charge line**
+
+Amortisation. Amortisation charge. Amortisation expense. Amortisation of
+goodwill. Amortisation of software. The only engine line available is the
+contra, which is the wrong home for a charge. The dropdown does not offer
+`DEPRECIATION_CHARGE` and does not offer `FA_INTANGIBLE_AMORT` as a
+pretend charge. The row cannot be confirmed. The draft stays blocked, and
+the row says the engine has no amortisation charge line.
+
+That is the fail-closed case. A path forward exists for every other
+ambiguous name in this document, because an honest line exists. It does
+not exist here until a charge line exists.
 
 ## 7. `intangible_assets`
 
-**Face.** One line, Intangible assets: cost less accumulated amortisation.
+**What exists**
+
+The face line is Intangible assets: cost less accumulated amortisation.
 The engine has `FA_INTANGIBLE_COST` and `FA_INTANGIBLE_AMORT` only. It does
-not split goodwill (Section 19) from other intangibles (Section 18). Extra
-wording for capitalised development costs and for goodwill (1AD.5 to
-1AD.7) is a disclosure fact, not a second trial-balance line.
+not split goodwill (Section 19) from other intangibles (Section 18). The
+Schedule 3 Format 1 headings (development costs, concessions and similar
+rights, goodwill, payments on account) share one cost line, because there
+is no second cost line to choose. 1AD.5 to 1AD.7 remain disclosure facts,
+not extra lines.
 
-The full-format intangible headings are development costs; concessions,
-patents, licences, trade marks and similar rights; goodwill; and payments
-on account. On this engine they share one cost line, because the face line
-is the same and there is no second cost line to choose.
+**Suggestions**
 
-**Suggested cost → `FA_INTANGIBLE_COST`**
+| Phrase | Line | Score | Does not fire when |
+| --- | --- | --- | --- |
+| the accumulated-amortisation phrases in section 6 | `FA_INTANGIBLE_AMORT` | 40 | — |
+| development costs; development expenditure | `FA_INTANGIBLE_COST` | 40 | business development, staff development, or training |
+| goodwill; patents; trade marks; trademarks; concessions | `FA_INTANGIBLE_COST` | 40 | the name says accumulated or provision for amortisation |
+| licences; licenses | `FA_INTANGIBLE_COST` | 35 | fee, fees, subscription, or annual (a licence fee is not this asset) |
+| computer software; software | `FA_INTANGIBLE_COST` | 35 | subscription |
 
-Goodwill. Patents, trade marks, trademarks, licences, licenses,
-concessions. Development costs or development expenditure. Computer
-software or software, unless the name says subscription. A name that says
-cost together with intangible, goodwill, software, or patent.
+**Needs review — dropdown is `FA_INTANGIBLE_COST` and `FA_INTANGIBLE_AMORT`**
 
-**Suggested contra → `FA_INTANGIBLE_AMORT`**
+Intangible assets. Intangibles. Website. Software subscription. Payments
+on account. A licence fee. Any amortisation name that does not say
+accumulated or provision. "Intangible assets" can be a net-book-value
+account, so it is not suggested as cost. Website costs are often an
+expense, so the name is not suggested as an asset. The accountant picks
+cost or accumulated amortisation. If neither is honest, they leave the row
+empty and the draft stays blocked.
 
-The accumulated-amortisation names in section 6.
+## What stays blocked
 
-**Needs review**
+The draft is not generated while any of these is true:
 
-The dropdown is `FA_INTANGIBLE_COST` and `FA_INTANGIBLE_AMORT`. Intangible
-assets, intangibles, website, software subscription, payments on account,
-and any amortisation name that does not say accumulated or provision stay
-empty. "Intangible assets" can be a net-book-value account. Website costs
-are often an expense, so the name is not suggested as an intangible cost.
-The accountant picks cost or accumulated amortisation.
+- A row on one of these seven lines has no selected engine line.
+- Two phrases disagreed, and the accountant has not picked one.
+- An amortisation charge is still present, because no honest line exists.
+- The selected line is not one of the lines listed for that Product 1 line.
+
+The draft is never completed by substituting plant, administrative
+expenses, long-term loans, corporation tax, or the depreciation charge.
+An ignored Product 1 row stays out, as it does today. An unconfirmed
+Product 1 row still blocks, as it does today.
 
 ## What this changes from today's refuser
 
 Today a miss aborts the whole continuation with "has no single statutory
-line". Under this proposal that miss opens a review row. A confident name
-is pre-filled below 0.80. An ambiguous name is empty. The accountant
-picks, confirms, and the choice is remembered for that company.
+line". Under this proposal that miss opens a review row, except the
+amortisation charge, which stays blocked because the missing line is real.
 
-The name lists, if accepted, change only what is suggested:
+The name lists, if accepted, also change what is suggested:
 
-- Named administration costs (rent, rates, insurance, light and heat,
-  professional fees, bank charges) suggest administrative expenses.
-  Operating expenses, overheads, and wages stay empty.
+- Named administration costs suggest administrative expenses. Operating
+  expenses, overheads, and wages stay empty.
 - Bare "depreciation" and bare "corporation tax" stay empty. Today's code
   picks a line for both.
-- VAT and PAYE on the Product 1 tax line suggest their own homes, and are
-  not suggested as corporation tax.
-- A director's loan on the Product 1 loans line suggests `DIRECTOR_LOAN`.
+- VAT and PAYE on the Product 1 tax line suggest their own homes. "Payable"
+  does not pull them onto corporation tax.
+- A director's loan suggests `DIRECTOR_LOAN`.
 - Hire purchase and finance leases suggest a lease liability only when the
   name states the maturity. Otherwise the row is empty.
 - Goodwill, patents, and software at cost suggest `FA_INTANGIBLE_COST`.
   Bare "Intangible assets" stays empty.
+- Matching is both-side word boundary, longest phrase first, with the
+  exclusions in the tables. The leading-only `_token` helper is not the
+  rule.
 
 ## Confirmation needed before any build
 
-1. A name-pattern hit is a suggestion below 0.80, shown and changeable.
-   Nothing is posted until the accountant confirms.
-2. An empty row gets a dropdown of the homes listed for that Product 1
-   line, and the draft waits until every row has a selection.
-3. A confirmed choice is stored as an engine line for that company, code,
-   and name, and comes back next time at 1.00. The Product 1 canonical
-   line is left as it is.
-4. Pooled accumulated depreciation: a class-named contra suggests
-   `FA_ACCUM_DEP`.
-5. Land and buildings stay one engine line.
-6. Office equipment, computer equipment, and assets under construction get
-   no suggestion. The accountant chooses an existing tangible line.
-7. The administrative-expense suggestion list above, with wages, motor
-   expenses, repairs, and overheads left empty.
-8. Advertising and marketing as a distribution-cost suggestion, or left
-   empty.
-9. Director's loans suggest `DIRECTOR_LOAN`, not a borrowings line.
-10. No long-term suggestion for a loan, mortgage, or hire purchase whose
+1. A phrase hit is a suggestion at 35 or 40, capped below 80, shown and
+   changeable. Nothing is posted until the accountant confirms.
+2. An empty row gets the dropdown listed for that Product 1 line.
+3. A row that is still empty after review blocks the draft. No default
+   line is written.
+4. A confirmed choice is stored as an engine line for that company, code,
+   and name, and comes back next time at 100. The Product 1 canonical line
+   is left as it is.
+5. Pooled accumulated depreciation: a class-named contra suggests
+   `FA_ACCUM_DEP`, and the screen says the note cannot split that pool.
+6. Land and buildings stay one engine line.
+7. Office equipment, computer equipment, equipment, and assets under
+   construction get no suggestion.
+8. The administrative-expense list above, with wages, motor expenses,
+   repairs, and overheads left empty.
+9. Advertising and marketing suggested as distribution costs at 35, or
+   left empty if that suggestion is rejected.
+10. Director's loans suggest `DIRECTOR_LOAN`, not a borrowings line.
+11. No long-term suggestion for a loan, mortgage, or hire purchase whose
     name does not state the maturity.
-11. Bare "Corporation tax" left empty. VAT and PAYE suggested to their own
-    lines.
-12. Bare "Depreciation" left empty.
-13. The amortisation charge still has no honest line to offer.
-14. Goodwill, patents, licences, development costs, and software suggest
-    `FA_INTANGIBLE_COST`. Bare "Intangible assets" left empty.
+12. Bare "Corporation tax" left empty. VAT and PAYE suggested to their own
+    lines even when the name says payable.
+13. Bare "Depreciation" left empty.
+14. The amortisation charge has no honest line. The row blocks the draft
+    and is not offered `DEPRECIATION_CHARGE`.
+15. Goodwill, patents, licences, development costs, and software suggest
+    `FA_INTANGIBLE_COST`, subject to the fee and subscription exclusions.
+    Bare "Intangible assets" stays empty.
