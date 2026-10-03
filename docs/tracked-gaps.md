@@ -1491,6 +1491,143 @@ export. It stays blocked until the render path can read a Product 1 source:
 `evidence_for_version` reads `findraft_tb_lines` and `source_document_id`,
 and `findraft_render_jobs.tb_version_id` is NOT NULL.
 
+### Statutory workspace — one page, one dropdown, in-page sidebar
+
+**Status:** Built 3 October 2026 on the existing `/year-ends/{id}/draft`
+page. The in-page sidebar and the five report-setup fields are in the
+product. Display rounding, face dates, and column headers are stored on
+`findraft_year_ends.report_setup` and are not read by the statement engine.
+Cover, accounting policies, notes, and the Form 11 extracts panel are not
+built. Form 11 is in the framework catalogue with `available: false`.
+
+**What shipped.** The FRS 102 sidebar is Report setup, Sub-line review,
+Disclosures, Adjustments, Review dashboard, Income statement, and Statement
+of financial position. The Form 11 catalogue is Report setup, Extracts
+summary, and Review dashboard. An unknown framework id is Report setup and
+Review dashboard, not the FRS list. Cover, accounting policies, and notes
+stay reserved and are not sidebar entries in this build.
+
+#### One page, one framework dropdown
+
+The statutory draft stays one address, `/year-ends/{id}/draft`, and one
+component, `StatutoryDraftWorkspace`. The reporting framework is one
+dropdown on that workspace. The same dropdown already sits on the Statements
+continuation (`StatutoryContinuation`, `data-testid="statutory-framework"`)
+with one built choice: FRS 102 Section 1A (Ireland), pack `frs102-1a-ie` /
+`2024.09`. The designed future second choice, still unbuilt, is Sole Trader
+/ Form 11 Summary.
+
+Both choices use this page, this year end, and this working draft. A second
+route per framework was rejected: it would copy sub-line review, disclosures,
+adjustments, and locking, and multiply the bug surface. The dropdown selects
+which presentation that draft uses. Disclosure answers, adjustment journals,
+and the lock stay on the draft when the dropdown changes. Switching back to
+FRS 102 shows the FRS panels again.
+
+Form 11 Summary, when it is built, does not call the FRS 102 pack and does
+not invent Section 1A notes. While that choice is selected, the sidebar shows
+Report setup, the extracts summary, and the review dashboard. Cover,
+accounting policies, the two faces, FRS notes, FRS disclosure questions, and
+the seven-line sub-line review stay stored and are hidden for that choice.
+Kastree still does not prepare or file Form 11. The practice keys ROS.
+
+Report setup shows the year-end pack pin (`pack_id`, `pack_version`) as the
+basis of preparation. Saving report setup does not write that pin. Changing
+the pack would change the calculation, so the basis control on this form
+does not switch frameworks. The continuation dropdown remains the control
+that selects the pack.
+
+#### Sidebar — where each section goes
+
+A left-hand list on the same page, in the spirit of the Accurri section
+menu (Report options at the top, then Cover, the statement faces, and Notes).
+Choosing an item shows that section. It does not add a route and does not
+fork the draft. The address may carry `?section=` so a link opens one
+section. The component is still `StatutoryDraftWorkspace`.
+
+The mapping notice, the missing-draft banner, and the first-period gate stay
+above the section. They apply whichever section is open.
+
+| Sidebar entry | What is on screen | Where it comes from |
+| --- | --- | --- |
+| Report setup | The five fields in the next subsection | New. The framework dropdown is the one that already exists |
+| Sub-line review | The seven Product 1 lines that need an engine line | Existing `StatutorySublineReview`, when `adopted_trial_balance_id` is set and the framework is FRS 102 |
+| Disclosures | Yes / No for each unanswered flag | Existing `data-testid="statutory-disclosures"` |
+| Adjustments | Narration, lines, Post adjustment, Lock draft, and the new-report / next-version actions | Existing `statutory-adjustment`, `statutory-lock`, `statutory-new-report`, `statutory-new-version` |
+| Review dashboard | Traffic, failed checks, finalise readiness | Existing `statutory-review-dashboard`. This is the section shown when the page opens and a draft exists |
+| Income statement | The income face | Existing face table titled Income, inside `statutory-draft-pack` |
+| Statement of financial position | The balance-sheet face | Existing face table titled Financial position |
+| Notes | Reserved | No workspace panel yet. Week 11 note text stays on the render path. The entry says the note library is not on this page yet |
+| Accounting policies | Reserved | Same. No new policy wording |
+| Cover | Reserved | Same. Week 11 directors' report, approval, and audit-exemption pages stay render output |
+
+Sub-line review and adjustments are on the sidebar because they are already
+on this page. Hiding them would drop the gates the draft already uses. Cover,
+accounting policies, and notes are named now so the menu matches the report
+the accountant expects. Their panels are not invented in this design.
+
+#### Report setup — the Accurri reference, and the five Kastree fields
+
+The Accurri "Report options" dialog, reviewed on the financial-position face
+and on the cash-flow face, is the reference. On that dialog the practice sets
+the statement name ("Statement of financial position" or "Balance sheet"),
+the current and prior column headers ("as at" on the balance sheet, "ended"
+on a period statement, defaulting to the year labels 2024 and 2023), the
+currency symbol, and rounding (`Yes - '000`, with the hint "The rounding
+used for currency values"). The product's insert-field list also carries
+current period start, current period end, and the "as at" and "ended"
+headers as separate values. The left menu places Report options above
+Sections (Cover, Profit or loss, Balance sheet, Notes).
+
+Kastree takes five fields from that screen. They are presentation. Python
+still computes every figure from the trial balance and the draft
+adjustments. None of these fields recalculates a number.
+
+1. **Basis of preparation.** The existing reporting-framework dropdown.
+   Stored as `year_end.pack_id` and `pack_version`. There is no second
+   "basis" field beside it.
+
+2. **Rounding display.** Nearest euro, or nearest €'000. Applied when the
+   face is shown and when a draft PDF is rendered. Stored amounts stay
+   exact `Decimal`. `findraft/engine/rounding.py` (`flag_for_note`) already
+   flags a gap when rounded lines do not add to the rounded total; that
+   warning is the behaviour to surface here. Accurri also lets a practice
+   type a rounding plug into the chart of accounts. That plug is not this
+   field.
+
+3. **Period dates printed on the face.** Current start, current end, prior
+   start, prior end. They default from `year_end.period_start`,
+   `year_end.period_end`, and the prior trial balance when one is attached.
+   A first financial period leaves the prior dates empty. These dates are
+   the words on the face. Changing them does not select a different trial
+   balance, does not recompute a comparative, and does not move
+   `V-GATE-001`. When a printed date differs from the trial-balance date,
+   Report setup shows both.
+
+4. **Statement type.** The reference list is audit, review, and compilation.
+   Kastree assists the practice and does not file or sign, so the stored
+   label is `draft` (today's watermark) or `compilation`. Compilation is the
+   one of the three that matches an accountant assembling accounts from the
+   client's records, and Week 11 already names a compilation report as a
+   deterministic page. Audit is an opinion; the auditor's-report slot stays
+   the Week 11 cut. Review, as an assurance conclusion, is the same: Kastree
+   does not sign one. The label does not add a signature block, an opinion,
+   or a filing step. The small-company audit-exemption page stays the Week
+   11 page. It is not an audit engagement type.
+
+5. **Column headers.** Two pairs, as on the Accurri dialog. Statement of
+   financial position: a current "as at" header and a prior "as at" header.
+   Income statement: a current "ended" header and a prior "ended" header.
+   The default text is the year of each display period end. Custom text
+   replaces that label. It does not swap which column is current or prior.
+
+**Left on the Accurri dialog, and out of this design.** Consolidation
+columns and parent columns ("Show consolidation", "Show parent"). Cash-flow
+direct versus indirect. ESG, the strategic report, and budget-versus-actual
+comparison headers. "Sign statement of financial position" and any signatory
+list. XBRL. Those are separate, larger features. Consolidation, XBRL, and
+signatory management stay out of this pass.
+
 ### Week 9 statutory evidence graph
 
 A renderable DRAFT can be read as a graph from each face figure back to the

@@ -36,6 +36,11 @@ from app.models.company import Company
 from app.models.fa_version import FixedAssetLine, FixedAssetVersion
 from app.models.source_document import SourceDocument
 from app.models.tb_version import TrialBalanceLine, TrialBalanceVersion
+from app.schemas.report_setup import (
+    ReportingFrameworkList,
+    ReportSetupResponse,
+    ReportSetupWrite,
+)
 from app.schemas.year_end import (
     FixedAssetLineOut,
     FixedAssetTotalOut,
@@ -137,6 +142,11 @@ from app.services.render_jobs import (
 )
 from app.services.source_storage import SourceObjectStorage, get_source_storage
 from app.services.tb_import_worker import run_tb_import_job
+from app.services.report_setup import (
+    framework_list,
+    report_setup_response,
+    save_report_setup,
+)
 from app.services.statutory_evidence import evidence_for_version
 from app.services.statutory_present import evidence_response, statement_response
 from app.services.statutory_statements import (
@@ -279,6 +289,50 @@ async def list_canonical_lines(
     """Mapping targets the statutory pack accepts. No balances."""
     del auth
     return CanonicalLinesResponse(lines=sorted(statutory_lines()))
+
+
+@router.get("/frameworks", response_model=ReportingFrameworkList)
+async def list_reporting_frameworks(
+    auth: Annotated[AuthContext, Depends(require_reader)],
+) -> ReportingFrameworkList:
+    """Sidebar catalogues. An unavailable framework is listed and not selectable."""
+    del auth
+    return framework_list()
+
+
+@router.get("/{year_end_id}/report-setup", response_model=ReportSetupResponse)
+async def get_report_setup(
+    year_end_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> ReportSetupResponse:
+    """Display settings. Defaults are not written until the practice saves."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    return report_setup_response(year_end)
+
+
+@router.put("/{year_end_id}/report-setup", response_model=ReportSetupResponse)
+async def put_report_setup(
+    year_end_id: uuid.UUID,
+    body: ReportSetupWrite,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> ReportSetupResponse:
+    """Save display settings. Does not rebuild statements or move the trial balance."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    return await save_report_setup(
+        session,
+        org_id=auth.org_id,
+        user_id=auth.user_id,
+        year_end=year_end,
+        body=body,
+    )
 
 
 @router.get("/{year_end_id}", response_model=YearEndResponse)
