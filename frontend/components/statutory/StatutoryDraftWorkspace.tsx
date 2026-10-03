@@ -2,10 +2,23 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch, getApiBaseUrl } from "@/lib/api";
+import {
+  ReportSetupForm,
+  type ReportSetup,
+  type ReportSetupWrite,
+} from "@/components/statutory/ReportSetupForm";
 import { StatutorySublineReview } from "@/components/statutory/StatutorySublineReview";
+import { WorkspaceSidebar } from "@/components/statutory/WorkspaceSidebar";
+import { displayAmount, type RoundingMode } from "@/lib/report-display";
+import {
+  activeSection,
+  sectionsForFramework,
+  type ReportingFramework,
+} from "@/lib/workspace-sections";
 
 const SIGNOFF =
   "Draft statutory packs stay limited to platform administrators until a qualified reviewer signs off the wording.";
@@ -130,6 +143,8 @@ async function absentOn404<T>(path: string, getToken: () => Promise<string | nul
 export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
   const { getToken, isSignedIn } = useAuth();
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [narration, setNarration] = useState("");
@@ -182,6 +197,20 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     queryFn: () => apiFetch<StatementPack>(statementsPath ?? "", { getToken }),
     enabled: statementsPath !== null,
   });
+  const frameworksQuery = useQuery({
+    queryKey: ["reporting-frameworks"],
+    queryFn: () =>
+      apiFetch<{ frameworks: ReportingFramework[] }>("/year-ends/frameworks", {
+        getToken,
+      }),
+    enabled: isSignedIn && meQuery.data?.is_platform_admin === true,
+  });
+  const setupQuery = useQuery({
+    queryKey: ["report-setup", yearEndId],
+    queryFn: () =>
+      apiFetch<ReportSetup>(`/year-ends/${yearEndId}/report-setup`, { getToken }),
+    enabled: yearEndQuery.isSuccess,
+  });
 
   const forbidden = meQuery.data?.is_platform_admin === false;
   const dashboard = dashboardQuery.data;
@@ -190,6 +219,30 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     statementsQuery.data?.checks.some(
       (check) => check.code === "V-GATE-001" && !check.passed,
     ) ?? false;
+
+  async function saveReportSetup(next: ReportSetupWrite): Promise<void> {
+    setError(null);
+    setBusy("Saving report setup…");
+    try {
+      const saved = await apiFetch<ReportSetup>(
+        `/year-ends/${yearEndId}/report-setup`,
+        {
+          method: "PUT",
+          getToken,
+          body: JSON.stringify(next),
+        },
+      );
+      queryClient.setQueryData(["report-setup", yearEndId], saved);
+    } catch (caught) {
+      setError(messageFrom(caught));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function selectSection(sectionId: string): void {
+    router.replace(`/year-ends/${yearEndId}/draft?section=${sectionId}`);
+  }
 
   async function refreshDraft(): Promise<void> {
     await queryClient.invalidateQueries({ queryKey: ["working-draft", yearEndId] });
@@ -442,9 +495,22 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     yearEnd.period_start != null
       ? `${yearEnd.period_start} to ${yearEnd.period_end}`
       : `period ending ${yearEnd.period_end}`;
+  const sections = sectionsForFramework(
+    frameworksQuery.data?.frameworks ?? [],
+    yearEnd.pack_id,
+  );
+  const sectionId = activeSection(sections, searchParams.get("section"));
+  const rounding: RoundingMode = setupQuery.data?.rounding ?? "unit";
+  const headers = setupQuery.data?.column_headers;
 
   return (
-    <div className="space-y-6" data-testid="statutory-draft-workspace">
+    <div className="flex items-start gap-6" data-testid="statutory-draft-workspace">
+      <WorkspaceSidebar
+        sections={sections}
+        activeId={sectionId}
+        onSelect={selectSection}
+      />
+      <div className="min-w-0 flex-1 space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-soft">
@@ -482,7 +548,17 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
         <p className="text-sm text-red-800">{messageFrom(draftQuery.error)}</p>
       ) : null}
 
-      {yearEnd.adopted_trial_balance_id ? (
+      {sectionId === "report-setup" && setupQuery.data ? (
+        <ReportSetupForm
+          key={`${setupQuery.data.rounding}-${setupQuery.data.statement_type}-${setupQuery.data.face_dates.current_end}`}
+          frameworks={frameworksQuery.data?.frameworks ?? []}
+          setup={setupQuery.data}
+          busy={busy !== null}
+          onSave={(next) => void saveReportSetup(next)}
+        />
+      ) : null}
+
+      {sectionId === "sub-lines" && yearEnd.adopted_trial_balance_id ? (
         <StatutorySublineReview
           yearEndId={yearEndId}
           onConfirmed={refreshDraft}
@@ -522,7 +598,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
         </section>
       ) : null}
 
-      {dashboard ? (
+      {sectionId === "review" && dashboard ? (
         <section
           className={`rounded-md border px-4 py-3 ${trafficClass(dashboard.traffic)}`}
           data-testid="statutory-review-dashboard"
@@ -551,7 +627,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
         </section>
       ) : null}
 
-      {dashboard && dashboard.unanswered_disclosures.length > 0 ? (
+      {sectionId === "disclosures" && dashboard && dashboard.unanswered_disclosures.length > 0 ? (
         <section className="space-y-3" data-testid="statutory-disclosures">
           <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-soft">
             Disclosure questions
@@ -587,7 +663,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
         </section>
       ) : null}
 
-      {draft?.status === "draft" && dashboard ? (
+      {sectionId === "adjustments" && draft?.status === "draft" && dashboard ? (
         <section className="space-y-3" data-testid="statutory-adjustment">
           <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-soft">
             Post an adjustment
@@ -688,7 +764,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
         </section>
       ) : null}
 
-      {draft?.status === "locked" && draft.tb_version_id !== null && dashboard ? (
+      {sectionId === "adjustments" && draft?.status === "locked" && draft.tb_version_id !== null && dashboard ? (
         <button
           type="button"
           disabled={busy !== null}
@@ -700,7 +776,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
         </button>
       ) : null}
 
-      {draft && draft.tb_version_id === null && !draft.frozen && dashboard ? (
+      {sectionId === "adjustments" && draft && draft.tb_version_id === null && !draft.frozen && dashboard ? (
         <button
           type="button"
           disabled={busy !== null}
@@ -760,15 +836,49 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
                 ))}
             </ul>
           ) : null}
-          <FaceTable title="Income" rows={statementsQuery.data.income} />
-          <FaceTable title="Financial position" rows={statementsQuery.data.sofp} />
+          {sectionId === "income" ? (
+            <FaceTable
+              title="Income statement"
+              rows={statementsQuery.data.income}
+              currentHeader={headers?.ended_current ?? "Current"}
+              priorHeader={headers?.ended_prior ?? "Prior"}
+              rounding={rounding}
+            />
+          ) : null}
+          {sectionId === "sofp" ? (
+            <FaceTable
+              title="Statement of financial position"
+              rows={statementsQuery.data.sofp}
+              currentHeader={headers?.as_at_current ?? "Current"}
+              priorHeader={headers?.as_at_prior ?? "Prior"}
+              rounding={rounding}
+            />
+          ) : null}
+          {sectionId === "extracts" ? (
+            <p className="text-sm text-ink-secondary" data-testid="statutory-extracts">
+              Extracts summary for this framework is not built yet.
+            </p>
+          ) : null}
         </section>
       ) : null}
+      </div>
     </div>
   );
 }
 
-function FaceTable({ title, rows }: { title: string; rows: StatementRow[] }) {
+function FaceTable({
+  title,
+  rows,
+  currentHeader,
+  priorHeader,
+  rounding,
+}: {
+  title: string;
+  rows: StatementRow[];
+  currentHeader: string;
+  priorHeader: string;
+  rounding: RoundingMode;
+}) {
   if (rows.length === 0) {
     return null;
   }
@@ -781,16 +891,26 @@ function FaceTable({ title, rows }: { title: string; rows: StatementRow[] }) {
         <thead className="border-b border-line text-xs uppercase tracking-[0.12em] text-soft">
           <tr>
             <th className="px-4 py-3 font-semibold">Line</th>
-            <th className="px-4 py-3 text-right font-semibold">Current</th>
-            <th className="px-4 py-3 text-right font-semibold">Prior</th>
+            <th className="px-4 py-3 text-right font-semibold">{currentHeader}</th>
+            <th className="px-4 py-3 text-right font-semibold">{priorHeader}</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
             <tr key={row.label} className="border-b border-line/70">
               <td className="px-4 py-2.5">{row.label}</td>
-              <td className="px-4 py-2.5 text-right tabular-nums">{row.current}</td>
-              <td className="px-4 py-2.5 text-right tabular-nums">{row.prior ?? "—"}</td>
+              <td
+                className="px-4 py-2.5 text-right tabular-nums"
+                data-stored={row.current}
+              >
+                {displayAmount(row.current, rounding)}
+              </td>
+              <td
+                className="px-4 py-2.5 text-right tabular-nums"
+                data-stored={row.prior ?? ""}
+              >
+                {row.prior === null ? "—" : displayAmount(row.prior, rounding)}
+              </td>
             </tr>
           ))}
         </tbody>

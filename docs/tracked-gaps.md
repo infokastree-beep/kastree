@@ -1493,17 +1493,19 @@ and `findraft_render_jobs.tb_version_id` is NOT NULL.
 
 ### Statutory workspace — one page, one dropdown, in-page sidebar
 
-**Status:** UX direction confirmed 3 October 2026, from the Accurri screens
-reviewed that day and from the existing continuation dropdown. This is the
-design to approve before any code. Nothing in this section is built.
+**Status:** Built 3 October 2026 on the existing `/year-ends/{id}/draft`
+page. The in-page sidebar and the five report-setup fields are in the
+product. Display rounding, face dates, and column headers are stored on
+`findraft_year_ends.report_setup` and are not read by the statement engine.
+Cover, accounting policies, notes, and the Form 11 extracts panel are not
+built. Form 11 is in the framework catalogue with `available: false`.
 
-**Build gate.** The core workflow is still one framework: FRS 102 Section 1A,
-one draft, sub-line review, disclosures, adjustments, and a pack that
-generates. That workflow needs real customer validation before the Report
-setup fields below are built. The sidebar waits with them: it is the
-navigation for this page once there are sections to jump between, including
-a note library. Approving this note is the review before that build. It is
-not itself a ticket to start coding.
+**What shipped.** The FRS 102 sidebar is Report setup, Sub-line review,
+Disclosures, Adjustments, Review dashboard, Income statement, and Statement
+of financial position. The Form 11 catalogue is Report setup, Extracts
+summary, and Review dashboard. An unknown framework id is Report setup and
+Review dashboard, not the FRS list. Cover, accounting policies, and notes
+stay reserved and are not sidebar entries in this build.
 
 #### One page, one framework dropdown
 
@@ -1529,9 +1531,11 @@ accounting policies, the two faces, FRS notes, FRS disclosure questions, and
 the seven-line sub-line review stay stored and are hidden for that choice.
 Kastree still does not prepare or file Form 11. The practice keys ROS.
 
-The continuation dropdown and Report setup are one control. Both read and
-write `year_end.pack_id` and `year_end.pack_version`. The year-end row is
-the stored value.
+Report setup shows the year-end pack pin (`pack_id`, `pack_version`) as the
+basis of preparation. Saving report setup does not write that pin. Changing
+the pack would change the calculation, so the basis control on this form
+does not switch frameworks. The continuation dropdown remains the control
+that selects the pack.
 
 #### Sidebar — where each section goes
 
