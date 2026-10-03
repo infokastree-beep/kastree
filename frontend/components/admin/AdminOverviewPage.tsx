@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
 
@@ -152,6 +153,13 @@ export function AdminOverviewPage() {
         <h1 className="text-xl font-semibold">Admin</h1>
         <p className="mt-1 text-sm text-stone-600">
           Waitlist signups, organisations, and users across the platform.
+        </p>
+        <p className="mt-3 text-sm text-stone-600">
+          <Link href="/statutory" className="font-medium text-stone-900 underline">
+            Statutory workbench
+          </Link>{" "}
+          is for platform-admin testing only. Practices open statutory accounts
+          from the Statements tab, Continue to statutory accounts.
         </p>
       </div>
 
