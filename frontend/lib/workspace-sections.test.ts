@@ -11,7 +11,18 @@ import {
   activeSection,
   sectionsForFramework,
   type ReportingFramework,
+  type WorkspaceSection,
 } from "./workspace-sections.ts";
+
+function section(
+  id: string,
+  label: string,
+  group: string,
+  groupLabel: string,
+  order: number,
+): WorkspaceSection {
+  return { id, label, group, group_label: groupLabel, order };
+}
 
 const frameworks: ReportingFramework[] = [
   {
@@ -19,13 +30,14 @@ const frameworks: ReportingFramework[] = [
     label: "FRS 102 Section 1A (Ireland)",
     available: true,
     sections: [
-      { id: "report-setup", label: "Report setup" },
-      { id: "sub-lines", label: "Sub-line review" },
-      { id: "disclosures", label: "Disclosures" },
-      { id: "adjustments", label: "Adjustments" },
-      { id: "review", label: "Review dashboard" },
-      { id: "income", label: "Income statement" },
-      { id: "sofp", label: "Statement of financial position" },
+      section("review", "Review dashboard", "overview", "Overview", 1),
+      section("report-setup", "Report setup", "report-options", "Report options", 2),
+      section("sub-lines", "Mapping", "inputs", "Inputs", 3),
+      section("adjustments", "Adjustments", "inputs", "Inputs", 4),
+      section("disclosures", "Disclosures", "inputs", "Inputs", 5),
+      section("company-details", "Company details", "inputs", "Inputs", 6),
+      section("income", "Income statement", "sections", "Sections", 7),
+      section("sofp", "Statement of financial position", "sections", "Sections", 8),
     ],
   },
   {
@@ -33,50 +45,64 @@ const frameworks: ReportingFramework[] = [
     label: "Sole Trader / Form 11 Summary",
     available: false,
     sections: [
-      { id: "report-setup", label: "Report setup" },
-      { id: "extracts", label: "Extracts summary" },
-      { id: "review", label: "Review dashboard" },
+      section("review", "Review dashboard", "overview", "Overview", 1),
+      section("report-setup", "Report setup", "report-options", "Report options", 2),
     ],
   },
 ];
 
 describe("sectionsForFramework", () => {
   it("returns a shorter list for Form 11 than for FRS 102", () => {
-    const frs = sectionsForFramework(frameworks, "frs102-1a-ie").map(
-      (section) => section.label,
+    const frs = sectionsForFramework(frameworks, "frs102-1a-ie");
+    const form11 = sectionsForFramework(frameworks, "form11-summary");
+    assert.deepEqual(
+      form11.map((item) => item.label),
+      ["Review dashboard", "Report setup"],
     );
-    const form11 = sectionsForFramework(frameworks, "form11-summary").map(
-      (section) => section.label,
+    assert.equal(
+      frs.map((item) => item.label).includes("Extracts summary"),
+      false,
     );
-    assert.deepEqual(form11, [
-      "Report setup",
-      "Extracts summary",
-      "Review dashboard",
-    ]);
-    assert.equal(frs.includes("Extracts summary"), false);
-    assert.equal(form11.includes("Sub-line review"), false);
+    assert.equal(form11.map((item) => item.label).includes("Mapping"), false);
+    assert.equal(form11.some((item) => item.group === "sections"), false);
+    assert.equal(
+      frs.find((item) => item.id === "company-details")?.group,
+      "inputs",
+    );
     assert.ok(form11.length < frs.length);
   });
 
   it("does not fall back to the FRS 102 list for an unknown framework", () => {
     const unknown = sectionsForFramework(frameworks, "uk-frs105").map(
-      (section) => section.id,
+      (item) => item.id,
     );
-    assert.deepEqual(unknown, ["report-setup", "review"]);
-    assert.equal(activeSection(
-      sectionsForFramework(frameworks, "form11-summary"),
-      "sub-lines",
-    ), "review");
+    assert.deepEqual(unknown, ["review", "report-setup"]);
+    assert.equal(
+      activeSection(sectionsForFramework(frameworks, "form11-summary"), "sub-lines"),
+      "review",
+    );
   });
 
-  it("the sidebar component does not name a framework", () => {
+  it("the sidebar component does not name a framework or a group", () => {
     const here = dirname(fileURLToPath(import.meta.url));
     const source = readFileSync(
       join(here, "../components/statutory/WorkspaceSidebar.tsx"),
       "utf8",
     );
-    assert.equal(source.includes("frs102"), false);
-    assert.equal(source.includes("form11"), false);
-    assert.equal(source.includes("Sub-line review"), false);
+    for (const word of [
+      "frs102",
+      "form11",
+      "FRS",
+      "Form 11",
+      "Sub-line review",
+      "Overview",
+      "Company details",
+      "Mapping",
+      "Report options",
+      "Inputs",
+      "Sections",
+    ]) {
+      assert.equal(source.includes(word), false, word);
+    }
   });
 });

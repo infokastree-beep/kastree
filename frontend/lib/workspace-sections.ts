@@ -1,8 +1,11 @@
-/** Picks a sidebar from a framework catalogue. It does not know FRS 102. */
+/** Picks a sidebar from a framework catalogue. It does not know a framework. */
 
 export type WorkspaceSection = {
   id: string;
   label: string;
+  group: string;
+  group_label: string;
+  order: number;
 };
 
 export type ReportingFramework = {
@@ -13,8 +16,20 @@ export type ReportingFramework = {
 };
 
 const FALLBACK: WorkspaceSection[] = [
-  { id: "report-setup", label: "Report setup" },
-  { id: "review", label: "Review dashboard" },
+  {
+    id: "review",
+    label: "Review dashboard",
+    group: "overview",
+    group_label: "Overview",
+    order: 1,
+  },
+  {
+    id: "report-setup",
+    label: "Report setup",
+    group: "report-options",
+    group_label: "Report options",
+    order: 2,
+  },
 ];
 
 export function sectionsForFramework(

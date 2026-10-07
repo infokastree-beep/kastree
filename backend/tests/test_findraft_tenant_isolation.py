@@ -36,6 +36,7 @@ from findraft.models.year_end import YearEnd
 def _delete_org(org_id: uuid.UUID) -> None:
     with SyncSessionLocal() as session:
         session.execute(text("RESET ROLE"))
+        set_rls_org_id(session, org_id)
         oid = str(org_id)
         session.execute(
             text(

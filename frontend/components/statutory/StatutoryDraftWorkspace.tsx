@@ -7,6 +7,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
 import { downloadDraftPdf, pdfBlockReason } from "@/lib/draft-pdf";
+import { messageFromPdfBody } from "@/lib/workspace-load-error";
+import {
+  CompanyDetailsForm,
+  type ApprovalWrite,
+  type CompanyDetails,
+  type CompanyDetailsWrite,
+} from "@/components/statutory/CompanyDetailsForm";
 import {
   ReportSetupForm,
   type ReportSetup,
@@ -26,6 +33,7 @@ const SIGNOFF =
   "Draft statutory packs stay limited to platform administrators until a qualified reviewer signs off the wording.";
 
 type UserMe = {
+  role: "owner" | "admin" | "member" | "viewer";
   is_platform_admin: boolean;
 };
 
@@ -105,12 +113,20 @@ const EMPTY_LINE: AdjustmentLine = {
 
 function messageFrom(error: unknown): string {
   if (error instanceof ApiError) {
-    return error.message;
+    return messageFromPdfBody(error.body) ?? error.message;
   }
   if (error instanceof Error) {
     return error.message;
   }
   return "Something went wrong";
+}
+
+function saveMessage(error: unknown, fallback: string): string {
+  const text = messageFrom(error);
+  if (text.trim().length === 0 || /^API \d+$/.test(text)) {
+    return fallback;
+  }
+  return text;
 }
 
 function flagLabel(flag: string): string {
@@ -149,6 +165,10 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [companyError, setCompanyError] = useState<string | null>(null);
+  const [companySaved, setCompanySaved] = useState<string | null>(null);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
+  const [approvalSaved, setApprovalSaved] = useState<string | null>(null);
   const [narration, setNarration] = useState("");
   const [lines, setLines] = useState<AdjustmentLine[]>([
     { ...EMPTY_LINE },
@@ -213,6 +233,14 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       apiFetch<ReportSetup>(`/year-ends/${yearEndId}/report-setup`, { getToken }),
     enabled: yearEndQuery.isSuccess,
   });
+  const detailsQuery = useQuery({
+    queryKey: ["company-details", yearEndId],
+    queryFn: () =>
+      apiFetch<CompanyDetails>(`/year-ends/${yearEndId}/company-details`, {
+        getToken,
+      }),
+    enabled: yearEndQuery.isSuccess,
+  });
 
   const forbidden = meQuery.data?.is_platform_admin === false;
   const dashboard = dashboardQuery.data;
@@ -221,6 +249,59 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     statementsQuery.data?.checks.some(
       (check) => check.code === "V-GATE-001" && !check.passed,
     ) ?? false;
+
+  const canEditDetails =
+    meQuery.data?.role === "owner" ||
+    meQuery.data?.role === "admin" ||
+    meQuery.data?.role === "member";
+
+  async function saveCompany(next: CompanyDetailsWrite): Promise<void> {
+    setCompanyError(null);
+    setCompanySaved(null);
+    setBusy("Saving company details…");
+    try {
+      const saved = await apiFetch<CompanyDetails>(
+        `/year-ends/${yearEndId}/company-details`,
+        {
+          method: "PUT",
+          getToken,
+          body: JSON.stringify(next),
+        },
+      );
+      queryClient.setQueryData(["company-details", yearEndId], saved);
+      setCompanySaved("Company details saved.");
+      await queryClient.invalidateQueries({ queryKey: ["statutory-pack"] });
+      await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
+    } catch (caught) {
+      setCompanyError(saveMessage(caught, "Company details could not be saved."));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveApproval(next: ApprovalWrite): Promise<void> {
+    setApprovalError(null);
+    setApprovalSaved(null);
+    setBusy("Saving approval details…");
+    try {
+      const saved = await apiFetch<CompanyDetails>(
+        `/year-ends/${yearEndId}/approval`,
+        {
+          method: "PUT",
+          getToken,
+          body: JSON.stringify(next),
+        },
+      );
+      queryClient.setQueryData(["company-details", yearEndId], saved);
+      setApprovalSaved("Approval details saved.");
+      await queryClient.invalidateQueries({ queryKey: ["statutory-pack"] });
+      await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
+    } catch (caught) {
+      setApprovalError(saveMessage(caught, "Approval details could not be saved."));
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function saveReportSetup(next: ReportSetupWrite): Promise<void> {
     setError(null);
@@ -548,6 +629,56 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
         />
       ) : null}
 
+      {draft?.mapping_notice ? (
+        <section
+          className="space-y-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          data-testid="statutory-mapping-notice"
+        >
+          <p>{draft.mapping_notice}</p>
+          <button
+            type="button"
+            disabled={busy !== null || !dashboard}
+            onClick={() => void acknowledgeMappings()}
+            className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:opacity-50"
+            data-testid="statutory-acknowledge-mappings"
+          >
+            Acknowledge
+          </button>
+        </section>
+      ) : null}
+
+      {draft === null && draftQuery.isSuccess ? (
+        <section
+          className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          data-testid="statutory-draft-missing"
+        >
+          <p className="font-medium">No working draft is stored for this year end yet.</p>
+          <p className="mt-1">
+            Adjustments, disclosure answers, and locking belong to a statutory
+            trial-balance version. Continuing from a Product 1 trial balance
+            keeps that trial balance and does not create one. The adopted pack
+            below reloads whenever you open this page.
+          </p>
+        </section>
+      ) : null}
+
+      {priorYearBlocked ? (
+        <div
+          className="space-y-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          data-testid="statutory-first-period-gate"
+        >
+          <p>Prior-year comparatives are still required before this draft can show figures.</p>
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={() => void markFirstPeriod()}
+            className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:opacity-50"
+          >
+            This is the first financial period
+          </button>
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
@@ -584,37 +715,30 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
         />
       ) : null}
 
-      {draft?.mapping_notice ? (
-        <section
-          className="space-y-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-          data-testid="statutory-mapping-notice"
-        >
-          <p>{draft.mapping_notice}</p>
-          <button
-            type="button"
-            disabled={busy !== null || !dashboard}
-            onClick={() => void acknowledgeMappings()}
-            className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:opacity-50"
-            data-testid="statutory-acknowledge-mappings"
-          >
-            Acknowledge
-          </button>
-        </section>
+      {sectionId === "company-details" && detailsQuery.error ? (
+        <StatutoryLoadError
+          testId="statutory-company-load-error"
+          message={saveMessage(
+            detailsQuery.error,
+            "Company details could not be loaded.",
+          )}
+          onReview={() => undefined}
+        />
       ) : null}
 
-      {draft === null && draftQuery.isSuccess ? (
-        <section
-          className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-          data-testid="statutory-draft-missing"
-        >
-          <p className="font-medium">No working draft is stored for this year end yet.</p>
-          <p className="mt-1">
-            Adjustments, disclosure answers, and locking belong to a statutory
-            trial-balance version. Continuing from a Product 1 trial balance
-            keeps that trial balance and does not create one. The adopted pack
-            below reloads whenever you open this page.
-          </p>
-        </section>
+      {sectionId === "company-details" && detailsQuery.data ? (
+        <CompanyDetailsForm
+          key={JSON.stringify(detailsQuery.data)}
+          details={detailsQuery.data}
+          canEdit={canEditDetails}
+          busy={busy !== null}
+          companyError={companyError}
+          companySaved={companySaved}
+          approvalError={approvalError}
+          approvalSaved={approvalSaved}
+          onSaveCompany={(next) => void saveCompany(next)}
+          onSaveApproval={(next) => void saveApproval(next)}
+        />
       ) : null}
 
       {sectionId === "review" && dashboard ? (
@@ -807,20 +931,6 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
         </button>
       ) : null}
 
-      {priorYearBlocked ? (
-        <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          <p>Prior-year comparatives are still required before this draft can show figures.</p>
-          <button
-            type="button"
-            disabled={busy !== null}
-            onClick={() => void markFirstPeriod()}
-            className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:opacity-50"
-          >
-            This is the first financial period
-          </button>
-        </div>
-      ) : null}
-
       {statementsQuery.data ? (
         <section className="space-y-4" data-testid="statutory-draft-pack">
           <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-amber-800">
@@ -862,11 +972,6 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               priorHeader={headers?.as_at_prior ?? "Prior"}
               rounding={rounding}
             />
-          ) : null}
-          {sectionId === "extracts" ? (
-            <p className="text-sm text-ink-secondary" data-testid="statutory-extracts">
-              Extracts summary for this framework is not built yet.
-            </p>
           ) : null}
         </section>
       ) : null}

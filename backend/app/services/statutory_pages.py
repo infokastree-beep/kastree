@@ -27,10 +27,12 @@ def build_statutory_pages(
     period_end: str,
     directors: str,
     secretary: str,
-    industry: str,
+    principal_activity: str,
     currency: str,
     profit: Decimal,
     size_eligible: bool | None,
+    approval_date: str = "",
+    signing_directors: str = "",
 ) -> tuple[StatutoryPage, ...]:
     """Compilation, directors' report, approval, then audit exemption."""
     return (
@@ -39,11 +41,15 @@ def build_statutory_pages(
             period_end=period_end,
             directors=directors,
             secretary=secretary,
-            industry=industry,
+            principal_activity=principal_activity,
             currency=currency,
             profit=profit,
         ),
-        _approval(directors=directors),
+        _approval(
+            directors=directors,
+            approval_date=approval_date,
+            signing_directors=signing_directors,
+        ),
         _audit_exemption(size_eligible=size_eligible),
     )
 
@@ -81,7 +87,7 @@ def _directors_report(
     period_end: str,
     directors: str,
     secretary: str,
-    industry: str,
+    principal_activity: str,
     currency: str,
     profit: Decimal,
 ) -> StatutoryPage:
@@ -102,7 +108,7 @@ def _directors_report(
         secretary_line = f"The company secretary is {secretary_name}."
     else:
         secretary_line = "The company secretary has not been recorded."
-    activity = _present(industry)
+    activity = _present(principal_activity)
     if activity:
         activity_line = f"Principal activities: {activity}."
     else:
@@ -126,9 +132,19 @@ def _directors_report(
     )
 
 
-def _approval(*, directors: str) -> StatutoryPage:
+def _approval(
+    *, directors: str, approval_date: str, signing_directors: str
+) -> StatutoryPage:
+    approved = _present(approval_date)
+    if approved:
+        date_line = f"The financial statements were approved on {approved}."
+    else:
+        date_line = "Approval date has not been recorded."
+    signatories = _present(signing_directors)
     named = _present(directors)
-    if named:
+    if signatories:
+        signatory = f"The financial statements were signed by {signatories}."
+    elif named:
         signatory = (
             f"The directors recorded on this draft are {named}. "
             "A signatory has not been separately recorded."
@@ -137,7 +153,7 @@ def _approval(*, directors: str) -> StatutoryPage:
         signatory = "A signatory has not been recorded."
     return StatutoryPage(
         heading="Approval of the financial statements",
-        paragraphs=("Approval date has not been recorded.", signatory),
+        paragraphs=(date_line, signatory),
     )
 
 

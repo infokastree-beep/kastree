@@ -14,7 +14,18 @@ import {
   activeSection,
   sectionsForFramework,
   type ReportingFramework,
+  type WorkspaceSection,
 } from "@/lib/workspace-sections";
+
+function section(
+  id: string,
+  label: string,
+  group: string,
+  groupLabel: string,
+  order: number,
+): WorkspaceSection {
+  return { id, label, group, group_label: groupLabel, order };
+}
 
 const STORED = "18400.40";
 
@@ -24,13 +35,14 @@ const FRAMEWORKS: ReportingFramework[] = [
     label: "FRS 102 Section 1A (Ireland)",
     available: true,
     sections: [
-      { id: "report-setup", label: "Report setup" },
-      { id: "sub-lines", label: "Sub-line review" },
-      { id: "disclosures", label: "Disclosures" },
-      { id: "adjustments", label: "Adjustments" },
-      { id: "review", label: "Review dashboard" },
-      { id: "income", label: "Income statement" },
-      { id: "sofp", label: "Statement of financial position" },
+      section("review", "Review dashboard", "overview", "Overview", 1),
+      section("report-setup", "Report setup", "report-options", "Report options", 2),
+      section("sub-lines", "Mapping", "inputs", "Inputs", 3),
+      section("adjustments", "Adjustments", "inputs", "Inputs", 4),
+      section("disclosures", "Disclosures", "inputs", "Inputs", 5),
+      section("company-details", "Company details", "inputs", "Inputs", 6),
+      section("income", "Income statement", "sections", "Sections", 7),
+      section("sofp", "Statement of financial position", "sections", "Sections", 8),
     ],
   },
   {
@@ -38,9 +50,8 @@ const FRAMEWORKS: ReportingFramework[] = [
     label: "Sole Trader / Form 11 Summary",
     available: false,
     sections: [
-      { id: "report-setup", label: "Report setup" },
-      { id: "extracts", label: "Extracts summary" },
-      { id: "review", label: "Review dashboard" },
+      section("review", "Review dashboard", "overview", "Overview", 1),
+      section("report-setup", "Report setup", "report-options", "Report options", 2),
     ],
   },
 ];

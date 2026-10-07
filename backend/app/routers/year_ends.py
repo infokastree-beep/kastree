@@ -36,6 +36,11 @@ from app.models.company import Company
 from app.models.fa_version import FixedAssetLine, FixedAssetVersion
 from app.models.source_document import SourceDocument
 from app.models.tb_version import TrialBalanceLine, TrialBalanceVersion
+from app.schemas.company_details import (
+    ApprovalWrite,
+    CompanyDetailsResponse,
+    CompanyDetailsWrite,
+)
 from app.schemas.report_setup import (
     ReportingFrameworkList,
     ReportSetupResponse,
@@ -142,6 +147,12 @@ from app.services.render_jobs import (
 )
 from app.services.source_storage import SourceObjectStorage, get_source_storage
 from app.services.tb_import_worker import run_tb_import_job
+from app.services.company_details import (
+    CompanyDetailsRejected,
+    company_details_response,
+    save_approval_details,
+    save_company_details,
+)
 from app.services.report_setup import (
     framework_list,
     report_setup_response,
@@ -333,6 +344,87 @@ async def put_report_setup(
         year_end=year_end,
         body=body,
     )
+
+
+async def _company_for_year_end(
+    session: AsyncSession, *, year_end: YearEnd, org_id: uuid.UUID
+) -> Company:
+    return await get_owned_company(
+        session, company_id=year_end.company_id, org_id=org_id
+    )
+
+
+@router.get("/{year_end_id}/company-details", response_model=CompanyDetailsResponse)
+async def get_company_details(
+    year_end_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> CompanyDetailsResponse:
+    """Letterhead and this year's approval. Missing facts stay empty."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    company = await _company_for_year_end(
+        session, year_end=year_end, org_id=auth.org_id
+    )
+    return company_details_response(company, year_end)
+
+
+@router.put("/{year_end_id}/company-details", response_model=CompanyDetailsResponse)
+async def put_company_details(
+    year_end_id: uuid.UUID,
+    body: CompanyDetailsWrite,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> CompanyDetailsResponse:
+    """Save company letterhead. A viewer cannot. Each save is audited."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    company = await _company_for_year_end(
+        session, year_end=year_end, org_id=auth.org_id
+    )
+    try:
+        return await save_company_details(
+            session,
+            org_id=auth.org_id,
+            user_id=auth.user_id,
+            company=company,
+            year_end=year_end,
+            body=body,
+        )
+    except CompanyDetailsRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+
+@router.put("/{year_end_id}/approval", response_model=CompanyDetailsResponse)
+async def put_approval_details(
+    year_end_id: uuid.UUID,
+    body: ApprovalWrite,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> CompanyDetailsResponse:
+    """Save this year's approval date and signing directors."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    company = await _company_for_year_end(
+        session, year_end=year_end, org_id=auth.org_id
+    )
+    try:
+        return await save_approval_details(
+            session,
+            org_id=auth.org_id,
+            user_id=auth.user_id,
+            company=company,
+            year_end=year_end,
+            body=body,
+        )
+    except CompanyDetailsRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
 @router.get("/{year_end_id}", response_model=YearEndResponse)

@@ -90,6 +90,8 @@ class YearEnd(Base):
     )
     # Display settings for the draft workspace. The statement engine does not read this.
     report_setup: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    approval_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    signing_directors: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

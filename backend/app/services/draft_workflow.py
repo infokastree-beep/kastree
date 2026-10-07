@@ -21,6 +21,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
+from app.models.company import Company
 from app.services.draft_inputs import (
     DraftInputError,
     adjusted_for_draft,
@@ -165,8 +166,21 @@ def _traffic(
     return "green"
 
 
-def _can_finalise(traffic: Traffic, *, renderable: bool, blocked: bool) -> bool:
-    return traffic != "red" and renderable and not blocked
+def _can_finalise(
+    traffic: Traffic,
+    *,
+    renderable: bool,
+    blocked: bool,
+    checks: tuple[ReconciliationCheck, ...] = (),
+) -> bool:
+    from app.services.company_details import blocks_final
+
+    return (
+        traffic != "red"
+        and renderable
+        and not blocked
+        and not blocks_final(checks)
+    )
 
 
 async def _draft_for_update(
@@ -382,6 +396,16 @@ async def dashboard_for_draft(
     else:
         checks.append(disc)
         unanswered = _unanswered(disc.message)
+    company = await session.scalar(
+        select(Company).where(
+            Company.id == year_end.company_id,
+            Company.org_id == org_id,
+        )
+    )
+    if company is not None and not company.is_deleted:
+        from app.services.company_details import company_detail_checks
+
+        checks.extend(company_detail_checks(company, year_end))
     light = _traffic(
         tuple(checks), blocked=document.blocked, renderable=document.renderable
     )
@@ -391,7 +415,10 @@ async def dashboard_for_draft(
         row_version=draft.row_version,
         traffic=light,
         can_finalise=_can_finalise(
-            light, renderable=document.renderable, blocked=document.blocked
+            light,
+            renderable=document.renderable,
+            blocked=document.blocked,
+            checks=tuple(checks),
         ),
         checks=tuple(checks),
         unanswered_disclosures=unanswered,
@@ -924,13 +951,33 @@ async def finalise_draft(
                 message="Disclosure questions are answered",
             )
         )
+    company = await session.get(Company, year_end.company_id)
+    if company is not None and company.org_id == org_id and not company.is_deleted:
+        from app.services.company_details import company_detail_checks
+
+        checks.extend(company_detail_checks(company, year_end))
     light = _traffic(
         tuple(checks), blocked=document.blocked, renderable=document.renderable
     )
     if not _can_finalise(
-        light, renderable=document.renderable, blocked=document.blocked
+        light,
+        renderable=document.renderable,
+        blocked=document.blocked,
+        checks=tuple(checks),
     ):
-        detail = disc.message if disc is not None else "critical checks block FINAL"
+        from app.services.company_details import blocks_final
+
+        blocking = next(
+            (
+                item.message
+                for item in checks
+                if not item.passed and blocks_final((item,))
+            ),
+            None,
+        )
+        detail = blocking or (
+            disc.message if disc is not None else "critical checks block FINAL"
+        )
         raise DraftRejected(detail, 409)
     graph = await evidence_for_version(
         session,
