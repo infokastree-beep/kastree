@@ -113,7 +113,7 @@ def test_pages_keep_engine_figures_and_leave_gaps() -> None:
     assert "Ada Lovelace" in report
     assert "The company secretary has not been recorded." in report
     assert "Principal activities have not been recorded." in report
-    assert "Profit for the financial year is EUR 157650.00." in report
+    assert "Profit for the financial year is €157,650." in report
     assert "does not include a business review" in report
     assert "A dividend has not been recorded on this draft." in report
     approval = _page(document, "Approval of the financial statements")

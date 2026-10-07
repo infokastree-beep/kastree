@@ -122,7 +122,8 @@ def test_golden_render_keeps_engine_figures_and_zero_lines() -> None:
         "N9_COMMITMENTS",
     ]
     policies = next(note for note in document.notes if note.code == "N1_POLICIES")
-    assert "nearest 1" in policies.body
+    assert "nearest whole unit" in policies.body
+    assert "euro" in policies.body
     assert "{{life_plant}}" in policies.body
     assert "Short-term employee benefits" not in policies.body
     assert "Revenue is recognised" in policies.body
@@ -149,18 +150,25 @@ def test_golden_render_keeps_engine_figures_and_zero_lines() -> None:
     html = document.html
     for snippet in (
         "DRAFT",
-        "455812.00",
-        "157650.00",
-        "Intangible assets",
-        "Right-of-use assets",
-        "Stocks",
+        "455,812",
+        "157,650",
         "Profit for the financial year",
         "N2_FA",
         "N3_DEBTORS",
         SOFP_COMPLIANCE_STATEMENT,
         "{{life_plant}}",
+        "nearest whole unit",
+        "euro",
     ):
         assert snippet in html
+    for hidden in (
+        "<td>Intangible assets</td>",
+        "<td>Right-of-use assets</td>",
+        "<td>Stocks</td>",
+        "455812.00",
+        "157650.00",
+    ):
+        assert hidden not in html
     assert "V-BANK-001" not in {item.code for item in document.checks}
     pdf = write_statement_pdf(html)
     assert pdf.startswith(b"%PDF")
@@ -472,7 +480,12 @@ async def test_api_golden_render_and_pdf(
     assert "<script>" not in captured[0]
     assert "&lt;script&gt;" in captured[0]
     assert "DRAFT" in captured[0]
-    assert "455812.00" in captured[0]
+    assert "455,812" in captured[0]
+    assert "455812.00" not in captured[0]
+    assert "as at 31 December 2026" in captured[0]
+    assert "for the year ended 31 December 2026" in captured[0]
+    assert "2026 £" in captured[0]
+    assert "2025 £" in captured[0]
 
 
 @pytest.mark.asyncio

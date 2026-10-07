@@ -317,13 +317,13 @@ async def test_saved_company_details_print_on_the_existing_pages(
     approval = _page(after_body, "Approval of the financial statements")
     assert (
         "The directors who served during the year are "
-        "Ada Lovelace (appointed 2020-03-01)."
+        "Ada Lovelace (appointed 1 March 2020)."
     ) in directors
     assert "The company secretary is Grace Hopper." in directors
     assert "Principal activities: Software publishing." in directors
     assert "Bakeries" not in directors
     assert "have not been recorded" not in directors
-    assert "The financial statements were approved on 2027-03-15." in approval
+    assert "The financial statements were approved on 15 March 2027." in approval
     assert "The financial statements were signed by Ada Lovelace." in approval
     assert "not been recorded" not in approval
     assert "not been separately recorded" not in approval
@@ -336,14 +336,15 @@ async def test_saved_company_details_print_on_the_existing_pages(
     assert pdf.headers["content-type"] == "application/pdf"
     assert pdf.content.startswith(b"%PDF")
     extracted = _pdf_text(pdf.content)
+    flat = " ".join(extracted.split())
     for sentence in (
-        "Ada Lovelace (appointed 2020-03-01)",
+        "Ada Lovelace (appointed 1 March 2020)",
         "The company secretary is Grace Hopper.",
         "Principal activities: Software publishing.",
-        "The financial statements were approved on 2027-03-15.",
+        "The financial statements were approved on 15 March 2027.",
         "The financial statements were signed by Ada Lovelace.",
     ):
-        assert sentence in extracted, sentence
+        assert sentence in flat, sentence
     assert "Bakeries" not in extracted
     assert "Principal activities have not been recorded." not in extracted
     assert "Approval date has not been recorded." not in extracted

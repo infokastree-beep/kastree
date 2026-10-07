@@ -1279,6 +1279,24 @@ gates client use. Phase 1 below is schema, the pure engine, and the golden
 suite. It produces no client-facing statutory output. Week 2 stores source
 files and does not produce statutory output either.
 
+### Nil-line omission rule — reviewer sign-off
+
+The statutory PDF omits a face line or a note breakdown line only when both
+the current amount and the comparative are within €0.01 of zero. Net assets,
+Total equity, and Profit for the financial year stay even when both are nil.
+A first financial period has no comparative column, so a line is omitted only
+when the current amount is within €0.01 of zero. The engine still computes
+every line. Pending reviewer sign-off.
+
+### Title wording and single-column first period — reviewer sign-off
+
+A period of twelve months is titled "for the year ended <date>". Any other
+length is titled "for the period from <start> to <end>". The same phrase is
+the heading of each note table. The statement of financial position is
+"as at <date>". When the first-financial-period flag is set, the comparative
+column is omitted. A later year with a comparative keeps two year columns.
+Pending reviewer sign-off.
+
 ### Week 2 document-type taxonomy — not invented
 
 The v7.6 build plan (§9 Week 2, goal G9) names a **16-type classifier** and
