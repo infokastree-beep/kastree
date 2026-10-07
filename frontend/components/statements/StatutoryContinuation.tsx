@@ -5,7 +5,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
-import { ApiError, apiFetch, getApiBaseUrl } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
+import { downloadDraftPdf, pdfBlockReason } from "@/lib/draft-pdf";
 import { formatCurrency } from "@/lib/currency";
 import { formatDate } from "@/lib/utils";
 
@@ -191,36 +192,16 @@ export function StatutoryContinuation({
   }
 
   async function downloadPdf(): Promise<void> {
-    if (!yearEndId) {
+    if (!yearEndId || !pack?.renderable) {
       return;
     }
     setError(null);
     setBusy("Preparing PDF…");
     try {
-      const token = await getToken();
-      const response = await fetch(
-        `${getApiBaseUrl()}/year-ends/${yearEndId}/adopted-trial-balance/statements.pdf`,
-        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      await downloadDraftPdf(
+        `/year-ends/${yearEndId}/adopted-trial-balance/statements.pdf`,
+        getToken,
       );
-      if (!response.ok) {
-        let detail = `API ${response.status}`;
-        try {
-          const body = (await response.json()) as { detail?: unknown };
-          if (typeof body.detail === "string") {
-            detail = body.detail;
-          }
-        } catch {
-          detail = `API ${response.status}`;
-        }
-        throw new ApiError(detail, response.status, null);
-      }
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = "statutory-statements-draft.pdf";
-      anchor.click();
-      URL.revokeObjectURL(url);
     } catch (caught) {
       setError(messageFrom(caught));
     } finally {
@@ -241,6 +222,16 @@ export function StatutoryContinuation({
       </p>
     );
   }
+
+  const pdfReason =
+    pack === null
+      ? null
+      : pdfBlockReason({
+          statementsError: null,
+          dashboardError: null,
+          renderable: pack.renderable,
+          checks: pack.checks,
+        });
 
   return (
     <div className="space-y-4" data-testid="statutory-continuation">
@@ -369,15 +360,22 @@ export function StatutoryContinuation({
             <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-amber-800">
               {pack.watermark} statutory pack
             </h3>
-            <button
-              type="button"
-              data-testid="statutory-download"
-              disabled={busy !== null || !pack.renderable}
-              onClick={() => void downloadPdf()}
-              className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:opacity-50"
-            >
-              Download draft PDF
-            </button>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                data-testid="statutory-download"
+                disabled={busy !== null || pdfReason !== null}
+                onClick={() => void downloadPdf()}
+                className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Download draft PDF
+              </button>
+              {pdfReason !== null ? (
+                <p className="text-sm text-ink-secondary" data-testid="statutory-download-reason">
+                  {pdfReason}
+                </p>
+              ) : null}
+            </div>
           </div>
           <p className="text-sm text-ink-secondary">
             Net assets {money(pack.net_assets, currencyCode)}. Profit{" "}
