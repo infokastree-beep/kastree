@@ -28,6 +28,17 @@ from app.db import aset_rls_org_id
 from app.models.company import Company
 from app.models.organisation import Organisation
 from app.services.draft_inputs import adjusted_for_draft, latest_draft
+from app.services.statutory_display import (
+    as_at_phrase,
+    column_headings,
+    currency_name_for_policy,
+    face_display_rows,
+    format_iso_date,
+    format_whole,
+    note_display_lines,
+    parse_iso_date,
+    statement_period_phrase,
+)
 from app.services.statutory_pages import StatutoryPage, build_statutory_pages
 from app.models.tb_version import TrialBalanceVersion
 from app.services.adopted_trial_balance import (
@@ -58,7 +69,7 @@ from findraft.models.year_end import YearEnd
 
 WATERMARK = "DRAFT"
 ROUNDING_UNIT = Decimal("1")
-_ROUNDING_LABEL = "1"
+_ROUNDING_LABEL = "whole unit"
 
 _TEXT = Environment(autoescape=False, undefined=Undefined)
 _HTML = Environment(autoescape=True)
@@ -74,6 +85,9 @@ class _KeepPlaceholder(Undefined):
 
 _POLICY_TEXT = Environment(autoescape=False, undefined=_KeepPlaceholder)
 
+# Sections are an ordered list. A later cover, contents page, or section
+# toggle inserts or drops a block here. Amounts, dates, column headings,
+# and the nil-line filter stay in statutory_display.
 _DOCUMENT = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -84,51 +98,46 @@ _DOCUMENT = """<!DOCTYPE html>
   .watermark { color: #9a3412; font-weight: 700; letter-spacing: 0.12em; }
   table { border-collapse: collapse; width: 100%; margin: 0 0 1.5rem; }
   th, td { border-bottom: 1px solid #ccc; padding: 0.25rem 0.4rem; text-align: left; }
-  td.amount, th.amount { text-align: right; }
+  td.amount, th.amount { text-align: right; font-variant-numeric: tabular-nums; }
+  caption { caption-side: bottom; text-align: left; font-size: 0.9rem; padding-top: 0.35rem; }
   .note-body { white-space: pre-wrap; }
 </style>
 </head>
 <body>
 <p class="watermark">{{ watermark }}</p>
 <h1>{{ company_name }}</h1>
-{% for page in pages %}
-<section>
-<h2>{{ page.heading }}</h2>
-{% for paragraph in page.paragraphs %}
+{% for section in sections %}
+<section data-section="{{ section.anchor }}">
+{% if section.kind == "prose" %}
+<h2>{{ section.heading }}</h2>
+{% for paragraph in section.paragraphs %}
 <p>{{ paragraph }}</p>
 {% endfor %}
-</section>
-{% endfor %}
-<h2>Statement of financial position</h2>
-<p>{{ compliance_statement }}</p>
+{% elif section.kind == "statement" %}
+<h2>{{ section.heading }}</h2>
+{% if section.period_phrase %}<p>{{ section.period_phrase }}</p>{% endif %}
+{% if section.compliance %}<p>{{ section.compliance }}</p>{% endif %}
 <table>
-<thead><tr><th>Line</th><th class="amount">Current</th><th class="amount">Prior</th></tr></thead>
+<thead><tr><th>Line</th>{% for column in section.columns %}<th class="amount">{{ column }}</th>{% endfor %}</tr></thead>
 <tbody>
-{% for row in sofp %}
-<tr><td>{{ row.label }}</td><td class="amount">{{ row.current }}</td><td class="amount">{{ row.prior }}</td></tr>
+{% for row in section.rows %}
+<tr><td>{{ row.label }}</td>{% for amount in row.amounts %}<td class="amount">{{ amount }}</td>{% endfor %}</tr>
 {% endfor %}
 </tbody>
 </table>
-<h2>Income statement</h2>
-<table>
-<thead><tr><th>Line</th><th class="amount">Current</th><th class="amount">Prior</th></tr></thead>
-<tbody>
-{% for row in income %}
-<tr><td>{{ row.label }}</td><td class="amount">{{ row.current }}</td><td class="amount">{{ row.prior }}</td></tr>
-{% endfor %}
-</tbody>
-</table>
-<h2>Notes</h2>
-{% for note in notes %}
+{% elif section.kind == "notes" %}
+<h2>{{ section.heading }}</h2>
+{% for note in section.notes %}
 <section>
 <h3>{{ note.code }} {% if note.title %}{{ note.title }}{% endif %}</h3>
 <div class="note-body">{{ note.body }}</div>
 {% if note.lines %}
 <table>
-<thead><tr><th>Line</th><th class="amount">Current</th><th class="amount">Prior</th></tr></thead>
+{% if section.period_phrase %}<caption>{{ section.period_phrase }}</caption>{% endif %}
+<thead><tr><th>Line</th>{% for column in section.columns %}<th class="amount">{{ column }}</th>{% endfor %}</tr></thead>
 <tbody>
 {% for line in note.lines %}
-<tr><td>{{ line.line }}</td><td class="amount">{{ line.current }}</td><td class="amount">{{ line.prior }}</td></tr>
+<tr><td>{{ line.line }}</td>{% for amount in line.amounts %}<td class="amount">{{ amount }}</td>{% endfor %}</tr>
 {% endfor %}
 </tbody>
 </table>
@@ -142,6 +151,9 @@ _DOCUMENT = """<!DOCTYPE html>
 {% endfor %}
 </tbody>
 </table>
+{% endif %}
+</section>
+{% endfor %}
 {% endif %}
 </section>
 {% endfor %}
@@ -275,10 +287,6 @@ def write_statement_pdf(html: str) -> bytes:
     return document
 
 
-def _amount(value: Decimal) -> str:
-    return format(value, "f")
-
-
 def _director_phrase(item: dict[str, object]) -> str | None:
     name = item.get("name")
     if not isinstance(name, str) or not name.strip():
@@ -288,9 +296,9 @@ def _director_phrase(item: dict[str, object]) -> str | None:
     resigned = item.get("resigned_on")
     notes: list[str] = []
     if isinstance(appointed, str) and appointed.strip():
-        notes.append(f"appointed {appointed.strip()}")
+        notes.append(f"appointed {format_iso_date(appointed)}")
     if isinstance(resigned, str) and resigned.strip():
-        notes.append(f"resigned {resigned.strip()}")
+        notes.append(f"resigned {format_iso_date(resigned)}")
     if notes:
         phrase = f"{phrase} ({', '.join(notes)})"
     return phrase
@@ -464,7 +472,7 @@ def _note_context(entity: StatementEntity, policy_blocks: str) -> dict[str, str]
             "registered_office": entity.registered_office,
             "company_number": entity.company_number,
             "directors_list": entity.directors_list,
-            "currency": entity.currency,
+            "currency": currency_name_for_policy(entity.currency),
             "rounding_unit": _ROUNDING_LABEL,
             "policy_blocks": policy_blocks,
             "avg_employees_current": entity.average_employees,
@@ -639,17 +647,6 @@ def _compose_notes(
     return tuple(notes), tuple(flags)
 
 
-def _display_rows(rows: tuple[StatementRow, ...]) -> list[dict[str, str]]:
-    return [
-        {
-            "label": row.label,
-            "current": _amount(row.current),
-            "prior": "" if row.prior is None else _amount(row.prior),
-        }
-        for row in rows
-    ]
-
-
 def _render_html(
     *,
     entity: StatementEntity,
@@ -659,37 +656,81 @@ def _render_html(
     notes: tuple[StatementNote, ...],
     pages: tuple[StatutoryPage, ...],
     watermark: str,
+    period_start: str = "",
+    period_end: str = "",
+    first_financial_period: bool = False,
 ) -> str:
-    note_view = [
+    """Build the section list the template walks. The engine rows stay intact."""
+    start = parse_iso_date(period_start)
+    end = parse_iso_date(period_end)
+    comparative = not first_financial_period
+    columns = column_headings(
+        period_end=end,
+        currency_code=entity.currency,
+        comparative=comparative,
+    )
+    period_phrase = statement_period_phrase(start, end)
+    sections: list[dict[str, object]] = [
         {
-            "code": note.code,
-            "title": note.title or "",
-            "body": note.body,
-            "lines": [
+            "kind": "prose",
+            "anchor": page.heading.casefold().replace(" ", "-"),
+            "heading": page.heading,
+            "paragraphs": list(page.paragraphs),
+        }
+        for page in pages
+    ]
+    sections.append(
+        {
+            "kind": "statement",
+            "anchor": "sofp",
+            "heading": "Statement of financial position",
+            "period_phrase": as_at_phrase(end),
+            "compliance": compliance,
+            "columns": columns,
+            "rows": face_display_rows(sofp, comparative=comparative),
+        }
+    )
+    sections.append(
+        {
+            "kind": "statement",
+            "anchor": "income",
+            "heading": "Income statement",
+            "period_phrase": period_phrase,
+            "compliance": "",
+            "columns": columns,
+            "rows": face_display_rows(income, comparative=comparative),
+        }
+    )
+    sections.append(
+        {
+            "kind": "notes",
+            "anchor": "notes",
+            "heading": "Notes",
+            "period_phrase": period_phrase,
+            "columns": columns,
+            "notes": [
                 {
-                    "line": line.line,
-                    "current": _amount(line.current),
-                    "prior": _amount(line.prior),
+                    "code": note.code,
+                    "title": note.title or "",
+                    "body": note.body,
+                    "lines": note_display_lines(
+                        note.lines, comparative=comparative
+                    ),
+                    "fa_rows": [
+                        {
+                            "asset_class": row.asset_class,
+                            "nbv_close": format_whole(row.nbv_close),
+                        }
+                        for row in note.fa_rows
+                    ],
                 }
-                for line in note.lines
-            ],
-            "fa_rows": [
-                {"asset_class": row.asset_class, "nbv_close": _amount(row.nbv_close)}
-                for row in note.fa_rows
+                for note in notes
             ],
         }
-        for note in notes
-    ]
+    )
     return _HTML.from_string(_DOCUMENT).render(
         company_name=entity.name,
-        compliance_statement=compliance,
-        sofp=_display_rows(sofp),
-        income=_display_rows(income),
-        notes=note_view,
-        pages=[
-            {"heading": page.heading, "paragraphs": list(page.paragraphs)}
-            for page in pages
-        ],
+        sections=sections,
         watermark=watermark,
     )
 
@@ -708,6 +749,8 @@ def _render_draft(
     watermark: str = WATERMARK,
     practice_name: str = "",
     period_end: str = "",
+    period_start: str = "",
+    first_financial_period: bool = False,
     size_eligible: bool | None = None,
     approval_date: str = "",
     signing_directors: str = "",
@@ -752,6 +795,7 @@ def _render_draft(
         company_name=entity.name,
         practice_name=practice_name,
         period_end=period_end,
+        period_start=period_start,
         directors=entity.directors_list,
         secretary=entity.secretary,
         principal_activity=entity.principal_activity,
@@ -769,6 +813,9 @@ def _render_draft(
         notes=notes,
         pages=pages,
         watermark=watermark,
+        period_start=period_start,
+        period_end=period_end,
+        first_financial_period=first_financial_period,
     )
     return StatutoryStatements(
         watermark=watermark,
@@ -805,6 +852,8 @@ def build_statutory_statements(
     watermark: str = WATERMARK,
     practice_name: str = "",
     period_end: str = "",
+    period_start: str = "",
+    first_financial_period: bool = False,
     size_eligible: bool | None = None,
     approval_date: str = "",
     signing_directors: str = "",
@@ -813,7 +862,8 @@ def build_statutory_statements(
 
     ``prior_canonical`` uses the stored debit-positive sign. Comparatives
     are ``prior_from_mapped`` of that map, read back from the face.
-    Zero lines stay on the face. Useful lives that the company has not
+    Zero lines stay on the statement rows. The PDF omits a line that is
+    nil in both presented years. Useful lives that the company has not
     supplied stay as ``{{placeholders}}``.
     """
     canonical = prior_canonical or {}
@@ -844,6 +894,8 @@ def build_statutory_statements(
             watermark=watermark,
             practice_name=practice_name,
             period_end=period_end,
+            period_start=period_start,
+            first_financial_period=first_financial_period,
             size_eligible=size_eligible,
             approval_date=approval_date,
             signing_directors=signing_directors,
@@ -929,6 +981,10 @@ async def statements_for_version(
         watermark=watermark,
         practice_name="" if organisation is None else organisation.name,
         period_end=year_end.period_end.isoformat(),
+        period_start=""
+        if year_end.period_start is None
+        else year_end.period_start.isoformat(),
+        first_financial_period=year_end.first_financial_period,
         size_eligible=year_end.size_eligible,
         approval_date=""
         if year_end.approval_date is None
@@ -1018,6 +1074,10 @@ async def statements_for_adopted(
         watermark=watermark,
         practice_name="" if organisation is None else organisation.name,
         period_end=year_end.period_end.isoformat(),
+        period_start=""
+        if year_end.period_start is None
+        else year_end.period_start.isoformat(),
+        first_financial_period=year_end.first_financial_period,
         size_eligible=year_end.size_eligible,
         approval_date=""
         if year_end.approval_date is None

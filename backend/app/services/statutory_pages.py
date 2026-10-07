@@ -11,7 +11,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from app.schemas.year_end import amount_text
+from app.services.statutory_display import (
+    format_iso_date,
+    format_whole_prose,
+    parse_iso_date,
+    statement_period_phrase,
+)
 
 
 @dataclass(frozen=True)
@@ -31,6 +36,7 @@ def build_statutory_pages(
     currency: str,
     profit: Decimal,
     size_eligible: bool | None,
+    period_start: str = "",
     approval_date: str = "",
     signing_directors: str = "",
 ) -> tuple[StatutoryPage, ...]:
@@ -39,6 +45,7 @@ def build_statutory_pages(
         _compilation(company_name=company_name, practice_name=practice_name),
         _directors_report(
             period_end=period_end,
+            period_start=period_start,
             directors=directors,
             secretary=secretary,
             principal_activity=principal_activity,
@@ -85,15 +92,25 @@ def _compilation(*, company_name: str, practice_name: str) -> StatutoryPage:
 def _directors_report(
     *,
     period_end: str,
+    period_start: str = "",
     directors: str,
     secretary: str,
     principal_activity: str,
     currency: str,
     profit: Decimal,
 ) -> StatutoryPage:
-    year = _present(period_end)
-    if year:
-        period = f"The directors present their report for the year ended {year}."
+    end = parse_iso_date(period_end)
+    start = parse_iso_date(period_start)
+    if end is not None:
+        period = (
+            "The directors present their report "
+            f"{statement_period_phrase(start, end)}."
+        )
+    elif _present(period_end):
+        period = (
+            "The directors present their report for the year ended "
+            f"{_present(period_end)}."
+        )
     else:
         period = "The financial year end has not been recorded."
     named = _present(directors)
@@ -113,10 +130,17 @@ def _directors_report(
         activity_line = f"Principal activities: {activity}."
     else:
         activity_line = "Principal activities have not been recorded."
-    currency_code = _present(currency) or "the functional currency (not recorded)"
-    profit_line = (
-        "Profit for the financial year is " f"{currency_code} {amount_text(profit)}."
-    )
+    if _present(currency):
+        profit_line = (
+            "Profit for the financial year is "
+            f"{format_whole_prose(profit, currency)}."
+        )
+    else:
+        profit_line = (
+            "Profit for the financial year is "
+            f"{format_whole_prose(profit, '')} "
+            "(the functional currency has not been recorded)."
+        )
     return StatutoryPage(
         heading="Directors' report",
         paragraphs=(
@@ -137,7 +161,10 @@ def _approval(
 ) -> StatutoryPage:
     approved = _present(approval_date)
     if approved:
-        date_line = f"The financial statements were approved on {approved}."
+        date_line = (
+            "The financial statements were approved on "
+            f"{format_iso_date(approved)}."
+        )
     else:
         date_line = "Approval date has not been recorded."
     signatories = _present(signing_directors)
