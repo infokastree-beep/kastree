@@ -29,6 +29,9 @@ from findraft.models.year_end import YearEnd
 class WorkspaceSection:
     id: str
     label: str
+    group: str
+    group_label: str
+    order: int
 
 
 @dataclass(frozen=True)
@@ -41,24 +44,24 @@ class ReportingFramework:
 
 
 _FRS_SECTIONS: tuple[WorkspaceSection, ...] = (
-    WorkspaceSection("report-setup", "Report setup"),
-    WorkspaceSection("sub-lines", "Sub-line review"),
-    WorkspaceSection("disclosures", "Disclosures"),
-    WorkspaceSection("adjustments", "Adjustments"),
-    WorkspaceSection("review", "Review dashboard"),
-    WorkspaceSection("income", "Income statement"),
-    WorkspaceSection("sofp", "Statement of financial position"),
+    WorkspaceSection("review", "Review dashboard", "overview", "Overview", 1),
+    WorkspaceSection("report-setup", "Report setup", "report-options", "Report options", 2),
+    WorkspaceSection("sub-lines", "Mapping", "inputs", "Inputs", 3),
+    WorkspaceSection("adjustments", "Adjustments", "inputs", "Inputs", 4),
+    WorkspaceSection("disclosures", "Disclosures", "inputs", "Inputs", 5),
+    WorkspaceSection("company-details", "Company details", "inputs", "Inputs", 6),
+    WorkspaceSection("income", "Income statement", "sections", "Sections", 7),
+    WorkspaceSection("sofp", "Statement of financial position", "sections", "Sections", 8),
 )
 
 _FORM11_SECTIONS: tuple[WorkspaceSection, ...] = (
-    WorkspaceSection("report-setup", "Report setup"),
-    WorkspaceSection("extracts", "Extracts summary"),
-    WorkspaceSection("review", "Review dashboard"),
+    WorkspaceSection("review", "Review dashboard", "overview", "Overview", 1),
+    WorkspaceSection("report-setup", "Report setup", "report-options", "Report options", 2),
 )
 
 _FALLBACK_SECTIONS: tuple[WorkspaceSection, ...] = (
-    WorkspaceSection("report-setup", "Report setup"),
-    WorkspaceSection("review", "Review dashboard"),
+    WorkspaceSection("review", "Review dashboard", "overview", "Overview", 1),
+    WorkspaceSection("report-setup", "Report setup", "report-options", "Report options", 2),
 )
 
 REPORTING_FRAMEWORKS: tuple[ReportingFramework, ...] = (
@@ -103,7 +106,13 @@ def framework_list() -> ReportingFrameworkList:
                 label=framework.label,
                 available=framework.available,
                 sections=[
-                    WorkspaceSectionOut(id=section.id, label=section.label)
+                    WorkspaceSectionOut(
+                        id=section.id,
+                        label=section.label,
+                        group=section.group,
+                        group_label=section.group_label,
+                        order=section.order,
+                    )
                     for section in framework.sections
                 ],
             )

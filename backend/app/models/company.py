@@ -60,6 +60,10 @@ class Company(Base):
     )
     company_number: Mapped[str | None] = mapped_column(String, nullable=True)
     industry: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Letterhead. industry stays the Product 1 field and is not reused here.
+    business_address: Mapped[str | None] = mapped_column(String, nullable=True)
+    incorporated_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    principal_activity: Mapped[str | None] = mapped_column(String, nullable=True)
     company_type: Mapped[str] = mapped_column(
         String, nullable=False, server_default=text("'trading'")
     )

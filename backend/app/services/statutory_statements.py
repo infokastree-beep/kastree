@@ -160,6 +160,7 @@ class StatementEntity:
     average_employees: str
     secretary: str = ""
     industry: str = ""
+    principal_activity: str = ""
 
 
 @dataclass(frozen=True)
@@ -278,20 +279,57 @@ def _amount(value: Decimal) -> str:
     return format(value, "f")
 
 
+def _director_phrase(item: dict[str, object]) -> str | None:
+    name = item.get("name")
+    if not isinstance(name, str) or not name.strip():
+        return None
+    phrase = name.strip()
+    appointed = item.get("appointed_on")
+    resigned = item.get("resigned_on")
+    notes: list[str] = []
+    if isinstance(appointed, str) and appointed.strip():
+        notes.append(f"appointed {appointed.strip()}")
+    if isinstance(resigned, str) and resigned.strip():
+        notes.append(f"resigned {resigned.strip()}")
+    if notes:
+        phrase = f"{phrase} ({', '.join(notes)})"
+    return phrase
+
+
+def _signing_phrase(value: object) -> str:
+    if not isinstance(value, list):
+        return ""
+    names = [item.strip() for item in value if isinstance(item, str) and item.strip()]
+    return ", ".join(names)
+
+
 def _directors_list(value: object) -> str:
+    """Names only. A director without a name is omitted, not printed as JSON."""
     if not isinstance(value, list):
         return ""
     names: list[str] = []
     for item in value:
         if isinstance(item, dict):
-            name = item.get("name")
-            if isinstance(name, str) and name.strip():
-                names.append(name.strip())
-            else:
-                names.append(str(item))
+            phrase = _director_phrase(item)
+            if phrase is not None:
+                names.append(phrase.split(" (", 1)[0])
         elif isinstance(item, str) and item.strip():
             names.append(item.strip())
     return ", ".join(names)
+
+
+def _directors_for_report(value: object) -> str:
+    if not isinstance(value, list):
+        return ""
+    phrases: list[str] = []
+    for item in value:
+        if isinstance(item, dict):
+            phrase = _director_phrase(item)
+            if phrase is not None:
+                phrases.append(phrase)
+        elif isinstance(item, str) and item.strip():
+            phrases.append(item.strip())
+    return ", ".join(phrases)
 
 
 def entity_from_company(company: Company) -> StatementEntity:
@@ -300,11 +338,12 @@ def entity_from_company(company: Company) -> StatementEntity:
         name=company.name,
         registered_office=company.registered_office or "",
         company_number=company.company_number or "",
-        directors_list=_directors_list(company.directors),
+        directors_list=_directors_for_report(company.directors),
         currency=company.functional_currency,
         average_employees="" if employees is None else str(employees),
         secretary=company.secretary or "",
         industry=company.industry or "",
+        principal_activity=company.principal_activity or "",
     )
 
 
@@ -670,6 +709,8 @@ def _render_draft(
     practice_name: str = "",
     period_end: str = "",
     size_eligible: bool | None = None,
+    approval_date: str = "",
+    signing_directors: str = "",
 ) -> StatutoryStatements:
     directory = (
         pack_dir(pack_id, pack_version)
@@ -713,10 +754,12 @@ def _render_draft(
         period_end=period_end,
         directors=entity.directors_list,
         secretary=entity.secretary,
-        industry=entity.industry,
+        principal_activity=entity.principal_activity,
         currency=entity.currency,
         profit=sofp_profit,
         size_eligible=size_eligible,
+        approval_date=approval_date,
+        signing_directors=signing_directors,
     )
     html = _render_html(
         entity=entity,
@@ -763,6 +806,8 @@ def build_statutory_statements(
     practice_name: str = "",
     period_end: str = "",
     size_eligible: bool | None = None,
+    approval_date: str = "",
+    signing_directors: str = "",
 ) -> StatutoryStatements:
     """Render a DRAFT only when every critical check has passed.
 
@@ -800,6 +845,8 @@ def build_statutory_statements(
             practice_name=practice_name,
             period_end=period_end,
             size_eligible=size_eligible,
+            approval_date=approval_date,
+            signing_directors=signing_directors,
         )
     except (OSError, ValueError, KeyError) as exc:
         return _withheld(report, build_error=str(exc))
@@ -883,6 +930,10 @@ async def statements_for_version(
         practice_name="" if organisation is None else organisation.name,
         period_end=year_end.period_end.isoformat(),
         size_eligible=year_end.size_eligible,
+        approval_date=""
+        if year_end.approval_date is None
+        else year_end.approval_date.isoformat(),
+        signing_directors=_signing_phrase(year_end.signing_directors),
     )
 
 
@@ -968,4 +1019,8 @@ async def statements_for_adopted(
         practice_name="" if organisation is None else organisation.name,
         period_end=year_end.period_end.isoformat(),
         size_eligible=year_end.size_eligible,
+        approval_date=""
+        if year_end.approval_date is None
+        else year_end.approval_date.isoformat(),
+        signing_directors=_signing_phrase(year_end.signing_directors),
     )

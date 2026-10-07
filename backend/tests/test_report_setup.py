@@ -42,23 +42,38 @@ def test_sidebar_sections_follow_the_reporting_framework() -> None:
     unknown = [section.label for section in sections_for("uk-frs105")]
 
     assert frs == [
-        "Report setup",
-        "Sub-line review",
-        "Disclosures",
-        "Adjustments",
         "Review dashboard",
+        "Report setup",
+        "Mapping",
+        "Adjustments",
+        "Disclosures",
+        "Company details",
         "Income statement",
         "Statement of financial position",
     ]
-    assert form11 == [
-        "Report setup",
-        "Extracts summary",
-        "Review dashboard",
+    assert [section.group for section in sections_for("frs102-1a-ie")] == [
+        "overview",
+        "report-options",
+        "inputs",
+        "inputs",
+        "inputs",
+        "inputs",
+        "sections",
+        "sections",
     ]
-    assert "Sub-line review" not in form11
+    assert form11 == [
+        "Review dashboard",
+        "Report setup",
+    ]
+    assert [section.group for section in sections_for("form11-summary")] == [
+        "overview",
+        "report-options",
+    ]
+    assert "Mapping" not in form11
     assert "Extracts summary" not in frs
+    assert "Extracts summary" not in form11
     assert len(form11) < len(frs)
-    assert unknown == ["Report setup", "Review dashboard"]
+    assert unknown == ["Review dashboard", "Report setup"]
     assert unknown != frs
 
 
@@ -306,8 +321,14 @@ async def test_framework_catalogue_is_not_a_single_frs_list(
     assert form_labels == [section.label for section in sections_for("form11-summary")]
     assert frameworks["frs102-1a-ie"]["available"] is True
     assert frameworks["form11-summary"]["available"] is False
-    assert "Sub-line review" in frs_labels
-    assert "Extracts summary" in form_labels
+    assert "Mapping" in frs_labels
+    assert "Company details" in frs_labels
+    frs_groups = [section["group"] for section in frameworks["frs102-1a-ie"]["sections"]]
+    form_groups = [section["group"] for section in frameworks["form11-summary"]["sections"]]
+    assert "sections" in frs_groups
+    assert "sections" not in form_groups
+    assert "inputs" not in form_groups
+    assert "Extracts summary" not in form_labels
     assert "Extracts summary" not in frs_labels
 
 

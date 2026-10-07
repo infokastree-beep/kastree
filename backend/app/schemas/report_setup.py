@@ -92,6 +92,9 @@ class WorkspaceSectionOut(BaseModel):
 
     id: str
     label: str
+    group: str
+    group_label: str
+    order: int
 
 
 class ReportingFrameworkOut(BaseModel):
