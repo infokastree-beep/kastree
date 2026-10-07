@@ -629,7 +629,7 @@ async def get_adopted_statement_pdf(
         media_type="application/pdf",
         headers={
             "Content-Disposition": (
-                'inline; filename="statutory-statements-draft.pdf"'
+                'attachment; filename="statutory-statements-draft.pdf"'
             )
         },
     )

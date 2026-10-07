@@ -5,7 +5,8 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
-import { ApiError, apiFetch, getApiBaseUrl } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
+import { downloadDraftPdf, pdfBlockReason } from "@/lib/draft-pdf";
 import {
   ReportSetupForm,
   type ReportSetup,
@@ -414,45 +415,29 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     }
   }
 
+  const pdfReason = pdfBlockReason({
+    statementsError: statementsQuery.error
+      ? messageFrom(statementsQuery.error)
+      : null,
+    dashboardError: dashboardQuery.error ? messageFrom(dashboardQuery.error) : null,
+    renderable: statementsQuery.data?.renderable ?? null,
+    checks: statementsQuery.data?.checks ?? dashboard?.checks ?? [],
+  });
+  const pdfPath =
+    yearEnd?.adopted_trial_balance_id != null
+      ? `/year-ends/${yearEndId}/adopted-trial-balance/statements.pdf`
+      : draft?.tb_version_id != null
+        ? `/year-ends/${yearEndId}/trial-balance-versions/${draft.tb_version_id}/statements.pdf`
+        : null;
+
   async function downloadPdf(): Promise<void> {
-    if (!yearEnd) {
-      return;
-    }
-    const path =
-      yearEnd.adopted_trial_balance_id != null
-        ? `/year-ends/${yearEndId}/adopted-trial-balance/statements.pdf`
-        : draft?.tb_version_id != null
-          ? `/year-ends/${yearEndId}/trial-balance-versions/${draft.tb_version_id}/statements.pdf`
-          : null;
-    if (path === null) {
+    if (pdfReason !== null || statementsQuery.data?.renderable !== true || pdfPath === null) {
       return;
     }
     setError(null);
     setBusy("Preparing PDF…");
     try {
-      const token = await getToken();
-      const response = await fetch(`${getApiBaseUrl()}${path}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!response.ok) {
-        let detail = `API ${response.status}`;
-        try {
-          const body = (await response.json()) as { detail?: unknown };
-          if (typeof body.detail === "string") {
-            detail = body.detail;
-          }
-        } catch {
-          detail = `API ${response.status}`;
-        }
-        throw new ApiError(detail, response.status, null);
-      }
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = "statutory-statements-draft.pdf";
-      anchor.click();
-      URL.revokeObjectURL(url);
+      await downloadDraftPdf(pdfPath, getToken);
     } catch (caught) {
       setError(messageFrom(caught));
     } finally {
@@ -562,6 +547,25 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
           onReview={() => selectSection("sub-lines")}
         />
       ) : null}
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          data-testid="statutory-download"
+          disabled={
+            busy !== null || pdfReason !== null || statementsQuery.data?.renderable !== true
+          }
+          onClick={() => void downloadPdf()}
+          className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Download draft PDF
+        </button>
+        {pdfReason !== null ? (
+          <p className="text-sm text-ink-secondary" data-testid="statutory-download-reason">
+            {pdfReason}
+          </p>
+        ) : null}
+      </div>
 
       {sectionId === "report-setup" && setupQuery.data ? (
         <ReportSetupForm
@@ -819,19 +823,9 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
 
       {statementsQuery.data ? (
         <section className="space-y-4" data-testid="statutory-draft-pack">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-amber-800">
-              {statementsQuery.data.watermark} statutory pack
-            </h2>
-            <button
-              type="button"
-              disabled={busy !== null || !statementsQuery.data.renderable}
-              onClick={() => void downloadPdf()}
-              className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:opacity-50"
-            >
-              Download draft PDF
-            </button>
-          </div>
+          <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-amber-800">
+            {statementsQuery.data.watermark} statutory pack
+          </h2>
           <p className="text-sm text-ink-secondary">
             Net assets {statementsQuery.data.net_assets ?? "—"}. Profit{" "}
             {statementsQuery.data.profit ?? "—"}.

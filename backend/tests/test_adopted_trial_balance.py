@@ -432,11 +432,20 @@ async def test_adopted_golden_keeps_engine_figures_without_a_statutory_copy(
     assert reconciliation.status_code == 200, reconciliation.text
     assert reconciliation.json()["net_assets"] == "455812.00"
     assert reconciliation.json()["profit"] == "157650.00"
+    anonymous = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
+    )
+    assert anonymous.status_code == 401, anonymous.text
     pdf = await api_client.get(
         f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
         headers=headers,
     )
     assert pdf.status_code == 200, pdf.text
+    assert pdf.headers["content-type"] == "application/pdf"
+    assert (
+        pdf.headers["content-disposition"]
+        == 'attachment; filename="statutory-statements-draft.pdf"'
+    )
     assert pdf.content.startswith(b"%PDF")
     assert _statutory_copy_counts(provisioned_org["org_id"], year_end_id) == (0, 0)
 
@@ -846,6 +855,12 @@ async def test_statements_trial_balance_opens_a_statutory_year_end(
         check["code"] == "V-GATE-001" and check["passed"] is False
         for check in blocked.json()["checks"]
     )
+    refused_pdf = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
+        headers=headers,
+    )
+    assert refused_pdf.status_code == 400, refused_pdf.text
+    assert refused_pdf.json()["detail"] == "Statutory statements are not renderable"
 
     opened = await api_client.post(
         f"/year-ends/{year_end_id}/first-financial-period",
@@ -1293,7 +1308,16 @@ async def test_unresolved_subline_blocks_the_draft_until_confirmed(
         headers=headers,
     )
     assert blocked.status_code == 400, blocked.text
-    assert "needs a statutory sub-line" in blocked.json()["detail"]
+    assert blocked.json()["detail"] == (
+        "Product 1 line 'operating_expenses' on 'Operating Expenses' "
+        "needs a statutory sub-line"
+    )
+    blocked_pdf = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
+        headers=headers,
+    )
+    assert blocked_pdf.status_code == 400, blocked_pdf.text
+    assert blocked_pdf.json()["detail"] == blocked.json()["detail"]
     review = await api_client.get(
         f"/year-ends/{year_end_id}/adopted-trial-balance/sub-lines",
         headers=headers,
@@ -1359,3 +1383,18 @@ async def test_unresolved_subline_blocks_the_draft_until_confirmed(
     assert admin["current"] == "-100.00"
     assert body["profit"] == "-100.00"
     assert all(row["label"] != "Amortisation charge" for row in body["income"])
+    anonymous = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
+    )
+    assert anonymous.status_code == 401, anonymous.text
+    pdf = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
+        headers=headers,
+    )
+    assert pdf.status_code == 200, pdf.text
+    assert pdf.headers["content-type"] == "application/pdf"
+    assert (
+        pdf.headers["content-disposition"]
+        == 'attachment; filename="statutory-statements-draft.pdf"'
+    )
+    assert pdf.content.startswith(b"%PDF")

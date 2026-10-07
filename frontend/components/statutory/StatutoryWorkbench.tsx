@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
-import { ApiError, apiFetch, getApiBaseUrl } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
+import { downloadDraftPdf, pdfBlockReason } from "@/lib/draft-pdf";
 import { formatCurrency } from "@/lib/currency";
 import { confidenceBadgeClass, formatConfidence } from "@/lib/utils";
 import type { ClientListResponse, CompanyListResponse, ICompany } from "@/types";
@@ -381,33 +382,20 @@ export function StatutoryWorkbench() {
     if (!pdfPath) {
       return;
     }
+    if (
+      pdfBlockReason({
+        statementsError: null,
+        dashboardError: null,
+        renderable: pack?.renderable ?? null,
+        checks: pack?.checks ?? [],
+      }) !== null
+    ) {
+      return;
+    }
     setError(null);
     setBusy("Preparing PDF…");
     try {
-      const token = await getToken();
-      const response = await fetch(
-        `${getApiBaseUrl()}${pdfPath}`,
-        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
-      );
-      if (!response.ok) {
-        let detail = `API ${response.status}`;
-        try {
-          const body = (await response.json()) as { detail?: unknown };
-          if (typeof body.detail === "string") {
-            detail = body.detail;
-          }
-        } catch {
-          detail = `API ${response.status}`;
-        }
-        throw new ApiError(detail, response.status, null);
-      }
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = "statutory-statements-draft.pdf";
-      anchor.click();
-      URL.revokeObjectURL(url);
+      await downloadDraftPdf(pdfPath, getToken);
     } catch (caught) {
       setError(messageFrom(caught));
     } finally {
@@ -725,14 +713,40 @@ export function StatutoryWorkbench() {
             <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-800">
               {pack.watermark} statutory pack
             </h2>
-            <button
-              type="button"
-              className="rounded border border-stone-300 px-4 py-2 text-sm font-medium disabled:opacity-50"
-              disabled={busy !== null || !pack.renderable}
-              onClick={() => void downloadPdf()}
-            >
-              Download draft PDF
-            </button>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                data-testid="statutory-download"
+                className="rounded border border-stone-300 px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={
+                  busy !== null ||
+                  pdfBlockReason({
+                    statementsError: null,
+                    dashboardError: null,
+                    renderable: pack.renderable,
+                    checks: pack.checks,
+                  }) !== null
+                }
+                onClick={() => void downloadPdf()}
+              >
+                Download draft PDF
+              </button>
+              {pdfBlockReason({
+                statementsError: null,
+                dashboardError: null,
+                renderable: pack.renderable,
+                checks: pack.checks,
+              }) !== null ? (
+                <p className="text-sm text-stone-600" data-testid="statutory-download-reason">
+                  {pdfBlockReason({
+                    statementsError: null,
+                    dashboardError: null,
+                    renderable: pack.renderable,
+                    checks: pack.checks,
+                  })}
+                </p>
+              ) : null}
+            </div>
           </div>
           <p className="text-sm text-stone-700">
             Net assets {money(pack.net_assets, currency)}. Profit{" "}
