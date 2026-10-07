@@ -11,6 +11,7 @@ import {
   type ReportSetup,
   type ReportSetupWrite,
 } from "@/components/statutory/ReportSetupForm";
+import { StatutoryLoadError } from "@/components/statutory/StatutoryLoadError";
 import { StatutorySublineReview } from "@/components/statutory/StatutorySublineReview";
 import { WorkspaceSidebar } from "@/components/statutory/WorkspaceSidebar";
 import { displayAmount, type RoundingMode } from "@/lib/report-display";
@@ -546,6 +547,20 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       {busy ? <p className="text-sm text-soft">{busy}</p> : null}
       {draftQuery.error ? (
         <p className="text-sm text-red-800">{messageFrom(draftQuery.error)}</p>
+      ) : null}
+      {dashboardQuery.error ? (
+        <StatutoryLoadError
+          testId="statutory-dashboard-error"
+          message={messageFrom(dashboardQuery.error)}
+          onReview={() => selectSection("sub-lines")}
+        />
+      ) : null}
+      {statementsQuery.error ? (
+        <StatutoryLoadError
+          testId="statutory-statements-error"
+          message={messageFrom(statementsQuery.error)}
+          onReview={() => selectSection("sub-lines")}
+        />
       ) : null}
 
       {sectionId === "report-setup" && setupQuery.data ? (

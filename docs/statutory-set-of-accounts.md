@@ -1,7 +1,54 @@
 # Statutory set of accounts — design for approval
 
-**Status:** design only, 7 October 2026. Not approved. No implementation in
-this note. Phase 2 waits for an explicit yes.
+**Status:** decisions recorded 7 October 2026. Phase 2 step 1 is only the
+workspace error banner. The rest of this note is not built.
+
+**Decisions.**
+
+1. A 1A.9 disagreement warns. It does not block FINAL. Two disclosure
+   questions are added: gains or losses in other comprehensive income
+   exist; equity changed other than through profit or loss (including
+   dividends or share issues). Unanswered blocks FINAL, the same as other
+   disclosures. "Yes" with the matching statement switched off is a warning.
+2. Principal activity is a new `principal_activity` text column. `industry`
+   is not reused.
+3. Business address is one multi-line text field.
+4. Advisers wait. The new company columns are `business_address`,
+   `incorporated_on`, and `principal_activity`.
+5. The screen says "source not confirmed". The accounts print no legal
+   citation until a reviewer or solicitor confirms it. Citations live in
+   the pack file, not in code.
+6. Members may edit company details. Each change writes an audit-log entry.
+   Finalise stays admin or owner (`require_client_admin` on the existing
+   finalise route).
+7. Phase 2 step 1 surfaces the dashboard and statements errors, with the
+   exact API sentence and a link to Sub-line review. No other product
+   change in that step. That step adds no migration.
+
+**Statement of income and retained earnings.** FRS 102 (September 2024)
+paragraph 6.4, pointing at paragraph 3.18, permits one statement of income
+and retained earnings in place of a statement of comprehensive income and
+a statement of changes in equity only when the only changes to equity
+during the periods presented are profit or loss, payment of dividends,
+corrections of prior period material errors, and changes in accounting
+policy. Paragraph 6.5 then requires opening retained earnings, dividends
+declared and paid or payable, restatements for material errors, restatements
+for accounting-policy changes, and closing retained earnings, plus the
+income statement. A small entity is not required to comply with paragraph
+3.18 or with Section 6 (paragraphs 1A.7 and 6.1A). Paragraph 1A.9(b) is
+the operative "may need" rule, and it names either a statement of changes
+in equity or a statement of income and retained earnings.
+
+`check_re_rollforward` (`V-RE-001`) already uses opening retained earnings,
+profit, dividends, and closing retained earnings. Those four figures are
+enough for a basic statement of income and retained earnings when the check
+passes and share capital and share premium did not move. They are not a
+full statement of changes in equity: there is no other comprehensive
+income, no classified share issue or own-share movement, and the
+transition adjustment on the check is not passed by the reconciliation
+caller. Dividends alone still fit paragraph 6.4. A share issue does not.
+That basic statement is ahead of waiting for a new 1A.9 evaluator. It is
+not part of step 1.
 
 **Page.** One address stays: `/year-ends/{id}/draft`, one component
 `StatutoryDraftWorkspace`, one framework dropdown. No route per framework.
@@ -94,11 +141,11 @@ body sets them false. The stored map is not overwritten by that request.
 Turning off a usually-required section is allowed. It raises a dashboard
 **notice**, not a block, and does not by itself stop FINAL.
 
-If the user turns `oci` or `socie` off while the engine says that
-statement is required, the dashboard check is a **block** (the statement
-is required by 1A.9). If the user turns one on while the engine says it
-is not required, the check is a **notice**. Cash flow and the trading
-statement never block FINAL.
+1A.9 is a "may need", not an automatic requirement. Turning `oci` or
+`socie` off while the matching disclosure is Yes raises a warning and
+does not block FINAL. Leaving either new disclosure unanswered blocks
+FINAL, the same as the other disclosure questions. Cash flow and the
+trading statement never block FINAL.
 
 ---
 
@@ -257,15 +304,15 @@ letterhead.
 | Company name | existing `name` | Cover, every page |
 | Company number | existing `company_number` | Directors and other information, note N0 |
 | Registered office | existing `registered_office` | Directors and other information, note N0 |
-| Business address | **new** `business_address` text, nullable | Directors and other information, only if the practice uses a trading address |
+| Business address | **new** `business_address` text, nullable, one multi-line field | Directors and other information |
 | Date of incorporation | **new** `incorporated_on` date, nullable | Directors and other information |
-| Principal activity | **reuse** `industry` | Directors' report (Week 11 already prints `industry` as principal activities) |
+| Principal activity | **new** `principal_activity` text, nullable. Do not reuse `industry` | Directors' report |
 | Functional currency | existing `functional_currency` | Faces and the directors' report profit line |
 | Financial year end | existing `financial_year_end` | Not a substitute for this draft's `period_end` |
 | Average employees | existing `average_employees` | Employee note when the disclosure says there are employees |
 | Secretary | existing `secretary` | Directors and other information, directors' report |
 | Directors | existing `directors` JSONB | Directors' report, N0, signatories |
-| Advisers | **new** `advisers` JSONB, nullable | Directors and other information. Optional. Keys `accountants`, `auditors`, `bankers`, `solicitors`, each a name and an address string or null. |
+| Advisers | Not in this build | Wait. No column until a later decision. |
 
 `directors` stays JSON. Each object is `{ "name", "appointed_on", "resigned_on" }`.
 `appointed_on` and `resigned_on` are dates or null. No new column.
@@ -367,11 +414,11 @@ traffic colours except where the table says block.
 | `V-CO-001` | No director name on the company | warning | yes, when directors' report or directors-and-other-information is on |
 | `V-CO-002` | Registered office or company number missing | warning | yes, when those sections or notes are on |
 | `V-CO-003` | Secretary missing | notice | no |
-| `V-CO-004` | Principal activity (`industry`) missing | notice | no |
+| `V-CO-004` | Principal activity missing | notice | no |
 | `V-CO-005` | Approval date missing | warning | yes, when the approval page is on |
 | `V-CO-006` | No signing director, or a name that is not on the company | warning | yes, when the approval page is on |
 | `V-SEC-001` | Usually-required section is off | notice | no |
-| `V-SEC-002` | Engine says OCI or SOCIE is required and the user turned it off | warning | yes |
+| `V-SEC-002` | Disclosure "yes" for OCI or for an equity change, and the matching statement is off | warning | no |
 | `V-SEC-003` | User turned OCI or SOCIE on and the engine says it is not required | notice | no |
 | `V-SEC-004` | Engine has not evaluated 1A.9(a) or 1A.9(b) | notice | no |
 | `V-SEC-005` | Cash flow or trading statement is on | notice | no. Copy: this pack does not build that statement. |
@@ -490,12 +537,16 @@ current tests lock in.
    repo. Toggles and the five report-setup fields live here. This
    environment did not apply it to production on 3 October 2026. Check
    `alembic current` before assuming it is there.
-3. **New** revision, one step, nullable only:
+3. **New**, and not part of Phase 2 step 1. One nullable revision when
+   company details are built:
    - `companies.business_address` text
    - `companies.incorporated_on` date
-   - `companies.advisers` jsonb
-   - `findraft_year_ends.approval_date` date
-   - `findraft_year_ends.signing_directors` jsonb
+   - `companies.principal_activity` text
+
+   Approval date and signing directors are a later revision, with
+   signatories. Advisers are not in either revision. `b8c9d0e1f2` and
+   `c9d0e1f2a3` are already applied on production. Step 1 has nothing to
+   run.
 
 No new table. Both tables already have row-level security. New columns
 are covered by the existing policies. Tests still run as the
@@ -537,22 +588,34 @@ on the Pydantic schema does not need a migration.
 
 ## 10. Build order
 
-1. Company details API, fail-closed pages, dashboard checks `V-CO-*`.
-2. Pack section declaration, toggle map, locked-off 422, dashboard
-   `V-SEC-*`.
-3. Composer: cover, contents, and the PDF include list. Wire the five
-   report-setup fields into that PDF in the same step so display settings
-   finally change the file.
-4. Sidebar groups, disclosure checklist, mark-remaining-no, signatories,
+1. Show dashboard and statements errors on the workspace. Done as Phase 2
+   step 1. No migration.
+2. Statement of income and retained earnings from the V-RE-001 figures
+   (opening retained earnings, profit, dividends, closing retained
+   earnings), only when that check passes and share capital and share
+   premium are unchanged. This comes before any new 1A.9 evaluator.
+3. Company details API, fail-closed pages, dashboard checks `V-CO-*`.
+   Migration: `business_address`, `incorporated_on`, `principal_activity`.
+4. Pack section declaration, toggle map, locked-off 422, dashboard
+   `V-SEC-*`, and the two new disclosure questions.
+5. Composer: cover, contents, and the PDF include list, including the five
+   report-setup display fields.
+6. Sidebar groups, disclosure checklist, mark-remaining-no, signatories,
    events, read-only trial balance, preview.
-5. OCI and SOCIE only after the engine can report the two booleans.
-   Until then the sections stay off with `V-SEC-004`.
-
-The first three are the preferred cut. They do not need the OCI engine.
+7. A full statement of changes in equity only when a movement the retained
+   earnings roll-forward does not classify is present (share issue, own
+   shares, other comprehensive income, or a restatement).
 
 ---
 
-## 11. Defect already on the workspace (do not treat as fixed)
+## 11. Workspace errors
+
+Phase 2 step 1 shows `dashboardQuery.error` and `statementsQuery.error`
+on the draft page. The text is the API `detail` unchanged, including
+`Product 1 line '…' on '…' needs a statutory sub-line`. That sentence
+links to Sub-line review (`?section=sub-lines`).
+
+## 11a. What was wrong before that step
 
 On the deployed commit `522ef03` the sidebar is the seven working
 entries. Statement of changes in equity is not among them, in
@@ -570,23 +633,9 @@ That is a shared code path, not evidence that one draft's rows were
 corrupted. A live signed-in response for one draft was not available in
 this environment (see the investigation note in the pull request).
 
-Phase 2 of this design should show those errors on the page. That is a
-small fix, separate from building the new sections.
-
 ---
 
 ## 12. Open questions
 
-1. Should a 1A.9 disagreement block FINAL, as this note recommends, or
-   only warn?
-2. Is reusing `industry` as principal activity acceptable, or do you want
-   a separate `principal_activity` column?
-3. Business address: one text field, or structured lines?
-4. May advisers be omitted entirely from the first build?
-5. Should "usually required" citations be filled by counsel before Phase 2
-   prints them, or stored as `pending-reviewer-signoff` and printed as
-   "source not confirmed"?
-6. Company-details permission: any member of the org, or admin and owner
-   only? This note uses member, matching other draft edits.
-7. Is the silent dashboard and statements error in section 11 in scope for
-   the first Phase 2 pull request?
+None of the seven questions are still open. They are recorded at the top
+of this note.

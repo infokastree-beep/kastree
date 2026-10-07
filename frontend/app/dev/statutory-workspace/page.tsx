@@ -7,6 +7,7 @@
 
 import { useState } from "react";
 import { ReportSetupForm, type ReportSetupWrite } from "@/components/statutory/ReportSetupForm";
+import { StatutoryLoadError } from "@/components/statutory/StatutoryLoadError";
 import { WorkspaceSidebar } from "@/components/statutory/WorkspaceSidebar";
 import { displayAmount, type RoundingMode } from "@/lib/report-display";
 import {
@@ -108,6 +109,11 @@ export default function StatutoryWorkspacePreviewPage() {
       </div>
       <div className="min-w-0 flex-1 space-y-6">
         <h1 className="text-xl font-medium text-ink">Statutory workspace preview</h1>
+        <StatutoryLoadError
+          testId="statutory-statements-error"
+          message="Product 1 line 'operating_expenses' on 'Operating Expenses' needs a statutory sub-line"
+          onReview={() => setRequested("sub-lines")}
+        />
         <p className="text-sm text-ink-secondary" data-testid="preview-section">
           Open section: {sectionId}. Sidebar entries: {sections.map((section) => section.label).join(", ")}.
         </p>
