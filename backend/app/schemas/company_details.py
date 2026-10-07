@@ -24,6 +24,7 @@ class CompanyDetailsWrite(BaseModel):
     incorporated_on: date | None = None
     principal_activity: str | None = None
     secretary: str | None = None
+    average_employees: int | None = Field(default=None, ge=0, le=1_000_000)
     directors: list[DirectorRecord] = Field(default_factory=list)
 
 
@@ -43,6 +44,7 @@ class CompanyDetailsResponse(BaseModel):
     incorporated_on: date | None
     principal_activity: str | None
     secretary: str | None
+    average_employees: int | None
     directors: list[DirectorRecord]
     approval_date: date | None
     signing_directors: list[str]

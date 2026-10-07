@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
@@ -118,10 +119,10 @@ _DOCUMENT = """<!DOCTYPE html>
 {% if section.period_phrase %}<p>{{ section.period_phrase }}</p>{% endif %}
 {% if section.compliance %}<p>{{ section.compliance }}</p>{% endif %}
 <table>
-<thead><tr><th>Line</th>{% for column in section.columns %}<th class="amount">{{ column }}</th>{% endfor %}</tr></thead>
+<thead><tr><th>Line</th><th>Notes</th>{% for column in section.columns %}<th class="amount">{{ column }}</th>{% endfor %}</tr></thead>
 <tbody>
 {% for row in section.rows %}
-<tr><td>{{ row.label }}</td>{% for amount in row.amounts %}<td class="amount">{{ amount }}</td>{% endfor %}</tr>
+<tr><td>{{ row.label }}</td><td>{{ row.note }}</td>{% for amount in row.amounts %}<td class="amount">{{ amount }}</td>{% endfor %}</tr>
 {% endfor %}
 </tbody>
 </table>
@@ -129,7 +130,7 @@ _DOCUMENT = """<!DOCTYPE html>
 <h2>{{ section.heading }}</h2>
 {% for note in section.notes %}
 <section>
-<h3>{{ note.code }} {% if note.title %}{{ note.title }}{% endif %}</h3>
+<h3>{{ note.title }}</h3>
 <div class="note-body">{{ note.body }}</div>
 {% if note.lines %}
 <table>
@@ -137,7 +138,7 @@ _DOCUMENT = """<!DOCTYPE html>
 <thead><tr><th>Line</th>{% for column in section.columns %}<th class="amount">{{ column }}</th>{% endfor %}</tr></thead>
 <tbody>
 {% for line in note.lines %}
-<tr><td>{{ line.line }}</td>{% for amount in line.amounts %}<td class="amount">{{ amount }}</td>{% endfor %}</tr>
+<tr><td>{{ line.label }}</td>{% for amount in line.amounts %}<td class="amount">{{ amount }}</td>{% endfor %}</tr>
 {% endfor %}
 </tbody>
 </table>
@@ -285,6 +286,143 @@ def write_statement_pdf(html: str) -> bytes:
     if not isinstance(document, bytes):
         raise ValueError("statement PDF was not produced")
     return document
+
+
+_TITLE_NUMBER = re.compile(r"^\d+\.\s*")
+_CREDITORS_CROSS_REF = (
+    "Amounts due after more than one year are analysed in Note 4."
+)
+_ABSENT_STATEMENTS = (
+    "statement of changes in retained earnings",
+    "statement of changes in equity",
+    "statement of comprehensive income",
+    "statement of cash flows",
+    "cash flow statement",
+)
+_FALLBACK_TITLES = {
+    "N0_ENTITY": "Company information",
+    "N1_POLICIES": "Accounting policies",
+    "N2_FA": "Fixed assets",
+    "N3_DEBTORS": "Debtors",
+    "N4_CREDITORS": "Creditors",
+    "N5_LOANS": "Loans",
+    "N6_CAPITAL": "Share capital and reserves",
+    "N7_RPT": "Related party transactions",
+    "N8_EMPLOYEES": "Employees",
+    "N9_COMMITMENTS": "Commitments and contingencies",
+}
+_LINE_LABELS = {
+    "TRADE_DEBTORS": "Trade debtors",
+    "OTHER_DEBTORS": "Other debtors",
+    "PREPAYMENTS": "Prepayments",
+    "VAT_ASSET": "VAT",
+    "PAYE_ASSET": "PAYE",
+    "ACCRUED_INCOME": "Accrued income",
+    "DEFERRED_TAX_ASSET": "Deferred tax",
+    "TRADE_CREDITORS": "Trade creditors",
+    "OTHER_CREDITORS": "Other creditors",
+    "ACCRUALS": "Accruals",
+    "CORP_TAX": "Corporation tax",
+    "VAT_CREDITOR": "VAT",
+    "PAYE_PRSI_CREDITOR": "PAYE/PRSI",
+    "DEFERRED_INCOME": "Deferred income",
+    "BANK_OVERDRAFT": "Bank overdraft",
+    "LOANS_LT1Y": "Loans",
+    "LEASE_LIABILITY_LT1Y": "Lease liability",
+}
+_FACE_NOTES = {
+    "Intangible assets": "N2_FA",
+    "Tangible assets": "N2_FA",
+    "Fixed asset investments": "N2_FA",
+    "Right-of-use assets": "N2_FA",
+    "Trade debtors": "N3_DEBTORS",
+    "Other debtors": "N3_DEBTORS",
+    "Creditors: amounts falling due within one year": "N4_CREDITORS",
+    "Lease liabilities": "N5_LOANS",
+    "Creditors: amounts falling due after more than one year": "N5_LOANS",
+    "Called up share capital": "N6_CAPITAL",
+    "Share premium account": "N6_CAPITAL",
+}
+_NOT_RECORDED = {
+    "registered_office": "[registered office not recorded]",
+    "company_number": "[company number not recorded]",
+    "directors_list": "[directors not recorded]",
+    "avg_employees_current": "[average number of employees not recorded]",
+    "avg_employees_prior": "[average number of employees not recorded]",
+    "rpt_table": " [related party transactions not recorded]",
+    "directors_agg_table": " [directors' aggregate disclosures not recorded]",
+}
+
+
+def _human_title(code: str, raw: object) -> str:
+    if isinstance(raw, str):
+        stripped = _TITLE_NUMBER.sub("", raw.strip())
+        if stripped:
+            return stripped
+    return _FALLBACK_TITLES.get(code, "Note")
+
+
+def _line_label(name: str) -> str:
+    labelled = _LINE_LABELS.get(name)
+    if labelled is not None:
+        return labelled
+    return name.replace("_", " ").capitalize()
+
+
+def _or_placeholder(value: str, placeholder: str) -> str:
+    text = value.strip()
+    return text if text else placeholder
+
+
+def _names_absent_statement(text: str) -> bool:
+    lowered = text.lower()
+    return any(phrase in lowered for phrase in _ABSENT_STATEMENTS)
+
+
+def _retarget_cross_references(body: str, numbers: dict[str, int]) -> str:
+    """Point a pack cross-reference at the note that actually printed."""
+    if _CREDITORS_CROSS_REF not in body:
+        return body
+    target = numbers.get("N4_CREDITORS")
+    if target is None:
+        updated = body.replace(_CREDITORS_CROSS_REF, "")
+        return re.sub(r"[ \t]{2,}", " ", updated).strip()
+    return body.replace(
+        _CREDITORS_CROSS_REF,
+        f"Amounts due after more than one year are analysed in Note {target}.",
+    )
+
+
+def _share_capital_narrative(sofp: tuple[StatementRow, ...]) -> str:
+    row = next((item for item in sofp if item.label == "Called up share capital"), None)
+    shown = (
+        "[called up share capital not on the face]"
+        if row is None
+        else format_whole(row.current)
+    )
+    return (
+        "Called up share capital presented on the statement of financial position "
+        f"is {shown}. [share class analysis not recorded]"
+    )
+
+
+def _note_cell(label: str, numbers: dict[str, int]) -> str:
+    code = _FACE_NOTES.get(label)
+    if code is None:
+        return ""
+    number = numbers.get(code)
+    return "" if number is None else str(number)
+
+
+def _with_note_column(
+    rows: list[dict[str, object]], numbers: dict[str, int]
+) -> list[dict[str, object]]:
+    labelled: list[dict[str, object]] = []
+    for row in rows:
+        label = row.get("label")
+        note = _note_cell(label, numbers) if isinstance(label, str) else ""
+        labelled.append({**row, "note": note})
+    return labelled
 
 
 def _director_phrase(item: dict[str, object]) -> str | None:
@@ -469,13 +607,24 @@ def _note_context(entity: StatementEntity, policy_blocks: str) -> dict[str, str]
     context = {name: "" for name in blanks}
     context.update(
         {
-            "registered_office": entity.registered_office,
-            "company_number": entity.company_number,
-            "directors_list": entity.directors_list,
+            "registered_office": _or_placeholder(
+                entity.registered_office, _NOT_RECORDED["registered_office"]
+            ),
+            "company_number": _or_placeholder(
+                entity.company_number, _NOT_RECORDED["company_number"]
+            ),
+            "directors_list": _or_placeholder(
+                entity.directors_list, _NOT_RECORDED["directors_list"]
+            ),
             "currency": currency_name_for_policy(entity.currency),
             "rounding_unit": _ROUNDING_LABEL,
             "policy_blocks": policy_blocks,
-            "avg_employees_current": entity.average_employees,
+            "avg_employees_current": _or_placeholder(
+                entity.average_employees, _NOT_RECORDED["avg_employees_current"]
+            ),
+            "avg_employees_prior": _NOT_RECORDED["avg_employees_prior"],
+            "rpt_table": _NOT_RECORDED["rpt_table"],
+            "directors_agg_table": _NOT_RECORDED["directors_agg_table"],
         }
     )
     return context
@@ -597,12 +746,18 @@ def _compose_notes(
     aggregated: dict[str, Decimal],
     prior_canonical: dict[str, Decimal],
     fa_register: dict[str, dict[str, Decimal]] | None,
-) -> tuple[tuple[StatementNote, ...], tuple[RoundingFlag, ...]]:
+    sofp: tuple[StatementRow, ...],
+) -> tuple[tuple[StatementNote, ...], tuple[RoundingFlag, ...], dict[str, int]]:
+    chosen = [
+        code
+        for code, template in templates.items()
+        if code in selected and isinstance(template, dict)
+    ]
+    numbers = {code: index for index, code in enumerate(chosen, start=1)}
     notes: list[StatementNote] = []
     flags: list[RoundingFlag] = []
-    for code, template in templates.items():
-        if code not in selected or not isinstance(template, dict):
-            continue
+    for code in chosen:
+        template = templates[code]
         prose = template.get("bodyTemplate")
         if not isinstance(prose, str):
             raise ValueError(f"note {code} has no body")
@@ -610,15 +765,18 @@ def _compose_notes(
         departure = template.get("departure_clause")
         if isinstance(departure, str):
             note_context["departure_clause"] = departure
-        parts = [_render_prose(prose, note_context)]
+        if code == "N6_CAPITAL":
+            parts = [_share_capital_narrative(sofp)]
+        else:
+            parts = [_render_prose(prose, note_context)]
         trailing = template.get("trailingText")
         if isinstance(trailing, str) and trailing:
             parts.append(_render_prose(trailing, note_context))
         for extra in ("directorLoansClause", "reservesNote"):
             clause = template.get(extra)
-            if isinstance(clause, str) and clause:
+            if isinstance(clause, str) and clause and not _names_absent_statement(clause):
                 parts.append(clause)
-        title = template.get("title")
+        human = _human_title(code, template.get("title"))
         lines: tuple[NoteLine, ...] = ()
         fa_rows: tuple[FixedAssetRow, ...] = ()
         table = template.get("tableSpec")
@@ -638,13 +796,13 @@ def _compose_notes(
         notes.append(
             StatementNote(
                 code=code,
-                title=title if isinstance(title, str) else None,
-                body="\n\n".join(parts),
+                title=f"{numbers[code]}. {human}",
+                body=_retarget_cross_references("\n\n".join(parts), numbers),
                 lines=lines,
                 fa_rows=fa_rows,
             )
         )
-    return tuple(notes), tuple(flags)
+    return tuple(notes), tuple(flags), numbers
 
 
 def _render_html(
@@ -654,6 +812,7 @@ def _render_html(
     sofp: tuple[StatementRow, ...],
     income: tuple[StatementRow, ...],
     notes: tuple[StatementNote, ...],
+    note_numbers: dict[str, int],
     pages: tuple[StatutoryPage, ...],
     watermark: str,
     period_start: str = "",
@@ -687,7 +846,9 @@ def _render_html(
             "period_phrase": as_at_phrase(end),
             "compliance": compliance,
             "columns": columns,
-            "rows": face_display_rows(sofp, comparative=comparative),
+            "rows": _with_note_column(
+                face_display_rows(sofp, comparative=comparative), note_numbers
+            ),
         }
     )
     sections.append(
@@ -698,7 +859,9 @@ def _render_html(
             "period_phrase": period_phrase,
             "compliance": "",
             "columns": columns,
-            "rows": face_display_rows(income, comparative=comparative),
+            "rows": _with_note_column(
+                face_display_rows(income, comparative=comparative), note_numbers
+            ),
         }
     )
     sections.append(
@@ -713,9 +876,15 @@ def _render_html(
                     "code": note.code,
                     "title": note.title or "",
                     "body": note.body,
-                    "lines": note_display_lines(
-                        note.lines, comparative=comparative
-                    ),
+                    "lines": [
+                        {
+                            **line,
+                            "label": _line_label(str(line["line"])),
+                        }
+                        for line in note_display_lines(
+                            note.lines, comparative=comparative
+                        )
+                    ],
                     "fa_rows": [
                         {
                             "asset_class": row.asset_class,
@@ -781,16 +950,17 @@ def _render_draft(
     if not isinstance(selected, dict):
         raise ValueError("selected notes are missing")
     policies = _policy_blocks(_load_policies(directory), ctx)
-    notes, flags = _compose_notes(
+    sofp_rows = _statement_rows(sofp)
+    income_rows = _statement_rows(income)
+    notes, flags, note_numbers = _compose_notes(
         templates=templates,
         selected=selected,
         context=_note_context(entity, policies),
         aggregated=aggregated,
         prior_canonical=prior_canonical,
         fa_register=fa_register,
+        sofp=sofp_rows,
     )
-    sofp_rows = _statement_rows(sofp)
-    income_rows = _statement_rows(income)
     pages = build_statutory_pages(
         company_name=entity.name,
         practice_name=practice_name,
@@ -811,6 +981,7 @@ def _render_draft(
         sofp=sofp_rows,
         income=income_rows,
         notes=notes,
+        note_numbers=note_numbers,
         pages=pages,
         watermark=watermark,
         period_start=period_start,

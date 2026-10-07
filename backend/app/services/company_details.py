@@ -65,6 +65,16 @@ def _address(value: str | None) -> str | None:
     return text
 
 
+def _employees(value: int | None) -> int | None:
+    if value is None:
+        return None
+    if value < 0 or value > 1_000_000:
+        raise CompanyDetailsRejected(
+            "Average number of employees must be a whole number from 0 to 1000000."
+        )
+    return value
+
+
 def _company_number(value: str | None) -> str | None:
     text = _blank(value)
     if text is None:
@@ -199,6 +209,7 @@ def company_details_response(
         incorporated_on=company.incorporated_on,
         principal_activity=company.principal_activity,
         secretary=company.secretary,
+        average_employees=company.average_employees,
         directors=_read_directors(company.directors),
         approval_date=year_end.approval_date,
         signing_directors=_read_signing(year_end.signing_directors),
@@ -215,6 +226,7 @@ def _company_snapshot(company: Company) -> dict[str, object]:
         else company.incorporated_on.isoformat(),
         "principal_activity": company.principal_activity,
         "secretary": company.secretary,
+        "average_employees": company.average_employees,
         "directors": company.directors,
     }
 
@@ -248,6 +260,7 @@ async def save_company_details(
         body.principal_activity, label="Principal activity", limit=500
     )
     company.secretary = _single_line(body.secretary, label="Secretary", limit=200)
+    company.average_employees = _employees(body.average_employees)
     company.directors = _directors(body.directors)
     await append_audit_log(
         session,
