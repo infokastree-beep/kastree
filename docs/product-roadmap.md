@@ -361,6 +361,23 @@ validation with real customers, and (2) even Product 2 (statutory reports)
 after its own legal gate. Do not pull forward because GL files are now in
 the product.
 
+### 7. Long-term — embeddable mapping and statement API (NOT near-term)
+
+**Status:** captured as a long-term infrastructure direction only. **Not**
+scheduled. **Not** a Product 2 feature and **not** a near-term priority.
+
+**What it would be (if ever pursued):** other software calling Kastree's
+mapping and statement engine the way practices call Plaid, Codat, or Railz —
+an API that accepts a trial balance and returns deterministic mapped lines
+and statements. Python would still own every figure. The caller would not
+get an LLM that calculates.
+
+**Why it waits.** This only makes sense after the current product has real
+customers and real product-market fit. Building an embeddable API before
+that would split effort away from the core workflow practices actually use.
+No public API, no partner sandbox, and no extra auth model until that fit
+is proven.
+
 ---
 
 ## Sequencing note
@@ -374,6 +391,7 @@ the product.
 | **Smaller items** | Captured in the table above; demand-gated. |
 | **Future considerations (research)** | Captured in §5. **Intake Completion Initiative:** prospect-validated (2026-09-08); **Phase 1 PDF-TB = DONE** (built, tested clean/messy/OCR, review gate safety-proven); **Phase 3 GL→TB** built in-flow (2026-09-09) — conversion only, not analytics. |
 | **GL risk / fraud analytics (§6)** | **Long-term only.** Distinct from GL→TB. Forensic/audit territory; **dedicated legal review before any design.** Behind Product 1 validation and Product 2. |
+| **Embeddable mapping / statement API (§7)** | **Long-term only.** Infrastructure play after real customers and product-market fit. Not near-term. |
 
 **Nothing in “Future directions” is on an immediate build schedule.** Sell and
 learn from Product 1 first.

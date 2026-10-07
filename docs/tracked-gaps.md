@@ -1505,7 +1505,13 @@ Disclosures, Adjustments, Review dashboard, Income statement, and Statement
 of financial position. The Form 11 catalogue is Report setup, Extracts
 summary, and Review dashboard. An unknown framework id is Report setup and
 Review dashboard, not the FRS list. Cover, accounting policies, and notes
-stay reserved and are not sidebar entries in this build.
+stay reserved and are not sidebar entries in this build. Statement of
+changes in equity is not a sidebar entry in this build.
+
+**Next design, not approved.** A complete set of accounts — section toggles,
+company details, cover and directors pages, and the grouped sidebar — is
+written in [`statutory-set-of-accounts.md`](statutory-set-of-accounts.md).
+That note is design only. Nothing in it is built.
 
 #### One page, one framework dropdown
 
