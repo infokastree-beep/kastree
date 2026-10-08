@@ -149,7 +149,22 @@ def default_report_setup(year_end: YearEnd) -> ReportSetupWrite:
             ended_current=current_year,
             ended_prior=prior_year,
         ),
+        sections=None,
     )
+
+
+def _stored_sections(previous: object) -> dict[str, bool] | None:
+    if not isinstance(previous, dict):
+        return None
+    raw = previous.get("sections")
+    if not isinstance(raw, dict) or not raw:
+        return None
+    kept: dict[str, bool] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str) or not isinstance(value, bool):
+            return None
+        kept[key] = value
+    return kept
 
 
 def _stored_setup(year_end: YearEnd) -> ReportSetupWrite:
@@ -169,6 +184,7 @@ def report_setup_response(year_end: YearEnd) -> ReportSetupResponse:
         statement_type=setup.statement_type,
         face_dates=setup.face_dates,
         column_headers=setup.column_headers,
+        sections=setup.sections,
         trial_balance_period_start=year_end.period_start,
         trial_balance_period_end=year_end.period_end,
     )
@@ -182,9 +198,19 @@ async def save_report_setup(
     year_end: YearEnd,
     body: ReportSetupWrite,
 ) -> ReportSetupResponse:
-    """Replace display settings. Period columns and the pack pin stay put."""
+    """Replace display settings. Period columns and the pack pin stay put.
+
+    Omitting ``sections`` keeps the map already stored. A locked section
+    set to false is rejected before this assignment.
+    """
     previous = year_end.report_setup
     stored = body.model_dump(mode="json")
+    if body.sections is None:
+        kept = _stored_sections(previous)
+        if kept is None:
+            stored.pop("sections", None)
+        else:
+            stored["sections"] = kept
     year_end.report_setup = stored
     await append_audit_log(
         session,
