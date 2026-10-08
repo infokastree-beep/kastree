@@ -872,3 +872,205 @@ def test_tier4_overall_deadline_fails_the_job(
     assert "Tier 4 mapping outcome: timed out" in text
     assert "leaving accounts unmapped" not in text
     assert TIER4_OVERALL_TIMEOUT_SECONDS == 480.0
+
+
+def test_reported_review_names_leave_other_payables_and_other_revenue() -> None:
+    """The six names from the 169-account review.
+
+    Hire purchase and the IFRS 16 lease liability are loans. Product 1 has no
+    separate finance-lease line. The four non-revenue names are not other
+    revenue: WIP valuation is inventory; clearing, discounts, and returns have
+    no income line and stay unmapped. A hostile model is not consulted.
+    """
+    assert "hire purchase creditors and lease liabilities" in MAPPING_TIE_BREAKER_SYSTEM
+    assert "those are loans" in MAPPING_TIE_BREAKER_SYSTEM
+    assert "WIP valuation adjustment is inventory" in MAPPING_TIE_BREAKER_SYSTEM
+
+    reviewed = (
+        ("2305", "Hire Purchase Creditor", "loans"),
+        ("2310", "Lease Liability (IFRS 16)", "loans"),
+        ("2315", "Finance Lease Obligation", "loans"),
+        ("8901", "Clearing - Intercompany Recharges", "unmapped"),
+        ("8902", "Discounts Allowed/Received Net", "unmapped"),
+        ("8903", "Returns & Allowances Clearing", "unmapped"),
+        ("8904", "WIP Valuation Adjustment", "inventory"),
+    )
+    client = MagicMock()
+    client.chat.completions.create.return_value = _mock_completion(
+        {
+            "mappings": [
+                {
+                    "index": index,
+                    "canonical_line": "other_payables"
+                    if index <= 3
+                    else "other_revenue",
+                    "reasoning": "hostile",
+                    "confidence": 0.88,
+                }
+                for index in range(1, len(reviewed) + 1)
+            ]
+        }
+    )
+    results = map_accounts_with_llm(
+        [
+            FakeAccount(account_code=code, account_name=name)
+            for code, name, _line in reviewed
+        ],
+        prior_confirmed=[],
+        openai_client=client,
+        sleep=lambda _: None,
+    )
+    assert client.chat.completions.create.call_count == 0
+    for result, (_code, name, line) in zip(results, reviewed, strict=True):
+        assert result.source_name == name
+        assert result.canonical_line == line
+        assert result.canonical_line not in {"other_payables", "other_revenue"}
+        assert result.method == "code_range"
+        assert result.confidence == Decimal("0.90")
+
+
+def test_hostile_tiebreak_cannot_restore_the_wrong_review_lines() -> None:
+    """Even a direct Tier 4 answer of other_payables / other_revenue is refused."""
+    accounts = [
+        MappingResult("2305", "Hire Purchase Creditor", None, None, None),
+        MappingResult("2310", "Lease Liability (IFRS 16)", None, None, None),
+        MappingResult("8901", "Clearing - Intercompany Recharges", None, None, None),
+        MappingResult("8902", "Discounts Allowed/Received Net", None, None, None),
+        MappingResult("8903", "Returns & Allowances Clearing", None, None, None),
+        MappingResult("8904", "WIP Valuation Adjustment", None, None, None),
+        MappingResult("4900", "Miscellaneous income", None, None, None),
+    ]
+    client = MagicMock()
+    client.chat.completions.create.return_value = _mock_completion(
+        {
+            "mappings": [
+                {
+                    "index": 1,
+                    "canonical_line": "other_payables",
+                    "reasoning": "catch-all",
+                    "confidence": 0.7,
+                },
+                {
+                    "index": 2,
+                    "canonical_line": "other_payables",
+                    "reasoning": "catch-all",
+                    "confidence": 0.7,
+                },
+                {
+                    "index": 3,
+                    "canonical_line": "other_revenue",
+                    "reasoning": "income",
+                    "confidence": 0.66,
+                },
+                {
+                    "index": 4,
+                    "canonical_line": "other_revenue",
+                    "reasoning": "income",
+                    "confidence": 0.66,
+                },
+                {
+                    "index": 5,
+                    "canonical_line": "revenue",
+                    "reasoning": "sales",
+                    "confidence": 0.6,
+                },
+                {
+                    "index": 6,
+                    "canonical_line": "other_revenue",
+                    "reasoning": "income",
+                    "confidence": 0.64,
+                },
+                {
+                    "index": 7,
+                    "canonical_line": "other_revenue",
+                    "reasoning": "sundry income",
+                    "confidence": 0.84,
+                },
+            ]
+        }
+    )
+    results = apply_llm_tie_breaker(
+        accounts,
+        openai_client=client,
+        sleep=lambda _: None,
+    )
+    assert [result.canonical_line for result in results] == [
+        "loans",
+        "loans",
+        "unmapped",
+        "unmapped",
+        "unmapped",
+        "inventory",
+        "other_revenue",
+    ]
+    assert results[6].confidence == Decimal("0.84")
+    assert results[6].method == "llm"
+
+
+def test_loan_and_revenue_guards_do_not_move_nearby_accounts() -> None:
+    """Leasehold assets, lease rent, and hire-purchase interest stay put.
+
+    A cost-of-sales code for WIP valuation keeps cost of sales. An overhead
+    code for the mixed discount account keeps operating expenses. A previously
+    confirmed line still wins.
+    """
+    leasehold = map_accounts(
+        [FakeAccount("0050", "Leasehold Improvements")],
+        prior_confirmed=[],
+    )[0]
+    assert leasehold.canonical_line is None
+    assert leasehold.method is None
+
+    rent = map_accounts(
+        [FakeAccount("6400", "Operating lease rent")],
+        prior_confirmed=[],
+    )[0]
+    assert rent.canonical_line == "operating_expenses"
+    assert rent.method == "code_range"
+
+    interest = map_accounts(
+        [FakeAccount("7910", "Hire Purchase Interest")],
+        prior_confirmed=[],
+    )[0]
+    assert interest.canonical_line == "interest_expense"
+
+    wip_cos = map_accounts(
+        [FakeAccount("5200", "WIP Valuation Adjustment")],
+        prior_confirmed=[],
+    )[0]
+    assert wip_cos.canonical_line == "cost_of_sales"
+    assert wip_cos.method == "code_range"
+
+    discounts_opex = map_accounts(
+        [FakeAccount("6100", "Discounts Allowed/Received Net")],
+        prior_confirmed=[],
+    )[0]
+    assert discounts_opex.canonical_line == "operating_expenses"
+
+    revenue_band = map_accounts(
+        [
+            FakeAccount("4100", "WIP Valuation Adjustment"),
+            FakeAccount("4200", "Clearing - Intercompany Recharges"),
+            FakeAccount("4300", "Returns & Allowances Clearing"),
+        ],
+        prior_confirmed=[],
+    )
+    assert [row.canonical_line for row in revenue_band] == [
+        "inventory",
+        "unmapped",
+        "unmapped",
+    ]
+    assert "revenue" not in {row.canonical_line for row in revenue_band}
+
+    confirmed = map_accounts(
+        [FakeAccount("2305", "Hire Purchase Creditor")],
+        prior_confirmed=[
+            PriorConfirmedMapping(
+                source_code="2305",
+                source_name="Hire Purchase Creditor",
+                canonical_line="other_payables",
+            )
+        ],
+    )[0]
+    assert confirmed.method == "exact"
+    assert confirmed.canonical_line == "other_payables"
