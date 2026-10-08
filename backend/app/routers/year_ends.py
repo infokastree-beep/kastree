@@ -160,6 +160,7 @@ from app.services.report_setup import (
 )
 from app.services.statutory_evidence import evidence_for_version
 from app.services.statutory_present import evidence_response, statement_response
+from app.services.statutory_compose import compose_year_end_pdf
 from app.services.statutory_statements import (
     StatutoryStatements,
     statements_for_adopted,
@@ -715,7 +716,7 @@ async def get_adopted_statement_pdf(
             status_code=400,
             detail="Statutory statements are not renderable",
         )
-    pdf = write_statement_pdf(document.html)
+    pdf = write_statement_pdf(compose_year_end_pdf(document, year_end))
     return Response(
         content=pdf,
         media_type="application/pdf",
@@ -1206,7 +1207,10 @@ async def get_statement_pdf(
                 status_code=400,
                 detail="Statutory statements are not renderable",
             )
-        html = document.html
+        year_end = await _owned_year_end(
+            session, year_end_id=year_end_id, org_id=auth.org_id
+        )
+        html = compose_year_end_pdf(document, year_end)
         filename = "statutory-statements-draft.pdf"
     pdf = write_statement_pdf(html)
     return Response(

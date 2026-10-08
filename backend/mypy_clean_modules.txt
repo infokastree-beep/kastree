@@ -102,6 +102,7 @@ app/services/size_eligibility.py
 app/services/source_storage.py
 app/services/spreadsheet_import.py
 app/services/statements.py
+app/services/statutory_compose.py
 app/services/statutory_display.py
 app/services/statutory_docx.py
 app/services/statutory_evidence.py
