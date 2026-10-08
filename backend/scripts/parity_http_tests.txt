@@ -13,6 +13,7 @@ tests/test_contact_api.py
 tests/test_draft_locking.py
 tests/test_export_api.py
 tests/test_fa_ingestion.py
+tests/test_findraft_privileges.py
 tests/test_founder_notifications.py
 tests/test_gl_convert_api.py
 tests/test_mapping_confirm.py

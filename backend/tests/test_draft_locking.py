@@ -12,7 +12,7 @@ from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
-from app.db import SyncSessionLocal
+from app.db import SyncSessionLocal, set_rls_org_id
 from app.main import app
 from app.services.draft_workflow import engine_sha
 from app.services.source_storage import LocalPracticeStorage, get_source_storage
@@ -297,6 +297,7 @@ async def test_week10_lock_adjust_and_freeze_final(
     assert "row_version" in stale.json()["detail"]
 
     with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
         count = session.execute(
             text(
                 "SELECT count(*) FROM findraft_adjustment_journals "
@@ -304,7 +305,16 @@ async def test_week10_lock_adjust_and_freeze_final(
             ),
             {"id": draft_id},
         ).scalar_one()
+        operations = session.execute(
+            text(
+                "SELECT count(*) FROM findraft_draft_operations "
+                "WHERE org_id = :org AND idempotency_key = 'week10-adjust' "
+                "AND action = 'adjust'"
+            ),
+            {"org": str(provisioned_org["org_id"])},
+        ).scalar_one()
         assert count == 1
+        assert operations == 1
 
     moved = await api_client.get(
         _statements_path(year_end_id, version_id), headers=headers
@@ -419,6 +429,7 @@ async def test_week10_lock_adjust_and_freeze_final(
     assert refused.status_code == 409
 
     with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
         with pytest.raises(DBAPIError, match="mapping writes are refused"):
             session.execute(
                 text(
@@ -453,6 +464,7 @@ async def test_week10_lock_adjust_and_freeze_final(
     new_id = created.json()["draft_id"]
 
     with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
         journal_id_raw = uuid.uuid4()
         session.execute(
             text(
@@ -578,6 +590,7 @@ async def test_week10_lock_adjust_and_freeze_final(
     assert frozen_board.json()["traffic"] == stored["traffic"]
 
     with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
         with pytest.raises(DBAPIError, match="FINAL draft is immutable"):
             session.execute(
                 text(

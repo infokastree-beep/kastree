@@ -7,6 +7,12 @@
 --
 -- The role name MUST be "findraft" — bootstrap_stripe_rls_lookup.sql grants
 -- EXECUTE on Stripe org-lookup functions to this role.
+--
+-- Safe to re-run after later migrations. Table grants come from
+-- findraft_table_privileges.sql, which replaces any broader grant with
+-- SELECT, INSERT, UPDATE, DELETE and then removes UPDATE and DELETE from
+-- append-only tables. It does not grant TRUNCATE, REFERENCES, or TRIGGER.
+-- Sequence grants stay ALL. This script must not grow a GRANT ALL ON TABLES.
 
 \set ON_ERROR_STOP on
 
@@ -26,7 +32,6 @@ END
 
 GRANT CONNECT ON DATABASE :"database_name" TO findraft;
 GRANT USAGE ON SCHEMA public TO findraft;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO findraft;
+\ir findraft_table_privileges.sql
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO findraft;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO findraft;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO findraft;

@@ -25,10 +25,8 @@ tests/test_api.py::test_fresh_signup_succeeds_under_force_rls_without_bypass  SE
 tests/test_company_details.py::test_new_columns_stay_inside_the_practice  Calls _as_app_role (SET ROLE findraft_app) and _delete_org, which DISABLE TRIGGER.
 tests/test_adopted_trial_balance.py::test_findraft_app_cannot_adopt_another_practices_trial_balance  SET ROLE findraft_app, then DISABLE TRIGGER in _delete_org.
 tests/test_audit_gdpr.py::test_tampered_audit_row_breaks_the_chain  ALTER TABLE audit_logs DISABLE TRIGGER. Only the table owner can do that.
-tests/test_audit_gdpr.py::test_client_erasure_keeps_archive_and_company  After the HTTP erasure, SELECT name FROM clients with no org setting. The clients policy casts an empty org id.
 tests/test_audit_gdpr.py::test_user_erasure_keeps_the_row_and_refuses_the_last_owner  SELECT email FROM users with no org setting. Same empty-org cast.
 tests/test_beta_practice.py::test_beta_position_stays_unsigned_and_acknowledgement_is_once  The acknowledgement HTTP call succeeds, then SELECT audit_logs with no org setting returns zero rows.
-tests/test_draft_locking.py::test_week10_lock_adjust_and_freeze_final  The adjustment HTTP call succeeds, then SELECT findraft_adjustment_journals with no org setting returns zero rows.
 tests/test_fa_ingestion.py::test_register_stays_pending_until_the_worker_and_reimport_is_a_new_version  SELECT findraft_fa_lines with no org setting after the worker commits, so scalar_one finds no row.
 tests/test_fa_ingestion.py::test_size_eligibility_uses_the_pack_thresholds  UPDATE companies SET functional_currency with no org setting. The companies policy casts an empty org id.
 tests/test_source_documents_api.py::test_another_practice_cannot_read_or_upload_for_the_company  The HTTP hide/deny checks succeed. Cleanup DELETE FROM companies with no org setting then hits the empty-org cast.
