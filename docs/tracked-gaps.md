@@ -77,6 +77,140 @@ see [`product-roadmap.md`](product-roadmap.md).
    [LinkedIn ads](#linkedin-ads--accountants--fractional-cfos-after-hero-is-live).
    Ads validate the public funnel; they do not replace (4).
 
+## Live testing — confirmed limitations (2 October 2026)
+
+Two limits found on the live product. The statutory-translation gap below
+is the single highest-priority item for the next dedicated Product 2
+session. Continuation stops on the first account with no single statutory
+line, and that refusal hits ordinary charts, not only fixed assets. The
+header-synonym item stays a later, separate change.
+
+### Statutory continuation has no single line for common Product 1 categories
+
+**Status:** accepted 2 October 2026 as the definitive scope for the next
+dedicated Product 2 session, and the single highest-priority item for that
+session. The work is real accounting judgment: decide, deliberately, the
+statutory home for each of the seven name-gated lines and the three
+untranslated mapping lines below. It is not a code change that forces a
+translation so testing can continue. Confirmed on a live continuation for both
+`property_plant_equipment` ("Fixed Assets - Office Equipment") and
+`operating_expenses` (ordinary names such as rent). Those are two of the
+most common canonical lines on a trial balance. The translator refuses with
+"has no single statutory line" rather than guessing. Without a decision on
+the lines below, statutory continuation will not complete for almost any
+real company.
+
+Audit of `engine_line_for_confirmed_mapping` on 2 October 2026. A line has
+a single confirmed translation only when it is in `_DIRECT`: one statutory
+line for every account name, and that target is in `statutory_lines()`.
+Every `_DIRECT` target below is in `statutory_lines()`. The account-mapping
+set is `MAPPING_TIE_BREAKER_CANONICAL_LINES` (33 lines). The wider chart in
+`shared/canonical_accounts.py` adds seven statement totals that accounts are
+not mapped to.
+
+**Single confirmed translation (23).** These do not depend on the account
+name:
+
+- `revenue` → `REVENUE`
+- `other_revenue` → `OTHER_OPERATING_INCOME`
+- `cost_of_sales` → `COST_OF_SALES`
+- `interest_income` → `INTEREST_RECEIVABLE`
+- `interest_expense` → `INTEREST_PAYABLE`
+- `inventory` → `STOCKS`
+- `trade_receivables` → `TRADE_DEBTORS`
+- `other_receivables` → `OTHER_DEBTORS`
+- `prepayments` → `PREPAYMENTS`
+- `accrued_income` → `ACCRUED_INCOME`
+- `cash` → `CASH`
+- `trade_payables` → `TRADE_CREDITORS`
+- `other_payables` → `OTHER_CREDITORS`
+- `provisions` → `PROVISIONS`
+- `accruals` → `ACCRUALS`
+- `deferred_income` → `DEFERRED_INCOME`
+- `taxes_payable` → `CORP_TAX`
+- `social_security_payable` → `PAYE_PRSI`
+- `share_capital` → `SHARE_CAPITAL`
+- `share_premium` → `SHARE_PREMIUM`
+- `retained_earnings` → `RETAINED_EARNINGS`
+- `dividends` → `DIVIDENDS`
+- `investments` → `FA_INVESTMENTS`
+
+**No single translation — a name token is required, otherwise refusal (7).**
+A generic or ordinary name on any of these stops continuation:
+
+- `property_plant_equipment`. Live refusal: "Fixed Assets - Office
+  Equipment". A name translates only when it contains motor (`FA_MOTOR_COST`),
+  fixture or fitting (`FA_FIXTURES_COST`), land or building
+  (`FA_LAND_BUILDINGS`), plant or machinery (`FA_PLANT_COST`), or
+  "accumulat" (`FA_ACCUM_DEP`).
+- `operating_expenses`. Live refusal on ordinary expense names (rent, wages,
+  insurance, light and heat, rates, telephone, advertising, bank charges,
+  professional fees). A name translates only when it contains distribution,
+  selling, or carriage (`DISTRIBUTION_COSTS`), or admin or overhead
+  (`ADMIN_EXPENSES`).
+- `loans`. "Bank loan", "Director loan", "Hire purchase", and "Mortgage"
+  refuse. A name translates only for overdraft (`BANK_OVERDRAFT`), a
+  long-term phrase such as "more than one year" or "non-current"
+  (`LOANS_GT1Y`), or a short-term phrase such as "within one year"
+  (`LOANS_LT1Y`).
+- `tax`. Bare "Tax", "VAT", and "Income tax" refuse. "charge" or "expense"
+  → `TAX_CHARGE`. "corporation tax", "corp tax", payable, creditor, or
+  liability → `CORP_TAX`.
+- `depreciation`. Not one line. "Depreciation" and "Depreciation charge" →
+  `DEPRECIATION_CHARGE`. "accumulat" → `FA_ACCUM_DEP`. "Depn - Buildings"
+  refuses, because the token is the whole word "depreciation", "charge",
+  or "expense".
+- `amortisation`. The names "Amortisation" and "Amortisation of goodwill"
+  refuse. The only match is "accumulat" → `FA_INTANGIBLE_AMORT`. There is
+  no profit-and-loss amortisation charge home in this function.
+- `intangible_assets`. "Intangible assets", goodwill, software, patent, or
+  "cost" → `FA_INTANGIBLE_COST`. "accumulat", amortisation, or amortization
+  → `FA_INTANGIBLE_AMORT`. "Website" and "Brand" refuse.
+
+**No translation path at all (3 account-mapping lines).** These are in the
+mapping allow-list and are not in `_DIRECT` or the name-token branches.
+Every account name refuses:
+
+- `capital_contribution`
+- `revaluation_reserve`
+- `unmapped`
+
+**Statement totals on the canonical chart, not account-mapping lines (7).**
+Accounts are not confirmed to these. If one were passed to the translator
+it would also refuse: `gross_profit`, `operating_profit`,
+`profit_before_tax`, `net_profit`, `total_assets`, `total_liabilities`,
+`total_equity`.
+
+The refusal is still the honest behaviour. The translator must not invent a
+statutory sub-line. This audit is the scope document for that session.
+Decide the statutory home for each of the seven name-gated lines and the
+three untranslated mapping lines — a defined detector, an explicit default,
+or a case that stays manual. Do not force a line just so continuation
+succeeds.
+
+### Standard TB headers `Code` and `Account` are rejected as a pair
+
+A standard Trial balance (Excel/CSV) upload rejected column headers `Code`
+and `Account`. The same file with `Account Code` and `Account Name` was
+accepted.
+
+`parser._detect_columns` already treats a bare `code` header as the code
+column. A bare `account` header is used only as a combined code-and-name
+column, and only when neither a code column nor a name column was found.
+With both short headers present, `Code` fills the code slot and `Account`
+is not a name synonym, so detection stops: "Could not detect account code
+and account name columns."
+
+**Future session.** Recognize these short headers, with the same care as
+the earlier ERP column-shape work (Product 1's generic importer covers the
+Sage, Xero, and QuickBooks shapes; the four vendor-named parsers stay
+cut). Substring matches are the false-positive risk: `account` also sits
+inside `Account Code`, and `code` sits inside unrelated headings. Add a
+test for the real `Code` / `Account` pair, and tests that the new synonyms
+do not steal a column from a file that already uses `Account Code` and
+`Account Name`, before shipping.
+
+
 ## Archival write paths
 
 Clients, companies, and trial balances soft-delete write to `archived_records`. See
@@ -1041,9 +1175,11 @@ not be required to understand the product. Specifically:
 - Visual redesign / new component library work (unless copy structure forces a
   light layout tweak).
 - Pricing, waitlist, or auth flows.
-- Demo video / sample company (tracked separately below).
+- Demo video / sample company (tracked separately below, and again in the
+  [later landing refresh](#landing-page-refresh--after-product-2-is-demonstrable)).
 - Inventing capabilities that are not live (do not promise auto-file,
-  GL sync, or unattended “push to client”).
+  GL sync, unattended “push to client”, or Product 2 statutory statements
+  before that product exists and works).
 
 ### Done when
 
@@ -1095,6 +1231,41 @@ page. There is no video walkthrough and no public read-only sample company.
 screen-recording of a real upload → map → statements → Ask flow on the landing
 “How it works” section. A guest/sample-company explorer is deferred (auth/RLS
 exceptions + seed maintenance).
+
+The fuller demo — Product 1’s complete workflow, and later Product 2 statement
+generation — waits for the
+[landing page refresh after Product 2 is demonstrable](#landing-page-refresh--after-product-2-is-demonstrable).
+Do not record that film, or rewrite the page around it, before Product 2 can
+actually be shown.
+
+## Landing page refresh — after Product 2 is demonstrable
+
+**Status:** scheduled for **after** Product 2 reaches a genuinely demonstrable
+state. **Not urgent. Do not do this tonight.** Product 2 here means statutory
+financial statements (see
+[Product 2 planning notes](#product-2-statutory-reports--planning-notes)):
+built and working, not a roadmap heading or a mock.
+
+This is separate from the
+[Product 1 landing copy revision](#landing-page-copy--revision-brief-high-priority),
+which sells what already exists. Do not update marketing copy to claim Product 2
+capability before Product 2 actually exists and works.
+
+When that bar is met, the refresh is:
+
+1. **Add Product 2 as a real, new selling point.** Statutory financial
+   statements go on the landing page only once the feature is built and
+   working. Specific language is TBD — write it from the real functionality,
+   so the claim matches what a prospect can be shown.
+2. **Revisit heading hierarchy and visual polish.** Already flagged on the
+   current page. Do it in this later pass, not as a side edit to the Product 1
+   copy brief.
+3. **Build the real demo video.** Already discussed and correctly deferred
+   (see [public product demo](#public-product-demo-without-signup-follow-up)).
+   Worth doing once there is genuinely more to show: the Product 1 complete
+   workflow, and eventually Product 2’s statement generation too.
+
+Until Product 2 can be demonstrated, the live page stays a Product 1 page.
 
 ## Intake completeness — PDF-TB and GL→TB (Intake Completion Initiative)
 
@@ -1282,6 +1453,53 @@ after build starts. Working-paper / reconciliation evidence is **not** a
 separate product — it is a future Product 1 add-on (same internal-review
 liability posture).
 
+Marketing stays behind the build. The landing page does not claim statutory
+statements until Product 2 is genuinely demonstrable — see
+[Landing page refresh — after Product 2 is demonstrable](#landing-page-refresh--after-product-2-is-demonstrable).
+
+### Pre-2026 FRS 102 Section 1A — real, significant gap
+
+**Status: real and significant. Not a minor note. Near-term once real beta
+testing begins — not a someday item.**
+
+The only Irish statutory content pack is `frs102-1a-ie` version `2024.09`
+(FRS 102 September 2024, the Periodic Review 2024 amendments). `pack.json`
+sets `effective_from` to `2026-01-01`. `pin_pack_version` refuses any period
+whose start is earlier. There is no sibling pack for the previous FRS 102
+Section 1A (the standard in force before those amendments).
+
+A company with a 2025 or earlier year-end, or a year that starts in 2025 and
+ends in 2026 and has not elected early adoption, cannot use Product 2 at all.
+That is the likely shape of the first real client's accounts. Most companies
+will not yet have a period that began on 1 January 2026 or later.
+
+FRC paragraph 1.37 makes those amendments mandatory for accounting periods
+beginning on or after 1 January 2026, and permits early application if all of
+them are applied at the same time. This codebase does not offer that
+election. A start date before 2026-01-01 is rejected outright.
+
+**Address before real beta clients.** Either build the pre-Periodic-Review-2024
+Section 1A pack as its own immutable directory, or add an explicit
+early-adoption path that applies the `2024.09` pack in full and records the
+election. Until one of those exists, Product 2's client scope is periods
+beginning on or after 1 January 2026 only.
+
+### Create year end — never show a raw “API 500”
+
+The Statutory **Create year end** screen must never show a raw “API 500” (or
+any other raw error code) to the user. Every real failure needs a clear,
+specific, honest message — the same quality already proven on the pack-date
+validation message (the period-start rejection that names the pack, the
+version, and the date the period actually starts).
+
+At minimum, catch unexpected server errors and show something like: “Something
+went wrong creating this year end — please try again, or contact support if
+this persists.” Do not expose the status code.
+
+Once this screen moves beyond platform-admin-only testing, review every error
+state on it to that same standard: each failure the user can actually hit
+gets its own specific message, not a generic code.
+
 ### Legal gate — “AI-assisted SaaS, not filer/signer of record” (upfront)
 
 **Before any development begins** on full statutory financial statement
@@ -1304,10 +1522,27 @@ This is a **real, upfront legal gate before building**, not a retrofit after
 UI exists. Internal confidence that “just an assistant” sounds reasonable is
 **not** confirmed legal grounding — counsel must say so for this use case.
 
-Qualified reviewer sign-off of statutory wording remains pending and still
-gates client use. Phase 1 below is schema, the pure engine, and the golden
-suite. It produces no client-facing statutory output. Week 2 stores source
-files and does not produce statutory output either.
+### Pre-client-use gate
+
+Two human legal artifacts gate real client use of Product 2. Both are
+pending. The build continues while they are open.
+
+- **Qualified reviewer sign-off of statutory wording.** Checklist row 7 of
+  the v7.6 specification. Until sign-off, a beta practice using FinDraft on
+  real clients treats every output as a draft and reviews it itself before
+  anything is filed or sent.
+- **Customer-facing DPA (GDPR Article 28) drafted, reviewed, and published.**
+  Same category as the reviewer sign-off. `docs/dpa-template.md` is an
+  unpublished solicitor-review draft and does not meet this gate.
+
+The OpenAI DPA, together with the EU data-residency review, is a v1.1
+precondition already stated in the specification: no client data reaches an
+LLM API before that sign-off. The MVP makes no LLM calls, so that
+precondition is not currently blocking.
+
+Phase 1 is schema, the pure engine, and the golden suite. It produces no
+client-facing statutory output. Week 2 stores source files and does not
+produce statutory output either.
 
 ### Nil-line omission rule — reviewer sign-off
 
