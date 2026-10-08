@@ -42,6 +42,7 @@ from app.services.adopted_trial_balance import (
     inputs_for_adopted_draft,
     load_adopted_inputs,
 )
+from app.services.statutory_compose import unbuilt_section_notices
 from app.services.statutory_statements import (
     StatutoryStatements,
     statements_for_adopted,
@@ -406,6 +407,7 @@ async def dashboard_for_draft(
         from app.services.company_details import company_detail_checks
 
         checks.extend(company_detail_checks(company, year_end))
+    checks.extend(unbuilt_section_notices(year_end))
     light = _traffic(
         tuple(checks), blocked=document.blocked, renderable=document.renderable
     )

@@ -148,7 +148,7 @@ _DOCUMENT = """<!DOCTYPE html>
 <p class="watermark">{{ watermark }}</p>
 <h1>{{ company_name }}</h1>
 {% for section in sections %}
-<section data-section="{{ section.anchor }}">
+<section data-section="{{ section.anchor }}"{% if section.page_break %} style="break-before: page; page-break-before: always;"{% endif %}>
 {% if section.kind == "prose" %}
 <h2>{{ section.heading }}</h2>
 {% for paragraph in section.paragraphs %}
@@ -157,7 +157,7 @@ _DOCUMENT = """<!DOCTYPE html>
 {% elif section.kind == "statement" %}
 <div class="statement-open">
 <h2>{{ section.heading }}</h2>
-{% if section.period_phrase %}<p>{{ section.period_phrase }}</p>{% endif %}
+{% if section.period_phrase %}<p>{{ section.period_phrase }}</p>{% endif %}{% if section.period_note %}<p>{{ section.period_note }}</p>{% endif %}
 {% if section.compliance %}<p>{{ section.compliance }}</p>{% endif %}
 </div>
 <table>
@@ -1089,8 +1089,26 @@ def _render_html(
     }
     for anchor in statement_order:
         sections.append(rendered[anchor])
-    return _HTML.from_string(_DOCUMENT).render(
+    return render_statutory_html(
         company_name=entity.name,
+        sections=sections,
+        watermark=watermark,
+        approval_date=approval_date,
+        signing_directors=signing_directors,
+    )
+
+
+def render_statutory_html(
+    *,
+    company_name: str,
+    sections: list[dict[str, object]],
+    watermark: str,
+    approval_date: str = "",
+    signing_directors: str = "",
+) -> str:
+    """Fill the document template. Callers supply the section list."""
+    return _HTML.from_string(_DOCUMENT).render(
+        company_name=company_name,
         sections=sections,
         signature=_signature_view(approval_date, signing_directors),
         watermark=watermark,
