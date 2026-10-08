@@ -739,6 +739,14 @@ cleanup migration could drop `trial_balances.currency` and route all reads throu
 `companies.functional_currency` (with a one-time backfill/consistency check). Until
 then, keeping the column is low-cost denormalization with no user-facing benefit.
 
+## Infrastructure — pull requests run no tests, and Product 1 RLS casts an empty org id
+
+Two gaps found while fixing the statutory PDF tests. Neither is changed here.
+
+**GitHub pull requests do not run the test suite.** The only workflow on a pull request to `main` is `.github/workflows/verify-remotes.yml`, job `deploy-source`. That job prints the commit SHA and reminds contributors that Railway deploys from GitHub. It does not run pytest, ruff, mypy, or the frontend `test:*` scripts. A green pull-request check therefore does not mean the backend suite passed. Pushing to `main` also runs `verify-production-frontend.yml`, which checks that www.kastree.ie serves that SHA. That workflow is not a test run either.
+
+**Product 1 `companies` and `clients` policies cast the org setting without `NULLIF`.** `companies_org_isolation` uses `current_setting('app.current_org_id')::UUID` inside the client lookup, and `clients_org_isolation` uses `org_id = current_setting('app.current_org_id')::UUID`. There is no `NULLIF`. After `set_config('app.current_org_id', ..., true)` the setting is transaction-local, so `commit()` leaves it as `''`. The next statement on that connection then raises `invalid input syntax for type uuid: ""` instead of matching zero rows. Newer tables (source documents, trial-balance versions, fixed-asset versions, drafts, render jobs, confirmed mappings, and the audit-log chain) use `NULLIF(current_setting('app.current_org_id', true), '')::uuid`, which returns no rows when the setting is missing or empty. Do not change the Product 1 policies until that difference is chosen on purpose. A `NULLIF` form would hide the rows rather than raise, so a test that forgot to set the org id would update zero rows and continue.
+
 ## Infrastructure account ownership — personal email, not business entity
 
 All infrastructure accounts started under a **personal email**, not a dedicated
