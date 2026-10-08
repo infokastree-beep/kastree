@@ -49,9 +49,6 @@ class ReportingFramework:
     sections: tuple[WorkspaceSection, ...]
 
 
-# Pack ids with no statement builder. The composer prints the not-built line.
-_NOT_BUILT = frozenset({"oci", "socie", "cash-flow", "trading"})
-
 _WORKSPACE_BEFORE: tuple[WorkspaceSection, ...] = (
     WorkspaceSection("review", "Review dashboard", "overview", "Overview", 1),
     WorkspaceSection(
@@ -62,6 +59,16 @@ _WORKSPACE_BEFORE: tuple[WorkspaceSection, ...] = (
     WorkspaceSection("disclosures", "Disclosures", "inputs", "Inputs", 5),
     WorkspaceSection("company-details", "Company details", "inputs", "Inputs", 6),
 )
+
+
+def _built_flag(item: dict[str, object]) -> bool:
+    """Missing means the pack builds the section. ``false`` is the not-built tag."""
+    if "built" not in item:
+        return True
+    raw = item["built"]
+    if not isinstance(raw, bool):
+        raise ValueError("pack section built is malformed")
+    return raw
 
 
 def section_children_marker(item: dict[str, object]) -> str | None:
@@ -120,7 +127,7 @@ def _pack_sidebar() -> tuple[WorkspaceSection, ...]:
                 order=order,
                 lock=rule["lock"],
                 default=rule["default"],
-                built=section_id not in _NOT_BUILT,
+                built=_built_flag(item),
                 children=section_children_marker(item),
             )
         )

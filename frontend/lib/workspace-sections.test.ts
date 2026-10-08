@@ -109,6 +109,14 @@ describe("sectionsForFramework", () => {
       "Outputs",
       "Cover",
       "Draft PDF",
+      "cash-flow",
+      "oci",
+      "socie",
+      "trading",
+      "Statement of comprehensive income",
+      "Statement of changes in equity",
+      "Cash flow statement",
+      "Supplementary trading statement",
     ]) {
       assert.equal(source.includes(word), false, word);
     }
