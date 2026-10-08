@@ -360,8 +360,9 @@ async def test_saved_company_details_print_on_the_existing_pages(
     employees_note = next(
         note for note in after_body["notes"] if note["code"] == "N8_EMPLOYEES"
     )
-    assert "was 12 (" in employees_note["body"]
-    assert "[average number of employees not recorded]" in employees_note["body"]
+    assert employees_note["body"].endswith("was 12.")
+    assert "(" not in employees_note["body"]
+    assert "[average number of employees not recorded]" not in employees_note["body"]
     directors = _page(after_body, "Directors' report")
     approval = _page(after_body, "Approval of the financial statements")
     assert (
