@@ -25,8 +25,23 @@ const isDashboardRoute = createRouteMatcher([
  * and auth().protect() gates those routes.
  */
 import { clerkReady } from "@/lib/clerk";
+import { devPreviewBlocked } from "@/lib/dev-routes";
+
+function productionDevBlock(pathname: string): NextResponse | null {
+  if (!devPreviewBlocked(pathname, process.env.NODE_ENV)) {
+    return null;
+  }
+  return new NextResponse("Not found", {
+    status: 404,
+    headers: { "content-type": "text/plain; charset=utf-8" },
+  });
+}
 
 const clerkHandler = clerkMiddleware(async (auth, request) => {
+  const blocked = productionDevBlock(request.nextUrl.pathname);
+  if (blocked) {
+    return blocked;
+  }
   if (request.nextUrl.pathname.startsWith("/dev")) {
     return;
   }
@@ -36,6 +51,10 @@ const clerkHandler = clerkMiddleware(async (auth, request) => {
 });
 
 function safePlaceholderMiddleware(request: NextRequest) {
+  const blocked = productionDevBlock(request.nextUrl.pathname);
+  if (blocked) {
+    return blocked;
+  }
   if (request.nextUrl.pathname.startsWith("/dev")) {
     return NextResponse.next();
   }

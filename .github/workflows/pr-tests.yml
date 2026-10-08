@@ -104,6 +104,7 @@ jobs:
           npm run test:period-presets
           npm run test:export-download
           npm run test:api-base
+          npm run test:dev-routes
           npm run test:report-setup
 
   lint:
