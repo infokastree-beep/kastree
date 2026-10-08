@@ -7,11 +7,19 @@
 
 import { useState } from "react";
 import { ReportSetupForm, type ReportSetupWrite } from "@/components/statutory/ReportSetupForm";
+import { SectionPreview } from "@/components/statutory/SectionPreview";
+import { SectionsSetup } from "@/components/statutory/SectionsSetup";
 import { StatutoryLoadError } from "@/components/statutory/StatutoryLoadError";
 import { WorkspaceSidebar } from "@/components/statutory/WorkspaceSidebar";
 import { displayAmount, type RoundingMode } from "@/lib/report-display";
 import {
+  scrollAnchorFor,
+  showsPageNumberNote,
+  type PreviewChild,
+} from "@/lib/section-preview";
+import {
   activeSection,
+  navigatorSections,
   sectionIsOn,
   sectionsForFramework,
   type ReportingFramework,
@@ -42,12 +50,13 @@ const FRAMEWORKS: ReportingFramework[] = [
       section("adjustments", "Adjustments", "inputs", "Inputs", 4),
       section("disclosures", "Disclosures", "inputs", "Inputs", 5),
       section("company-details", "Company details", "inputs", "Inputs", 6),
+      section("sections-setup", "Sections setup", "sections", "Sections", 7),
       {
         id: "income",
         label: "Income statement",
         group: "sections",
         group_label: "Sections",
-        order: 7,
+        order: 8,
         lock: "locked",
         default: "on",
         built: true,
@@ -57,8 +66,38 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Statement of financial position",
         group: "sections",
         group_label: "Sections",
-        order: 8,
+        order: 9,
         lock: "locked",
+        default: "on",
+        built: true,
+      },
+      {
+        id: "contents",
+        label: "Contents",
+        group: "sections",
+        group_label: "Sections",
+        order: 10,
+        lock: "user",
+        default: "on",
+        built: true,
+      },
+      {
+        id: "notes",
+        label: "Notes",
+        group: "sections",
+        group_label: "Sections",
+        order: 11,
+        lock: "locked",
+        default: "on",
+        built: true,
+      },
+      {
+        id: "compilation",
+        label: "Compilation report",
+        group: "sections",
+        group_label: "Sections",
+        order: 12,
+        lock: "user",
         default: "on",
         built: true,
       },
@@ -67,7 +106,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Cover",
         group: "sections",
         group_label: "Sections",
-        order: 9,
+        order: 13,
         lock: "user",
         default: "on",
         built: true,
@@ -77,7 +116,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Cash flow statement",
         group: "sections",
         group_label: "Sections",
-        order: 10,
+        order: 14,
         lock: "user",
         default: "off",
         built: false,
@@ -87,7 +126,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Draft PDF",
         group: "outputs",
         group_label: "Outputs",
-        order: 11,
+        order: 15,
       },
     ],
   },
@@ -101,6 +140,17 @@ const FRAMEWORKS: ReportingFramework[] = [
     ],
   },
 ];
+
+const NOTE_CHILDREN: PreviewChild[] = [
+  { id: "N3_DEBTORS", number: 3, label: "Debtors", anchor: "note-N3_DEBTORS" },
+];
+
+const COMPILATION_CHILDREN: PreviewChild[] = [
+  { id: "approval", number: null, label: "Approval of financial statements", anchor: "approval" },
+  { id: "audit-exemption", number: null, label: "Audit exemption", anchor: "audit-exemption" },
+];
+
+const SAMPLE_HTML = `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src 'none'; font-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"><style>body{font-family:Georgia,serif;margin:24px}p{margin:0 0 12px} .spacer{height:900px}</style></head><body><p>DRAFT</p><h1>Sample company</h1><div class="spacer"></div><a id="note-N3_DEBTORS"></a><h2>3. Debtors</h2><p>Debtors note.</p><a id="approval"></a><h2>Approval of financial statements</h2><a id="audit-exemption"></a><h2>Audit exemption</h2></body></html>`;
 
 const SETUP = {
   basis_id: "frs102-1a-ie",
@@ -131,11 +181,24 @@ export default function StatutoryWorkspacePreviewPage() {
   const [header, setHeader] = useState("2026");
   const [saved, setSaved] = useState<string>("Nothing saved");
   const [flags, setFlags] = useState<Record<string, boolean>>({});
+  const [noteId, setNoteId] = useState<string | null>(null);
   const sections = sectionsForFramework(FRAMEWORKS, frameworkId).map((item) =>
     item.lock ? { ...item, enabled: sectionIsOn(item, flags) } : item,
   );
+  const visible = navigatorSections(sections);
   const sectionId = activeSection(sections, requested);
   const activeMeta = sections.find((item) => item.id === sectionId);
+  const previewChildren =
+    sectionId === "notes"
+      ? NOTE_CHILDREN
+      : sectionId === "compilation"
+        ? COMPILATION_CHILDREN
+        : [];
+  const previewing =
+    activeMeta?.group === "sections" &&
+    activeMeta.id !== "sections-setup" &&
+    activeMeta.enabled !== false &&
+    activeMeta.built !== false;
 
   function onToggle(id: string, enabled: boolean): void {
     setFlags((current) => ({ ...current, [id]: enabled }));
@@ -158,6 +221,7 @@ export default function StatutoryWorkspacePreviewPage() {
             onChange={(event) => {
               setFrameworkId(event.target.value);
               setRequested(null);
+              setNoteId(null);
               setFlags({});
             }}
             className="rounded-md border border-line bg-surface-elevated px-3 py-2"
@@ -168,10 +232,15 @@ export default function StatutoryWorkspacePreviewPage() {
           </select>
         </label>
         <WorkspaceSidebar
-          sections={sections}
+          sections={visible}
           activeId={sectionId}
-          onSelect={setRequested}
-          onToggle={onToggle}
+          activeChildren={previewChildren}
+          activeChildId={noteId}
+          onSelect={(id) => {
+            setRequested(id);
+            setNoteId(null);
+          }}
+          onSelectChild={setNoteId}
         />
       </div>
       <div className="min-w-0 flex-1 space-y-6">
@@ -182,8 +251,16 @@ export default function StatutoryWorkspacePreviewPage() {
           onReview={() => setRequested("sub-lines")}
         />
         <p className="text-sm text-ink-secondary" data-testid="preview-section">
-          Open section: {sectionId}. Sidebar entries: {sections.map((section) => section.label).join(", ")}.
+          Open section: {sectionId}. Sidebar entries: {visible.map((section) => section.label).join(", ")}.
         </p>
+        {sectionId === "sections-setup" ? (
+          <SectionsSetup
+            title={activeMeta?.label ?? ""}
+            sections={sections}
+            onToggle={onToggle}
+            togglesEnabled
+          />
+        ) : null}
         {sectionId === "draft-pdf" ? (
           <section className="space-y-3" data-testid="statutory-outputs">
             <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-soft">
@@ -213,12 +290,28 @@ export default function StatutoryWorkspacePreviewPage() {
               <p className="text-sm text-ink-secondary">
                 [NOT BUILT: this pack does not build this statement]
               </p>
-            ) : (
-              <p className="text-sm text-ink-secondary">
-                This section is included in the draft PDF.
-              </p>
-            )}
+            ) : previewing ? (
+              <div className="space-y-2">
+                {showsPageNumberNote(sectionId) ? (
+                  <p className="text-sm text-ink-secondary" data-testid="statutory-page-numbers">
+                    Page numbers appear in the PDF.
+                  </p>
+                ) : null}
+                <SectionPreview
+                  html={SAMPLE_HTML}
+                  scrollAnchor={scrollAnchorFor(noteId, previewChildren)}
+                  title={activeMeta.label}
+                />
+              </div>
+            ) : null}
           </section>
+        ) : null}
+        {sectionId === "income" || sectionId === "sofp" ? (
+          <SectionPreview
+            html={SAMPLE_HTML}
+            scrollAnchor={null}
+            title={activeMeta?.label ?? ""}
+          />
         ) : null}
         {sectionId === "report-setup" ? (
           <ReportSetupForm
@@ -231,28 +324,30 @@ export default function StatutoryWorkspacePreviewPage() {
         <p className="text-sm" data-testid="preview-saved">
           {saved}
         </p>
-        <table className="text-sm">
-          <thead>
-            <tr>
-              <th className="px-3 py-2 text-left">Line</th>
-              <th className="px-3 py-2 text-right" data-testid="preview-header">
-                {header}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td className="px-3 py-2">Net assets</td>
-              <td
-                className="px-3 py-2 text-right tabular-nums"
-                data-testid="preview-amount"
-                data-stored={STORED}
-              >
-                {displayAmount(STORED, rounding)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        {previewing ? null : (
+          <table className="text-sm">
+            <thead>
+              <tr>
+                <th className="px-3 py-2 text-left">Line</th>
+                <th className="px-3 py-2 text-right" data-testid="preview-header">
+                  {header}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="px-3 py-2">Net assets</td>
+                <td
+                  className="px-3 py-2 text-right tabular-nums"
+                  data-testid="preview-amount"
+                  data-stored={STORED}
+                >
+                  {displayAmount(STORED, rounding)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        )}
       </div>
     </main>
   );

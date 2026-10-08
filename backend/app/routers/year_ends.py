@@ -5,6 +5,7 @@ Parsing runs in the worker (`tb_import_worker`), not in this request handler.
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from decimal import Decimal, InvalidOperation
 from typing import Annotated
@@ -46,6 +47,7 @@ from app.schemas.report_setup import (
     ReportSetupResponse,
     ReportSetupWrite,
 )
+from app.schemas.statutory_preview import PreviewChildOut, StatutoryPreviewResponse
 from app.schemas.year_end import (
     FixedAssetLineOut,
     FixedAssetTotalOut,
@@ -160,7 +162,11 @@ from app.services.report_setup import (
 )
 from app.services.statutory_evidence import evidence_for_version
 from app.services.statutory_present import evidence_response, statement_response
-from app.services.statutory_compose import compose_year_end_pdf
+from app.services.statutory_compose import (
+    PREVIEW_CONTENT_SECURITY_POLICY,
+    compose_year_end_pdf,
+)
+from app.services.statutory_preview import PreviewRejected, build_section_preview
 from app.services.statutory_statements import (
     StatutoryStatements,
     statements_for_adopted,
@@ -689,6 +695,62 @@ async def post_adopted_sublines(
     except ReconciliationRejected as exc:
         raise _adoption_error(exc) from exc
     return _subline_response(rows)
+
+
+@router.get(
+    "/{year_end_id}/statutory-preview",
+    response_model=StatutoryPreviewResponse,
+)
+async def get_statutory_preview(
+    year_end_id: uuid.UUID,
+    response: Response,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    section: str,
+) -> StatutoryPreviewResponse:
+    """One section of the PDF HTML. A viewer may read it. Another practice is 404."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    company = await _company_for_year_end(
+        session, year_end=year_end, org_id=auth.org_id
+    )
+    try:
+        preview = await build_section_preview(
+            session,
+            org_id=auth.org_id,
+            year_end=year_end,
+            company=company,
+            section_id=section,
+        )
+    except ReconciliationRejected as exc:
+        raise _adoption_error(exc) from exc
+    except PreviewRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    response.headers["ETag"] = f'"{preview.preview_revision}"'
+    response.headers["Cache-Control"] = "private, must-revalidate"
+    response.headers["Content-Security-Policy"] = PREVIEW_CONTENT_SECURITY_POLICY
+    return StatutoryPreviewResponse(
+        section_id=preview.section_id,
+        anchor=preview.anchor,
+        row_version=preview.row_version,
+        preview_revision=preview.preview_revision,
+        watermark=preview.watermark,
+        html=preview.html,
+        section_html_sha256=hashlib.sha256(
+            preview.section_html.encode("utf-8")
+        ).hexdigest(),
+        children=[
+            PreviewChildOut(
+                id=child.id,
+                number=child.number,
+                label=child.label,
+                anchor=child.anchor,
+            )
+            for child in preview.children
+        ],
+    )
 
 
 @router.get("/{year_end_id}/adopted-trial-balance/statements.pdf")
