@@ -30,10 +30,14 @@ export function WorkspaceSidebar({
   sections,
   activeId,
   onSelect,
+  onToggle,
+  togglesEnabled = true,
 }: {
   sections: readonly WorkspaceSection[];
   activeId: string;
   onSelect: (sectionId: string) => void;
+  onToggle?: (sectionId: string, enabled: boolean) => void;
+  togglesEnabled?: boolean;
 }) {
   return (
     <nav
@@ -50,20 +54,38 @@ export function WorkspaceSidebar({
             {group.sections.map((section) => {
               const active = section.id === activeId;
               return (
-                <li key={section.id}>
-                  <button
-                    type="button"
-                    data-testid={`statutory-section-${section.id}`}
-                    aria-current={active ? "page" : undefined}
-                    onClick={() => onSelect(section.id)}
-                    className={`w-full rounded-md px-3 py-2 text-left text-sm ${
-                      active
-                        ? "bg-accent font-semibold text-accent-foreground"
-                        : "text-ink hover:bg-surface-elevated"
-                    }`}
-                  >
-                    {section.label}
-                  </button>
+                <li
+                  key={section.id}
+                  className={section.enabled === false ? "opacity-50" : undefined}
+                >
+                  <div className="flex items-center gap-1">
+                    {section.lock === "user" ? (
+                      <input
+                        type="checkbox"
+                        className="ml-2 h-4 w-4 shrink-0"
+                        checked={section.enabled === true}
+                        disabled={togglesEnabled !== true}
+                        aria-label={`Include ${section.label}`}
+                        data-testid={`statutory-toggle-${section.id}`}
+                        onChange={(event) =>
+                          onToggle?.(section.id, event.target.checked)
+                        }
+                      />
+                    ) : null}
+                    <button
+                      type="button"
+                      data-testid={`statutory-section-${section.id}`}
+                      aria-current={active ? "page" : undefined}
+                      onClick={() => onSelect(section.id)}
+                      className={`w-full rounded-md px-3 py-2 text-left text-sm ${
+                        active
+                          ? "bg-accent font-semibold text-accent-foreground"
+                          : "text-ink hover:bg-surface-elevated"
+                      }`}
+                    >
+                      {section.label}
+                    </button>
+                  </div>
                 </li>
               );
             })}

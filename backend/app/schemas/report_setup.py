@@ -126,9 +126,7 @@ class ReportSetupWrite(BaseModel):
             if catalogue[section_id]["lock"] == "locked" and enabled is False
         )
         if locked_off:
-            raise ValueError(
-                f"Locked section cannot be turned off: {locked_off[0]}"
-            )
+            raise ValueError(f"Locked section cannot be turned off: {locked_off[0]}")
         return value
 
 
@@ -155,6 +153,9 @@ class WorkspaceSectionOut(BaseModel):
     group: str
     group_label: str
     order: int
+    lock: str | None = None
+    default: str | None = None
+    built: bool | None = None
 
 
 class ReportingFrameworkOut(BaseModel):

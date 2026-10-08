@@ -9,6 +9,7 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   activeSection,
+  sectionIsOn,
   sectionsForFramework,
   type ReportingFramework,
   type WorkspaceSection,
@@ -101,8 +102,39 @@ describe("sectionsForFramework", () => {
       "Report options",
       "Inputs",
       "Sections",
+      "Outputs",
+      "Cover",
+      "Draft PDF",
     ]) {
       assert.equal(source.includes(word), false, word);
     }
+    assert.equal(source.includes('section.lock === "user"'), true);
+    assert.equal(source.includes("statutory-toggle-"), true);
+    assert.equal(source.includes("opacity-50"), true);
+    const form = readFileSync(
+      join(here, "../components/statutory/ReportSetupForm.tsx"),
+      "utf8",
+    );
+    assert.equal(form.includes("sections:"), false);
+  });
+});
+
+describe("sectionIsOn", () => {
+  const cover = section("cover", "Cover", "sections", "Sections", 7);
+  cover.lock = "user";
+  cover.default = "on";
+  const cash = section("cash-flow", "Cash flow statement", "sections", "Sections", 11);
+  cash.lock = "user";
+  cash.default = "off";
+  const income = section("income", "Income statement", "sections", "Sections", 8);
+  income.lock = "locked";
+  income.default = "on";
+
+  it("uses the pack default until a saved map names the section", () => {
+    assert.equal(sectionIsOn(cover, null), true);
+    assert.equal(sectionIsOn(cash, null), false);
+    assert.equal(sectionIsOn(income, { income: false }), true);
+    assert.equal(sectionIsOn(cover, { cover: false, "cash-flow": true }), false);
+    assert.equal(sectionIsOn(cash, { cover: false, "cash-flow": true }), true);
   });
 });

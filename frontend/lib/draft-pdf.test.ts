@@ -86,6 +86,8 @@ describe("adopted draft download", () => {
     assert.equal(workspace.includes("downloadDraftPdf"), true);
     assert.equal(workspace.includes("statutory-download"), true);
     assert.equal(workspace.includes("statutory-download-reason"), true);
+    assert.equal(workspace.includes('sectionId === "draft-pdf"'), true);
+    assert.equal(workspace.includes("statutory-outputs"), true);
     assert.equal(workspace.includes("window.open"), false);
     assert.equal(workspace.includes("statements.pdf\""), false);
     assert.equal(helper.includes('headers: { Authorization: `Bearer ${token}` }'), true);

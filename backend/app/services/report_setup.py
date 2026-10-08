@@ -20,8 +20,10 @@ from app.schemas.report_setup import (
     ReportSetupResponse,
     ReportSetupWrite,
     WorkspaceSectionOut,
+    pack_section_catalogue,
 )
 from app.services.audit import append_audit_log
+from findraft.engine.pack import load_manifest
 from findraft.models.year_end import YearEnd
 
 
@@ -32,6 +34,9 @@ class WorkspaceSection:
     group: str
     group_label: str
     order: int
+    lock: str | None = None
+    default: str | None = None
+    built: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -43,25 +48,80 @@ class ReportingFramework:
     sections: tuple[WorkspaceSection, ...]
 
 
-_FRS_SECTIONS: tuple[WorkspaceSection, ...] = (
+# Pack ids with no statement builder. The composer prints the not-built line.
+_NOT_BUILT = frozenset({"oci", "socie", "cash-flow", "trading"})
+
+_WORKSPACE_BEFORE: tuple[WorkspaceSection, ...] = (
     WorkspaceSection("review", "Review dashboard", "overview", "Overview", 1),
-    WorkspaceSection("report-setup", "Report setup", "report-options", "Report options", 2),
+    WorkspaceSection(
+        "report-setup", "Report setup", "report-options", "Report options", 2
+    ),
     WorkspaceSection("sub-lines", "Mapping", "inputs", "Inputs", 3),
     WorkspaceSection("adjustments", "Adjustments", "inputs", "Inputs", 4),
     WorkspaceSection("disclosures", "Disclosures", "inputs", "Inputs", 5),
     WorkspaceSection("company-details", "Company details", "inputs", "Inputs", 6),
-    WorkspaceSection("income", "Income statement", "sections", "Sections", 7),
-    WorkspaceSection("sofp", "Statement of financial position", "sections", "Sections", 8),
 )
+
+
+def _pack_sidebar() -> tuple[WorkspaceSection, ...]:
+    """Pack order, then the Outputs group. Labels come from the pack file."""
+    catalogue = pack_section_catalogue()
+    loaded: object = load_manifest()
+    if not isinstance(loaded, dict):
+        raise ValueError("pack manifest is malformed")
+    raw = loaded.get("sections")
+    if not isinstance(raw, list):
+        raise ValueError("pack sections are missing")
+    rows: list[WorkspaceSection] = []
+    order = len(_WORKSPACE_BEFORE) + 1
+    for item in raw:
+        if not isinstance(item, dict):
+            raise ValueError("pack section is malformed")
+        section_id = item.get("id")
+        if not isinstance(section_id, str) or section_id not in catalogue:
+            raise ValueError("pack section id is malformed")
+        rule = catalogue[section_id]
+        rows.append(
+            WorkspaceSection(
+                id=section_id,
+                label=rule["label"],
+                group="sections",
+                group_label="Sections",
+                order=order,
+                lock=rule["lock"],
+                default=rule["default"],
+                built=section_id not in _NOT_BUILT,
+            )
+        )
+        order += 1
+    rows.append(
+        WorkspaceSection(
+            id="draft-pdf",
+            label="Draft PDF",
+            group="outputs",
+            group_label="Outputs",
+            order=order,
+        )
+    )
+    return tuple(rows)
+
+
+def _frs_sections() -> tuple[WorkspaceSection, ...]:
+    return _WORKSPACE_BEFORE + _pack_sidebar()
+
 
 _FORM11_SECTIONS: tuple[WorkspaceSection, ...] = (
     WorkspaceSection("review", "Review dashboard", "overview", "Overview", 1),
-    WorkspaceSection("report-setup", "Report setup", "report-options", "Report options", 2),
+    WorkspaceSection(
+        "report-setup", "Report setup", "report-options", "Report options", 2
+    ),
 )
 
 _FALLBACK_SECTIONS: tuple[WorkspaceSection, ...] = (
     WorkspaceSection("review", "Review dashboard", "overview", "Overview", 1),
-    WorkspaceSection("report-setup", "Report setup", "report-options", "Report options", 2),
+    WorkspaceSection(
+        "report-setup", "Report setup", "report-options", "Report options", 2
+    ),
 )
 
 REPORTING_FRAMEWORKS: tuple[ReportingFramework, ...] = (
@@ -70,7 +130,7 @@ REPORTING_FRAMEWORKS: tuple[ReportingFramework, ...] = (
         version="2024.09",
         label="FRS 102 Section 1A (Ireland)",
         available=True,
-        sections=_FRS_SECTIONS,
+        sections=_frs_sections(),
     ),
     ReportingFramework(
         id="form11-summary",
@@ -112,6 +172,9 @@ def framework_list() -> ReportingFrameworkList:
                         group=section.group,
                         group_label=section.group_label,
                         order=section.order,
+                        lock=section.lock,
+                        default=section.default,
+                        built=section.built,
                     )
                     for section in framework.sections
                 ],
@@ -124,7 +187,9 @@ def framework_list() -> ReportingFrameworkList:
 def display_amount(amount: Decimal, rounding: str) -> str:
     """A new display string. ``amount`` is left as it was passed in."""
     if rounding == "thousands":
-        shown = (amount / Decimal("1000")).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        shown = (amount / Decimal("1000")).quantize(
+            Decimal("1"), rounding=ROUND_HALF_UP
+        )
     else:
         shown = amount.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     return format(shown, "f")

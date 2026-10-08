@@ -28,6 +28,7 @@ export type ReportSetup = {
   column_headers: ColumnHeaders;
   trial_balance_period_start: string | null;
   trial_balance_period_end: string;
+  sections?: Record<string, boolean> | null;
 };
 
 export type ReportSetupWrite = {
@@ -35,6 +36,7 @@ export type ReportSetupWrite = {
   statement_type: StatementType;
   face_dates: FaceDates;
   column_headers: ColumnHeaders;
+  sections?: Record<string, boolean> | null;
 };
 
 const STATEMENT_TYPES: StatementType[] = ["draft", "compilation"];
