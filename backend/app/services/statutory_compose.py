@@ -9,12 +9,19 @@ printed. It does not sum a trial balance.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
 from pydantic import ValidationError
 
-from app.schemas.report_setup import ReportSetupWrite, pack_section_catalogue
+from app.models.company import Company
+from app.schemas.report_setup import (
+    ColumnHeaders,
+    FaceDates,
+    ReportSetupWrite,
+    pack_section_catalogue,
+)
 from app.services.reconciliation import ReconciliationCheck
 from app.services.report_setup import display_amount
 from app.services.statutory_display import (
@@ -22,13 +29,17 @@ from app.services.statutory_display import (
     _keep,
     _nil,
     as_at_phrase,
+    column_headings,
+    format_iso_date,
     statement_period_phrase,
 )
+from app.services.statutory_pages import StatutoryPage
 from app.services.statutory_statements import (
     StatementNote,
     StatementRow,
     StatutoryStatements,
     _SHORT_NOTE_TABLE_ROWS,
+    _director_phrase,
     _line_label,
     _signing_phrase,
     _with_note_column,
@@ -39,25 +50,65 @@ from findraft.engine.rounding import rounding_gap
 from findraft.models.year_end import YearEnd
 
 NOT_BUILT_LINE = "[NOT BUILT: this pack does not build this statement]"
-
-_DEFERRED = frozenset(
-    {
-        "cover",
-        "contents",
-        "directors-info",
-        "directors-responsibilities",
-    }
+NOT_RECORDED = "not recorded"
+# Printed on the page. The workspace labels this wording source not confirmed.
+# It cites no Act section.
+DIRECTORS_RESPONSIBILITIES = (
+    "The directors are responsible for preparing the company's financial "
+    "statements and for being satisfied that they give a true and fair view. "
+    "The directors are responsible for keeping adequate accounting records "
+    "and for safeguarding the assets of the company and for taking reasonable "
+    "steps for the prevention and detection of fraud and other irregularities."
 )
+
 _UNBUILT = ("oci", "socie", "cash-flow", "trading")
-_PROSE_HEADINGS = {
+_ENGINE_HEADINGS = {
     "compilation": "Compilation report",
     "directors-report": "Directors' report",
+    "approval": "Approval of the financial statements",
+    "audit-exemption": "Audit exemption",
 }
+_CSS_PAGE_BREAK = frozenset({"income", "sofp"})
 _STATEMENTS = frozenset({"income", "sofp", "notes"})
 
 
-def compose_year_end_pdf(document: StatutoryStatements, year_end: YearEnd) -> str:
-    """PDF HTML for one year end. A blank report setup keeps the engine HTML."""
+@dataclass(frozen=True)
+class CompanyLetterhead:
+    registered_office: str = ""
+    business_address: str = ""
+    company_number: str = ""
+    incorporated_on: date | None = None
+    secretary: str = ""
+    directors: tuple[dict[str, object], ...] = ()
+    advisers: tuple[dict[str, object], ...] = ()
+
+
+def letterhead_from_company(company: Company) -> CompanyLetterhead:
+    directors = company.directors if isinstance(company.directors, list) else []
+    advisers = company.advisers if isinstance(company.advisers, list) else []
+    return CompanyLetterhead(
+        registered_office=company.registered_office or "",
+        business_address=company.business_address or "",
+        company_number=company.company_number or "",
+        incorporated_on=company.incorporated_on,
+        secretary=company.secretary or "",
+        directors=tuple(item for item in directors if isinstance(item, dict)),
+        advisers=tuple(item for item in advisers if isinstance(item, dict)),
+    )
+
+
+def compose_year_end_pdf(
+    document: StatutoryStatements,
+    year_end: YearEnd,
+    *,
+    company: Company | None = None,
+) -> str:
+    """PDF HTML for one year end. A blank report setup still prints the pack pages."""
+    currency = "GBP"
+    letterhead = CompanyLetterhead()
+    if company is not None:
+        currency = company.functional_currency or "GBP"
+        letterhead = letterhead_from_company(company)
     return compose_pdf_html(
         document,
         report_setup=year_end.report_setup,
@@ -66,6 +117,8 @@ def compose_year_end_pdf(document: StatutoryStatements, year_end: YearEnd) -> st
         first_financial_period=year_end.first_financial_period,
         approval_date=year_end.approval_date,
         signing_directors=year_end.signing_directors,
+        currency=currency,
+        letterhead=letterhead,
     )
 
 
@@ -78,15 +131,19 @@ def compose_pdf_html(
     first_financial_period: bool,
     approval_date: date | None = None,
     signing_directors: object = None,
+    currency: str = "EUR",
+    letterhead: CompanyLetterhead | None = None,
 ) -> str:
     """Filter and label a copy. ``document`` and its Decimals stay put."""
     if document.html is None:
         raise ValueError("Statutory statements are not renderable")
     if report_setup is None:
-        return document.html
-    if not isinstance(report_setup, dict):
+        setup = _default_setup(period_start, period_end, currency or "EUR")
+    elif not isinstance(report_setup, dict):
         raise ValueError("report setup is malformed")
-    setup = _validated_setup(report_setup)
+    else:
+        setup = _validated_setup(report_setup)
+    facts = letterhead or CompanyLetterhead()
     comparative = not first_financial_period
     catalogue = pack_section_catalogue()
     saved = setup.sections
@@ -120,7 +177,6 @@ def compose_pdf_html(
         rounding=setup.rounding,
         note_numbers=numbers,
     )
-    sections: list[dict[str, object]] = _front_pages(document, saved, catalogue)
     built: dict[str, dict[str, object]] = {
         "income": _statement_section(
             anchor="income",
@@ -152,14 +208,15 @@ def compose_pdf_html(
             ],
         },
     }
-    for section_id, label in _pack_order():
-        if section_id in _DEFERRED or section_id in _PROSE_HEADINGS:
-            continue
-        if section_id in _STATEMENTS:
-            sections.append(built[section_id])
-            continue
-        if section_id in _UNBUILT and _section_included(section_id, saved, catalogue):
-            sections.append(_not_built(section_id, label))
+    sections = _composed_sections(
+        document,
+        saved=saved,
+        catalogue=catalogue,
+        built=built,
+        letterhead=facts,
+        period_phrase=statement_period_phrase(start, end),
+        period_note=period_note,
+    )
     approved = "" if approval_date is None else approval_date.isoformat()
     return render_statutory_html(
         company_name=document.company_name,
@@ -186,8 +243,7 @@ def unbuilt_section_notices(year_end: YearEnd) -> tuple[ReconciliationCheck, ...
         return ()
     if len(labels) == 1:
         message = (
-            f"{labels[0]} is switched on. "
-            "This pack does not build this statement."
+            f"{labels[0]} is switched on. " "This pack does not build this statement."
         )
     else:
         message = (
@@ -303,26 +359,216 @@ def _column_label(text: str, rounding: str) -> str:
     return f"{text} in thousands"
 
 
-def _front_pages(
+def _default_setup(
+    period_start: date | None, period_end: date, currency: str
+) -> ReportSetupWrite:
+    """Year-and-symbol headings, the same shape the engine prints."""
+    headings = column_headings(
+        period_end=period_end,
+        currency_code=currency,
+        comparative=True,
+    )
+    current = headings[0]
+    prior = headings[1]
+    return ReportSetupWrite(
+        rounding="unit",
+        statement_type="draft",
+        face_dates=FaceDates(current_start=period_start, current_end=period_end),
+        column_headers=ColumnHeaders(
+            as_at_current=current,
+            as_at_prior=prior,
+            ended_current=current,
+            ended_prior=prior,
+        ),
+    )
+
+
+def _engine_pages(document: StatutoryStatements) -> dict[str, StatutoryPage]:
+    by_heading = {page.heading: page for page in document.pages}
+    found: dict[str, StatutoryPage] = {}
+    for section_id, heading in _ENGINE_HEADINGS.items():
+        page = by_heading.get(heading)
+        if page is not None:
+            found[section_id] = page
+    return found
+
+
+def _shown(value: str) -> str:
+    parts = [part.strip() for part in value.replace("\r", "\n").split("\n")]
+    text = ", ".join(part for part in parts if part)
+    return text or NOT_RECORDED
+
+
+def _directors_line(directors: tuple[dict[str, object], ...]) -> str:
+    phrases = [
+        phrase for item in directors if (phrase := _director_phrase(item)) is not None
+    ]
+    return "; ".join(phrases) if phrases else NOT_RECORDED
+
+
+def _advisers_line(advisers: tuple[dict[str, object], ...]) -> str:
+    parts: list[str] = []
+    for item in advisers:
+        role = item.get("role")
+        name = item.get("name")
+        if not isinstance(role, str) or not isinstance(name, str):
+            continue
+        if not role.strip() or not name.strip():
+            continue
+        parts.append(f"{role.strip()}: {name.strip()}")
+    if not parts:
+        return f"Advisers: {NOT_RECORDED}."
+    return "Advisers: " + "; ".join(parts) + "."
+
+
+def _cover_paragraphs(period_phrase: str, period_note: str) -> list[str]:
+    paragraphs: list[str] = []
+    if period_phrase:
+        paragraphs.append(period_phrase)
+    if period_note:
+        paragraphs.append(period_note)
+    return paragraphs
+
+
+def _directors_info_paragraphs(letterhead: CompanyLetterhead) -> list[str]:
+    incorporated = (
+        NOT_RECORDED
+        if letterhead.incorporated_on is None
+        else format_iso_date(letterhead.incorporated_on.isoformat())
+    )
+    return [
+        f"Registered office: {_shown(letterhead.registered_office)}",
+        f"Business address: {_shown(letterhead.business_address)}",
+        f"Company number: {_shown(letterhead.company_number)}",
+        f"Date of incorporation: {incorporated}",
+        f"Company secretary: {_shown(letterhead.secretary)}",
+        f"Directors: {_directors_line(letterhead.directors)}",
+        _advisers_line(letterhead.advisers),
+    ]
+
+
+def _prose(
+    *,
+    anchor: str,
+    heading: str,
+    paragraphs: list[str],
+    page_break: bool,
+) -> dict[str, object]:
+    return {
+        "kind": "prose",
+        "anchor": anchor,
+        "heading": heading,
+        "paragraphs": paragraphs,
+        "page_break": page_break,
+    }
+
+
+def _contents_label(section_id: str, label: str) -> str:
+    if section_id == "cover":
+        return "Financial statements"
+    return label
+
+
+def _composed_sections(
     document: StatutoryStatements,
+    *,
     saved: dict[str, bool] | None,
     catalogue: dict[str, dict[str, str]],
+    built: dict[str, dict[str, object]],
+    letterhead: CompanyLetterhead,
+    period_phrase: str,
+    period_note: str,
 ) -> list[dict[str, object]]:
-    by_heading = {heading: section_id for section_id, heading in _PROSE_HEADINGS.items()}
-    pages: list[dict[str, object]] = []
-    for page in document.pages:
-        section_id = by_heading.get(page.heading)
-        if section_id is not None and not _section_included(section_id, saved, catalogue):
+    """Pack order. Approval and audit exemption stay after the compilation report."""
+    engine = _engine_pages(document)
+    planned: list[tuple[str, str]] = []
+    for section_id, label in _pack_order():
+        included = _section_included(section_id, saved, catalogue)
+        if section_id == "compilation":
+            if included and section_id in engine:
+                planned.append((section_id, label))
+            for extra_id, extra_label in (
+                ("approval", "Approval of the financial statements"),
+                ("audit-exemption", "Audit exemption"),
+            ):
+                if extra_id in engine:
+                    planned.append((extra_id, extra_label))
             continue
-        pages.append(
-            {
-                "kind": "prose",
-                "anchor": page.heading.casefold().replace(" ", "-"),
-                "heading": page.heading,
-                "paragraphs": list(page.paragraphs),
-            }
-        )
-    return pages
+        if not included:
+            continue
+        if section_id in _ENGINE_HEADINGS and section_id not in engine:
+            continue
+        planned.append((section_id, label))
+    contents = [
+        {"label": _contents_label(section_id, label), "anchor": section_id}
+        for section_id, label in planned
+        if section_id != "contents"
+    ]
+    sections: list[dict[str, object]] = []
+    for index, (section_id, label) in enumerate(planned):
+        page_break = index > 0 and section_id not in _CSS_PAGE_BREAK
+        if section_id == "cover":
+            sections.append(
+                _prose(
+                    anchor="cover",
+                    heading="Financial statements",
+                    paragraphs=_cover_paragraphs(period_phrase, period_note),
+                    page_break=page_break,
+                )
+            )
+            continue
+        if section_id == "contents":
+            sections.append(
+                {
+                    "kind": "contents",
+                    "anchor": "contents",
+                    "heading": "Contents",
+                    "entries": contents,
+                    "page_break": page_break,
+                }
+            )
+            continue
+        if section_id == "directors-info":
+            sections.append(
+                _prose(
+                    anchor="directors-info",
+                    heading=label,
+                    paragraphs=_directors_info_paragraphs(letterhead),
+                    page_break=page_break,
+                )
+            )
+            continue
+        if section_id == "directors-responsibilities":
+            sections.append(
+                _prose(
+                    anchor="directors-responsibilities",
+                    heading=label,
+                    paragraphs=[DIRECTORS_RESPONSIBILITIES],
+                    page_break=page_break,
+                )
+            )
+            continue
+        if section_id in engine:
+            page = engine[section_id]
+            sections.append(
+                _prose(
+                    anchor=section_id,
+                    heading=page.heading,
+                    paragraphs=list(page.paragraphs),
+                    page_break=page_break,
+                )
+            )
+            continue
+        if section_id in _STATEMENTS:
+            block = dict(built[section_id])
+            block["page_break"] = page_break
+            sections.append(block)
+            continue
+        if section_id in _UNBUILT:
+            block = _not_built(section_id, label)
+            block["page_break"] = page_break
+            sections.append(block)
+    return sections
 
 
 def _not_built(section_id: str, label: str) -> dict[str, object]:
@@ -490,9 +736,7 @@ def _note_section(
         visible = [line for line in note.lines if not _nil(line.current)]
     else:
         visible = [
-            line
-            for line in note.lines
-            if not (_nil(line.current) and _nil(line.prior))
+            line for line in note.lines if not (_nil(line.current) and _nil(line.prior))
         ]
     lines: list[dict[str, object]] = [
         {

@@ -436,9 +436,7 @@ async def get_year_end(
 ) -> YearEnd:
     """Reload one year end. The draft workspace uses this address later."""
     await aset_rls_org_id(session, auth.org_id)
-    return await _owned_year_end(
-        session, year_end_id=year_end_id, org_id=auth.org_id
-    )
+    return await _owned_year_end(session, year_end_id=year_end_id, org_id=auth.org_id)
 
 
 @router.get("/{year_end_id}/draft", response_model=WorkingDraftResponse)
@@ -607,9 +605,7 @@ async def get_adopted_reconciliation(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
     try:
-        report = await reconcile_adopted(
-            session, org_id=auth.org_id, year_end=year_end
-        )
+        report = await reconcile_adopted(session, org_id=auth.org_id, year_end=year_end)
     except ReconciliationRejected as exc:
         raise _adoption_error(exc) from exc
     return _report_response(report)
@@ -716,7 +712,10 @@ async def get_adopted_statement_pdf(
             status_code=400,
             detail="Statutory statements are not renderable",
         )
-    pdf = write_statement_pdf(compose_year_end_pdf(document, year_end))
+    company = await _company_for_year_end(
+        session, year_end=year_end, org_id=auth.org_id
+    )
+    pdf = write_statement_pdf(compose_year_end_pdf(document, year_end, company=company))
     return Response(
         content=pdf,
         media_type="application/pdf",
@@ -1210,7 +1209,10 @@ async def get_statement_pdf(
         year_end = await _owned_year_end(
             session, year_end_id=year_end_id, org_id=auth.org_id
         )
-        html = compose_year_end_pdf(document, year_end)
+        company = await _company_for_year_end(
+            session, year_end=year_end, org_id=auth.org_id
+        )
+        html = compose_year_end_pdf(document, year_end, company=company)
         filename = "statutory-statements-draft.pdf"
     pdf = write_statement_pdf(html)
     return Response(

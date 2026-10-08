@@ -8,6 +8,7 @@ from pathlib import Path
 
 from app.services.statutory_display import format_whole_prose
 from app.services.statutory_statements import (
+    ShareClassFact,
     _CREDITORS_CROSS_REF,
     _retarget_cross_references,
     build_statutory_statements,
@@ -110,7 +111,9 @@ def test_unanswered_related_party_and_commitment_notes_are_one_line() -> None:
     assert declined.profit == document.profit
     assert "N7_RPT" not in {note.code for note in declined.notes}
     assert "N9_COMMITMENTS" not in {note.code for note in declined.notes}
-    numbers = [int(note.title.split(".", 1)[0]) for note in declined.notes if note.title]
+    numbers = [
+        int(note.title.split(".", 1)[0]) for note in declined.notes if note.title
+    ]
     assert numbers == list(range(1, len(numbers) + 1))
     affirmed = _golden(
         disclosure_flags={
@@ -121,7 +124,9 @@ def test_unanswered_related_party_and_commitment_notes_are_one_line() -> None:
     assert affirmed.net_assets == document.net_assets
     assert affirmed.profit == document.profit
     related_yes = next(note for note in affirmed.notes if note.code == "N7_RPT")
-    commitments_yes = next(note for note in affirmed.notes if note.code == "N9_COMMITMENTS")
+    commitments_yes = next(
+        note for note in affirmed.notes if note.code == "N9_COMMITMENTS"
+    )
     assert "Companies Act 2014" in related_yes.body
     assert "[related party transactions not recorded]" in related_yes.body
     assert "[directors' aggregate disclosures not recorded]" in related_yes.body
@@ -320,7 +325,10 @@ def test_share_capital_prose_uses_the_directors_report_symbol() -> None:
     assert euro.startswith("€")
     assert f"is {euro}." in capital.body
     report = next(page for page in golden.pages if page.heading == "Directors' report")
-    assert any(line.startswith("Profit for the financial year is €") for line in report.paragraphs)
+    assert any(
+        line.startswith("Profit for the financial year is €")
+        for line in report.paragraphs
+    )
     gbp = _golden(entity=_entity(currency="GBP"))
     assert gbp.net_assets == golden.net_assets
     assert gbp.profit == golden.profit
@@ -328,6 +336,37 @@ def test_share_capital_prose_uses_the_directors_report_symbol() -> None:
     gbp_capital = next(note for note in gbp.notes if note.code == "N6_CAPITAL")
     assert f"is {format_whole_prose(gbp_share.current, 'GBP')}." in gbp_capital.body
     assert "£" in gbp_capital.body
+
+
+def test_share_classes_replace_the_placeholder_and_keep_the_face_figure() -> None:
+    """Issued amount is the Python product. A blank authorised stays not recorded."""
+    golden = _golden()
+    share = next(row for row in golden.sofp if row.label == "Called up share capital")
+    issued = Decimal("7") * Decimal("1.50")
+    assert issued != share.current
+    document = _golden(
+        share_classes=(
+            ShareClassFact(
+                class_name="Ordinary",
+                authorised_number=None,
+                issued_number=7,
+                nominal_value=Decimal("1.50"),
+            ),
+        ),
+    )
+    assert document.net_assets == Decimal("455812.00")
+    assert document.profit == Decimal("157650.00")
+    assert share.current == next(
+        row.current for row in document.sofp if row.label == "Called up share capital"
+    )
+    capital = next(note for note in document.notes if note.code == "N6_CAPITAL")
+    assert "[share class analysis not recorded]" not in capital.body
+    assert f"is {format_whole_prose(share.current, 'EUR')}." in capital.body
+    assert "Ordinary: 7 shares issued at €2 each." in capital.body
+    assert f"Issued amount {format_whole_prose(issued, 'EUR')}." in capital.body
+    assert "Authorised shares: not recorded." in capital.body
+    assert document.html is not None
+    assert "455812.00" not in document.html
 
 
 def test_a_long_note_table_is_allowed_to_split() -> None:

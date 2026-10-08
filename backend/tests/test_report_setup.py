@@ -389,16 +389,24 @@ async def test_framework_catalogue_is_not_a_single_frs_list(
     assert listed.status_code == 200, listed.text
     frameworks = {item["id"]: item for item in listed.json()["frameworks"]}
     assert set(frameworks) == {"frs102-1a-ie", "form11-summary"}
-    frs_labels = [section["label"] for section in frameworks["frs102-1a-ie"]["sections"]]
-    form_labels = [section["label"] for section in frameworks["form11-summary"]["sections"]]
+    frs_labels = [
+        section["label"] for section in frameworks["frs102-1a-ie"]["sections"]
+    ]
+    form_labels = [
+        section["label"] for section in frameworks["form11-summary"]["sections"]
+    ]
     assert frs_labels == [section.label for section in sections_for("frs102-1a-ie")]
     assert form_labels == [section.label for section in sections_for("form11-summary")]
     assert frameworks["frs102-1a-ie"]["available"] is True
     assert frameworks["form11-summary"]["available"] is False
     assert "Mapping" in frs_labels
     assert "Company details" in frs_labels
-    frs_groups = [section["group"] for section in frameworks["frs102-1a-ie"]["sections"]]
-    form_groups = [section["group"] for section in frameworks["form11-summary"]["sections"]]
+    frs_groups = [
+        section["group"] for section in frameworks["frs102-1a-ie"]["sections"]
+    ]
+    form_groups = [
+        section["group"] for section in frameworks["form11-summary"]["sections"]
+    ]
     assert "sections" in frs_groups
     assert "sections" not in form_groups
     assert "inputs" not in form_groups
@@ -441,9 +449,7 @@ def test_pack_declares_section_locks_and_defaults() -> None:
         "trading",
     }
     locked = sorted(
-        section_id
-        for section_id, rule in catalogue.items()
-        if rule["lock"] == "locked"
+        section_id for section_id, rule in catalogue.items() if rule["lock"] == "locked"
     )
     assert locked == ["income", "notes", "sofp"]
     assert catalogue["income"]["default"] == "on"
@@ -456,23 +462,29 @@ def test_pack_declares_section_locks_and_defaults() -> None:
 
 def test_company_column_migration_grants_are_explicit() -> None:
     source = (
-        _ROOT / "alembic" / "versions" / "f2a3b4c5d6_company_advisers_and_share_classes.py"
+        _ROOT
+        / "alembic"
+        / "versions"
+        / "f2a3b4c5d6_company_advisers_and_share_classes.py"
     ).read_text(encoding="utf-8")
     assert 'revision: str = "f2a3b4c5d6"' in source
     assert 'down_revision: Union[str, None] = "e1f2a3b4c5"' in source
     assert "ADD COLUMN advisers JSONB" in source
     assert "ADD COLUMN share_classes JSONB" in source
-    assert "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.companies TO findraft" in source
-    assert "REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.companies FROM findraft" in source
+    assert (
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.companies TO findraft"
+        in source
+    )
+    assert (
+        "REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.companies FROM findraft"
+        in source
+    )
     assert "GRANT ALL" not in source
 
 
-def test_application_code_does_not_read_the_new_company_columns() -> None:
-    """The columns exist for a later PR. This revision must not select them."""
-    for folder in ("backend/app", "frontend"):
-        for path in (_ROOT.parent / folder).rglob("*"):
-            if path.suffix not in {".py", ".ts", ".tsx"}:
-                continue
-            source = path.read_text(encoding="utf-8")
-            assert "advisers" not in source, path
-            assert "share_classes" not in source, path
+def test_company_model_maps_advisers_and_share_classes() -> None:
+    """Migration f2a3b4c5d6 is applied. The form and the note may read them."""
+    from app.models.company import Company
+
+    assert Company.__table__.c.advisers.nullable is True
+    assert Company.__table__.c.share_classes.nullable is True

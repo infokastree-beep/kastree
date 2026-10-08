@@ -51,7 +51,9 @@ class Company(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     # Statutory entity record captured once (v7.6 §4.7). Nullable until entered.
     registered_office: Mapped[str | None] = mapped_column(String, nullable=True)
-    directors: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB, nullable=True)
+    directors: Mapped[list[dict[str, object]] | None] = mapped_column(
+        JSONB, nullable=True
+    )
     secretary: Mapped[str | None] = mapped_column(String, nullable=True)
     financial_year_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     average_employees: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -64,6 +66,13 @@ class Company(Base):
     business_address: Mapped[str | None] = mapped_column(String, nullable=True)
     incorporated_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     principal_activity: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Letterhead lists. Migration f2a3b4c5d6 added the columns.
+    advisers: Mapped[list[dict[str, object]] | None] = mapped_column(
+        JSONB, nullable=True
+    )
+    share_classes: Mapped[list[dict[str, object]] | None] = mapped_column(
+        JSONB, nullable=True
+    )
     company_type: Mapped[str] = mapped_column(
         String, nullable=False, server_default=text("'trading'")
     )
