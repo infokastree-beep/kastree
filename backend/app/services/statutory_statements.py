@@ -182,7 +182,6 @@ _DOCUMENT = """<!DOCTYPE html>
 <div class="note-body">{{ note.body }}</div>
 {% if note.lines %}
 <table>
-{% if section.period_phrase %}<caption>{{ section.period_phrase }}</caption>{% endif %}
 <thead><tr><th>Line</th>{% for column in section.columns %}<th class="amount">{{ column }}</th>{% endfor %}</tr></thead>
 <tbody>
 {% for line in note.lines %}
@@ -455,6 +454,48 @@ def _retarget_cross_references(body: str, numbers: dict[str, int]) -> str:
     )
 
 
+def _employees_sentence(
+    context: dict[str, str], *, first_financial_period: bool
+) -> str:
+    """One blank reads once. A first period has no prior-year bracket."""
+    current = context["avg_employees_current"]
+    prior = context["avg_employees_prior"]
+    lead = (
+        "The average number of persons employed by the company during "
+        "the reporting period was"
+    )
+    blank = _NOT_RECORDED["avg_employees_current"]
+    if first_financial_period or (current == blank and prior == blank):
+        return f"{lead} {current}."
+    return f"{lead} {current} ({prior})."
+
+
+_RENDERED_SECTION_IDS = ("income", "sofp", "notes")
+
+
+def _statement_order(manifest: dict[str, object]) -> tuple[str, ...]:
+    """Income, balance sheet, and notes, in the order pack.json declares."""
+    raw = manifest.get("sections")
+    if not isinstance(raw, list):
+        raise ValueError("pack sections are missing")
+    order: list[str] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise ValueError("pack section is malformed")
+        section_id = item.get("id")
+        if section_id not in _RENDERED_SECTION_IDS:
+            continue
+        if not isinstance(section_id, str) or section_id in order:
+            raise ValueError("pack section id is malformed")
+        order.append(section_id)
+    if set(order) != set(_RENDERED_SECTION_IDS):
+        raise ValueError(
+            "pack sections do not declare the income statement, "
+            "the statement of financial position, and the notes"
+        )
+    return tuple(order)
+
+
 def _share_capital_narrative(sofp: tuple[StatementRow, ...]) -> str:
     row = next((item for item in sofp if item.label == "Called up share capital"), None)
     shown = (
@@ -488,11 +529,15 @@ def _with_note_column(
 
 
 def _signature_view(approval_date: str, signing_directors: str) -> dict[str, object]:
-    """Names already stored on the year. A blank stays a blank line."""
+    """Names already stored on the year. A blank stays a blank line.
+
+    The approval page and this block share format_iso_date, so an ISO value
+    stored on the year end prints as 17 March 2027.
+    """
     recorded = approval_date.strip()
     names = [part.strip() for part in signing_directors.split(",") if part.strip()]
     date_line = (
-        f"Approved on {recorded}."
+        f"Approved on {format_iso_date(recorded)}."
         if recorded
         else "Approval date has not been recorded."
     )
@@ -842,6 +887,7 @@ def _compose_notes(
     prior_canonical: dict[str, Decimal],
     fa_register: dict[str, dict[str, Decimal]] | None,
     sofp: tuple[StatementRow, ...],
+    first_financial_period: bool = False,
 ) -> tuple[tuple[StatementNote, ...], tuple[RoundingFlag, ...], dict[str, int]]:
     chosen = [
         code
@@ -884,6 +930,13 @@ def _compose_notes(
             note_context["departure_clause"] = departure
         if code == "N6_CAPITAL":
             parts = [_share_capital_narrative(sofp)]
+        elif code == "N8_EMPLOYEES":
+            parts = [
+                _employees_sentence(
+                    note_context,
+                    first_financial_period=first_financial_period,
+                )
+            ]
         else:
             parts = [_render_prose(prose, note_context)]
         trailing = template.get("trailingText")
@@ -937,6 +990,7 @@ def _render_html(
     first_financial_period: bool = False,
     approval_date: str = "",
     signing_directors: str = "",
+    statement_order: tuple[str, ...] = ("income", "sofp", "notes"),
 ) -> str:
     """Build the section list the template walks. The engine rows stay intact."""
     start = parse_iso_date(period_start)
@@ -957,8 +1011,8 @@ def _render_html(
         }
         for page in pages
     ]
-    sections.append(
-        {
+    rendered: dict[str, dict[str, object]] = {
+        "sofp": {
             "kind": "statement",
             "anchor": "sofp",
             "heading": "Statement of financial position",
@@ -968,10 +1022,8 @@ def _render_html(
             "rows": _with_note_column(
                 face_display_rows(sofp, comparative=comparative), note_numbers
             ),
-        }
-    )
-    sections.append(
-        {
+        },
+        "income": {
             "kind": "statement",
             "anchor": "income",
             "heading": "Income statement",
@@ -981,14 +1033,12 @@ def _render_html(
             "rows": _with_note_column(
                 face_display_rows(income, comparative=comparative), note_numbers
             ),
-        }
-    )
-    sections.append(
-        {
+        },
+        "notes": {
             "kind": "notes",
             "anchor": "notes",
             "heading": "Notes",
-            "period_phrase": period_phrase,
+            "period_phrase": "",
             "columns": columns,
             "notes": [
                 {
@@ -1014,8 +1064,10 @@ def _render_html(
                 }
                 for note in notes
             ],
-        }
-    )
+        },
+    }
+    for anchor in statement_order:
+        sections.append(rendered[anchor])
     return _HTML.from_string(_DOCUMENT).render(
         company_name=entity.name,
         sections=sections,
@@ -1049,6 +1101,9 @@ def _render_draft(
         if pack_id is not None and pack_version is not None
         else pack_dir()
     )
+    manifest = json.loads((directory / "pack.json").read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise ValueError("pack manifest is malformed")
     aggregated = aggregate(tb_lines, mappings)
     validated = prior_from_mapped(prior_canonical)
     sofp = build_sofp(aggregated, validated)
@@ -1081,6 +1136,7 @@ def _render_draft(
         prior_canonical=prior_canonical,
         fa_register=fa_register,
         sofp=sofp_rows,
+        first_financial_period=first_financial_period,
     )
     pages = build_statutory_pages(
         company_name=entity.name,
@@ -1110,6 +1166,7 @@ def _render_draft(
         first_financial_period=first_financial_period,
         approval_date=approval_date,
         signing_directors=signing_directors,
+        statement_order=_statement_order(manifest),
     )
     return StatutoryStatements(
         watermark=watermark,

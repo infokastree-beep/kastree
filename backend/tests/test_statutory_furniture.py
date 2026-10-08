@@ -79,12 +79,32 @@ def test_furniture_and_the_balance_sheet_signature() -> None:
         assert "Approved by the board and signed on its behalf by" in html
     assert "A signatory has not been recorded." in golden.html
     assert "Approval date has not been recorded." in golden.html
-    face, _, income = signed.html.partition("<h2>Income statement</h2>")
-    assert "Ada Lovelace" in face
-    assert "Grace Hopper" in face
-    assert "Approved on 15 March 2027." in face
+    sofp = signed.html.split('<section data-section="sofp">', 1)[1]
+    assert "Ada Lovelace" in sofp
+    assert "Grace Hopper" in sofp
+    assert "Approved on 15 March 2027." in sofp
     assert "Ada Lovelace" in first.html
     assert "Approved on 15 March 2027." in first.html
+    iso = build_statutory_statements(
+        prior_year_validated=True,
+        tb_lines=_lines(_TB),
+        mappings=_MAPPINGS,
+        prior_retained_earnings=Decimal("-322062.00"),
+        prior_canonical={
+            "FA_PLANT_COST": Decimal("111400.00"),
+            "RETAINED_EARNINGS": Decimal("-322062.00"),
+        },
+        fa_register=_FA_REGISTER,
+        entity=_entity(),
+        approval_date="2027-03-17",
+        signing_directors="Ada Lovelace",
+    )
+    assert iso.net_assets == golden.net_assets
+    assert iso.profit == golden.profit
+    assert iso.html is not None
+    iso_signature = iso.html.split('class="signature"', 1)[1]
+    assert "Approved on 17 March 2027." in iso_signature
+    assert "2027-03-17" not in iso_signature
     golden_pdf = write_statement_pdf(golden.html)
     first_pdf = write_statement_pdf(first.html)
     assert golden_pdf.startswith(b"%PDF")

@@ -205,13 +205,89 @@ def test_note_sentences_name_only_rendered_statements_and_notes() -> None:
     assert "[company number not recorded]" in entity_note.body
     assert "[directors not recorded]" in entity_note.body
     assert entity_note.body.count("[") >= 3
-    assert "[average number of employees not recorded]" in employees.body
+    assert employees.body.count("[average number of employees not recorded]") == 1
+    assert "(" not in employees.body
     recorded = _golden(entity=_entity(average_employees="12"))
     recorded_employees = next(
         note for note in recorded.notes if note.code == "N8_EMPLOYEES"
     )
-    assert "was 12 (" in recorded_employees.body
+    assert recorded_employees.body.endswith(
+        "was 12 ([average number of employees not recorded])."
+    )
+    first_blank = build_statutory_statements(
+        prior_year_validated=True,
+        tb_lines=_lines(
+            (
+                ("1000", "Cash at Bank", 30000, 0),
+                ("1100", "Trade Debtors", 20000, 0),
+                ("2000", "Trade Creditors", 0, 15000),
+                ("3000", "Share Capital", 0, 10000),
+                ("4000", "Sales Revenue", 0, 100000),
+                ("5000", "Cost of Sales", 40250, 0),
+                ("6000", "Operating Expenses", 34750, 0),
+            )
+        ),
+        mappings={
+            "1000": "CASH",
+            "1100": "TRADE_DEBTORS",
+            "2000": "TRADE_CREDITORS",
+            "3000": "SHARE_CAPITAL",
+            "4000": "REVENUE",
+            "5000": "COST_OF_SALES",
+            "6000": "ADMIN_EXPENSES",
+        },
+        prior_retained_earnings=Decimal("0"),
+        prior_canonical={},
+        entity=_entity(average_employees=""),
+        period_start="2026-01-01",
+        period_end="2026-12-31",
+        first_financial_period=True,
+    )
+    first_employees = next(
+        note for note in first_blank.notes if note.code == "N8_EMPLOYEES"
+    )
+    assert first_employees.body.count("[average number of employees not recorded]") == 1
+    assert "(" not in first_employees.body
+    first_counted = build_statutory_statements(
+        prior_year_validated=True,
+        tb_lines=_lines(
+            (
+                ("1000", "Cash at Bank", 30000, 0),
+                ("1100", "Trade Debtors", 20000, 0),
+                ("2000", "Trade Creditors", 0, 15000),
+                ("3000", "Share Capital", 0, 10000),
+                ("4000", "Sales Revenue", 0, 100000),
+                ("5000", "Cost of Sales", 40250, 0),
+                ("6000", "Operating Expenses", 34750, 0),
+            )
+        ),
+        mappings={
+            "1000": "CASH",
+            "1100": "TRADE_DEBTORS",
+            "2000": "TRADE_CREDITORS",
+            "3000": "SHARE_CAPITAL",
+            "4000": "REVENUE",
+            "5000": "COST_OF_SALES",
+            "6000": "ADMIN_EXPENSES",
+        },
+        prior_retained_earnings=Decimal("0"),
+        prior_canonical={},
+        entity=_entity(average_employees="12"),
+        period_start="2026-01-01",
+        period_end="2026-12-31",
+        first_financial_period=True,
+    )
+    counted = next(note for note in first_counted.notes if note.code == "N8_EMPLOYEES")
+    assert counted.body.endswith("was 12.")
+    assert "(" not in counted.body
     assert golden.html is not None and first.html is not None
+    for html in (golden.html, first.html):
+        assert "<caption>" not in html
+        tables = re.findall(r"<table>.*?</table>", html, flags=re.DOTALL)
+        assert tables
+        for table in tables:
+            assert "for the year ended" not in table
+            assert "for the period from" not in table
     golden_pdf = write_statement_pdf(golden.html)
     first_pdf = write_statement_pdf(first.html)
     assert golden_pdf.startswith(b"%PDF")

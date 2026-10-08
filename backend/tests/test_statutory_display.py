@@ -19,6 +19,8 @@ from app.services.statutory_display import (
 )
 from app.services.statutory_statements import (
     StatementRow,
+    _render_html,
+    _statement_order,
     build_statutory_statements,
     write_statement_pdf,
 )
@@ -163,6 +165,40 @@ def _pdf_pages(payload: bytes) -> list[str]:
     return completed.stdout.decode("utf-8").split("\f")
 
 
+def test_statement_order_follows_the_pack() -> None:
+    """The pack lists income before the balance sheet. A reversed list prints reversed."""
+    import json
+
+    from findraft.engine.pack import pack_dir
+
+    manifest = json.loads((pack_dir() / "pack.json").read_text(encoding="utf-8"))
+    declared = _statement_order(manifest)
+    assert declared.index("income") < declared.index("sofp")
+    assert declared.index("sofp") < declared.index("notes")
+    golden = _golden()
+    assert golden.html is not None
+    assert golden.net_assets == Decimal("455812.00")
+    assert golden.profit == Decimal("157650.00")
+    assert golden.html.index("<h2>Income statement</h2>") < golden.html.index(
+        "<h2>Statement of financial position</h2>"
+    )
+    reversed_order = ("sofp", "income", "notes")
+    sample = _render_html(
+        entity=_entity(),
+        compliance="compliance",
+        sofp=(),
+        income=(),
+        notes=(),
+        note_numbers={},
+        pages=(),
+        watermark="DRAFT",
+        statement_order=reversed_order,
+    )
+    assert sample.index("<h2>Statement of financial position</h2>") < sample.index(
+        "<h2>Income statement</h2>"
+    )
+
+
 def test_each_statement_starts_on_its_own_page() -> None:
     golden = build_statutory_statements(
         prior_year_validated=True,
@@ -188,14 +224,16 @@ def test_each_statement_starts_on_its_own_page() -> None:
         pages = [page for page in _pdf_pages(write_statement_pdf(document.html)) if page.strip()]
         sofp = next(index for index, page in enumerate(pages) if "Statement of financial position" in page)
         income = next(index for index, page in enumerate(pages) if "Income statement" in page)
-        assert sofp > 0
-        assert "Statement of financial position" not in pages[0]
+        assert income > 0
+        assert "Income statement" not in pages[0]
+        assert income < sofp
+        assert pages[income].lstrip().startswith("Income statement")
+        assert "Statement of financial position" not in pages[income]
+        assert pages[sofp].lstrip().startswith("Statement of financial position")
         assert "as at" in pages[sofp]
         assert document.compliance_statement in " ".join(pages[sofp].split())
         assert "Line" in pages[sofp]
-        assert income > sofp
-        assert "Statement of financial position" not in pages[income]
-        assert pages[income].lstrip().startswith("Income statement")
+        assert "Income statement" not in pages[sofp]
 
 
 def test_directors_report_uses_the_same_period_end_as_the_face() -> None:
