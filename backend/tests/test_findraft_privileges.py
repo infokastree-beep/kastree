@@ -29,7 +29,6 @@ _BACKEND = Path(__file__).resolve().parents[1]
 # No append-only trigger. Still INSERT-only, matching the privilege SQL.
 _APPEND_ONLY_WITHOUT_TRIGGER = (
     "archived_records",
-    "subscription_events",
     "findraft_draft_operations",
 )
 
@@ -229,6 +228,8 @@ def test_findraft_has_no_dangerous_table_privileges() -> None:
     for table in _VERSION_TABLES:
         assert "UPDATE" in by_table[table]
         assert "DELETE" in by_table[table]
+    # The Stripe webhook sets processed_at on the row it inserted.
+    assert by_table["subscription_events"] == {"SELECT", "INSERT", "UPDATE"}
 
 
 def test_foreign_key_cascade_and_set_null_after_the_revokes(

@@ -17,6 +17,9 @@ the provision script after a migration does not put `UPDATE` or `DELETE`
 back on an append-only table, and it does not grant `TRUNCATE`,
 `REFERENCES`, or `TRIGGER`. Sequence grants stay `ALL`.
 
+`subscription_events` keeps `UPDATE`. The Stripe webhook inserts the event
+and then sets `processed_at`. `DELETE` on that table stays revoked.
+
 ## Privilege snapshot (run on the production database)
 
 Run this before the migration and again after it. Diff the two results.

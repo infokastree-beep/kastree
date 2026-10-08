@@ -18,7 +18,9 @@
 --   %_lines_immutable          (findraft_tb_lines, findraft_fa_lines)
 --   findraft_confirmed_mappings_immutable
 -- Tables with no such trigger that are still append-only by design:
---   archived_records, subscription_events, findraft_draft_operations
+--   archived_records, findraft_draft_operations
+-- subscription_events keeps UPDATE. The Stripe webhook stamps processed_at
+-- on the row it just inserted. DELETE stays revoked.
 
 DO $findraft_table_privileges$
 DECLARE
@@ -27,12 +29,13 @@ DECLARE
   append_only text[] := ARRAY[
     'audit_logs',
     'archived_records',
-    'subscription_events',
     'findraft_draft_operations',
     'findraft_tb_lines',
     'findraft_fa_lines',
     'findraft_confirmed_mappings'
   ];
+  -- Stripe stamps processed_at after insert. The row is not deleted.
+  stamp_only text[] := ARRAY['subscription_events'];
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'findraft') THEN
     RAISE EXCEPTION 'role findraft does not exist';
@@ -65,6 +68,11 @@ BEGIN
     IF restricted THEN
       EXECUTE format(
         'GRANT SELECT, INSERT ON TABLE public.%I TO findraft',
+        rel
+      );
+    ELSIF rel = ANY (stamp_only) THEN
+      EXECUTE format(
+        'GRANT SELECT, INSERT, UPDATE ON TABLE public.%I TO findraft',
         rel
       );
     ELSE
