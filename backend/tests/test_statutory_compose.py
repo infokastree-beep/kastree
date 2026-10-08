@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date
 from decimal import Decimal
@@ -12,7 +13,9 @@ from httpx import AsyncClient
 
 from app.services.draft_workflow import _can_finalise
 from app.services.statutory_compose import (
+    DIRECTORS_RESPONSIBILITIES,
     NOT_BUILT_LINE,
+    CompanyLetterhead,
     compose_pdf_html,
     unbuilt_section_notices,
 )
@@ -73,23 +76,36 @@ def _row(html: str, label: str) -> str:
     return html[start:end]
 
 
-def test_unset_report_setup_keeps_the_engine_html() -> None:
+def test_unset_report_setup_adds_the_default_pages_and_keeps_engine_html() -> None:
     document = _golden()
     assert document.html is not None
+    engine = document.html
     assert document.net_assets == Decimal("455812.00")
     assert document.profit == Decimal("157650.00")
-    assert _compose(document, None) == document.html
+    html = _compose(document, None)
+    assert document.html == engine
+    assert "<h2>Financial statements</h2>" in html
+    assert "<h2>Contents</h2>" in html
+    assert "<h2>Directors and other information</h2>" in html
+    assert "<h2>Directors&#39; responsibilities statement</h2>" in html
+    assert "2025 €" in html
+    assert "455,812" in html
     assert "in thousands" not in document.html
-    assert NOT_BUILT_LINE not in document.html
+    assert NOT_BUILT_LINE not in html
+    assert "source not confirmed" not in html
     assert document.net_assets == Decimal("455812.00")
     assert document.profit == Decimal("157650.00")
 
 
-def test_matching_display_settings_reprint_the_engine_html() -> None:
+def test_matching_display_settings_keep_the_engine_figures() -> None:
     document = _golden()
     assert document.html is not None
+    engine = document.html
     reprinted = _compose(document, _setup())
-    assert reprinted == document.html
+    assert document.html == engine
+    assert "455,812" in reprinted
+    assert "157,650" in reprinted
+    assert "<h2>Financial statements</h2>" in reprinted
     assert document.net_assets == Decimal("455812.00")
     assert document.profit == Decimal("157650.00")
 
@@ -133,14 +149,131 @@ def test_a_locked_section_stays_when_a_stored_map_says_off() -> None:
     assert document.profit == Decimal("157650.00")
 
 
-def test_pages_that_are_not_built_yet_are_not_placeholders() -> None:
+def test_cover_contents_and_directors_pages_are_in_the_pdf() -> None:
     document = _golden()
     html = _compose(document, _setup())
     assert "<h2>Cover</h2>" not in html
-    assert "<h2>Contents</h2>" not in html
-    assert "<h2>Directors and other information</h2>" not in html
-    assert "<h2>Directors' responsibilities statement</h2>" not in html
+    assert "<h2>Financial statements</h2>" in html
+    assert "<h2>Contents</h2>" in html
+    assert "<h2>Directors and other information</h2>" in html
+    assert "<h2>Directors&#39; responsibilities statement</h2>" in html
     assert NOT_BUILT_LINE not in html
+    assert html.index("<h2>Financial statements</h2>") < html.index("<h2>Contents</h2>")
+    assert html.index("<h2>Contents</h2>") < html.index(
+        "<h2>Directors and other information</h2>"
+    )
+    assert html.index("<h2>Directors and other information</h2>") < html.index(
+        "<h2>Directors&#39; report</h2>"
+    )
+    assert html.index("<h2>Directors&#39; report</h2>") < html.index(
+        "<h2>Directors&#39; responsibilities statement</h2>"
+    )
+    assert html.index(
+        "<h2>Directors&#39; responsibilities statement</h2>"
+    ) < html.index("<h2>Compilation report</h2>")
+    assert html.index("<h2>Compilation report</h2>") < html.index(
+        "<h2>Income statement</h2>"
+    )
+
+
+def _heading_page(pages: list[str], heading: str) -> int:
+    for index, page in enumerate(pages, start=1):
+        lines = [line.strip() for line in page.splitlines()]
+        if heading in lines:
+            return index
+    raise AssertionError(heading)
+
+
+def _contents_number(page: str, label: str) -> int:
+    pattern = re.compile(rf"^{re.escape(label)}\s+(\d+)\s*$")
+    for line in page.splitlines():
+        cleaned = line.strip().lstrip("•").strip()
+        match = pattern.match(cleaned)
+        if match is not None:
+            return int(match.group(1))
+    raise AssertionError(label)
+
+
+def test_contents_page_numbers_match_the_pages() -> None:
+    document = _golden()
+    html = _compose(document, _setup())
+    pages = [page for page in _pdf_pages(write_statement_pdf(html)) if page.strip()]
+    assert pages
+    assert all(page.strip() for page in pages)
+    contents = pages[_heading_page(pages, "Contents") - 1]
+    labels = (
+        "Financial statements",
+        "Directors and other information",
+        "Directors' report",
+        "Directors' responsibilities statement",
+        "Compilation report",
+        "Approval of the financial statements",
+        "Audit exemption",
+        "Income statement",
+        "Statement of financial position",
+        "Notes",
+    )
+    for label in labels:
+        assert _contents_number(contents, label) == _heading_page(pages, label)
+    assert document.net_assets == Decimal("455812.00")
+    assert document.profit == Decimal("157650.00")
+
+
+def test_directors_responsibilities_cite_no_act_section() -> None:
+    document = _golden()
+    html = _compose(document, _setup())
+    marker = '<section data-section="directors-responsibilities"'
+    block = html[html.index(marker) : html.index("<section", html.index(marker) + 1)]
+    assert DIRECTORS_RESPONSIBILITIES.replace("'", "&#39;") in block
+    assert "source not confirmed" not in block
+    assert "Companies Act" not in block
+    assert re.search(r"section\s+\d+", block, flags=re.IGNORECASE) is None
+    pages = [page for page in _pdf_pages(write_statement_pdf(html)) if page.strip()]
+    page = pages[_heading_page(pages, "Directors' responsibilities statement") - 1]
+    flat = " ".join(page.split())
+    assert DIRECTORS_RESPONSIBILITIES in flat
+    assert "Companies Act" not in page
+    assert "source not confirmed" not in page
+    assert re.search(r"section\s+\d+", page, flags=re.IGNORECASE) is None
+    workspace = (
+        _ROOT.parent
+        / "frontend"
+        / "components"
+        / "statutory"
+        / "CompanyDetailsForm.tsx"
+    ).read_text(encoding="utf-8")
+    assert 'data-testid="directors-responsibilities-source"' in workspace
+    assert "source not confirmed" in workspace
+    assert DIRECTORS_RESPONSIBILITIES in workspace
+
+
+def test_advisers_print_on_the_directors_page() -> None:
+    document = _golden()
+    html = compose_pdf_html(
+        document,
+        report_setup=_setup(),
+        period_start=date(2025, 1, 1),
+        period_end=date(2025, 12, 31),
+        first_financial_period=False,
+        letterhead=CompanyLetterhead(
+            registered_office="1 Harbour Street",
+            business_address="Unit 2\nDock Road",
+            company_number="AB123456",
+            incorporated_on=date(2018, 3, 14),
+            secretary="Grace Hopper",
+            directors=({"name": "Ada Lovelace", "appointed_on": "2020-03-01"},),
+            advisers=({"role": "Bankers", "name": "AIB"},),
+        ),
+    )
+    assert "Registered office: 1 Harbour Street" in html
+    assert "Business address: Unit 2, Dock Road" in html
+    assert "Company number: AB123456" in html
+    assert "Date of incorporation: 14 March 2018" in html
+    assert "Company secretary: Grace Hopper" in html
+    assert "Ada Lovelace (appointed 1 March 2020)" in html
+    assert "Advisers: Bankers: AIB." in html
+    assert document.net_assets == Decimal("455812.00")
+    assert document.profit == Decimal("157650.00")
 
 
 def test_an_enabled_unbuilt_section_is_one_page_without_figures() -> None:
@@ -312,6 +445,7 @@ def test_thousands_prints_a_rounding_difference_when_lines_do_not_foot() -> None
         html="<p>engine</p>",
         company_name="Example Ltd",
     )
+
     def _show(setup: dict[str, object]) -> str:
         return compose_pdf_html(
             document,
@@ -352,7 +486,9 @@ def test_unbuilt_section_notice_does_not_block_final() -> None:
     quiet.report_setup = None
     assert unbuilt_section_notices(quiet) == ()
     year_end = YearEnd()
-    year_end.report_setup = {"sections": {"cash-flow": True, "oci": True, "cover": False}}
+    year_end.report_setup = {
+        "sections": {"cash-flow": True, "oci": True, "cover": False}
+    }
     notices = unbuilt_section_notices(year_end)
     assert len(notices) == 1
     assert notices[0].code == "V-SEC-005"
@@ -361,9 +497,7 @@ def test_unbuilt_section_notice_does_not_block_final() -> None:
     assert "Cash flow statement" in notices[0].message
     assert "Statement of comprehensive income" in notices[0].message
     assert "does not build" in notices[0].message
-    assert _can_finalise(
-        "amber", renderable=True, blocked=False, checks=notices
-    )
+    assert _can_finalise("amber", renderable=True, blocked=False, checks=notices)
 
 
 def test_engine_sources_do_not_import_the_composer() -> None:

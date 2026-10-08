@@ -17,6 +17,7 @@ from app.services.fa_import_worker import process_fa_version
 from app.services.source_storage import LocalPracticeStorage, get_source_storage
 from app.services.statutory_statements import (
     StatementEntity,
+    ShareClassFact,
     StatementRow,
     StatutoryStatements,
     build_statutory_statements,
@@ -75,6 +76,7 @@ def _golden(
     entity: StatementEntity | None = None,
     disclosure_flags: dict[str, bool] | None = None,
     practice_name: str = "",
+    share_classes: tuple[ShareClassFact, ...] = (),
 ) -> StatutoryStatements:
     return build_statutory_statements(
         prior_year_validated=True,
@@ -91,6 +93,7 @@ def _golden(
         period_end="2025-12-31",
         disclosure_flags=disclosure_flags,
         practice_name=practice_name,
+        share_classes=share_classes,
     )
 
 

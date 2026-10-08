@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from decimal import Decimal, InvalidOperation
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.company import Company
 from app.schemas.company_details import (
+    AdviserRecord,
     ApprovalWrite,
     CompanyDetailsResponse,
     CompanyDetailsWrite,
     DirectorRecord,
+    ShareClassOut,
+    ShareClassWrite,
 )
 from app.services.audit import append_audit_log
 from app.services.reconciliation import ReconciliationCheck
@@ -105,9 +109,7 @@ def _directors(rows: list[DirectorRecord]) -> list[dict[str, object]]:
             and row.resigned_on is not None
             and row.resigned_on < row.appointed_on
         ):
-            raise CompanyDetailsRejected(
-                "Resigned date is before the appointed date."
-            )
+            raise CompanyDetailsRejected("Resigned date is before the appointed date.")
         seen.add(name)
         record: dict[str, object] = {
             "name": name,
@@ -120,6 +122,76 @@ def _directors(rows: list[DirectorRecord]) -> list[dict[str, object]]:
         }
         stored.append(record)
     return stored
+
+
+def _advisers(rows: list[AdviserRecord]) -> list[dict[str, object]]:
+    if len(rows) > 20:
+        raise CompanyDetailsRejected("Record at most 20 advisers.")
+    stored: list[dict[str, object]] = []
+    for row in rows:
+        role = row.role.strip()
+        name = row.name.strip()
+        if (
+            not role
+            or not name
+            or any(ord(char) < 32 for char in role)
+            or any(ord(char) < 32 for char in name)
+        ):
+            raise CompanyDetailsRejected("Each adviser needs a role and a name.")
+        if len(role) > 100 or len(name) > 200:
+            raise CompanyDetailsRejected("An adviser role or name is too long.")
+        stored.append({"role": role, "name": name})
+    return stored
+
+
+def _nominal(value: str) -> Decimal:
+    text = value.strip()
+    if not text or any(ord(char) < 32 for char in text):
+        raise CompanyDetailsRejected("Nominal value must be a money amount.")
+    try:
+        amount = Decimal(text)
+    except InvalidOperation as exc:
+        raise CompanyDetailsRejected("Nominal value must be a money amount.") from exc
+    if not amount.is_finite() or amount < 0:
+        raise CompanyDetailsRejected("Nominal value must be a money amount.")
+    cents = amount.quantize(Decimal("0.01"))
+    if amount != cents:
+        raise CompanyDetailsRejected("Nominal value is in whole cents.")
+    return cents
+
+
+def _share_classes(rows: list[ShareClassWrite]) -> list[dict[str, object]]:
+    """Store the inputs. The issued amount is calculated when the note is built."""
+    if len(rows) > 20:
+        raise CompanyDetailsRejected("Record at most 20 share classes.")
+    stored: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for row in rows:
+        name = row.class_name.strip()
+        if not name or any(ord(char) < 32 for char in name):
+            raise CompanyDetailsRejected("Each share class needs a name.")
+        if len(name) > 100:
+            raise CompanyDetailsRejected("A share class name is too long.")
+        key = name.casefold()
+        if key in seen:
+            raise CompanyDetailsRejected(f"Share class '{name}' is listed twice.")
+        seen.add(key)
+        stored.append(
+            {
+                "class_name": name,
+                "authorised_number": row.authorised_number,
+                "issued_number": row.issued_number,
+                "nominal_value": format(_nominal(row.nominal_value), "f"),
+            }
+        )
+    return stored
+
+
+def _issued_amount(nominal_value: str, issued_number: int) -> str:
+    amount = (_nominal(nominal_value) * Decimal(issued_number)).quantize(
+        Decimal("0.01")
+    )
+    return format(amount, "f")
 
 
 def director_names(value: object) -> tuple[str, ...]:
@@ -199,6 +271,79 @@ def _read_signing(value: object) -> list[str]:
     return names
 
 
+def _read_advisers(value: object) -> list[AdviserRecord]:
+    if not isinstance(value, list):
+        return []
+    rows: list[AdviserRecord] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        role = item.get("role")
+        name = item.get("name")
+        if not isinstance(role, str) or not isinstance(name, str):
+            continue
+        if not role.strip() or not name.strip():
+            continue
+        rows.append(AdviserRecord(role=role.strip(), name=name.strip()))
+    return rows
+
+
+def _read_share_classes(value: object) -> list[ShareClassOut]:
+    if not isinstance(value, list):
+        return []
+    rows: list[ShareClassOut] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("class_name")
+        issued = item.get("issued_number")
+        nominal = item.get("nominal_value")
+        authorised = item.get("authorised_number")
+        if not isinstance(name, str) or not name.strip():
+            continue
+        if isinstance(issued, bool) or not isinstance(issued, int):
+            continue
+        if not isinstance(nominal, str):
+            continue
+        if authorised is not None and (
+            isinstance(authorised, bool) or not isinstance(authorised, int)
+        ):
+            continue
+        try:
+            issued_amount = _issued_amount(nominal, issued)
+            shown_nominal = format(_nominal(nominal), "f")
+        except CompanyDetailsRejected:
+            continue
+        rows.append(
+            ShareClassOut(
+                class_name=name.strip(),
+                authorised_number=authorised,
+                issued_number=issued,
+                nominal_value=shown_nominal,
+                issued_amount=issued_amount,
+            )
+        )
+    return rows
+
+
+def _share_class_audit(value: object) -> list[dict[str, object]]:
+    """Class name and share counts only. Nominal value and the product stay out."""
+    if not isinstance(value, list):
+        return []
+    rows: list[dict[str, object]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        rows.append(
+            {
+                "class_name": item.get("class_name"),
+                "authorised_number": item.get("authorised_number"),
+                "issued_number": item.get("issued_number"),
+            }
+        )
+    return rows
+
+
 def company_details_response(
     company: Company, year_end: YearEnd
 ) -> CompanyDetailsResponse:
@@ -211,6 +356,8 @@ def company_details_response(
         secretary=company.secretary,
         average_employees=company.average_employees,
         directors=_read_directors(company.directors),
+        advisers=_read_advisers(company.advisers),
+        share_classes=_read_share_classes(company.share_classes),
         approval_date=year_end.approval_date,
         signing_directors=_read_signing(year_end.signing_directors),
     )
@@ -228,6 +375,8 @@ def _company_snapshot(company: Company) -> dict[str, object]:
         "secretary": company.secretary,
         "average_employees": company.average_employees,
         "directors": company.directors,
+        "advisers": company.advisers,
+        "share_classes": _share_class_audit(company.share_classes),
     }
 
 
@@ -262,6 +411,8 @@ async def save_company_details(
     company.secretary = _single_line(body.secretary, label="Secretary", limit=200)
     company.average_employees = _employees(body.average_employees)
     company.directors = _directors(body.directors)
+    company.advisers = _advisers(body.advisers)
+    company.share_classes = _share_classes(body.share_classes)
     await append_audit_log(
         session,
         org_id=org_id,
@@ -286,7 +437,9 @@ async def save_approval_details(
 ) -> CompanyDetailsResponse:
     previous = _approval_snapshot(year_end)
     year_end.approval_date = body.approval_date
-    year_end.signing_directors = _signing_names(body.signing_directors, company.directors)
+    year_end.signing_directors = _signing_names(
+        body.signing_directors, company.directors
+    )
     await append_audit_log(
         session,
         org_id=org_id,
@@ -371,9 +524,7 @@ def company_detail_checks(
             "V-CO-001",
             "WARNING",
             bool(names),
-            "Directors are recorded."
-            if names
-            else "Directors have not been recorded.",
+            "Directors are recorded." if names else "Directors have not been recorded.",
         ),
         identity,
         _check(
@@ -407,9 +558,7 @@ def company_detail_checks(
     return tuple(checks)
 
 
-def _currency_notice(
-    company: Company, year_end: YearEnd
-) -> ReconciliationCheck | None:
+def _currency_notice(company: Company, year_end: YearEnd) -> ReconciliationCheck | None:
     """Irish pack only. A non-euro currency is a notice, never a block."""
     if year_end.pack_id != "frs102-1a-ie":
         return None

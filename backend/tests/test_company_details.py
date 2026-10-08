@@ -39,6 +39,7 @@ def two_practices() -> Iterator[tuple[dict, dict]]:
         _delete_org(first["org_id"])
         _delete_org(second["org_id"])
 
+
 _FORBIDDEN = "You don't have permission to access this resource."
 _ARTIFACT = Path("/opt/cursor/artifacts/directors-report-pdf.txt")
 
@@ -71,12 +72,18 @@ def test_non_euro_on_the_irish_pack_is_a_notice() -> None:
     assert notice.passed is False
     assert notice.message == "Company currency is GBP. Confirm this is intended."
     assert blocks_final((notice,)) is False
-    assert _can_finalise("amber", renderable=True, blocked=False, checks=(notice,)) is True
+    assert (
+        _can_finalise("amber", renderable=True, blocked=False, checks=(notice,)) is True
+    )
     company.functional_currency = "EUR"
-    assert all(item.code != "V-CO-007" for item in company_detail_checks(company, year_end))
+    assert all(
+        item.code != "V-CO-007" for item in company_detail_checks(company, year_end)
+    )
     company.functional_currency = "USD"
     year_end.pack_id = "frs102-1a"
-    assert all(item.code != "V-CO-007" for item in company_detail_checks(company, year_end))
+    assert all(
+        item.code != "V-CO-007" for item in company_detail_checks(company, year_end)
+    )
 
 
 def test_notices_do_not_block_final_and_missing_directors_do() -> None:
@@ -108,9 +115,7 @@ def test_notices_do_not_block_final_and_missing_directors_do() -> None:
     )
     assert blocks_final(missing_directors) is True
     assert (
-        _can_finalise(
-            "amber", renderable=True, blocked=False, checks=missing_directors
-        )
+        _can_finalise("amber", renderable=True, blocked=False, checks=missing_directors)
         is False
     )
 
@@ -201,7 +206,9 @@ async def test_saved_company_details_print_on_the_existing_pages(
     assert before_checks["V-CO-001"]["message"] == "Directors have not been recorded."
     assert before_checks["V-CO-002"]["passed"] is False
     assert before_checks["V-CO-005"]["passed"] is False
-    assert before_checks["V-CO-005"]["message"] == "Approval date has not been recorded."
+    assert (
+        before_checks["V-CO-005"]["message"] == "Approval date has not been recorded."
+    )
     assert before_checks["V-CO-006"]["passed"] is False
     assert before_checks["V-CO-003"]["severity"] == "NOTICE"
     assert before_checks["V-CO-003"]["passed"] is False
@@ -308,6 +315,15 @@ async def test_saved_company_details_print_on_the_existing_pages(
                     "resigned_on": None,
                 }
             ],
+            "advisers": [{"role": "Bankers", "name": "AIB"}],
+            "share_classes": [
+                {
+                    "class_name": "Ordinary",
+                    "authorised_number": None,
+                    "issued_number": 100,
+                    "nominal_value": "1.00",
+                }
+            ],
         },
     )
     assert saved.status_code == 200, saved.text
@@ -326,6 +342,31 @@ async def test_saved_company_details_print_on_the_existing_pages(
             "resigned_on": None,
         }
     ]
+    assert letterhead["advisers"] == [{"role": "Bankers", "name": "AIB"}]
+    assert letterhead["share_classes"] == [
+        {
+            "class_name": "Ordinary",
+            "authorised_number": None,
+            "issued_number": 100,
+            "nominal_value": "1.00",
+            "issued_amount": "100.00",
+        }
+    ]
+    priced = await api_client.put(
+        f"/year-ends/{year_end_id}/company-details",
+        headers=headers,
+        json={
+            "share_classes": [
+                {
+                    "class_name": "Ordinary",
+                    "issued_number": 1,
+                    "nominal_value": "1.00",
+                    "issued_amount": "1.00",
+                }
+            ]
+        },
+    )
+    assert priced.status_code == 422, priced.text
     approved = await api_client.put(
         f"/year-ends/{year_end_id}/approval",
         headers=headers,
@@ -347,7 +388,19 @@ async def test_saved_company_details_print_on_the_existing_pages(
             text("SELECT industry FROM companies WHERE id = :id"),
             {"id": str(company_id)},
         ).scalar_one()
+        recorded = session.execute(
+            text(
+                "SELECT new_value::text FROM audit_logs WHERE org_id = :org "
+                "AND action = 'company_details_saved' "
+                "ORDER BY created_at DESC LIMIT 1"
+            ),
+            {"org": str(org_id)},
+        ).scalar_one()
     assert industry == "Bakeries"
+    assert "nominal_value" not in recorded
+    assert "issued_amount" not in recorded
+    assert "Ordinary" in recorded
+    assert "Bankers" in recorded
 
     after = await api_client.get(
         f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
@@ -393,8 +446,16 @@ async def test_saved_company_details_print_on_the_existing_pages(
         "Principal activities: Software publishing.",
         "The financial statements were approved on 15 March 2027.",
         "The financial statements were signed by Ada Lovelace.",
+        "Registered office: 1 Harbour Street, Dublin",
+        "Business address: Unit 2, Dock Road",
+        "Advisers: Bankers: AIB.",
+        "Authorised shares: not recorded.",
+        "Ordinary: 100 shares issued at £1 each.",
+        "Issued amount £100.",
     ):
         assert sentence in flat, sentence
+    assert "source not confirmed" not in extracted
+    assert "DRAFT" in extracted
     assert "Bakeries" not in extracted
     assert "Principal activities have not been recorded." not in extracted
     assert "Approval date has not been recorded." not in extracted
@@ -414,7 +475,14 @@ async def test_saved_company_details_print_on_the_existing_pages(
     )
     assert later.status_code == 200, later.text
     filled = _checks(later.json())
-    for code in ("V-CO-001", "V-CO-002", "V-CO-003", "V-CO-004", "V-CO-005", "V-CO-006"):
+    for code in (
+        "V-CO-001",
+        "V-CO-002",
+        "V-CO-003",
+        "V-CO-004",
+        "V-CO-005",
+        "V-CO-006",
+    ):
         assert filled[code]["passed"] is True, filled[code]
     assert filled["V-CO-007"]["severity"] == "NOTICE"
     assert filled["V-CO-007"]["passed"] is False
@@ -429,9 +497,7 @@ async def test_saved_company_details_print_on_the_existing_pages(
             {"id": str(org_id)},
         ).scalar_one()
     compilation = _page(after_body, "Compilation report")
-    assert compilation.startswith(
-        f"{practice} compiled these financial statements"
-    )
+    assert compilation.startswith(f"{practice} compiled these financial statements")
     assert "The practice name has not been recorded." not in compilation
 
 
@@ -532,15 +598,19 @@ def test_new_columns_stay_inside_the_practice(
             ).one_or_none()
             assert hidden_company is None
             assert hidden_year is None
-            leaked = session.execute(
-                text(
-                    """
+            leaked = (
+                session.execute(
+                    text(
+                        """
                     SELECT business_address FROM companies
                     UNION ALL
                     SELECT principal_activity FROM companies
                     """
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             assert "1 Harbour Street" not in leaked
             assert "Software publishing" not in leaked
         finally:

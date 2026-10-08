@@ -18,7 +18,7 @@ import json
 import re
 import uuid
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from jinja2 import Environment, Undefined
@@ -149,6 +149,8 @@ _DOCUMENT = """<!DOCTYPE html>
   .note-body { white-space: pre-wrap; }
   .notes-line { font-style: italic; }
   .sign-rule { margin-top: 1.4rem; }
+  a.contents-link { color: inherit; text-decoration: none; }
+  a.contents-link::after { content: " " target-counter(attr(href), page); }
 </style>
 </head>
 <body>
@@ -156,11 +158,19 @@ _DOCUMENT = """<!DOCTYPE html>
 <h1>{{ company_name }}</h1>
 {% for section in sections %}
 <section data-section="{{ section.anchor }}"{% if section.page_break %} style="break-before: page; page-break-before: always;"{% endif %}>
+<a id="{{ section.anchor }}"></a>
 {% if section.kind == "prose" %}
 <h2>{{ section.heading }}</h2>
 {% for paragraph in section.paragraphs %}
 <p>{{ paragraph }}</p>
 {% endfor %}
+{% elif section.kind == "contents" %}
+<h2>{{ section.heading }}</h2>
+<ul>
+{% for item in section.entries %}
+<li><a class="contents-link" href="#{{ item.anchor }}">{{ item.label }}</a></li>
+{% endfor %}
+</ul>
 {% elif section.kind == "statement" %}
 <div class="statement-open">
 <h2>{{ section.heading }}</h2>
@@ -224,6 +234,16 @@ _DOCUMENT = """<!DOCTYPE html>
 </body>
 </html>
 """
+
+
+@dataclass(frozen=True)
+class ShareClassFact:
+    """One class stored on the company. The issued amount is not stored."""
+
+    class_name: str
+    authorised_number: int | None
+    issued_number: int
+    nominal_value: Decimal
 
 
 @dataclass(frozen=True)
@@ -352,9 +372,7 @@ def write_statement_pdf(html: str) -> bytes:
 
 
 _TITLE_NUMBER = re.compile(r"^\d+\.\s*")
-_CREDITORS_CROSS_REF = (
-    "Amounts due after more than one year are analysed in Note 4."
-)
+_CREDITORS_CROSS_REF = "Amounts due after more than one year are analysed in Note 4."
 _ABSENT_STATEMENTS = (
     "statement of changes in retained earnings",
     "statement of changes in equity",
@@ -515,8 +533,29 @@ def _statement_order(manifest: dict[str, object]) -> tuple[str, ...]:
     return tuple(order)
 
 
+def _share_class_sentence(item: ShareClassFact, currency: str) -> str:
+    """Issued amount is issued number times nominal value. The face figure stays."""
+    issued_amount = (item.nominal_value * Decimal(item.issued_number)).quantize(
+        Decimal("0.01")
+    )
+    authorised = (
+        "not recorded"
+        if item.authorised_number is None
+        else f"{item.authorised_number:,}"
+    )
+    return (
+        f"{item.class_name}: {item.issued_number:,} shares issued at "
+        f"{format_whole_prose(item.nominal_value, currency)} each. "
+        f"Issued amount {format_whole_prose(issued_amount, currency)}. "
+        f"Authorised shares: {authorised}."
+    )
+
+
 def _share_capital_narrative(
-    sofp: tuple[StatementRow, ...], *, currency: str
+    sofp: tuple[StatementRow, ...],
+    *,
+    currency: str,
+    share_classes: tuple[ShareClassFact, ...] = (),
 ) -> str:
     """The amount uses the same symbolled prose form as the directors' report."""
     row = next((item for item in sofp if item.label == "Called up share capital"), None)
@@ -525,10 +564,14 @@ def _share_capital_narrative(
         if row is None
         else format_whole_prose(row.current, currency)
     )
-    return (
+    face = (
         "Called up share capital presented on the statement of financial position "
-        f"is {shown}. [share class analysis not recorded]"
+        f"is {shown}."
     )
+    if not share_classes:
+        return f"{face} [share class analysis not recorded]"
+    classes = " ".join(_share_class_sentence(item, currency) for item in share_classes)
+    return f"{face} {classes}"
 
 
 def _note_cell(label: str, numbers: dict[str, int]) -> str:
@@ -617,6 +660,46 @@ def _directors_for_report(value: object) -> str:
         elif isinstance(item, str) and item.strip():
             phrases.append(item.strip())
     return ", ".join(phrases)
+
+
+def share_classes_from_company(company: Company) -> tuple[ShareClassFact, ...]:
+    """Read stored classes. A row that is not a class is skipped, not invented."""
+    raw = company.share_classes
+    if not isinstance(raw, list):
+        return ()
+    facts: list[ShareClassFact] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("class_name")
+        issued = item.get("issued_number")
+        nominal = item.get("nominal_value")
+        authorised = item.get("authorised_number")
+        if not isinstance(name, str) or not name.strip():
+            continue
+        if isinstance(issued, bool) or not isinstance(issued, int):
+            continue
+        if not isinstance(nominal, str):
+            continue
+        if authorised is not None and (
+            isinstance(authorised, bool) or not isinstance(authorised, int)
+        ):
+            continue
+        try:
+            value = Decimal(nominal)
+        except InvalidOperation:
+            continue
+        if not value.is_finite():
+            continue
+        facts.append(
+            ShareClassFact(
+                class_name=name.strip(),
+                authorised_number=authorised,
+                issued_number=issued,
+                nominal_value=value,
+            )
+        )
+    return tuple(facts)
 
 
 def entity_from_company(company: Company) -> StatementEntity:
@@ -911,6 +994,7 @@ def _compose_notes(
     sofp: tuple[StatementRow, ...],
     currency: str,
     first_financial_period: bool = False,
+    share_classes: tuple[ShareClassFact, ...] = (),
 ) -> tuple[tuple[StatementNote, ...], tuple[RoundingFlag, ...], dict[str, int]]:
     chosen = [
         code
@@ -952,7 +1036,11 @@ def _compose_notes(
         if isinstance(departure, str):
             note_context["departure_clause"] = departure
         if code == "N6_CAPITAL":
-            parts = [_share_capital_narrative(sofp, currency=currency)]
+            parts = [
+                _share_capital_narrative(
+                    sofp, currency=currency, share_classes=share_classes
+                )
+            ]
         elif code == "N8_EMPLOYEES":
             parts = [
                 _employees_sentence(
@@ -967,7 +1055,11 @@ def _compose_notes(
             parts.append(_render_prose(trailing, note_context))
         for extra in ("directorLoansClause", "reservesNote"):
             clause = template.get(extra)
-            if isinstance(clause, str) and clause and not _names_absent_statement(clause):
+            if (
+                isinstance(clause, str)
+                and clause
+                and not _names_absent_statement(clause)
+            ):
                 parts.append(clause)
         human = _human_title(code, template.get("title"))
         lines: tuple[NoteLine, ...] = ()
@@ -1150,6 +1242,7 @@ def _render_draft(
     size_eligible: bool | None = None,
     approval_date: str = "",
     signing_directors: str = "",
+    share_classes: tuple[ShareClassFact, ...] = (),
 ) -> StatutoryStatements:
     directory = (
         pack_dir(pack_id, pack_version)
@@ -1193,6 +1286,7 @@ def _render_draft(
         sofp=sofp_rows,
         currency=entity.currency,
         first_financial_period=first_financial_period,
+        share_classes=share_classes,
     )
     pages = build_statutory_pages(
         company_name=entity.name,
@@ -1264,6 +1358,7 @@ def build_statutory_statements(
     size_eligible: bool | None = None,
     approval_date: str = "",
     signing_directors: str = "",
+    share_classes: tuple[ShareClassFact, ...] = (),
 ) -> StatutoryStatements:
     """Render a DRAFT only when every critical check has passed.
 
@@ -1306,6 +1401,7 @@ def build_statutory_statements(
             size_eligible=size_eligible,
             approval_date=approval_date,
             signing_directors=signing_directors,
+            share_classes=share_classes,
         )
     except (OSError, ValueError, KeyError) as exc:
         return _withheld(report, build_error=str(exc))
@@ -1397,6 +1493,7 @@ async def statements_for_version(
         if year_end.approval_date is None
         else year_end.approval_date.isoformat(),
         signing_directors=_signing_phrase(year_end.signing_directors),
+        share_classes=share_classes_from_company(company),
     )
 
 
@@ -1426,9 +1523,7 @@ async def statements_for_adopted(
         )
     draft = use_draft
     if draft is None:
-        draft = await active_adopted_draft(
-            session, org_id=org_id, year_end=year_end
-        )
+        draft = await active_adopted_draft(session, org_id=org_id, year_end=year_end)
     elif (
         draft.org_id != org_id
         or draft.year_end_id != year_end.id
@@ -1490,4 +1585,5 @@ async def statements_for_adopted(
         if year_end.approval_date is None
         else year_end.approval_date.isoformat(),
         signing_directors=_signing_phrase(year_end.signing_directors),
+        share_classes=share_classes_from_company(company),
     )
