@@ -14,5 +14,20 @@
     "turnover": "15000000.00",
     "balance_sheet": "7500000.00",
     "employees": 50
-  }
+  },
+  "sections": [
+    {"id": "cover", "order": 1, "label": "Cover"},
+    {"id": "contents", "order": 2, "label": "Contents"},
+    {"id": "directors-info", "order": 3, "label": "Directors and other information"},
+    {"id": "directors-report", "order": 4, "label": "Directors' report"},
+    {"id": "directors-responsibilities", "order": 5, "label": "Directors' responsibilities statement"},
+    {"id": "compilation", "order": 6, "label": "Compilation report"},
+    {"id": "income", "order": 7, "label": "Income statement"},
+    {"id": "oci", "order": 8, "label": "Statement of comprehensive income"},
+    {"id": "sofp", "order": 9, "label": "Statement of financial position"},
+    {"id": "socie", "order": 10, "label": "Statement of changes in equity"},
+    {"id": "cash-flow", "order": 11, "label": "Cash flow statement"},
+    {"id": "notes", "order": 12, "label": "Notes"},
+    {"id": "trading", "order": 13, "label": "Supplementary trading statement"}
+  ]
 }

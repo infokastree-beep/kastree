@@ -1327,6 +1327,40 @@ the heading of each note table. The statement of financial position is
 column is omitted. A later year with a comparative keeps two year columns.
 Pending reviewer sign-off.
 
+### Statement order — reviewer sign-off
+
+`findraft/content/frs102-1a-ie/2024.09/pack.json` declares `sections`. The
+income statement is order 7 and the statement of financial position is
+order 9, with the notes after both. The PDF prints those three in that
+declared order. The other ids in the array (cover, contents, other
+comprehensive income, changes in equity, cash flow, trading statement) are
+not built. The sidebar catalogue stays the hardcoded list. Pending reviewer
+sign-off of statement order.
+
+### Share capital particulars — design only
+
+Not built. The share capital note still prints the face amount and
+`[share class analysis not recorded]`.
+
+The note needs, for each class: the class name, the number of shares, the
+nominal value per share, and both the issued (called-up) position and the
+authorised position. Authorised can be blank. Many Irish private companies
+have no authorised maximum after the Companies Act 2014, and a blank must
+stay "not recorded" or "not applicable" rather than a guessed number.
+Issued amount is issued number times nominal value, computed in Python when
+the note is built. The form does not ask the user to type that product.
+
+Enter them on the Company details form, in a repeatable share-class block
+under the existing Company section, stored on the company. Proposed fields,
+none of which exist yet:
+
+- `class_name` — text, for example Ordinary
+- `authorised_number` — whole number, optional
+- `issued_number` — whole number
+- `nominal_value` — money, in the company's functional currency
+
+The note reads those rows. It does not grow a free-text override.
+
 ### Week 2 document-type taxonomy — not invented
 
 The v7.6 build plan (§9 Week 2, goal G9) names a **16-type classifier** and
