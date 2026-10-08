@@ -19,12 +19,14 @@ import {
   type ReportSetup,
   type ReportSetupWrite,
 } from "@/components/statutory/ReportSetupForm";
+import { SectionsSetup } from "@/components/statutory/SectionsSetup";
 import { StatutoryLoadError } from "@/components/statutory/StatutoryLoadError";
 import { StatutorySublineReview } from "@/components/statutory/StatutorySublineReview";
 import { WorkspaceSidebar } from "@/components/statutory/WorkspaceSidebar";
 import { displayAmount, type RoundingMode } from "@/lib/report-display";
 import {
   activeSection,
+  navigatorSections,
   sectionIsOn,
   sectionsForFramework,
   type ReportingFramework,
@@ -594,11 +596,9 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
   return (
     <div className="flex items-start gap-6" data-testid="statutory-draft-workspace">
       <WorkspaceSidebar
-        sections={sections}
+        sections={navigatorSections(sections)}
         activeId={sectionId}
         onSelect={selectSection}
-        onToggle={(id, enabled) => void toggleSection(id, enabled)}
-        togglesEnabled={canEditDetails && setupQuery.isSuccess && busy === null}
       />
       <div className="min-w-0 flex-1 space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -700,6 +700,15 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
             This is the first financial period
           </button>
         </div>
+      ) : null}
+
+      {sectionId === "sections-setup" ? (
+        <SectionsSetup
+          title={activeMeta?.label ?? ""}
+          sections={sections}
+          onToggle={(id, enabled) => void toggleSection(id, enabled)}
+          togglesEnabled={canEditDetails && setupQuery.isSuccess && busy === null}
+        />
       ) : null}
 
       {sectionId === "draft-pdf" ? (

@@ -65,7 +65,8 @@ def test_sidebar_sections_follow_the_reporting_framework() -> None:
         "Disclosures",
         "Company details",
     ]
-    assert labels[6:-1] == pack_labels
+    assert labels[6] == "Sections setup"
+    assert labels[7:-1] == pack_labels
     assert labels[-1] == "Draft PDF"
     assert [section.group for section in frs] == [
         "overview",
@@ -74,9 +75,32 @@ def test_sidebar_sections_follow_the_reporting_framework() -> None:
         "inputs",
         "inputs",
         "inputs",
-        *["sections"] * len(pack_labels),
+        *["sections"] * (len(pack_labels) + 1),
         "outputs",
     ]
+    setup = next(section for section in frs if section.id == "sections-setup")
+    assert setup.lock is None
+    assert setup.built is None
+    assert setup.order == 7
+    from pydantic import ValidationError
+
+    from app.schemas.report_setup import ReportSetupWrite
+
+    with pytest.raises(ValidationError, match="Unknown section sections-setup"):
+        ReportSetupWrite.model_validate(
+            {
+                "rounding": "unit",
+                "statement_type": "draft",
+                "face_dates": {},
+                "column_headers": {
+                    "as_at_current": "2026",
+                    "as_at_prior": "2025",
+                    "ended_current": "2026",
+                    "ended_prior": "2025",
+                },
+                "sections": {"sections-setup": True},
+            }
+        )
     cover = next(section for section in frs if section.id == "cover")
     income = next(section for section in frs if section.id == "income")
     cash = next(section for section in frs if section.id == "cash-flow")

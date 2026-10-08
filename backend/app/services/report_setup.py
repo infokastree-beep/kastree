@@ -94,8 +94,16 @@ def _pack_sidebar() -> tuple[WorkspaceSection, ...]:
     raw = loaded.get("sections")
     if not isinstance(raw, list):
         raise ValueError("pack sections are missing")
-    rows: list[WorkspaceSection] = []
-    order = len(_WORKSPACE_BEFORE) + 1
+    rows: list[WorkspaceSection] = [
+        WorkspaceSection(
+            id="sections-setup",
+            label="Sections setup",
+            group="sections",
+            group_label="Sections",
+            order=len(_WORKSPACE_BEFORE) + 1,
+        )
+    ]
+    order = len(_WORKSPACE_BEFORE) + 2
     for item in raw:
         if not isinstance(item, dict):
             raise ValueError("pack section is malformed")

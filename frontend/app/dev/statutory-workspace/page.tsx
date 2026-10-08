@@ -7,11 +7,13 @@
 
 import { useState } from "react";
 import { ReportSetupForm, type ReportSetupWrite } from "@/components/statutory/ReportSetupForm";
+import { SectionsSetup } from "@/components/statutory/SectionsSetup";
 import { StatutoryLoadError } from "@/components/statutory/StatutoryLoadError";
 import { WorkspaceSidebar } from "@/components/statutory/WorkspaceSidebar";
 import { displayAmount, type RoundingMode } from "@/lib/report-display";
 import {
   activeSection,
+  navigatorSections,
   sectionIsOn,
   sectionsForFramework,
   type ReportingFramework,
@@ -42,12 +44,13 @@ const FRAMEWORKS: ReportingFramework[] = [
       section("adjustments", "Adjustments", "inputs", "Inputs", 4),
       section("disclosures", "Disclosures", "inputs", "Inputs", 5),
       section("company-details", "Company details", "inputs", "Inputs", 6),
+      section("sections-setup", "Sections setup", "sections", "Sections", 7),
       {
         id: "income",
         label: "Income statement",
         group: "sections",
         group_label: "Sections",
-        order: 7,
+        order: 8,
         lock: "locked",
         default: "on",
         built: true,
@@ -57,7 +60,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Statement of financial position",
         group: "sections",
         group_label: "Sections",
-        order: 8,
+        order: 9,
         lock: "locked",
         default: "on",
         built: true,
@@ -67,7 +70,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Cover",
         group: "sections",
         group_label: "Sections",
-        order: 9,
+        order: 10,
         lock: "user",
         default: "on",
         built: true,
@@ -77,7 +80,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Cash flow statement",
         group: "sections",
         group_label: "Sections",
-        order: 10,
+        order: 11,
         lock: "user",
         default: "off",
         built: false,
@@ -87,7 +90,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Draft PDF",
         group: "outputs",
         group_label: "Outputs",
-        order: 11,
+        order: 12,
       },
     ],
   },
@@ -134,6 +137,7 @@ export default function StatutoryWorkspacePreviewPage() {
   const sections = sectionsForFramework(FRAMEWORKS, frameworkId).map((item) =>
     item.lock ? { ...item, enabled: sectionIsOn(item, flags) } : item,
   );
+  const visible = navigatorSections(sections);
   const sectionId = activeSection(sections, requested);
   const activeMeta = sections.find((item) => item.id === sectionId);
 
@@ -168,10 +172,9 @@ export default function StatutoryWorkspacePreviewPage() {
           </select>
         </label>
         <WorkspaceSidebar
-          sections={sections}
+          sections={visible}
           activeId={sectionId}
           onSelect={setRequested}
-          onToggle={onToggle}
         />
       </div>
       <div className="min-w-0 flex-1 space-y-6">
@@ -182,8 +185,16 @@ export default function StatutoryWorkspacePreviewPage() {
           onReview={() => setRequested("sub-lines")}
         />
         <p className="text-sm text-ink-secondary" data-testid="preview-section">
-          Open section: {sectionId}. Sidebar entries: {sections.map((section) => section.label).join(", ")}.
+          Open section: {sectionId}. Sidebar entries: {visible.map((section) => section.label).join(", ")}.
         </p>
+        {sectionId === "sections-setup" ? (
+          <SectionsSetup
+            title={activeMeta?.label ?? ""}
+            sections={sections}
+            onToggle={onToggle}
+            togglesEnabled
+          />
+        ) : null}
         {sectionId === "draft-pdf" ? (
           <section className="space-y-3" data-testid="statutory-outputs">
             <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-soft">
