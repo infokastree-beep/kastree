@@ -402,9 +402,9 @@ async def test_viewer_cannot_import_a_register_or_check_size(
 
 
 def test_request_handler_does_not_parse_the_register() -> None:
-    source = Path("/workspace/backend/app/routers/year_ends.py").read_text(
-        encoding="utf-8"
-    )
+    source = (
+        Path(__file__).resolve().parents[1] / "app" / "routers" / "year_ends.py"
+    ).read_text(encoding="utf-8")
     assert "openpyxl" not in source
     assert "read_spreadsheet_text" not in source
     assert "read_csv_text" not in source

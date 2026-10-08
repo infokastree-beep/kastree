@@ -233,7 +233,12 @@ def test_worker_reader_escapes_formula_text_and_enforces_caps(
 
 
 def test_request_router_does_not_parse_spreadsheets() -> None:
-    source = Path("/workspace/backend/app/routers/source_documents.py").read_text()
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "app"
+        / "routers"
+        / "source_documents.py"
+    ).read_text()
     assert "openpyxl" not in source
     assert "spreadsheet_import" not in source
     assert "read_spreadsheet_text" not in source
