@@ -6,6 +6,10 @@ export type WorkspaceSection = {
   group: string;
   group_label: string;
   order: number;
+  lock?: "locked" | "user" | null;
+  default?: "on" | "off" | "engine" | null;
+  built?: boolean | null;
+  enabled?: boolean;
 };
 
 export type ReportingFramework = {
@@ -41,6 +45,19 @@ export function sectionsForFramework(
     return FALLBACK;
   }
   return match.sections;
+}
+
+export function sectionIsOn(
+  section: WorkspaceSection,
+  saved: Readonly<Record<string, boolean>> | null | undefined,
+): boolean {
+  if (section.lock === "locked") {
+    return true;
+  }
+  if (saved != null && Object.prototype.hasOwnProperty.call(saved, section.id)) {
+    return saved[section.id] === true;
+  }
+  return section.default === "on";
 }
 
 export function activeSection(

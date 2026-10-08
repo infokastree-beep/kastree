@@ -37,30 +37,60 @@ def test_display_rounding_returns_a_new_string_and_leaves_the_decimal() -> None:
 
 
 def test_sidebar_sections_follow_the_reporting_framework() -> None:
-    frs = [section.label for section in sections_for("frs102-1a-ie")]
+    frs = sections_for("frs102-1a-ie")
+    labels = [section.label for section in frs]
     form11 = [section.label for section in sections_for("form11-summary")]
     unknown = [section.label for section in sections_for("uk-frs105")]
+    pack_labels = [
+        "Cover",
+        "Contents",
+        "Directors and other information",
+        "Directors' report",
+        "Directors' responsibilities statement",
+        "Compilation report",
+        "Income statement",
+        "Statement of comprehensive income",
+        "Statement of financial position",
+        "Statement of changes in equity",
+        "Cash flow statement",
+        "Notes",
+        "Supplementary trading statement",
+    ]
 
-    assert frs == [
+    assert labels[:6] == [
         "Review dashboard",
         "Report setup",
         "Mapping",
         "Adjustments",
         "Disclosures",
         "Company details",
-        "Income statement",
-        "Statement of financial position",
     ]
-    assert [section.group for section in sections_for("frs102-1a-ie")] == [
+    assert labels[6:-1] == pack_labels
+    assert labels[-1] == "Draft PDF"
+    assert [section.group for section in frs] == [
         "overview",
         "report-options",
         "inputs",
         "inputs",
         "inputs",
         "inputs",
-        "sections",
-        "sections",
+        *["sections"] * len(pack_labels),
+        "outputs",
     ]
+    cover = next(section for section in frs if section.id == "cover")
+    income = next(section for section in frs if section.id == "income")
+    cash = next(section for section in frs if section.id == "cash-flow")
+    pdf = next(section for section in frs if section.id == "draft-pdf")
+    assert cover.lock == "user"
+    assert cover.default == "on"
+    assert cover.built is True
+    assert income.lock == "locked"
+    assert income.built is True
+    assert cash.lock == "user"
+    assert cash.default == "off"
+    assert cash.built is False
+    assert pdf.group == "outputs"
+    assert pdf.lock is None
     assert form11 == [
         "Review dashboard",
         "Report setup",

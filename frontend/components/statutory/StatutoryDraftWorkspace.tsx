@@ -25,6 +25,7 @@ import { WorkspaceSidebar } from "@/components/statutory/WorkspaceSidebar";
 import { displayAmount, type RoundingMode } from "@/lib/report-display";
 import {
   activeSection,
+  sectionIsOn,
   sectionsForFramework,
   type ReportingFramework,
 } from "@/lib/workspace-sections";
@@ -327,6 +328,20 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     router.replace(`/year-ends/${yearEndId}/draft?section=${sectionId}`);
   }
 
+  async function toggleSection(sectionId: string, enabled: boolean): Promise<void> {
+    const setup = setupQuery.data;
+    if (setup == null) {
+      return;
+    }
+    await saveReportSetup({
+      rounding: setup.rounding,
+      statement_type: setup.statement_type,
+      face_dates: setup.face_dates,
+      column_headers: setup.column_headers,
+      sections: { ...(setup.sections ?? {}), [sectionId]: enabled },
+    });
+  }
+
   async function refreshDraft(): Promise<void> {
     await queryClient.invalidateQueries({ queryKey: ["working-draft", yearEndId] });
     await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
@@ -562,11 +577,17 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     yearEnd.period_start != null
       ? `${yearEnd.period_start} to ${yearEnd.period_end}`
       : `period ending ${yearEnd.period_end}`;
+  const savedFlags = setupQuery.data?.sections ?? null;
   const sections = sectionsForFramework(
     frameworksQuery.data?.frameworks ?? [],
     yearEnd.pack_id,
+  ).map((section) =>
+    section.lock
+      ? { ...section, enabled: sectionIsOn(section, savedFlags) }
+      : section,
   );
   const sectionId = activeSection(sections, searchParams.get("section"));
+  const activeMeta = sections.find((section) => section.id === sectionId);
   const rounding: RoundingMode = setupQuery.data?.rounding ?? "unit";
   const headers = setupQuery.data?.column_headers;
 
@@ -576,6 +597,8 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
         sections={sections}
         activeId={sectionId}
         onSelect={selectSection}
+        onToggle={(id, enabled) => void toggleSection(id, enabled)}
+        togglesEnabled={canEditDetails && setupQuery.isSuccess && busy === null}
       />
       <div className="min-w-0 flex-1 space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -679,24 +702,52 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          data-testid="statutory-download"
-          disabled={
-            busy !== null || pdfReason !== null || statementsQuery.data?.renderable !== true
-          }
-          onClick={() => void downloadPdf()}
-          className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Download draft PDF
-        </button>
-        {pdfReason !== null ? (
-          <p className="text-sm text-ink-secondary" data-testid="statutory-download-reason">
-            {pdfReason}
-          </p>
-        ) : null}
-      </div>
+      {sectionId === "draft-pdf" ? (
+        <section className="space-y-3" data-testid="statutory-outputs">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-soft">
+            Outputs
+          </h2>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              data-testid="statutory-download"
+              disabled={
+                busy !== null ||
+                pdfReason !== null ||
+                statementsQuery.data?.renderable !== true
+              }
+              onClick={() => void downloadPdf()}
+              className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Download draft PDF
+            </button>
+            {pdfReason !== null ? (
+              <p className="text-sm text-ink-secondary" data-testid="statutory-download-reason">
+                {pdfReason}
+              </p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
+      {activeMeta?.lock != null && sectionId !== "income" && sectionId !== "sofp" ? (
+        <section className="space-y-2" data-testid="statutory-section-panel">
+          <h2 className="text-sm font-semibold text-ink">{activeMeta.label}</h2>
+          {activeMeta.enabled === false ? (
+            <p className="text-sm text-ink-secondary">
+              This section is off. Its data is kept.
+            </p>
+          ) : activeMeta.built === false ? (
+            <p className="text-sm text-ink-secondary">
+              [NOT BUILT: this pack does not build this statement]
+            </p>
+          ) : (
+            <p className="text-sm text-ink-secondary">
+              This section is included in the draft PDF.
+            </p>
+          )}
+        </section>
+      ) : null}
 
       {sectionId === "report-setup" && setupQuery.data ? (
         <ReportSetupForm
