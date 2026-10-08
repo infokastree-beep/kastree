@@ -365,7 +365,8 @@ def company_detail_checks(
             False,
             "A signing director has not been recorded.",
         )
-    return (
+    currency = _currency_notice(company, year_end)
+    checks = [
         _check(
             "V-CO-001",
             "WARNING",
@@ -400,4 +401,24 @@ def company_detail_checks(
             else "Approval date has not been recorded.",
         ),
         signature,
+    ]
+    if currency is not None:
+        checks.append(currency)
+    return tuple(checks)
+
+
+def _currency_notice(
+    company: Company, year_end: YearEnd
+) -> ReconciliationCheck | None:
+    """Irish pack only. A non-euro currency is a notice, never a block."""
+    if year_end.pack_id != "frs102-1a-ie":
+        return None
+    code = company.functional_currency.strip().upper()
+    if not code or code == "EUR":
+        return None
+    return _check(
+        "V-CO-007",
+        "NOTICE",
+        False,
+        f"Company currency is {code}. Confirm this is intended.",
     )

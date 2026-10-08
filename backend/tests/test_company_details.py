@@ -43,6 +43,42 @@ _FORBIDDEN = "You don't have permission to access this resource."
 _ARTIFACT = Path("/opt/cursor/artifacts/directors-report-pdf.txt")
 
 
+def test_non_euro_on_the_irish_pack_is_a_notice() -> None:
+    from app.models.company import Company
+    from app.services.company_details import company_detail_checks
+    from findraft.models.year_end import YearEnd
+
+    org_id = uuid.uuid4()
+    company = Company(
+        client_id=uuid.uuid4(),
+        org_id=org_id,
+        name="Northwind",
+        functional_currency="GBP",
+    )
+    year_end = YearEnd(
+        org_id=org_id,
+        company_id=uuid.uuid4(),
+        period_end=date(2025, 12, 31),
+        pack_id="frs102-1a-ie",
+        pack_version="2024.09",
+    )
+    notice = next(
+        item
+        for item in company_detail_checks(company, year_end)
+        if item.code == "V-CO-007"
+    )
+    assert notice.severity == "NOTICE"
+    assert notice.passed is False
+    assert notice.message == "Company currency is GBP. Confirm this is intended."
+    assert blocks_final((notice,)) is False
+    assert _can_finalise("amber", renderable=True, blocked=False, checks=(notice,)) is True
+    company.functional_currency = "EUR"
+    assert all(item.code != "V-CO-007" for item in company_detail_checks(company, year_end))
+    company.functional_currency = "USD"
+    year_end.pack_id = "frs102-1a"
+    assert all(item.code != "V-CO-007" for item in company_detail_checks(company, year_end))
+
+
 def test_notices_do_not_block_final_and_missing_directors_do() -> None:
     notices = (
         ReconciliationCheck(
@@ -379,7 +415,23 @@ async def test_saved_company_details_print_on_the_existing_pages(
     filled = _checks(later.json())
     for code in ("V-CO-001", "V-CO-002", "V-CO-003", "V-CO-004", "V-CO-005", "V-CO-006"):
         assert filled[code]["passed"] is True, filled[code]
+    assert filled["V-CO-007"]["severity"] == "NOTICE"
+    assert filled["V-CO-007"]["passed"] is False
+    assert filled["V-CO-007"]["message"] == (
+        "Company currency is GBP. Confirm this is intended."
+    )
     assert later.json()["can_finalise"] is False
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        practice = session.execute(
+            text("SELECT name FROM organisations WHERE id = :id"),
+            {"id": str(org_id)},
+        ).scalar_one()
+    compilation = _page(after_body, "Compilation report")
+    assert compilation.startswith(
+        f"{practice} compiled these financial statements"
+    )
+    assert "The practice name has not been recorded." not in compilation
 
 
 def test_new_columns_stay_inside_the_practice(

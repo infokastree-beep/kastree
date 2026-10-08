@@ -115,6 +115,17 @@ _DOCUMENT = """<!DOCTYPE html>
   .watermark { color: #9a3412; font-weight: 700; letter-spacing: 0.12em; }
   h1, h2, h3 { break-after: avoid; page-break-after: avoid; }
   tr, .signature { break-inside: avoid; page-break-inside: avoid; }
+  section[data-section="sofp"],
+  section[data-section="income"] {
+    break-before: page;
+    page-break-before: always;
+  }
+  .statement-open {
+    break-after: avoid;
+    page-break-after: avoid;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
   table { border-collapse: collapse; width: 100%; margin: 0 0 1.5rem; }
   th, td { border-bottom: 1px solid #ccc; padding: 0.25rem 0.4rem; text-align: left; }
   td.amount, th.amount { text-align: right; font-variant-numeric: tabular-nums; }
@@ -135,9 +146,11 @@ _DOCUMENT = """<!DOCTYPE html>
 <p>{{ paragraph }}</p>
 {% endfor %}
 {% elif section.kind == "statement" %}
+<div class="statement-open">
 <h2>{{ section.heading }}</h2>
 {% if section.period_phrase %}<p>{{ section.period_phrase }}</p>{% endif %}
 {% if section.compliance %}<p>{{ section.compliance }}</p>{% endif %}
+</div>
 <table>
 <thead><tr><th>Line</th><th>Notes</th>{% for column in section.columns %}<th class="amount">{{ column }}</th>{% endfor %}</tr></thead>
 <tbody>
@@ -386,6 +399,20 @@ _NOT_RECORDED = {
     "avg_employees_prior": "[average number of employees not recorded]",
     "rpt_table": " [related party transactions not recorded]",
     "directors_agg_table": " [directors' aggregate disclosures not recorded]",
+}
+# While the question is unanswered the whole note is this one line. A Yes
+# answer still prints the pack wording, with a placeholder for each blank
+# particular. A No answer drops the note before numbering.
+_UNANSWERED_NOTE = {
+    "N7_RPT": "[related party transactions not recorded]",
+    "N9_COMMITMENTS": "[commitments and contingencies not recorded]",
+}
+_PARTICULARS = {
+    "capital_commitments": "[capital commitments not recorded]",
+    "pension_commitments": "[retirement benefit commitments not recorded]",
+    "guarantee_particulars": "[guarantees and security not recorded]",
+    "charge_particulars": "[charges on assets not recorded]",
+    "subsequent_events": "[subsequent events not recorded]",
 }
 
 
@@ -776,6 +803,26 @@ def _statement_rows(statement: dict[str, object]) -> tuple[StatementRow, ...]:
     return tuple(rows)
 
 
+def _note_inclusion(template: dict[str, object], ctx: dict[str, object]) -> str:
+    """yes, no, or unanswered. Unanswered is never treated as no."""
+    condition = template.get("includeWhen")
+    if not isinstance(condition, str) or condition == "always":
+        return "yes"
+    try:
+        affirmed = evaluate(condition, ctx)
+    except Unanswered:
+        return "unanswered"
+    return "yes" if affirmed else "no"
+
+
+def _with_particulars(context: dict[str, str]) -> dict[str, str]:
+    filled = dict(context)
+    for key, placeholder in _PARTICULARS.items():
+        if not filled.get(key, "").strip():
+            filled[key] = placeholder
+    return filled
+
+
 def _line_names(table: dict[str, object]) -> list[str] | None:
     names = table.get("lines_from")
     if not isinstance(names, list) or not names:
@@ -790,6 +837,7 @@ def _compose_notes(
     templates: dict[str, dict[str, object]],
     selected: dict[str, object],
     context: dict[str, str],
+    disclosure_ctx: dict[str, object],
     aggregated: dict[str, Decimal],
     prior_canonical: dict[str, Decimal],
     fa_register: dict[str, dict[str, Decimal]] | None,
@@ -798,7 +846,12 @@ def _compose_notes(
     chosen = [
         code
         for code, template in templates.items()
-        if code in selected and isinstance(template, dict)
+        if code in selected
+        and isinstance(template, dict)
+        and not (
+            code in _UNANSWERED_NOTE
+            and _note_inclusion(template, disclosure_ctx) == "no"
+        )
     ]
     numbers = {code: index for index, code in enumerate(chosen, start=1)}
     notes: list[StatementNote] = []
@@ -808,7 +861,24 @@ def _compose_notes(
         prose = template.get("bodyTemplate")
         if not isinstance(prose, str):
             raise ValueError(f"note {code} has no body")
+        pending = (
+            code in _UNANSWERED_NOTE
+            and _note_inclusion(template, disclosure_ctx) == "unanswered"
+        )
+        if pending:
+            notes.append(
+                StatementNote(
+                    code=code,
+                    title=f"{numbers[code]}. {_human_title(code, template.get('title'))}",
+                    body=_UNANSWERED_NOTE[code],
+                    lines=(),
+                    fa_rows=(),
+                )
+            )
+            continue
         note_context = dict(context)
+        if code == "N9_COMMITMENTS":
+            note_context = _with_particulars(note_context)
         departure = template.get("departure_clause")
         if isinstance(departure, str):
             note_context["departure_clause"] = departure
@@ -1006,6 +1076,7 @@ def _render_draft(
         templates=templates,
         selected=selected,
         context=_note_context(entity, policies),
+        disclosure_ctx=ctx,
         aggregated=aggregated,
         prior_canonical=prior_canonical,
         fa_register=fa_register,

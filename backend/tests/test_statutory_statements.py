@@ -70,7 +70,12 @@ def _entity(**overrides: str) -> StatementEntity:
     return StatementEntity(**values)
 
 
-def _golden(*, entity: StatementEntity | None = None) -> StatutoryStatements:
+def _golden(
+    *,
+    entity: StatementEntity | None = None,
+    disclosure_flags: dict[str, bool] | None = None,
+    practice_name: str = "",
+) -> StatutoryStatements:
     return build_statutory_statements(
         prior_year_validated=True,
         tb_lines=_lines(_TB),
@@ -82,6 +87,10 @@ def _golden(*, entity: StatementEntity | None = None) -> StatutoryStatements:
         },
         fa_register=_FA_REGISTER,
         entity=entity or _entity(),
+        period_start="2025-01-01",
+        period_end="2025-12-31",
+        disclosure_flags=disclosure_flags,
+        practice_name=practice_name,
     )
 
 
