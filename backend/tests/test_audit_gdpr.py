@@ -10,7 +10,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import text
 
-from app.db import AsyncSessionLocal, SyncSessionLocal, aset_rls_org_id
+from app.db import AsyncSessionLocal, SyncSessionLocal, aset_rls_org_id, set_rls_org_id
 from app.services.archival import verify_archive_hash
 from app.services.audit import append_audit_log, load_audit_log, verify_audit_chain
 from app.services.retention import (
@@ -116,6 +116,7 @@ async def test_client_erasure_keeps_archive_and_company(
     headers = auth_headers(provisioned_org["token"])
     client_id = str(provisioned_org["client_id"])
     with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
         original = session.execute(
             text("SELECT name FROM clients WHERE id = :id"),
             {"id": client_id},
@@ -135,6 +136,7 @@ async def test_client_erasure_keeps_archive_and_company(
     assert again.status_code == 200, again.text
     assert again.json()["erased"] is False
     with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
         live = session.execute(
             text("SELECT name FROM clients WHERE id = :id"),
             {"id": client_id},

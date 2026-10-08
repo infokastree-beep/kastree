@@ -743,7 +743,7 @@ then, keeping the column is low-cost denormalization with no user-facing benefit
 
 The Product 1 policy gap below is unchanged.
 
-**GitHub pull requests run the test suite.** `.github/workflows/pr-tests.yml` starts Postgres 15. The backend job connects as a superuser login named `findraft`, creates the non-superuser `findraft_app` role before migrating, applies migrations from an empty database (upgrade to `a1b2c3d4e5f6`, then `backend/scripts/bootstrap_stripe_rls_lookup.sql`, then upgrade to head), and fails if pytest fails. A parity job migrates as the `postgres` superuser, runs `backend/scripts/provision_findraft_app_role.sql`, and runs the HTTP tests with the API logged in as `findraft` (`NOSUPERUSER`, `NOBYPASSRLS`). Tests that cannot run as that login are listed in `backend/scripts/parity_excluded_tests.txt` and still run in the backend job. The workflow also fails if the frontend `test:*` scripts, `ruff check app`, or `mypy --strict --follow-imports=silent` on `backend/mypy_clean_modules.txt` fails. Project-wide `mypy app` is not a pull-request gate. `.github/workflows/verify-remotes.yml` still only prints the commit SHA. Pushing to `main` also runs `verify-production-frontend.yml`, which checks that www.kastree.ie serves that SHA. That workflow is not a test run.
+**GitHub pull requests run the test suite.** `.github/workflows/pr-tests.yml` starts Postgres 15. The backend job connects as a superuser login named `findraft`, creates the non-superuser `findraft_app` role before migrating, applies migrations from an empty database (upgrade to `a1b2c3d4e5f6`, then `backend/scripts/bootstrap_stripe_rls_lookup.sql`, then upgrade to head), and fails if pytest fails. A parity job migrates as the `postgres` superuser, runs `backend/scripts/provision_findraft_app_role.sql`, and runs the HTTP tests with the API logged in as `findraft` (`NOSUPERUSER`, `NOBYPASSRLS`). Tests that cannot run as that login are listed in `backend/scripts/parity_excluded_tests.txt` and still run in the backend job. The client-erasure archive read and the week-10 draft-operation insert now set `app.current_org_id` and run in the parity job. `tests/test_findraft_privileges.py` fails the build if `findraft` holds `TRUNCATE`, `REFERENCES`, or `TRIGGER` on any public table, or `UPDATE`, `DELETE`, or `TRUNCATE` on an append-only or fully immutable table. The workflow also fails if the frontend `test:*` scripts, `ruff check app`, or `mypy --strict --follow-imports=silent` on `backend/mypy_clean_modules.txt` fails. Project-wide `mypy app` is not a pull-request gate. `.github/workflows/verify-remotes.yml` still only prints the commit SHA. Pushing to `main` also runs `verify-production-frontend.yml`, which checks that www.kastree.ie serves that SHA. That workflow is not a test run.
 
 ## mypy — 99 project-wide errors, not a pull-request gate
 
@@ -1449,6 +1449,46 @@ A name already stored in an earlier archive stays there.
 
 The audit-trail CSV escapes formula-leading `=`, `+`, `-`, and `@`. The
 auditor's-report slot, note overrides, and the UK pack stay cut.
+
+### 7-year retention purge (design only)
+
+Not built. Do not add a purge job, a maintenance role, or an append-only
+trigger on `archived_records` in the privilege change that revokes `UPDATE`
+and `DELETE` from the `findraft` login.
+
+`archived_records.retention_until` is already the calendar date seven years
+after the archive (`RETENTION_YEARS = 7` in `backend/app/services/archival.py`,
+with 29 February clamped to 28 February). A purge has to delete those rows
+after that date. The application login cannot do it once it holds only
+`SELECT` and `INSERT` on `archived_records`.
+
+A purge needs all three of the following.
+
+1. A separate maintenance role. It is not the application login and `findraft`
+   is not a member of it. An operator job connects as that role, or calls one
+   `SECURITY DEFINER` function owned by the table owner. The role is granted
+   `DELETE` on `archived_records` and nothing else it does not already need
+   to see the expiry date (`SELECT` on that table). It is not granted to the
+   web process.
+
+2. Trigger handling. `audit_logs` already has `findraft_audit_log_append_only`,
+   which refuses `UPDATE` and `DELETE` even for the table owner. The purge
+   does not delete or rewrite audit-log rows. The hash chain stays. There is
+   no append-only trigger on `archived_records` today, so a maintenance role
+   that holds `DELETE` can remove an expired row. If that trigger is added
+   later, it has to allow the owner-owned purge function. A trigger that
+   refuses every `DELETE` would make the retention date unenforceable.
+
+3. How `archived_records` is purged. Delete rows whose `retention_until` is
+   before the current date. Do not `TRUNCATE`. The `client_id` foreign key is
+   `NO ACTION`, so deleting an archive row does not delete the client, and a
+   client row that is still there does not block deleting the archive. Do not
+   hard-delete the client in order to drop the archive. Product 1 client
+   delete and trial-balance delete are soft (`is_deleted` / `deleted_at` plus
+   an insert into `archived_records`). They never remove the archive row.
+   Write the purge to the operator log. Do not update the archive row to mark
+   it purged. `audit_logs`, `subscription_events`, and the other append-only
+   tables are not part of this job.
 
 ### Week 11 statutory pages and DOCX
 

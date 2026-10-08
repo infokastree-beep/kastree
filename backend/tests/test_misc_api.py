@@ -20,7 +20,7 @@ from app.models.user import User
 from app.models.variance_analysis import VarianceAnalysis
 from app.services.archival import sha256_hex
 from app.services.org_provisioning import user_id_for_clerk_user
-from tests.conftest import auth_headers, make_access_token
+from tests.conftest import auth_headers, make_access_token, open_owner_session
 
 
 def _seed_variance_with_commentary(
@@ -348,13 +348,15 @@ async def test_archived_records_hash_verified_false_when_data_corrupted(
     )
     assert deleted.status_code == 200, deleted.text
 
-    with SyncSessionLocal() as session:
+    # findraft may insert an archive row and may not rewrite it. The
+    # corruption is applied by the migration owner so the read path can
+    # still report a broken hash.
+    with open_owner_session() as session:
         set_rls_org_id(session, org_id)
         row = session.execute(
             select(ArchivedRecord).where(ArchivedRecord.org_id == org_id)
         ).scalar_one()
         record_id = row.id
-        # Tamper with snapshot without updating archive_hash.
         data = dict(row.archived_data)
         data["name"] = "TAMPERED NAME"
         row.archived_data = data
