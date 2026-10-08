@@ -164,9 +164,10 @@ def compose_pdf_html(
     return render_statutory_html(
         company_name=document.company_name,
         sections=sections,
-        watermark=_watermark(document, setup.statement_type),
+        watermark=document.watermark,
         approval_date=approved,
         signing_directors=_signing_phrase(signing_directors),
+        statement_label=_statement_label(document, setup.statement_type),
     )
 
 
@@ -251,11 +252,16 @@ def _section_included(
     return rule["default"] == "on"
 
 
-def _watermark(document: StatutoryStatements, statement_type: str) -> str:
-    """Compilation is a label. It is not an audit and it is not a review."""
+def _statement_label(document: StatutoryStatements, statement_type: str) -> str:
+    """A second label beside DRAFT. It never replaces the draft watermark.
+
+    A finalised document keeps FINAL. Compilation is not an audit or a review.
+    """
+    if document.watermark == "FINAL":
+        return ""
     if statement_type == "compilation":
-        return "COMPILATION"
-    return document.watermark
+        return "Compilation"
+    return ""
 
 
 def _face_period(

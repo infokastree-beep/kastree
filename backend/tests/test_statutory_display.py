@@ -227,9 +227,13 @@ def test_each_statement_starts_on_its_own_page() -> None:
         assert income > 0
         assert "Income statement" not in pages[0]
         assert income < sofp
-        assert pages[income].lstrip().startswith("Income statement")
+        income_lines = [line.strip() for line in pages[income].splitlines() if line.strip()]
+        sofp_lines = [line.strip() for line in pages[sofp].splitlines() if line.strip()]
+        assert income_lines[0] == "DRAFT"
+        assert income_lines[1] == "Income statement"
         assert "Statement of financial position" not in pages[income]
-        assert pages[sofp].lstrip().startswith("Statement of financial position")
+        assert sofp_lines[0] == "DRAFT"
+        assert sofp_lines[1] == "Statement of financial position"
         assert "as at" in pages[sofp]
         assert document.compliance_statement in " ".join(pages[sofp].split())
         assert "Line" in pages[sofp]

@@ -17,10 +17,15 @@ from app.services.statutory_compose import (
     unbuilt_section_notices,
 )
 from app.services.statutory_present import statement_response
-from app.services.statutory_statements import write_statement_pdf
+from app.services.statutory_statements import (
+    StatementRow,
+    StatutoryStatements,
+    write_statement_pdf,
+)
 from findraft.models.year_end import YearEnd
 from tests.conftest import auth_headers
 from tests.test_adopted_trial_balance import _insert_tb
+from tests.test_statutory_display import _pdf_pages
 from tests.test_statutory_statements import _golden
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -210,7 +215,9 @@ def test_face_dates_and_compilation_label_do_not_change_figures() -> None:
             },
         ),
     )
-    assert '<p class="watermark">COMPILATION</p>' in html
+    assert '<p class="watermark">DRAFT Compilation</p>' in html
+    assert '<p class="watermark">COMPILATION</p>' not in html
+    assert "COMPILATION" not in html
     assert '<p class="watermark">AUDIT</p>' not in html
     assert '<p class="watermark">REVIEW</p>' not in html
     assert "for the period from 1 April 2024 to 31 December 2025" in html
@@ -219,6 +226,125 @@ def test_face_dates_and_compilation_label_do_not_change_figures() -> None:
     assert document.watermark == "DRAFT"
     assert document.net_assets == Decimal("455812.00")
     assert document.profit == Decimal("157650.00")
+
+
+@pytest.mark.parametrize("statement_type", ["draft", "compilation"])
+def test_an_unsigned_draft_keeps_draft_on_every_page(statement_type: str) -> None:
+    """DRAFT stays on the cover line and the page header. Compilation sits beside it."""
+    document = _golden()
+    assert document.watermark == "DRAFT"
+    html = _compose(document, _setup(statement_type=statement_type))
+    assert "COMPILATION" not in html
+    assert '<p class="watermark">COMPILATION</p>' not in html
+    if statement_type == "compilation":
+        assert '<p class="watermark">DRAFT Compilation</p>' in html
+        assert 'content: "DRAFT Compilation"' in html
+    else:
+        assert '<p class="watermark">DRAFT</p>' in html
+        assert 'content: "DRAFT"' in html
+        assert 'content: "DRAFT Compilation"' not in html
+        assert '<p class="watermark">DRAFT Compilation</p>' not in html
+    assert document.watermark == "DRAFT"
+    assert statement_response(document).watermark == "DRAFT"
+    pages = [page for page in _pdf_pages(write_statement_pdf(html)) if page.strip()]
+    assert len(pages) > 1
+    for page in pages:
+        assert "DRAFT" in page
+        assert "COMPILATION" not in page
+        if statement_type == "compilation":
+            assert "DRAFT Compilation" in page
+        else:
+            assert "DRAFT Compilation" not in page
+
+
+def test_a_finalised_document_keeps_final_and_does_not_say_compilation() -> None:
+    document = _golden()
+    final = StatutoryStatements(
+        watermark="FINAL",
+        renderable=document.renderable,
+        blocked=document.blocked,
+        build_error=document.build_error,
+        checks=document.checks,
+        net_assets=document.net_assets,
+        profit=document.profit,
+        compliance_statement=document.compliance_statement,
+        sofp=document.sofp,
+        income=document.income,
+        notes=document.notes,
+        rounding_flags=document.rounding_flags,
+        html=document.html,
+        pages=document.pages,
+        company_name=document.company_name,
+    )
+    html = _compose(final, _setup(statement_type="compilation"))
+    assert '<p class="watermark">FINAL</p>' in html
+    assert 'content: "FINAL"' in html
+    assert "DRAFT" not in html
+    assert "COMPILATION" not in html
+    assert '<p class="watermark">FINAL Compilation</p>' not in html
+    assert final.watermark == "FINAL"
+    assert document.net_assets == Decimal("455812.00")
+    assert document.profit == Decimal("157650.00")
+
+
+def test_thousands_prints_a_rounding_difference_when_lines_do_not_foot() -> None:
+    """600 and 600 display as 1 and 1. Their total of 1200 displays as 1.
+
+    The PDF prints a Rounding difference of (1) so the column foots.
+    The source Decimals stay 600, 600, and 1200.
+    """
+    turnover = StatementRow("Turnover", Decimal("600.00"), None)
+    cost = StatementRow("Cost of sales", Decimal("600.00"), None)
+    gross = StatementRow("Gross profit", Decimal("1200.00"), None)
+    document = StatutoryStatements(
+        watermark="DRAFT",
+        renderable=True,
+        blocked=False,
+        build_error=None,
+        checks=(),
+        net_assets=Decimal("1200.00"),
+        profit=Decimal("1200.00"),
+        compliance_statement="",
+        sofp=(),
+        income=(turnover, cost, gross),
+        notes=(),
+        rounding_flags=(),
+        html="<p>engine</p>",
+        company_name="Example Ltd",
+    )
+    def _show(setup: dict[str, object]) -> str:
+        return compose_pdf_html(
+            document,
+            report_setup=setup,
+            period_start=date(2025, 1, 1),
+            period_end=date(2025, 12, 31),
+            first_financial_period=True,
+        )
+
+    unit = _show(_setup(rounding="unit"))
+    assert "Rounding difference" not in unit
+    html = _show(
+        _setup(
+            rounding="thousands",
+            column_headers={
+                "as_at_current": "2025",
+                "as_at_prior": "2024",
+                "ended_current": "2025",
+                "ended_prior": "2024",
+            },
+        )
+    )
+    assert "in thousands" in html
+    printed = _row(html, "Rounding difference")
+    assert printed == '<tr><td>Rounding difference</td><td class="amount">(1)</td>'
+    pages = [page for page in _pdf_pages(write_statement_pdf(html)) if page.strip()]
+    assert pages
+    assert any("Rounding difference" in page and "(1)" in page for page in pages)
+    assert turnover.current == Decimal("600.00")
+    assert cost.current == Decimal("600.00")
+    assert gross.current == Decimal("1200.00")
+    assert document.profit == Decimal("1200.00")
+    assert document.net_assets == Decimal("1200.00")
 
 
 def test_unbuilt_section_notice_does_not_block_final() -> None:
