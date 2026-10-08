@@ -6,7 +6,23 @@ Review this list before claiming a feature area is complete.
 For product-level sequencing (three-product roadmap, what to build next vs defer),
 see [`product-roadmap.md`](product-roadmap.md).
 
-The GitHub repository was made private on 8 October 2026.
+The GitHub repository was made private on 8 October 2026 and made public again the same day. See [Pre-launch checklist](#pre-launch-checklist).
+
+## Pre-launch checklist
+
+Do these before the product takes payments or a real client uses Product 2.
+
+1. **Make the GitHub repository private.** It was made private on 8 October 2026 and reverted the same day because the production frontend deploy could not read it. The Vercel project is on a personal Vercel account, and the repository belongs to a different GitHub account. Do this together with item 2, not before.
+
+2. **Sort out Vercel hosting.** Move the frontend project to a Vercel account under the business email on a paid plan. The free plan is for non-commercial use, so this is also needed before taking payments. Options to evaluate: (a) transfer the project, (b) recreate it under the business account and move the domains, or (c) deploy from GitHub Actions with the Vercel CLI so Vercel needs no Git access. Acceptance: the `kastree-git-sha` meta tag on https://www.kastree.ie matches the latest `main` commit after a merge while the repository is private; deployment emails and billing go to the business address; Clerk allowed origins and redirect URLs still work; a rollback is documented. No Vercel migration checklist is in the repo yet.
+
+3. **Database backups.** Production Postgres currently has no backups. Either upgrade the Railway plan or add a scheduled dump to object storage, and test a restore.
+
+4. **Credentials.** Rotate any credential that has been shared outside its secret store, and confirm none are committed. The history scan was clean on 8 October 2026. Keep a secret-scan job in CI.
+
+5. **Product 2 legal gate.** Professional indemnity insurance, the customer-facing DPA, and the qualified reviewer sign-off of the statutory wording, all before any real client uses Product 2. Detail of the DPA and reviewer sign-off is in the [pre-client-use gate](#pre-client-use-gate).
+
+6. **Sensitive documents.** Remove or relocate sensitive documents (draft DPA, reviewer request, security notes) from the repository before it is made public again or shared with third parties. Keep them in a private location.
 
 ## Next-session priorities
 
