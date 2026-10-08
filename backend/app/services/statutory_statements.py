@@ -95,13 +95,33 @@ _DOCUMENT = """<!DOCTYPE html>
 <meta charset="utf-8">
 <title>{{ watermark }} statutory statements</title>
 <style>
+  @page {
+    size: A4;
+    margin: 16mm 14mm 22mm 14mm;
+    @bottom-left {
+      content: "The notes form part of these financial statements";
+      font-family: sans-serif;
+      font-size: 8pt;
+      color: #333;
+    }
+    @bottom-right {
+      content: counter(page);
+      font-family: sans-serif;
+      font-size: 8pt;
+      color: #333;
+    }
+  }
   body { font-family: sans-serif; color: #111; }
   .watermark { color: #9a3412; font-weight: 700; letter-spacing: 0.12em; }
+  h1, h2, h3 { break-after: avoid; page-break-after: avoid; }
+  tr, .signature { break-inside: avoid; page-break-inside: avoid; }
   table { border-collapse: collapse; width: 100%; margin: 0 0 1.5rem; }
   th, td { border-bottom: 1px solid #ccc; padding: 0.25rem 0.4rem; text-align: left; }
   td.amount, th.amount { text-align: right; font-variant-numeric: tabular-nums; }
   caption { caption-side: bottom; text-align: left; font-size: 0.9rem; padding-top: 0.35rem; }
   .note-body { white-space: pre-wrap; }
+  .notes-line { font-style: italic; }
+  .sign-rule { margin-top: 1.4rem; }
 </style>
 </head>
 <body>
@@ -126,6 +146,21 @@ _DOCUMENT = """<!DOCTYPE html>
 {% endfor %}
 </tbody>
 </table>
+{% if section.anchor == "sofp" %}
+<p class="notes-line">The notes form part of these financial statements.</p>
+<section class="signature">
+<p>Approved by the board and signed on its behalf by</p>
+<p>{{ signature.date_line }}</p>
+{% for name in signature.names %}
+<p class="sign-rule">______________________________</p>
+<p>{{ name }}<br>Director</p>
+{% else %}
+<p>A signatory has not been recorded.</p>
+<p class="sign-rule">______________________________</p>
+<p>Director</p>
+{% endfor %}
+</section>
+{% endif %}
 {% elif section.kind == "notes" %}
 <h2>{{ section.heading }}</h2>
 {% for note in section.notes %}
@@ -423,6 +458,18 @@ def _with_note_column(
         note = _note_cell(label, numbers) if isinstance(label, str) else ""
         labelled.append({**row, "note": note})
     return labelled
+
+
+def _signature_view(approval_date: str, signing_directors: str) -> dict[str, object]:
+    """Names already stored on the year. A blank stays a blank line."""
+    recorded = approval_date.strip()
+    names = [part.strip() for part in signing_directors.split(",") if part.strip()]
+    date_line = (
+        f"Approved on {recorded}."
+        if recorded
+        else "Approval date has not been recorded."
+    )
+    return {"date_line": date_line, "names": names}
 
 
 def _director_phrase(item: dict[str, object]) -> str | None:
@@ -818,6 +865,8 @@ def _render_html(
     period_start: str = "",
     period_end: str = "",
     first_financial_period: bool = False,
+    approval_date: str = "",
+    signing_directors: str = "",
 ) -> str:
     """Build the section list the template walks. The engine rows stay intact."""
     start = parse_iso_date(period_start)
@@ -900,6 +949,7 @@ def _render_html(
     return _HTML.from_string(_DOCUMENT).render(
         company_name=entity.name,
         sections=sections,
+        signature=_signature_view(approval_date, signing_directors),
         watermark=watermark,
     )
 
@@ -987,6 +1037,8 @@ def _render_draft(
         period_start=period_start,
         period_end=period_end,
         first_financial_period=first_financial_period,
+        approval_date=approval_date,
+        signing_directors=signing_directors,
     )
     return StatutoryStatements(
         watermark=watermark,
