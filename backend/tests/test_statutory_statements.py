@@ -153,8 +153,9 @@ def test_golden_render_keeps_engine_figures_and_zero_lines() -> None:
         "455,812",
         "157,650",
         "Profit for the financial year",
-        "N2_FA",
-        "N3_DEBTORS",
+        "3. Fixed assets",
+        "4. Debtors",
+        "Trade debtors",
         SOFP_COMPLIANCE_STATEMENT,
         "{{life_plant}}",
         "nearest whole unit",
@@ -169,6 +170,10 @@ def test_golden_render_keeps_engine_figures_and_zero_lines() -> None:
         "157650.00",
     ):
         assert hidden not in html
+    assert "N2_FA" not in html
+    assert "N3_DEBTORS" not in html
+    assert "TRADE_DEBTORS" not in html
+    assert "statement of changes in retained earnings" not in html.lower()
     assert "V-BANK-001" not in {item.code for item in document.checks}
     pdf = write_statement_pdf(html)
     assert pdf.startswith(b"%PDF")

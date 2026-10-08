@@ -212,6 +212,12 @@ async def test_saved_company_details_print_on_the_existing_pages(
     )
     assert missing.status_code == 404, missing.text
 
+    bad_employees = await api_client.put(
+        f"/year-ends/{year_end_id}/company-details",
+        headers=headers,
+        json={"average_employees": -1},
+    )
+    assert bad_employees.status_code == 422, bad_employees.text
     bad_number = await api_client.put(
         f"/year-ends/{year_end_id}/company-details",
         headers=headers,
@@ -258,6 +264,7 @@ async def test_saved_company_details_print_on_the_existing_pages(
             "incorporated_on": "2018-03-14",
             "principal_activity": "Software publishing",
             "secretary": "Grace Hopper",
+            "average_employees": 12,
             "directors": [
                 {
                     "name": "Ada Lovelace",
@@ -275,6 +282,7 @@ async def test_saved_company_details_print_on_the_existing_pages(
     assert letterhead["incorporated_on"] == "2018-03-14"
     assert letterhead["principal_activity"] == "Software publishing"
     assert letterhead["secretary"] == "Grace Hopper"
+    assert letterhead["average_employees"] == 12
     assert letterhead["directors"] == [
         {
             "name": "Ada Lovelace",
@@ -313,6 +321,11 @@ async def test_saved_company_details_print_on_the_existing_pages(
     after_body = after.json()
     assert after_body["profit"] == profit
     assert after_body["net_assets"] == net_assets
+    employees_note = next(
+        note for note in after_body["notes"] if note["code"] == "N8_EMPLOYEES"
+    )
+    assert "was 12 (" in employees_note["body"]
+    assert "[average number of employees not recorded]" in employees_note["body"]
     directors = _page(after_body, "Directors' report")
     approval = _page(after_body, "Approval of the financial statements")
     assert (

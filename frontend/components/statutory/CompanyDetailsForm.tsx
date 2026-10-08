@@ -16,6 +16,7 @@ export type CompanyDetails = {
   incorporated_on: string | null;
   principal_activity: string | null;
   secretary: string | null;
+  average_employees: number | null;
   directors: DirectorInput[];
   approval_date: string | null;
   signing_directors: string[];
@@ -28,6 +29,7 @@ export type CompanyDetailsWrite = {
   incorporated_on: string | null;
   principal_activity: string | null;
   secretary: string | null;
+  average_employees: number | null;
   directors: DirectorInput[];
 };
 
@@ -76,6 +78,9 @@ export function CompanyDetailsForm({
   );
   const [activity, setActivity] = useState(textValue(details.principal_activity));
   const [secretary, setSecretary] = useState(textValue(details.secretary));
+  const [employees, setEmployees] = useState(
+    details.average_employees === null ? "" : String(details.average_employees),
+  );
   const [directors, setDirectors] = useState<DirectorInput[]>(
     details.directors.length > 0
       ? details.directors
@@ -119,6 +124,7 @@ export function CompanyDetailsForm({
             incorporated_on: dateOrNull(incorporated),
             principal_activity: activity.trim() === "" ? null : activity,
             secretary: secretary.trim() === "" ? null : secretary,
+            average_employees: employees.trim() === "" ? null : Number(employees),
             directors: directors
               .filter(
                 (row) =>
@@ -212,6 +218,21 @@ export function CompanyDetailsForm({
             onChange={(event) => setSecretary(event.target.value)}
             className={FIELD}
             data-testid="company-secretary"
+          />
+        </label>
+        <label className="flex max-w-xl flex-col gap-1.5 text-sm">
+          <span className="text-xs font-semibold uppercase tracking-[0.12em] text-soft">
+            Average number of employees
+          </span>
+          <input
+            type="number"
+            min={0}
+            step={1}
+            value={employees}
+            disabled={locked}
+            onChange={(event) => setEmployees(event.target.value)}
+            className={FIELD}
+            data-testid="company-average-employees"
           />
         </label>
         <fieldset className="space-y-3">
