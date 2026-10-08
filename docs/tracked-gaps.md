@@ -6,6 +6,8 @@ Review this list before claiming a feature area is complete.
 For product-level sequencing (three-product roadmap, what to build next vs defer),
 see [`product-roadmap.md`](product-roadmap.md).
 
+The GitHub repository was made private on 8 October 2026.
+
 ## Next-session priorities
 
 **Order matters.** Technical confidence first (validate), then go-to-market
