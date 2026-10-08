@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { PreviewChild } from "@/lib/section-preview";
 import {
   groupIsOpen,
   readClosedGroups,
@@ -35,11 +36,17 @@ function groupsFrom(sections: readonly WorkspaceSection[]): SectionGroup[] {
 export function WorkspaceSidebar({
   sections,
   activeId,
+  activeChildren = [],
+  activeChildId = null,
   onSelect,
+  onSelectChild,
 }: {
   sections: readonly WorkspaceSection[];
   activeId: string;
+  activeChildren?: readonly PreviewChild[];
+  activeChildId?: string | null;
   onSelect: (sectionId: string) => void;
+  onSelectChild?: (childId: string) => void;
 }) {
   const [closed, setClosed] = useState<Record<string, boolean>>({});
 
@@ -104,6 +111,32 @@ export function WorkspaceSidebar({
                           </span>
                         ) : null}
                       </button>
+                      {section.id === activeId && activeChildren.length > 0 ? (
+                        <ul className="mb-1 space-y-0.5 pl-3">
+                          {activeChildren.map((child) => {
+                            const current = child.id === activeChildId;
+                            return (
+                              <li key={child.id}>
+                                <button
+                                  type="button"
+                                  data-testid={`statutory-child-${child.anchor}`}
+                                  aria-current={current ? "true" : undefined}
+                                  onClick={() => onSelectChild?.(child.id)}
+                                  className={`w-full rounded-md px-3 py-1.5 text-left text-xs ${
+                                    current
+                                      ? "bg-accent font-semibold text-accent-foreground"
+                                      : "text-ink-secondary hover:bg-surface-elevated"
+                                  }`}
+                                >
+                                  {child.number != null
+                                    ? `${child.number}. ${child.label}`
+                                    : child.label}
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : null}
                     </li>
                   );
                 })}
