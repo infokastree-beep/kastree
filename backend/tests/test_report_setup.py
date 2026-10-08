@@ -298,6 +298,80 @@ async def test_report_setup_does_not_change_stored_figures_or_rebuild(
     )
     assert still.json()["statement_type"] == "compilation"
     assert still.json()["rounding"] == "thousands"
+    assert still.json()["sections"] is None
+    assert _snapshot(org_id, year_end_id) == anchor
+
+    def _display(sections: dict[str, bool] | None = None) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "rounding": "thousands",
+            "statement_type": "compilation",
+            "face_dates": {
+                "current_start": "2024-04-01",
+                "current_end": "2025-03-31",
+                "prior_start": "2023-04-01",
+                "prior_end": "2024-03-31",
+            },
+            "column_headers": {
+                "as_at_current": "as at 31 March 2025",
+                "as_at_prior": "as at 31 March 2024",
+                "ended_current": "year ended 31 March 2025",
+                "ended_prior": "year ended 31 March 2024",
+            },
+        }
+        if sections is not None:
+            payload["sections"] = sections
+        return payload
+
+    for locked_id in ("income", "sofp", "notes"):
+        locked = await api_client.put(
+            f"/year-ends/{year_end_id}/report-setup",
+            headers=headers,
+            json=_display({locked_id: False, "cover": False}),
+        )
+        assert locked.status_code == 422, locked.text
+        assert "Locked section cannot be turned off" in locked.text
+        unchanged = await api_client.get(
+            f"/year-ends/{year_end_id}/report-setup",
+            headers=headers,
+        )
+        assert unchanged.json()["sections"] is None
+        assert unchanged.json()["rounding"] == "thousands"
+
+    unknown = await api_client.put(
+        f"/year-ends/{year_end_id}/report-setup",
+        headers=headers,
+        json=_display({"auditor": True}),
+    )
+    assert unknown.status_code == 422, unknown.text
+
+    toggled = await api_client.put(
+        f"/year-ends/{year_end_id}/report-setup",
+        headers=headers,
+        json=_display({"cover": False, "cash-flow": True, "income": True}),
+    )
+    assert toggled.status_code == 200, toggled.text
+    assert toggled.json()["sections"] == {
+        "cover": False,
+        "cash-flow": True,
+        "income": True,
+    }
+    kept = await api_client.put(
+        f"/year-ends/{year_end_id}/report-setup",
+        headers=headers,
+        json=_display(),
+    )
+    assert kept.status_code == 200, kept.text
+    assert kept.json()["sections"] == {
+        "cover": False,
+        "cash-flow": True,
+        "income": True,
+    }
+    after_toggle = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
+        headers=headers,
+    )
+    assert after_toggle.status_code == 200, after_toggle.text
+    assert _figures(after_toggle.json()) == figures
     assert _snapshot(org_id, year_end_id) == anchor
 
 
@@ -338,5 +412,67 @@ def test_engine_sources_have_no_report_setup_import() -> None:
         "app/services/statutory_present.py",
         "app/services/draft_workflow.py",
     ):
-        text = (_ROOT / name).read_text(encoding="utf-8")
-        assert "report_setup" not in text
+        source = (_ROOT / name).read_text(encoding="utf-8")
+        assert "report_setup" not in source
+    engine = _ROOT.parent / "findraft" / "engine"
+    for path in engine.rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        assert "report_setup" not in source
+        assert "statutory_compose" not in source
+
+
+def test_pack_declares_section_locks_and_defaults() -> None:
+    from app.schemas.report_setup import pack_section_catalogue
+
+    catalogue = pack_section_catalogue()
+    assert set(catalogue) == {
+        "cover",
+        "contents",
+        "directors-info",
+        "directors-report",
+        "directors-responsibilities",
+        "compilation",
+        "income",
+        "oci",
+        "sofp",
+        "socie",
+        "cash-flow",
+        "notes",
+        "trading",
+    }
+    locked = sorted(
+        section_id
+        for section_id, rule in catalogue.items()
+        if rule["lock"] == "locked"
+    )
+    assert locked == ["income", "notes", "sofp"]
+    assert catalogue["income"]["default"] == "on"
+    assert catalogue["oci"]["default"] == "engine"
+    assert catalogue["cash-flow"]["default"] == "off"
+    assert catalogue["trading"]["default"] == "off"
+    assert catalogue["cover"]["source_status"] == "pending-reviewer-signoff"
+    assert catalogue["notes"]["group"] == "frs-locked"
+
+
+def test_company_column_migration_grants_are_explicit() -> None:
+    source = (
+        _ROOT / "alembic" / "versions" / "f2a3b4c5d6_company_advisers_and_share_classes.py"
+    ).read_text(encoding="utf-8")
+    assert 'revision: str = "f2a3b4c5d6"' in source
+    assert 'down_revision: Union[str, None] = "e1f2a3b4c5"' in source
+    assert "ADD COLUMN advisers JSONB" in source
+    assert "ADD COLUMN share_classes JSONB" in source
+    assert "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.companies TO findraft" in source
+    assert "REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE public.companies FROM findraft" in source
+    assert "GRANT ALL" not in source
+
+
+def test_application_code_does_not_read_the_new_company_columns() -> None:
+    """The columns exist for a later PR. This revision must not select them."""
+    for folder in ("backend/app", "frontend"):
+        for path in (_ROOT.parent / folder).rglob("*"):
+            if path.suffix not in {".py", ".ts", ".tsx"}:
+                continue
+            source = path.read_text(encoding="utf-8")
+            assert "advisers" not in source, path
+            assert "share_classes" not in source, path
