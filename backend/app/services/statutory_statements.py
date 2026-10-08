@@ -94,11 +94,18 @@ _DOCUMENT = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>{{ watermark }} statutory statements</title>
+<title>{{ page_header }} statutory statements</title>
 <style>
   @page {
     size: A4;
     margin: 16mm 14mm 22mm 14mm;
+    @top-left {
+      content: "{{ page_header }}";
+      font-family: sans-serif;
+      font-size: 9pt;
+      font-weight: 700;
+      color: #9a3412;
+    }
     @bottom-left {
       content: "The notes form part of these financial statements";
       font-family: sans-serif;
@@ -145,7 +152,7 @@ _DOCUMENT = """<!DOCTYPE html>
 </style>
 </head>
 <body>
-<p class="watermark">{{ watermark }}</p>
+<p class="watermark">{{ page_header }}</p>
 <h1>{{ company_name }}</h1>
 {% for section in sections %}
 <section data-section="{{ section.anchor }}"{% if section.page_break %} style="break-before: page; page-break-before: always;"{% endif %}>
@@ -1105,13 +1112,22 @@ def render_statutory_html(
     watermark: str,
     approval_date: str = "",
     signing_directors: str = "",
+    statement_label: str = "",
 ) -> str:
-    """Fill the document template. Callers supply the section list."""
+    """Fill the document template. Callers supply the section list.
+
+    ``page_header`` is the watermark, with an optional second label beside
+    it. A compilation draft stays ``DRAFT Compilation``. It does not become
+    ``COMPILATION``.
+    """
+    label = statement_label.strip()
+    page_header = f"{watermark} {label}" if label else watermark
     return _HTML.from_string(_DOCUMENT).render(
         company_name=company_name,
         sections=sections,
         signature=_signature_view(approval_date, signing_directors),
         watermark=watermark,
+        page_header=page_header,
     )
 
 
