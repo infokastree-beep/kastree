@@ -1,0 +1,134 @@
+# Fail a pull request when the backend suite, frontend tests, ruff, or mypy is red.
+# Pytest logs in as the superuser named findraft (the official Postgres image
+# makes POSTGRES_USER a superuser) and SET ROLE findraft_app for the
+# non-superuser path. findraft_app is created before migrations so the
+# GRANT/REVOKE statements in those revisions apply.
+name: Pull request tests
+
+on:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: findraft
+          POSTGRES_PASSWORD: local
+          POSTGRES_DB: findraft_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U findraft -d findraft_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://findraft:local@localhost:5432/findraft_ci
+      DATABASE_URL_SYNC: postgresql://findraft:local@localhost:5432/findraft_ci
+      APP_ENV: development
+      PYTHONPATH: ${{ github.workspace }}/backend:${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libcairo2 \
+            libpango-1.0-0 \
+            libpangocairo-1.0-0 \
+            libgdk-pixbuf-2.0-0 \
+            libffi-dev \
+            shared-mime-info \
+            tesseract-ocr \
+            tesseract-ocr-eng \
+            postgresql-client \
+            fonts-liberation
+
+      - name: Install Python dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Create the non-superuser application role
+        run: |
+          psql "$DATABASE_URL_SYNC" -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE findraft_app NOSUPERUSER NOBYPASSRLS NOLOGIN;
+          GRANT findraft_app TO findraft;
+          SQL
+
+      - name: Migrate from an empty database
+        working-directory: backend
+        run: |
+          alembic upgrade a1b2c3d4e5f6
+          psql "$DATABASE_URL_SYNC" -v ON_ERROR_STOP=1 -f scripts/bootstrap_stripe_rls_lookup.sql
+          alembic upgrade head
+          # Product 1 tables are created before any migration grants findraft_app.
+          # Give that role DML so RLS tests reach the policy. Leave audit_logs
+          # as the audit migration granted it: SELECT and INSERT only.
+          psql "$DATABASE_URL_SYNC" -v ON_ERROR_STOP=1 <<'SQL'
+          GRANT SELECT, INSERT, UPDATE, DELETE
+            ON organisations, users, clients, companies
+            TO findraft_app;
+          SQL
+
+      - name: Pytest
+        working-directory: backend
+        run: python -m pytest --tb=short -rP
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend tests
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run test:period-presets
+          npm run test:export-download
+          npm run test:api-base
+          npm run test:report-setup
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libcairo2 \
+            libpango-1.0-0 \
+            libpangocairo-1.0-0 \
+            libgdk-pixbuf-2.0-0 \
+            libffi-dev \
+            shared-mime-info
+
+      - name: Install Python dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Ruff
+        working-directory: backend
+        run: ruff check app
+
+      - name: Mypy
+        working-directory: backend
+        run: mypy app

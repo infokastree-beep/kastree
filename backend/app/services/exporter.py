@@ -215,7 +215,6 @@ def build_export(
     organisation: OrganisationTier,
 ) -> BuiltExport:
     """Build file bytes. Watermark follows organisation.subscription_tier only."""
-    watermark = tier_requires_watermark(organisation)
     if format == "xlsx":
         content = build_excel(branding, package, organisation=organisation)
         return BuiltExport(

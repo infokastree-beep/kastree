@@ -739,11 +739,11 @@ cleanup migration could drop `trial_balances.currency` and route all reads throu
 `companies.functional_currency` (with a one-time backfill/consistency check). Until
 then, keeping the column is low-cost denormalization with no user-facing benefit.
 
-## Infrastructure — pull requests run no tests, and Product 1 RLS casts an empty org id
+## Infrastructure — pull request tests, and Product 1 RLS casts an empty org id
 
-Two gaps found while fixing the statutory PDF tests. Neither is changed here.
+The Product 1 policy gap below is unchanged.
 
-**GitHub pull requests do not run the test suite.** The only workflow on a pull request to `main` is `.github/workflows/verify-remotes.yml`, job `deploy-source`. That job prints the commit SHA and reminds contributors that Railway deploys from GitHub. It does not run pytest, ruff, mypy, or the frontend `test:*` scripts. A green pull-request check therefore does not mean the backend suite passed. Pushing to `main` also runs `verify-production-frontend.yml`, which checks that www.kastree.ie serves that SHA. That workflow is not a test run either.
+**GitHub pull requests run the test suite.** `.github/workflows/pr-tests.yml` starts Postgres 15, connects as a superuser login named `findraft`, creates the non-superuser `findraft_app` role before migrating, applies migrations from an empty database (upgrade to `a1b2c3d4e5f6`, then `backend/scripts/bootstrap_stripe_rls_lookup.sql`, then upgrade to head), and fails if pytest, the frontend `test:*` scripts, `ruff check app`, or `mypy app` fails. `.github/workflows/verify-remotes.yml` still only prints the commit SHA. Pushing to `main` also runs `verify-production-frontend.yml`, which checks that www.kastree.ie serves that SHA. That workflow is not a test run.
 
 **Product 1 `companies` and `clients` policies cast the org setting without `NULLIF`.** `companies_org_isolation` uses `current_setting('app.current_org_id')::UUID` inside the client lookup, and `clients_org_isolation` uses `org_id = current_setting('app.current_org_id')::UUID`. There is no `NULLIF`. After `set_config('app.current_org_id', ..., true)` the setting is transaction-local, so `commit()` leaves it as `''`. The next statement on that connection then raises `invalid input syntax for type uuid: ""` instead of matching zero rows. Newer tables (source documents, trial-balance versions, fixed-asset versions, drafts, render jobs, confirmed mappings, and the audit-log chain) use `NULLIF(current_setting('app.current_org_id', true), '')::uuid`, which returns no rows when the setting is missing or empty. Do not change the Product 1 policies until that difference is chosen on purpose. A `NULLIF` form would hide the rows rather than raise, so a test that forgot to set the org id would update zero rows and continue.
 
