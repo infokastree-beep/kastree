@@ -182,16 +182,6 @@ def _heading_page(pages: list[str], heading: str) -> int:
     raise AssertionError(heading)
 
 
-def _contents_number(page: str, label: str) -> int:
-    pattern = re.compile(rf"^{re.escape(label)}\s+(\d+)\s*$")
-    for line in page.splitlines():
-        cleaned = line.strip().lstrip("•").strip()
-        match = pattern.match(cleaned)
-        if match is not None:
-            return int(match.group(1))
-    raise AssertionError(label)
-
-
 def _page_number_shown(page: str, number: int) -> bool:
     token = str(number)
     return any(line.split()[-1:] == [token] for line in page.splitlines())
@@ -207,27 +197,61 @@ _FLOWING = (
 )
 
 
+def _contents_entries(html: str) -> list[tuple[str, str]]:
+    """Anchor and visible label for every contents row, in pack order."""
+    import html as html_lib
+
+    marker = '<section data-section="contents"'
+    start = html.index(marker)
+    block = html[start : html.index("</section>", start)]
+    found = re.findall(r'href="#([^"]+)">([^<]+)</a>', block)
+    assert found
+    return [(anchor, html_lib.unescape(label)) for anchor, label in found]
+
+
+def _anchor_pages(html: str) -> tuple[dict[str, int], bytes, int]:
+    """Page each id lands on, from the same render that writes the PDF."""
+    from weasyprint import HTML
+
+    from app.services.statutory_statements import _abort_on_fetch
+
+    rendered = HTML(string=html, url_fetcher=_abort_on_fetch).render()
+    found: dict[str, int] = {}
+    for number, page in enumerate(rendered.pages, start=1):
+        for name in page.anchors:
+            found.setdefault(str(name), number)
+    payload = rendered.write_pdf()
+    if not isinstance(payload, bytes):
+        raise AssertionError("statement PDF was not produced")
+    return found, payload, len(rendered.pages)
+
+
+def _printed_contents_number(text: str, label: str) -> int:
+    """The number printed after a contents label. Words may wrap."""
+    words = r"\s+".join(re.escape(word) for word in label.split())
+    match = re.search(words + r"\s+(\d+)\b", text)
+    if match is None:
+        raise AssertionError(label)
+    return int(match.group(1))
+
+
 def test_contents_page_numbers_match_the_pages() -> None:
+    """Each contents number is the page that heading is on, whatever the font."""
     document = _golden()
     html = _compose(document, _setup())
-    pages = [page for page in _pdf_pages(write_statement_pdf(html)) if page.strip()]
-    assert pages
-    assert all(page.strip() for page in pages)
-    contents = pages[_heading_page(pages, "Contents") - 1]
-    assert "Financial statements" not in contents
-    labels = (
-        "Directors and other information",
-        "Directors' report",
-        "Directors' responsibilities statement",
-        "Compilation report",
-        "Approval of the financial statements",
-        "Audit exemption",
-        "Income statement",
-        "Statement of financial position",
-        "Notes",
-    )
-    for label in labels:
-        assert _contents_number(contents, label) == _heading_page(pages, label), label
+    anchors, payload, rendered_pages = _anchor_pages(html)
+    pages = _pdf_pages(payload)
+    if pages and pages[-1] == "":
+        pages.pop()
+    assert len(pages) == rendered_pages
+    contents_at = anchors["contents"]
+    contents_text = "\n".join(pages[contents_at - 1 : contents_at + 1])
+    assert "Financial statements" not in pages[contents_at - 1]
+    entries = _contents_entries(html)
+    assert entries
+    for anchor, label in entries:
+        assert anchor in anchors, anchor
+        assert _printed_contents_number(contents_text, label) == anchors[anchor], label
     assert document.net_assets == Decimal("455812.00")
     assert document.profit == Decimal("157650.00")
 
@@ -283,7 +307,7 @@ def test_notes_footer_and_page_numbers_follow_the_page() -> None:
 
 
 def test_short_sections_share_a_page() -> None:
-    """That golden draft was 14 pages when every section started alone. It is 10 now."""
+    """Short narrative sections share a sheet. The sheet count follows the font."""
     document = _golden()
     html = _compose(document, _setup())
     assert 'data-section="directors-report"' in html
@@ -305,7 +329,6 @@ def test_short_sections_share_a_page() -> None:
     starts = [_heading_page(pages, heading) for heading in forced]
     assert starts == sorted(starts)
     assert len(set(starts)) == len(starts)
-    assert len(pages) == 10
     assert document.net_assets == Decimal("455812.00")
     assert document.profit == Decimal("157650.00")
 
