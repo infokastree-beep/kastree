@@ -105,9 +105,19 @@ describe("sectionsForFramework", () => {
       "Outputs",
       "Cover",
       "Draft PDF",
+      "cash-flow",
+      "oci",
+      "socie",
+      "trading",
+      "Statement of comprehensive income",
+      "Statement of changes in equity",
+      "Cash flow statement",
+      "Supplementary trading statement",
     ]) {
       assert.equal(source.includes(word), false, word);
     }
+    assert.equal(source.includes("section.built === false"), true);
+    assert.equal(source.includes("not built"), true);
     assert.equal(source.includes('section.lock === "user"'), true);
     assert.equal(source.includes("statutory-toggle-"), true);
     assert.equal(source.includes("opacity-50"), true);

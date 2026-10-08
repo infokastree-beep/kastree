@@ -23,11 +23,11 @@
     {"id": "directors-responsibilities", "order": 5, "label": "Directors' responsibilities statement", "group": "usually-required", "default": "on", "lock": "user", "source_status": "pending-reviewer-signoff"},
     {"id": "compilation", "order": 6, "label": "Compilation report", "group": "usually-required", "default": "on", "lock": "user", "source_status": "pending-reviewer-signoff"},
     {"id": "income", "order": 7, "label": "Income statement", "group": "frs-locked", "default": "on", "lock": "locked", "source_status": "frs-102-1a"},
-    {"id": "oci", "order": 8, "label": "Statement of comprehensive income", "group": "engine-conditional", "default": "engine", "lock": "user", "source_status": "pending-reviewer-signoff"},
+    {"id": "oci", "order": 8, "label": "Statement of comprehensive income", "group": "engine-conditional", "default": "engine", "lock": "user", "source_status": "pending-reviewer-signoff", "built": false},
     {"id": "sofp", "order": 9, "label": "Statement of financial position", "group": "frs-locked", "default": "on", "lock": "locked", "source_status": "frs-102-1a"},
-    {"id": "socie", "order": 10, "label": "Statement of changes in equity", "group": "engine-conditional", "default": "engine", "lock": "user", "source_status": "pending-reviewer-signoff"},
-    {"id": "cash-flow", "order": 11, "label": "Cash flow statement", "group": "off", "default": "off", "lock": "user", "source_status": "pending-reviewer-signoff"},
+    {"id": "socie", "order": 10, "label": "Statement of changes in equity", "group": "engine-conditional", "default": "engine", "lock": "user", "source_status": "pending-reviewer-signoff", "built": false},
+    {"id": "cash-flow", "order": 11, "label": "Cash flow statement", "group": "off", "default": "off", "lock": "user", "source_status": "pending-reviewer-signoff", "built": false},
     {"id": "notes", "order": 12, "label": "Notes", "group": "frs-locked", "default": "on", "lock": "locked", "source_status": "frs-102-1a"},
-    {"id": "trading", "order": 13, "label": "Supplementary trading statement", "group": "off", "default": "off", "lock": "user", "source_status": "pending-reviewer-signoff"}
+    {"id": "trading", "order": 13, "label": "Supplementary trading statement", "group": "off", "default": "off", "lock": "user", "source_status": "pending-reviewer-signoff", "built": false}
   ]
 }

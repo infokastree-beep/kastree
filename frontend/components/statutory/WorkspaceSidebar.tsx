@@ -83,7 +83,12 @@ export function WorkspaceSidebar({
                           : "text-ink hover:bg-surface-elevated"
                       }`}
                     >
-                      {section.label}
+                      <span className="block leading-snug">{section.label}</span>
+                      {section.built === false ? (
+                        <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.08em] opacity-70">
+                          not built
+                        </span>
+                      ) : null}
                     </button>
                   </div>
                 </li>

@@ -442,6 +442,16 @@ async def test_framework_catalogue_is_not_a_single_frs_list(
     assert "inputs" not in form_groups
     assert "Extracts summary" not in form_labels
     assert "Extracts summary" not in frs_labels
+    by_id = {
+        section["id"]: section for section in frameworks["frs102-1a-ie"]["sections"]
+    }
+    assert by_id["income"]["built"] is True
+    assert by_id["cover"]["built"] is True
+    assert by_id["oci"]["built"] is False
+    assert by_id["socie"]["built"] is False
+    assert by_id["cash-flow"]["built"] is False
+    assert by_id["trading"]["built"] is False
+    assert by_id["draft-pdf"]["built"] is None
 
 
 def test_engine_sources_have_no_report_setup_import() -> None:
@@ -488,6 +498,34 @@ def test_pack_declares_section_locks_and_defaults() -> None:
     assert catalogue["trading"]["default"] == "off"
     assert catalogue["cover"]["source_status"] == "pending-reviewer-signoff"
     assert catalogue["notes"]["group"] == "frs-locked"
+
+
+def test_not_built_comes_from_the_pack_flag() -> None:
+    import json
+
+    pack = json.loads(
+        (_ROOT.parent / "findraft/content/frs102-1a-ie/2024.09/pack.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    declared = pack["sections"]
+    assert isinstance(declared, list)
+    served = {section.id: section for section in sections_for("frs102-1a-ie")}
+    flagged: list[str] = []
+    for item in declared:
+        assert isinstance(item, dict)
+        section_id = item["id"]
+        assert isinstance(section_id, str)
+        expected = True if "built" not in item else item["built"]
+        assert isinstance(expected, bool)
+        assert served[section_id].built is expected
+        if expected is False:
+            flagged.append(section_id)
+    assert flagged == ["oci", "socie", "cash-flow", "trading"]
+    source = (_ROOT / "app/services/report_setup.py").read_text(encoding="utf-8")
+    assert "_NOT_BUILT" not in source
+    for token in ("oci", "socie", "cash-flow", "trading"):
+        assert token not in source
 
 
 def test_company_column_migration_grants_are_explicit() -> None:
