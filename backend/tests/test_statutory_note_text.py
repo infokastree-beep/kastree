@@ -80,6 +80,62 @@ def _sentences(body: str) -> list[str]:
     return [part.strip() for part in re.split(r"(?<=[.!?])\s+", body) if part.strip()]
 
 
+_COMMITMENT_FLAGS = (
+    "COMMITMENTS_EXIST",
+    "GUARANTEES_EXIST",
+    "SUBSEQUENT_EVENTS",
+    "PENSION_COMMITMENT",
+    "CHARGES_EXIST",
+    "OFF_BALANCE_ARRANGEMENT",
+)
+
+
+def test_unanswered_related_party_and_commitment_notes_are_one_line() -> None:
+    document = _golden()
+    assert document.net_assets == Decimal("455812.00")
+    assert document.profit == Decimal("157650.00")
+    related = next(note for note in document.notes if note.code == "N7_RPT")
+    commitments = next(note for note in document.notes if note.code == "N9_COMMITMENTS")
+    assert related.body == "[related party transactions not recorded]"
+    assert commitments.body == "[commitments and contingencies not recorded]"
+    assert "Companies Act 2014" not in related.body
+    declined = _golden(
+        disclosure_flags={
+            "RPT_EXISTS": False,
+            "DIRECTORS_EXIST": False,
+            **{name: False for name in _COMMITMENT_FLAGS},
+        }
+    )
+    assert declined.net_assets == document.net_assets
+    assert declined.profit == document.profit
+    assert "N7_RPT" not in {note.code for note in declined.notes}
+    assert "N9_COMMITMENTS" not in {note.code for note in declined.notes}
+    numbers = [int(note.title.split(".", 1)[0]) for note in declined.notes if note.title]
+    assert numbers == list(range(1, len(numbers) + 1))
+    affirmed = _golden(
+        disclosure_flags={
+            "RPT_EXISTS": True,
+            "COMMITMENTS_EXIST": True,
+        }
+    )
+    assert affirmed.net_assets == document.net_assets
+    assert affirmed.profit == document.profit
+    related_yes = next(note for note in affirmed.notes if note.code == "N7_RPT")
+    commitments_yes = next(note for note in affirmed.notes if note.code == "N9_COMMITMENTS")
+    assert "Companies Act 2014" in related_yes.body
+    assert "[related party transactions not recorded]" in related_yes.body
+    assert "[directors' aggregate disclosures not recorded]" in related_yes.body
+    for placeholder in (
+        "[capital commitments not recorded]",
+        "[retirement benefit commitments not recorded]",
+        "[guarantees and security not recorded]",
+        "[charges on assets not recorded]",
+        "[subsequent events not recorded]",
+    ):
+        assert placeholder in commitments_yes.body
+    assert commitments_yes.body != "[commitments and contingencies not recorded]"
+
+
 def test_a_missing_creditors_note_is_not_cited() -> None:
     source = (
         "Details of loans outstanding at the reporting date are set out below. "

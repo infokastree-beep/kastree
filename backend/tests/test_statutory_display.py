@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
+import tempfile
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -33,6 +36,15 @@ def test_whole_units_use_commas_and_brackets() -> None:
     assert format_whole(Decimal("0")) == "0"
     assert format_whole_prose(Decimal("157650"), "EUR") == "€157,650"
     assert format_whole_prose(Decimal("-10"), "GBP") == "(£10)"
+
+
+def test_a_first_period_longer_than_a_year_uses_the_shorter_phrase() -> None:
+    """No separate longer-period sentence. Both non-year lengths name the dates."""
+    short = statement_period_phrase(date(2026, 3, 1), date(2026, 12, 31))
+    longer = statement_period_phrase(date(2025, 1, 1), date(2026, 12, 31))
+    assert short == "for the period from 1 March 2026 to 31 December 2026"
+    assert longer == "for the period from 1 January 2025 to 31 December 2026"
+    assert is_twelve_months(date(2025, 1, 1), date(2026, 12, 31)) is False
 
 
 def test_twelve_months_and_a_shorter_period_use_different_phrases() -> None:
@@ -135,6 +147,93 @@ def test_a_non_euro_currency_does_not_change_the_irish_pack_wording() -> None:
     assert column_headings(
         period_end=date(2026, 12, 31), currency_code="CHF", comparative=True
     ) == ["2026 CHF", "2025 CHF"]
+
+
+def _pdf_pages(payload: bytes) -> list[str]:
+    exe = shutil.which("pdftotext")
+    assert exe is not None, "pdftotext is not installed"
+    with tempfile.NamedTemporaryFile(suffix=".pdf") as handle:
+        handle.write(payload)
+        handle.flush()
+        completed = subprocess.run(
+            [exe, "-layout", handle.name, "-"],
+            check=True,
+            capture_output=True,
+        )
+    return completed.stdout.decode("utf-8").split("\f")
+
+
+def test_each_statement_starts_on_its_own_page() -> None:
+    golden = build_statutory_statements(
+        prior_year_validated=True,
+        tb_lines=_lines(_TB),
+        mappings=_MAPPINGS,
+        prior_retained_earnings=Decimal("-322062.00"),
+        prior_canonical={
+            "FA_PLANT_COST": Decimal("111400.00"),
+            "RETAINED_EARNINGS": Decimal("-322062.00"),
+        },
+        fa_register=_FA_REGISTER,
+        entity=_entity(),
+        period_start="2025-01-01",
+        period_end="2025-12-31",
+    )
+    first = _first_period()
+    assert golden.net_assets == Decimal("455812.00")
+    assert golden.profit == Decimal("157650.00")
+    assert first.net_assets == Decimal("35000.00")
+    assert first.profit == Decimal("25000.00")
+    assert golden.html is not None and first.html is not None
+    for document in (golden, first):
+        pages = [page for page in _pdf_pages(write_statement_pdf(document.html)) if page.strip()]
+        sofp = next(index for index, page in enumerate(pages) if "Statement of financial position" in page)
+        income = next(index for index, page in enumerate(pages) if "Income statement" in page)
+        assert sofp > 0
+        assert "Statement of financial position" not in pages[0]
+        assert "as at" in pages[sofp]
+        assert document.compliance_statement in " ".join(pages[sofp].split())
+        assert "Line" in pages[sofp]
+        assert income > sofp
+        assert "Statement of financial position" not in pages[income]
+        assert pages[income].lstrip().startswith("Income statement")
+
+
+def test_directors_report_uses_the_same_period_end_as_the_face() -> None:
+    """The first-period file already passes period_end, so its report names the date.
+
+    The golden fixture used to omit that argument. The face and the directors'
+    report both read the same period_end string. An empty string is the only
+    path that prints the missing-date sentence.
+    """
+    golden = _golden()
+    assert golden.html is not None
+    assert "as at 31 December 2025" in golden.html
+    report = next(page for page in golden.pages if page.heading == "Directors' report")
+    assert report.paragraphs[0] == (
+        "The directors present their report for the year ended 31 December 2025."
+    )
+    first = _first_period()
+    first_report = next(page for page in first.pages if page.heading == "Directors' report")
+    assert first.html is not None
+    assert "as at 31 December 2026" in first.html
+    assert first_report.paragraphs[0] == (
+        "The directors present their report for the year ended 31 December 2026."
+    )
+    missing = build_statutory_statements(
+        prior_year_validated=True,
+        tb_lines=_lines(_TB),
+        mappings=_MAPPINGS,
+        prior_retained_earnings=Decimal("-322062.00"),
+        prior_canonical={
+            "FA_PLANT_COST": Decimal("111400.00"),
+            "RETAINED_EARNINGS": Decimal("-322062.00"),
+        },
+        fa_register=_FA_REGISTER,
+        entity=_entity(),
+    )
+    blank = next(page for page in missing.pages if page.heading == "Directors' report")
+    assert blank.paragraphs[0] == "The financial year end has not been recorded."
+    assert missing.net_assets == golden.net_assets
 
 
 def test_acceptance_pdfs_keep_the_engine_figures() -> None:
