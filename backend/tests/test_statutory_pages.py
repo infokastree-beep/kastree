@@ -15,7 +15,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import text
 
-from app.db import SyncSessionLocal
+from app.db import SyncSessionLocal, set_rls_org_id
 from app.main import app
 from app.services.docx_child import RENDER_AS_LIMIT
 from app.services.render_jobs import process_render_job
@@ -255,6 +255,7 @@ async def test_docx_job_escapes_formulas_and_replays(
         api_client, provisioned_org, stored_files, year_end_id
     )
     with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
         session.execute(
             text("UPDATE companies SET name = :name WHERE id = :id"),
             {"name": _FORMULA_NAME, "id": str(provisioned_org["company_id"])},
@@ -414,13 +415,16 @@ async def test_final_docx_reads_the_snapshot(
     )
     headers = auth_headers(provisioned_org["token"])
     with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
         original = session.execute(
             text("SELECT name FROM companies WHERE id = :id"),
             {"id": str(provisioned_org["company_id"])},
         ).scalar_one()
         session.execute(
-            text("UPDATE companies SET industry = :industry WHERE id = :id"),
-            {"industry": "Widgets", "id": str(provisioned_org["company_id"])},
+            text(
+                "UPDATE companies SET principal_activity = :activity WHERE id = :id"
+            ),
+            {"activity": "Widgets", "id": str(provisioned_org["company_id"])},
         )
         session.commit()
     version = await api_client.get(
@@ -432,6 +436,15 @@ async def test_final_docx_reads_the_snapshot(
     row_version = await _answer_disclosures(
         api_client, headers, year_end_id, draft_id, 1
     )
+    approved = await api_client.put(
+        f"/year-ends/{year_end_id}/approval",
+        headers=headers,
+        json={
+            "approval_date": "2027-03-15",
+            "signing_directors": ["Ada Lovelace"],
+        },
+    )
+    assert approved.status_code == 200, approved.text
     finalised = await api_client.post(
         _draft_path(year_end_id, draft_id, "finalise"),
         headers={**headers, "Idempotency-Key": "week11-final"},
@@ -439,14 +452,15 @@ async def test_final_docx_reads_the_snapshot(
     )
     assert finalised.status_code == 200, finalised.text
     with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
         session.execute(
             text(
-                "UPDATE companies SET name = :name, industry = :industry "
-                "WHERE id = :id"
+                "UPDATE companies SET name = :name, "
+                "principal_activity = :activity WHERE id = :id"
             ),
             {
                 "name": "Renamed After Final Limited",
-                "industry": "Should Not Appear",
+                "activity": "Should Not Appear",
                 "id": str(provisioned_org["company_id"]),
             },
         )

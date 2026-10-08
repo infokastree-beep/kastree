@@ -11,7 +11,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import text
 
-from app.db import SyncSessionLocal
+from app.db import SyncSessionLocal, set_rls_org_id
 from app.main import app
 from app.services.fa_import_worker import process_fa_version
 from app.services.source_storage import LocalPracticeStorage, get_source_storage
@@ -387,6 +387,8 @@ async def _ready_golden(
         )
         assert processed is not None
         assert processed.status == "ready"
+        # process_fa_version commits, which clears the transaction-local org id.
+        set_rls_org_id(session, provisioned_org["org_id"])
         session.execute(
             text(
                 "UPDATE companies SET registered_office = :office, "
