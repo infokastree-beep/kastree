@@ -37,6 +37,7 @@ class WorkspaceSection:
     lock: str | None = None
     default: str | None = None
     built: bool | None = None
+    children: str | None = None
 
 
 @dataclass(frozen=True)
@@ -61,6 +62,27 @@ _WORKSPACE_BEFORE: tuple[WorkspaceSection, ...] = (
     WorkspaceSection("disclosures", "Disclosures", "inputs", "Inputs", 5),
     WorkspaceSection("company-details", "Company details", "inputs", "Inputs", 6),
 )
+
+
+def section_children_marker(item: dict[str, object]) -> str | None:
+    """Pack tree marker. ``printed-notes`` expands from the composed notes."""
+    if "children" not in item:
+        return None
+    raw = item["children"]
+    if raw == "printed-notes":
+        return "printed-notes"
+    if isinstance(raw, list):
+        for child in raw:
+            if not isinstance(child, dict):
+                raise ValueError("pack section children are malformed")
+            child_id = child.get("id")
+            label = child.get("label")
+            if not isinstance(child_id, str) or not child_id:
+                raise ValueError("pack section children are malformed")
+            if not isinstance(label, str) or not label:
+                raise ValueError("pack section children are malformed")
+        return "declared" if raw else None
+    raise ValueError("pack section children are malformed")
 
 
 def _pack_sidebar() -> tuple[WorkspaceSection, ...]:
@@ -91,6 +113,7 @@ def _pack_sidebar() -> tuple[WorkspaceSection, ...]:
                 lock=rule["lock"],
                 default=rule["default"],
                 built=section_id not in _NOT_BUILT,
+                children=section_children_marker(item),
             )
         )
         order += 1
@@ -175,6 +198,7 @@ def framework_list() -> ReportingFrameworkList:
                         lock=section.lock,
                         default=section.default,
                         built=section.built,
+                        children=section.children,
                     )
                     for section in framework.sections
                 ],

@@ -512,6 +512,25 @@ def test_company_column_migration_grants_are_explicit() -> None:
     assert "GRANT ALL" not in source
 
 
+def test_notes_children_come_from_the_pack() -> None:
+    from app.services.report_setup import section_children_marker
+
+    notes = next(section for section in sections_for("frs102-1a-ie") if section.id == "notes")
+    assert notes.children == "printed-notes"
+    cover = next(section for section in sections_for("frs102-1a-ie") if section.id == "cover")
+    assert cover.children is None
+    assert section_children_marker({"children": "printed-notes"}) == "printed-notes"
+    assert section_children_marker({}) is None
+    assert (
+        section_children_marker(
+            {"children": [{"id": "approval", "label": "Approval"}]}
+        )
+        == "declared"
+    )
+    with pytest.raises(ValueError, match="children are malformed"):
+        section_children_marker({"children": "made-up"})
+
+
 def test_company_model_maps_advisers_and_share_classes() -> None:
     """Migration f2a3b4c5d6 is applied. The form and the note may read them."""
     from app.models.company import Company

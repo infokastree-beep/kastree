@@ -182,8 +182,11 @@ def test_golden_render_keeps_engine_figures_and_zero_lines() -> None:
         "157650.00",
     ):
         assert hidden not in html
-    assert "N2_FA" not in html
-    assert "N3_DEBTORS" not in html
+    assert 'id="note-N2_FA"' in html
+    assert 'id="note-N3_DEBTORS"' in html
+    visible = html.replace('id="note-N2_FA"', "").replace('id="note-N3_DEBTORS"', "")
+    assert "N2_FA" not in visible
+    assert "N3_DEBTORS" not in visible
     assert "TRADE_DEBTORS" not in html
     assert "statement of changes in retained earnings" not in html.lower()
     assert "V-BANK-001" not in {item.code for item in document.checks}

@@ -204,6 +204,7 @@ _DOCUMENT = """<!DOCTYPE html>
 <h2>{{ section.heading }}</h2>
 {% for note in section.notes %}
 <section class="note-block">
+<a id="note-{{ note.code }}"></a>
 <h3 class="note-title">{{ note.title }}</h3>
 <div class="note-body note-intro">{{ note.body }}</div>
 {% if note.lines %}

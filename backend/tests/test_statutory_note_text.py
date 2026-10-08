@@ -181,7 +181,8 @@ def test_note_sentences_name_only_rendered_statements_and_notes() -> None:
                     assert int(match.group(1)) in numbers, sentence
         html = document.html
         for code in _INTERNAL_CODES:
-            assert code not in html
+            visible = html.replace(f'id="note-{code}"', "")
+            assert code not in visible
         income_html = _section_html(html, "income")
         sofp_html = _section_html(html, "sofp")
         assert "<th>Notes</th>" not in income_html
