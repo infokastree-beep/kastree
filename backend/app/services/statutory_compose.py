@@ -68,7 +68,11 @@ _ENGINE_HEADINGS = {
     "approval": "Approval of the financial statements",
     "audit-exemption": "Audit exemption",
 }
-_CSS_PAGE_BREAK = frozenset({"income", "sofp"})
+# These start a page. The directors' narrative pages flow on after directors-info.
+_PAGE_START = frozenset(
+    {"cover", "contents", "directors-info", "income", "sofp", "notes"}
+)
+_NOTES_FOOTER = frozenset({"income", "sofp", "notes"})
 _STATEMENTS = frozenset({"income", "sofp", "notes"})
 
 
@@ -225,6 +229,7 @@ def compose_pdf_html(
         approval_date=approved,
         signing_directors=_signing_phrase(signing_directors),
         statement_label=_statement_label(document, setup.statement_type),
+        composed=True,
     )
 
 
@@ -421,12 +426,15 @@ def _advisers_line(advisers: tuple[dict[str, object], ...]) -> str:
     return "Advisers: " + "; ".join(parts) + "."
 
 
-def _cover_paragraphs(period_phrase: str, period_note: str) -> list[str]:
+def _cover_paragraphs(
+    period_phrase: str, period_note: str, company_number: str
+) -> list[str]:
     paragraphs: list[str] = []
     if period_phrase:
         paragraphs.append(period_phrase)
     if period_note:
         paragraphs.append(period_note)
+    paragraphs.append(f"Company number: {_shown(company_number)}")
     return paragraphs
 
 
@@ -452,21 +460,28 @@ def _prose(
     anchor: str,
     heading: str,
     paragraphs: list[str],
-    page_break: bool,
 ) -> dict[str, object]:
     return {
         "kind": "prose",
         "anchor": anchor,
         "heading": heading,
         "paragraphs": paragraphs,
-        "page_break": page_break,
     }
 
 
-def _contents_label(section_id: str, label: str) -> str:
-    if section_id == "cover":
-        return "Financial statements"
-    return label
+def _with_furniture(
+    section: dict[str, object],
+    *,
+    page_break: bool,
+    notes_footer: bool,
+    cover_page: bool,
+) -> dict[str, object]:
+    section["page_break"] = page_break
+    if notes_footer:
+        section["notes_footer"] = True
+    if cover_page:
+        section["cover_page"] = True
+    return section
 
 
 def _composed_sections(
@@ -500,74 +515,64 @@ def _composed_sections(
             continue
         planned.append((section_id, label))
     contents = [
-        {"label": _contents_label(section_id, label), "anchor": section_id}
+        {"label": label, "anchor": section_id}
         for section_id, label in planned
-        if section_id != "contents"
+        if section_id not in {"cover", "contents"}
     ]
     sections: list[dict[str, object]] = []
     for index, (section_id, label) in enumerate(planned):
-        page_break = index > 0 and section_id not in _CSS_PAGE_BREAK
+        page_break = index > 0 and section_id in _PAGE_START
+        notes_footer = section_id in _NOTES_FOOTER
+        cover_page = section_id == "cover"
+        block: dict[str, object] | None = None
         if section_id == "cover":
-            sections.append(
-                _prose(
-                    anchor="cover",
-                    heading="Financial statements",
-                    paragraphs=_cover_paragraphs(period_phrase, period_note),
-                    page_break=page_break,
-                )
+            block = _prose(
+                anchor="cover",
+                heading="Financial statements",
+                paragraphs=_cover_paragraphs(
+                    period_phrase, period_note, letterhead.company_number
+                ),
             )
-            continue
-        if section_id == "contents":
-            sections.append(
-                {
-                    "kind": "contents",
-                    "anchor": "contents",
-                    "heading": "Contents",
-                    "entries": contents,
-                    "page_break": page_break,
-                }
+        elif section_id == "contents":
+            block = {
+                "kind": "contents",
+                "anchor": "contents",
+                "heading": "Contents",
+                "entries": contents,
+            }
+        elif section_id == "directors-info":
+            block = _prose(
+                anchor="directors-info",
+                heading=label,
+                paragraphs=_directors_info_paragraphs(letterhead),
             )
-            continue
-        if section_id == "directors-info":
-            sections.append(
-                _prose(
-                    anchor="directors-info",
-                    heading=label,
-                    paragraphs=_directors_info_paragraphs(letterhead),
-                    page_break=page_break,
-                )
+        elif section_id == "directors-responsibilities":
+            block = _prose(
+                anchor="directors-responsibilities",
+                heading=label,
+                paragraphs=[DIRECTORS_RESPONSIBILITIES],
             )
-            continue
-        if section_id == "directors-responsibilities":
-            sections.append(
-                _prose(
-                    anchor="directors-responsibilities",
-                    heading=label,
-                    paragraphs=[DIRECTORS_RESPONSIBILITIES],
-                    page_break=page_break,
-                )
-            )
-            continue
-        if section_id in engine:
+        elif section_id in engine:
             page = engine[section_id]
-            sections.append(
-                _prose(
-                    anchor=section_id,
-                    heading=page.heading,
-                    paragraphs=list(page.paragraphs),
-                    page_break=page_break,
-                )
+            block = _prose(
+                anchor=section_id,
+                heading=page.heading,
+                paragraphs=list(page.paragraphs),
             )
-            continue
-        if section_id in _STATEMENTS:
+        elif section_id in _STATEMENTS:
             block = dict(built[section_id])
-            block["page_break"] = page_break
-            sections.append(block)
-            continue
-        if section_id in _UNBUILT:
+        elif section_id in _UNBUILT:
             block = _not_built(section_id, label)
-            block["page_break"] = page_break
-            sections.append(block)
+        if block is None:
+            continue
+        sections.append(
+            _with_furniture(
+                block,
+                page_break=page_break,
+                notes_footer=notes_footer,
+                cover_page=cover_page,
+            )
+        )
     return sections
 
 
@@ -577,7 +582,6 @@ def _not_built(section_id: str, label: str) -> dict[str, object]:
         "anchor": section_id,
         "heading": label,
         "paragraphs": [NOT_BUILT_LINE],
-        "page_break": True,
     }
 
 

@@ -84,10 +84,10 @@ def test_unset_report_setup_adds_the_default_pages_and_keeps_engine_html() -> No
     assert document.profit == Decimal("157650.00")
     html = _compose(document, None)
     assert document.html == engine
-    assert "<h2>Financial statements</h2>" in html
-    assert "<h2>Contents</h2>" in html
-    assert "<h2>Directors and other information</h2>" in html
-    assert "<h2>Directors&#39; responsibilities statement</h2>" in html
+    assert ">Financial statements</h2>" in html
+    assert ">Contents</h2>" in html
+    assert ">Directors and other information</h2>" in html
+    assert ">Directors&#39; responsibilities statement</h2>" in html
     assert "2025 €" in html
     assert "455,812" in html
     assert "in thousands" not in document.html
@@ -105,7 +105,7 @@ def test_matching_display_settings_keep_the_engine_figures() -> None:
     assert document.html == engine
     assert "455,812" in reprinted
     assert "157,650" in reprinted
-    assert "<h2>Financial statements</h2>" in reprinted
+    assert ">Financial statements</h2>" in reprinted
     assert document.net_assets == Decimal("455812.00")
     assert document.profit == Decimal("157650.00")
 
@@ -120,16 +120,16 @@ def test_a_built_section_drops_out_and_comes_back() -> None:
         _setup(sections={"directors-report": False, "compilation": True}),
     )
     assert "Directors&#39; report" not in hidden
-    assert "<h2>Compilation report</h2>" in hidden
-    assert "<h2>Income statement</h2>" in hidden
-    assert "<h2>Statement of financial position</h2>" in hidden
-    assert "<h2>Notes</h2>" in hidden
-    assert "<h2>Approval of the financial statements</h2>" in hidden
+    assert ">Compilation report</h2>" in hidden
+    assert ">Income statement</h2>" in hidden
+    assert ">Statement of financial position</h2>" in hidden
+    assert ">Notes</h2>" in hidden
+    assert ">Approval of the financial statements</h2>" in hidden
     assert "455,812" in hidden
     assert "157,650" in hidden
     restored = _compose(document, _setup(sections={"directors-report": True}))
-    assert "<h2>Directors&#39; report</h2>" in restored
-    assert "<h2>Compilation report</h2>" in restored
+    assert ">Directors&#39; report</h2>" in restored
+    assert ">Compilation report</h2>" in restored
     assert document.profit == profit == Decimal("157650.00")
     assert document.net_assets == net_assets == Decimal("455812.00")
     assert statement_response(document).profit == "157650.00"
@@ -142,9 +142,9 @@ def test_a_locked_section_stays_when_a_stored_map_says_off() -> None:
         document,
         _setup(sections={"income": False, "sofp": False, "notes": False}),
     )
-    assert "<h2>Income statement</h2>" in html
-    assert "<h2>Statement of financial position</h2>" in html
-    assert "<h2>Notes</h2>" in html
+    assert ">Income statement</h2>" in html
+    assert ">Statement of financial position</h2>" in html
+    assert ">Notes</h2>" in html
     assert document.net_assets == Decimal("455812.00")
     assert document.profit == Decimal("157650.00")
 
@@ -152,28 +152,26 @@ def test_a_locked_section_stays_when_a_stored_map_says_off() -> None:
 def test_cover_contents_and_directors_pages_are_in_the_pdf() -> None:
     document = _golden()
     html = _compose(document, _setup())
-    assert "<h2>Cover</h2>" not in html
-    assert "<h2>Financial statements</h2>" in html
-    assert "<h2>Contents</h2>" in html
-    assert "<h2>Directors and other information</h2>" in html
-    assert "<h2>Directors&#39; responsibilities statement</h2>" in html
+    assert ">Cover</h2>" not in html
+    assert ">Financial statements</h2>" in html
+    assert ">Contents</h2>" in html
+    assert ">Directors and other information</h2>" in html
+    assert ">Directors&#39; responsibilities statement</h2>" in html
     assert NOT_BUILT_LINE not in html
-    assert html.index("<h2>Financial statements</h2>") < html.index("<h2>Contents</h2>")
-    assert html.index("<h2>Contents</h2>") < html.index(
-        "<h2>Directors and other information</h2>"
+    assert html.index(">Financial statements</h2>") < html.index(">Contents</h2>")
+    assert html.index(">Contents</h2>") < html.index(
+        ">Directors and other information</h2>"
     )
-    assert html.index("<h2>Directors and other information</h2>") < html.index(
-        "<h2>Directors&#39; report</h2>"
+    assert html.index(">Directors and other information</h2>") < html.index(
+        ">Directors&#39; report</h2>"
     )
-    assert html.index("<h2>Directors&#39; report</h2>") < html.index(
-        "<h2>Directors&#39; responsibilities statement</h2>"
+    assert html.index(">Directors&#39; report</h2>") < html.index(
+        ">Directors&#39; responsibilities statement</h2>"
     )
-    assert html.index(
-        "<h2>Directors&#39; responsibilities statement</h2>"
-    ) < html.index("<h2>Compilation report</h2>")
-    assert html.index("<h2>Compilation report</h2>") < html.index(
-        "<h2>Income statement</h2>"
+    assert html.index(">Directors&#39; responsibilities statement</h2>") < html.index(
+        ">Compilation report</h2>"
     )
+    assert html.index(">Compilation report</h2>") < html.index(">Income statement</h2>")
 
 
 def _heading_page(pages: list[str], heading: str) -> int:
@@ -194,6 +192,21 @@ def _contents_number(page: str, label: str) -> int:
     raise AssertionError(label)
 
 
+def _page_number_shown(page: str, number: int) -> bool:
+    token = str(number)
+    return any(line.split()[-1:] == [token] for line in page.splitlines())
+
+
+_NOTES_FOOTER = "The notes form part of these financial statements"
+_FLOWING = (
+    "Directors' report",
+    "Directors' responsibilities statement",
+    "Compilation report",
+    "Approval of the financial statements",
+    "Audit exemption",
+)
+
+
 def test_contents_page_numbers_match_the_pages() -> None:
     document = _golden()
     html = _compose(document, _setup())
@@ -201,8 +214,8 @@ def test_contents_page_numbers_match_the_pages() -> None:
     assert pages
     assert all(page.strip() for page in pages)
     contents = pages[_heading_page(pages, "Contents") - 1]
+    assert "Financial statements" not in contents
     labels = (
-        "Financial statements",
         "Directors and other information",
         "Directors' report",
         "Directors' responsibilities statement",
@@ -214,7 +227,85 @@ def test_contents_page_numbers_match_the_pages() -> None:
         "Notes",
     )
     for label in labels:
-        assert _contents_number(contents, label) == _heading_page(pages, label)
+        assert _contents_number(contents, label) == _heading_page(pages, label), label
+    assert document.net_assets == Decimal("455812.00")
+    assert document.profit == Decimal("157650.00")
+
+
+def test_cover_prints_the_company_number_without_a_footer_or_page_number() -> None:
+    document = _golden()
+    html = compose_pdf_html(
+        document,
+        report_setup=_setup(),
+        period_start=date(2025, 1, 1),
+        period_end=date(2025, 12, 31),
+        first_financial_period=False,
+        letterhead=CompanyLetterhead(company_number="AB123456"),
+    )
+    assert "Company number: AB123456" in html
+    pages = [page for page in _pdf_pages(write_statement_pdf(html)) if page.strip()]
+    cover = pages[0]
+    assert "Financial statements" in cover
+    assert "Company number: AB123456" in cover
+    assert "DRAFT" in cover
+    assert _NOTES_FOOTER not in cover
+    assert _page_number_shown(cover, 1) is False
+    assert document.net_assets == Decimal("455812.00")
+    assert document.profit == Decimal("157650.00")
+
+
+def test_notes_footer_and_page_numbers_follow_the_page() -> None:
+    document = _golden()
+    html = _compose(document, _setup())
+    pages = [page for page in _pdf_pages(write_statement_pdf(html)) if page.strip()]
+    notes_at = _heading_page(pages, "Notes")
+    for index, page in enumerate(pages, start=1):
+        assert "DRAFT" in page
+        if index == 1:
+            assert _NOTES_FOOTER not in page
+            assert _page_number_shown(page, 1) is False
+            continue
+        assert _page_number_shown(page, index), index
+        statement_page = (
+            any(line.strip() == "Income statement" for line in page.splitlines())
+            or any(
+                line.strip() == "Statement of financial position"
+                for line in page.splitlines()
+            )
+            or index >= notes_at
+        )
+        if statement_page:
+            assert _NOTES_FOOTER in page, index
+        else:
+            assert _NOTES_FOOTER not in page, index
+    assert document.net_assets == Decimal("455812.00")
+    assert document.profit == Decimal("157650.00")
+
+
+def test_short_sections_share_a_page() -> None:
+    """That golden draft was 14 pages when every section started alone. It is 10 now."""
+    document = _golden()
+    html = _compose(document, _setup())
+    assert 'data-section="directors-report"' in html
+    report = html.split('data-section="directors-report"', 1)[1].split(">", 1)[0]
+    assert "page-break-before" not in report
+    cash = html.split('data-section="income"', 1)[1].split(">", 1)[0]
+    assert "page-break-before" in cash
+    pages = [page for page in _pdf_pages(write_statement_pdf(html)) if page.strip()]
+    flowing_pages = {_heading_page(pages, heading) for heading in _FLOWING}
+    assert len(flowing_pages) < len(_FLOWING)
+    forced = (
+        "Financial statements",
+        "Contents",
+        "Directors and other information",
+        "Income statement",
+        "Statement of financial position",
+        "Notes",
+    )
+    starts = [_heading_page(pages, heading) for heading in forced]
+    assert starts == sorted(starts)
+    assert len(set(starts)) == len(starts)
+    assert len(pages) == 10
     assert document.net_assets == Decimal("455812.00")
     assert document.profit == Decimal("157650.00")
 
@@ -245,6 +336,21 @@ def test_directors_responsibilities_cite_no_act_section() -> None:
     assert 'data-testid="directors-responsibilities-source"' in workspace
     assert "source not confirmed" in workspace
     assert DIRECTORS_RESPONSIBILITIES in workspace
+    pack = (_ROOT.parent / "findraft/content/frs102-1a-ie/2024.09/pack.json").read_text(
+        encoding="utf-8"
+    )
+    compose_source = (_ROOT / "app/services/statutory_compose.py").read_text(
+        encoding="utf-8"
+    )
+    assert "DIRECTORS_RESPONSIBILITIES = (" in compose_source
+    assert "safeguarding the assets" in compose_source
+    assert "safeguarding the assets" not in pack
+    lowered = DIRECTORS_RESPONSIBILITIES.casefold()
+    assert "accounting policies" not in lowered
+    assert "prudent" not in lowered
+    assert "going concern" not in lowered
+    assert "accounting records" in lowered
+    assert "safeguarding" in lowered
 
 
 def test_advisers_print_on_the_directors_page() -> None:
@@ -282,22 +388,22 @@ def test_an_enabled_unbuilt_section_is_one_page_without_figures() -> None:
         document,
         _setup(sections={"cash-flow": True, "oci": True, "trading": False}),
     )
-    assert "<h2>Cash flow statement</h2>" in html
-    assert "<h2>Statement of comprehensive income</h2>" in html
-    assert "<h2>Supplementary trading statement</h2>" not in html
+    assert ">Cash flow statement</h2>" in html
+    assert ">Statement of comprehensive income</h2>" in html
+    assert ">Supplementary trading statement</h2>" not in html
     assert html.count(NOT_BUILT_LINE) == 2
     assert 'data-section="cash-flow"' in html
     assert "page-break-before: always" in html
-    assert html.index("<h2>Income statement</h2>") < html.index(
-        "<h2>Statement of comprehensive income</h2>"
+    assert html.index(">Income statement</h2>") < html.index(
+        ">Statement of comprehensive income</h2>"
     )
-    assert html.index("<h2>Statement of comprehensive income</h2>") < html.index(
-        "<h2>Statement of financial position</h2>"
+    assert html.index(">Statement of comprehensive income</h2>") < html.index(
+        ">Statement of financial position</h2>"
     )
-    assert html.index("<h2>Statement of financial position</h2>") < html.index(
-        "<h2>Cash flow statement</h2>"
+    assert html.index(">Statement of financial position</h2>") < html.index(
+        ">Cash flow statement</h2>"
     )
-    assert html.index("<h2>Cash flow statement</h2>") < html.index("<h2>Notes</h2>")
+    assert html.index(">Cash flow statement</h2>") < html.index(">Notes</h2>")
     assert document.net_assets == Decimal("455812.00")
     assert document.profit == Decimal("157650.00")
     assert "455812.00" not in html
@@ -610,9 +716,9 @@ async def test_downloaded_pdf_follows_the_include_list(
     )
     assert second.status_code == 200, second.text
     assert "Directors&#39; report" not in captured[1]
-    assert "<h2>Cash flow statement</h2>" in captured[1]
+    assert ">Cash flow statement</h2>" in captured[1]
     assert NOT_BUILT_LINE in captured[1]
-    assert "<h2>Income statement</h2>" in captured[1]
+    assert ">Income statement</h2>" in captured[1]
     after = await api_client.get(
         f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
         headers=headers,
@@ -632,7 +738,7 @@ async def test_downloaded_pdf_follows_the_include_list(
     )
     assert third.status_code == 200, third.text
     assert "Directors&#39; report" in captured[2]
-    assert "<h2>Cash flow statement</h2>" not in captured[2]
+    assert ">Cash flow statement</h2>" not in captured[2]
     assert after.json()["net_assets"] == "18400.40"
 
 

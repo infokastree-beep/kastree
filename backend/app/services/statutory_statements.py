@@ -96,6 +96,48 @@ _DOCUMENT = """<!DOCTYPE html>
 <meta charset="utf-8">
 <title>{{ page_header }} statutory statements</title>
 <style>
+  {% if composed %}
+  @page {
+    size: A4;
+    margin: 16mm 14mm 22mm 14mm;
+    @top-left {
+      content: "{{ page_header }}";
+      font-family: sans-serif;
+      font-size: 9pt;
+      font-weight: 700;
+      color: #9a3412;
+    }
+    @bottom-left {
+      content: string(notes_line);
+      font-family: sans-serif;
+      font-size: 8pt;
+      color: #333;
+    }
+    @bottom-right {
+      content: counter(page);
+      font-family: sans-serif;
+      font-size: 8pt;
+      color: #333;
+    }
+  }
+  {% if cover_first %}
+  @page :first {
+    @top-left {
+      content: "{{ page_header }}";
+      font-family: sans-serif;
+      font-size: 9pt;
+      font-weight: 700;
+      color: #9a3412;
+    }
+    @bottom-left { content: none; }
+    @bottom-right { content: none; }
+  }
+  {% endif %}
+  h2 { string-set: notes_line ""; }
+  section[data-notes-footer] h2 {
+    string-set: notes_line "The notes form part of these financial statements";
+  }
+  {% else %}
   @page {
     size: A4;
     margin: 16mm 14mm 22mm 14mm;
@@ -119,6 +161,12 @@ _DOCUMENT = """<!DOCTYPE html>
       color: #333;
     }
   }
+  section[data-section="sofp"],
+  section[data-section="income"] {
+    break-before: page;
+    page-break-before: always;
+  }
+  {% endif %}
   body { font-family: sans-serif; color: #111; }
   .watermark { color: #9a3412; font-weight: 700; letter-spacing: 0.12em; }
   h1, h2, h3 { break-after: avoid; page-break-after: avoid; }
@@ -130,11 +178,6 @@ _DOCUMENT = """<!DOCTYPE html>
   table.note-table {
     break-inside: avoid;
     page-break-inside: avoid;
-  }
-  section[data-section="sofp"],
-  section[data-section="income"] {
-    break-before: page;
-    page-break-before: always;
   }
   .statement-open {
     break-after: avoid;
@@ -157,15 +200,15 @@ _DOCUMENT = """<!DOCTYPE html>
 <p class="watermark">{{ page_header }}</p>
 <h1>{{ company_name }}</h1>
 {% for section in sections %}
-<section data-section="{{ section.anchor }}"{% if section.page_break %} style="break-before: page; page-break-before: always;"{% endif %}>
-<a id="{{ section.anchor }}"></a>
+<section data-section="{{ section.anchor }}"{% if section.notes_footer %} data-notes-footer="yes"{% endif %}{% if section.page_break %} style="break-before: page; page-break-before: always;"{% endif %}>
+{% if not composed %}<a id="{{ section.anchor }}"></a>{% endif %}
 {% if section.kind == "prose" %}
-<h2>{{ section.heading }}</h2>
+<h2{% if composed %} id="{{ section.anchor }}"{% endif %}>{{ section.heading }}</h2>
 {% for paragraph in section.paragraphs %}
 <p>{{ paragraph }}</p>
 {% endfor %}
 {% elif section.kind == "contents" %}
-<h2>{{ section.heading }}</h2>
+<h2{% if composed %} id="{{ section.anchor }}"{% endif %}>{{ section.heading }}</h2>
 <ul>
 {% for item in section.entries %}
 <li><a class="contents-link" href="#{{ item.anchor }}">{{ item.label }}</a></li>
@@ -173,7 +216,7 @@ _DOCUMENT = """<!DOCTYPE html>
 </ul>
 {% elif section.kind == "statement" %}
 <div class="statement-open">
-<h2>{{ section.heading }}</h2>
+<h2{% if composed %} id="{{ section.anchor }}"{% endif %}>{{ section.heading }}</h2>
 {% if section.period_phrase %}<p>{{ section.period_phrase }}</p>{% endif %}{% if section.period_note %}<p>{{ section.period_note }}</p>{% endif %}
 {% if section.compliance %}<p>{{ section.compliance }}</p>{% endif %}
 </div>
@@ -201,7 +244,7 @@ _DOCUMENT = """<!DOCTYPE html>
 </section>
 {% endif %}
 {% elif section.kind == "notes" %}
-<h2>{{ section.heading }}</h2>
+<h2{% if composed %} id="{{ section.anchor }}"{% endif %}>{{ section.heading }}</h2>
 {% for note in section.notes %}
 <section class="note-block">
 <h3 class="note-title">{{ note.title }}</h3>
@@ -1205,21 +1248,26 @@ def render_statutory_html(
     approval_date: str = "",
     signing_directors: str = "",
     statement_label: str = "",
+    composed: bool = False,
 ) -> str:
     """Fill the document template. Callers supply the section list.
 
     ``page_header`` is the watermark, with an optional second label beside
     it. A compilation draft stays ``DRAFT Compilation``. It does not become
-    ``COMPILATION``.
+    ``COMPILATION``. ``composed`` selects the PDF furniture. The engine
+    render leaves it false.
     """
     label = statement_label.strip()
     page_header = f"{watermark} {label}" if label else watermark
+    cover_first = composed and bool(sections) and sections[0].get("cover_page") is True
     return _HTML.from_string(_DOCUMENT).render(
         company_name=company_name,
         sections=sections,
         signature=_signature_view(approval_date, signing_directors),
         watermark=watermark,
         page_header=page_header,
+        composed=composed,
+        cover_first=cover_first,
     )
 
 
