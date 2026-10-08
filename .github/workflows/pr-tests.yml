@@ -1,0 +1,227 @@
+# Fail a pull request when the backend suite, the production-parity HTTP
+# suite, frontend tests, ruff, or strict mypy on the clean modules is red.
+# The backend job logs in as the superuser named findraft (the official
+# Postgres image makes POSTGRES_USER a superuser) and SET ROLE findraft_app
+# for the non-superuser path. findraft_app is created before migrations so
+# the GRANT/REVOKE statements in those revisions apply.
+# The parity job migrates as the postgres superuser, provisions the
+# NOSUPERUSER findraft login, and runs the HTTP tests through that login.
+name: Pull request tests
+
+on:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: findraft
+          POSTGRES_PASSWORD: local
+          POSTGRES_DB: findraft_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U findraft -d findraft_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://findraft:local@localhost:5432/findraft_ci
+      DATABASE_URL_SYNC: postgresql://findraft:local@localhost:5432/findraft_ci
+      APP_ENV: development
+      PYTHONPATH: ${{ github.workspace }}/backend:${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libcairo2 \
+            libpango-1.0-0 \
+            libpangocairo-1.0-0 \
+            libgdk-pixbuf-2.0-0 \
+            libffi-dev \
+            shared-mime-info \
+            tesseract-ocr \
+            tesseract-ocr-eng \
+            postgresql-client \
+            fonts-liberation \
+            poppler-utils
+
+      - name: Install Python dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Create the non-superuser application role
+        run: |
+          psql "$DATABASE_URL_SYNC" -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE findraft_app NOSUPERUSER NOBYPASSRLS NOLOGIN;
+          GRANT findraft_app TO findraft;
+          SQL
+
+      - name: Migrate from an empty database
+        working-directory: backend
+        run: |
+          alembic upgrade a1b2c3d4e5f6
+          psql "$DATABASE_URL_SYNC" -v ON_ERROR_STOP=1 -f scripts/bootstrap_stripe_rls_lookup.sql
+          alembic upgrade head
+          # Product 1 tables are created before any migration grants findraft_app.
+          # Give that role DML so RLS tests reach the policy. Leave audit_logs
+          # as the audit migration granted it: SELECT and INSERT only.
+          psql "$DATABASE_URL_SYNC" -v ON_ERROR_STOP=1 <<'SQL'
+          GRANT SELECT, INSERT, UPDATE, DELETE
+            ON organisations, users, clients, companies
+            TO findraft_app;
+          SQL
+
+      - name: Pytest
+        working-directory: backend
+        run: python -m pytest --tb=short -rP
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend tests
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run test:period-presets
+          npm run test:export-download
+          npm run test:api-base
+          npm run test:report-setup
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libcairo2 \
+            libpango-1.0-0 \
+            libpangocairo-1.0-0 \
+            libgdk-pixbuf-2.0-0 \
+            libffi-dev \
+            shared-mime-info
+
+      - name: Install Python dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Ruff
+        working-directory: backend
+        run: ruff check app
+
+      - name: Mypy strict on clean modules
+        working-directory: backend
+        run: xargs -a mypy_clean_modules.txt mypy --strict --follow-imports=silent
+
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: local
+          POSTGRES_DB: findraft_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d findraft_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://findraft:local@localhost:5432/findraft_ci
+      DATABASE_URL_SYNC: postgresql://findraft:local@localhost:5432/findraft_ci
+      DATABASE_OWNER_URL: postgresql://postgres:local@localhost:5432/findraft_ci
+      APP_ENV: development
+      PYTHONPATH: ${{ github.workspace }}/backend:${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libcairo2 \
+            libpango-1.0-0 \
+            libpangocairo-1.0-0 \
+            libgdk-pixbuf-2.0-0 \
+            libffi-dev \
+            shared-mime-info \
+            tesseract-ocr \
+            tesseract-ocr-eng \
+            postgresql-client \
+            fonts-liberation \
+            poppler-utils
+
+      - name: Install Python dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Create the production login before bootstrap
+        run: |
+          psql "postgresql://postgres:local@localhost:5432/findraft_ci" -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE findraft LOGIN PASSWORD 'local' NOSUPERUSER NOBYPASSRLS;
+          SQL
+
+      - name: Migrate as superuser, then provision findraft
+        working-directory: backend
+        env:
+          DATABASE_URL_SYNC: postgresql://postgres:local@localhost:5432/findraft_ci
+        run: |
+          alembic upgrade a1b2c3d4e5f6
+          psql "$DATABASE_URL_SYNC" -v ON_ERROR_STOP=1 -f scripts/bootstrap_stripe_rls_lookup.sql
+          alembic upgrade head
+          psql "$DATABASE_URL_SYNC" -v ON_ERROR_STOP=1 \
+            -v findraft_password=local \
+            -v database_name=findraft_ci \
+            -f scripts/provision_findraft_app_role.sql
+
+      - name: Print the API login role
+        run: |
+          psql "postgresql://findraft:local@localhost:5432/findraft_ci" -v ON_ERROR_STOP=1 -c \
+            "SELECT current_user AS login_role, rolsuper, rolbypassrls, rolcanlogin FROM pg_roles WHERE rolname = current_user;"
+
+      - name: HTTP tests that cannot use this login
+        working-directory: backend
+        run: |
+          echo "Excluded from the parity job. The main backend job still runs them."
+          cat scripts/parity_excluded_tests.txt
+
+      - name: Pytest as the NOSUPERUSER findraft login
+        working-directory: backend
+        run: |
+          mapfile -t excluded < <(grep -vE '^[[:space:]]*(#|$)' scripts/parity_excluded_tests.txt | awk '{print $1}')
+          args=()
+          for node in "${excluded[@]}"; do
+            args+=(--deselect "$node")
+          done
+          python -m pytest --tb=short "${args[@]}" $(grep -vE '^[[:space:]]*(#|$)' scripts/parity_http_tests.txt)

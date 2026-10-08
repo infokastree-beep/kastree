@@ -9,7 +9,7 @@ from decimal import Decimal
 from io import BytesIO
 
 import openpyxl
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -27,6 +27,19 @@ from app.schemas.variance import (
     VarianceAnalysisResult,
 )
 from tests.conftest import auth_headers
+
+
+@pytest.fixture
+def stub_openai_commentary(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests assert Python variance figures. They must not call OpenAI."""
+    client = MagicMock()
+    client.chat.completions.create.return_value = MagicMock(
+        choices=[MagicMock(message=MagicMock(content='{"commentaries": []}'))]
+    )
+    monkeypatch.setattr(
+        "app.services.commentary.OpenAI",
+        lambda *_args, **_kwargs: client,
+    )
 
 
 def _seed_tb(
@@ -151,6 +164,7 @@ def _seed_mapping(
 async def test_variance_generation_with_real_prior_period(
     api_client: AsyncClient,
     provisioned_org: dict,
+    stub_openai_commentary: None,
 ) -> None:
     org_id = provisioned_org["org_id"]
     company_id = provisioned_org["company_id"]
@@ -378,6 +392,7 @@ async def test_business_health_unavailable_without_prior_period(
 async def test_variance_auto_detect_picks_most_recent_prior_not_oldest(
     api_client: AsyncClient,
     provisioned_org: dict,
+    stub_openai_commentary: None,
 ) -> None:
     """§6.2: most recent period_end < current — not an older TB by accident."""
     org_id = provisioned_org["org_id"]
@@ -514,6 +529,7 @@ async def test_variance_prior_without_statements_returns_unavailable_not_error(
 async def test_variance_items_jsonb_round_trips_to_same_pydantic_model(
     api_client: AsyncClient,
     provisioned_org: dict,
+    stub_openai_commentary: None,
 ) -> None:
     """Write via to_jsonb(); read back into VarianceAnalysisResult — exact match."""
     org_id = provisioned_org["org_id"]
@@ -646,6 +662,7 @@ async def test_risk_negative_cash_flagged(
 async def test_risk_rule2_skipped_with_empty_history_not_fabricated(
     api_client: AsyncClient,
     provisioned_org: dict,
+    stub_openai_commentary: None,
 ) -> None:
     """Large variance_pct must NOT produce unusual_variance when history is empty."""
     org_id = provisioned_org["org_id"]
@@ -1029,6 +1046,7 @@ async def _upload_map_and_statements(
 async def test_monthly_cadence_upload_auto_detects_prior_variance(
     api_client: AsyncClient,
     provisioned_org: dict,
+    stub_openai_commentary: None,
 ) -> None:
     """June then July uploads: auto-detect prior and month-over-month variance."""
     headers = auth_headers(provisioned_org["token"])

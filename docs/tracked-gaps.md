@@ -739,11 +739,33 @@ cleanup migration could drop `trial_balances.currency` and route all reads throu
 `companies.functional_currency` (with a one-time backfill/consistency check). Until
 then, keeping the column is low-cost denormalization with no user-facing benefit.
 
-## Infrastructure — pull requests run no tests, and Product 1 RLS casts an empty org id
+## Infrastructure — pull request tests, and Product 1 RLS casts an empty org id
 
-Two gaps found while fixing the statutory PDF tests. Neither is changed here.
+The Product 1 policy gap below is unchanged.
 
-**GitHub pull requests do not run the test suite.** The only workflow on a pull request to `main` is `.github/workflows/verify-remotes.yml`, job `deploy-source`. That job prints the commit SHA and reminds contributors that Railway deploys from GitHub. It does not run pytest, ruff, mypy, or the frontend `test:*` scripts. A green pull-request check therefore does not mean the backend suite passed. Pushing to `main` also runs `verify-production-frontend.yml`, which checks that www.kastree.ie serves that SHA. That workflow is not a test run either.
+**GitHub pull requests run the test suite.** `.github/workflows/pr-tests.yml` starts Postgres 15. The backend job connects as a superuser login named `findraft`, creates the non-superuser `findraft_app` role before migrating, applies migrations from an empty database (upgrade to `a1b2c3d4e5f6`, then `backend/scripts/bootstrap_stripe_rls_lookup.sql`, then upgrade to head), and fails if pytest fails. A parity job migrates as the `postgres` superuser, runs `backend/scripts/provision_findraft_app_role.sql`, and runs the HTTP tests with the API logged in as `findraft` (`NOSUPERUSER`, `NOBYPASSRLS`). Tests that cannot run as that login are listed in `backend/scripts/parity_excluded_tests.txt` and still run in the backend job. The workflow also fails if the frontend `test:*` scripts, `ruff check app`, or `mypy --strict --follow-imports=silent` on `backend/mypy_clean_modules.txt` fails. Project-wide `mypy app` is not a pull-request gate. `.github/workflows/verify-remotes.yml` still only prints the commit SHA. Pushing to `main` also runs `verify-production-frontend.yml`, which checks that www.kastree.ie serves that SHA. That workflow is not a test run.
+
+## mypy — 99 project-wide errors, not a pull-request gate
+
+`mypy app` from `backend/` (mypy 1.13, config in `backend/mypy.ini`) reports **99 errors in 13 files** (144 files checked). These are existing debt. Pull requests gate `mypy --strict --follow-imports=silent` on the 117 modules in `backend/mypy_clean_modules.txt`, which currently report zero errors. Do not silence the 99 by editing the financial parsers, the exporter, or billing just to make `mypy app` pass. Burn them down file by file.
+
+Counts below are from `mypy app` (not `--strict`). Categories: **arg-type** 70, **import-untyped** 14, **attr-defined** 9, **assignment** 5, **union-attr** 1.
+
+| File | Errors | Categories |
+| --- | --- | --- |
+| `app/routers/billing.py` | 36 | arg-type. `stripe.checkout.Session.create` called with `**dict[str, object]`. |
+| `app/services/pdf_tb_extract.py` | 19 | 16 arg-type (`float(object)`), 3 import-untyped (`fitz`, `pytesseract`, `openpyxl`). |
+| `app/services/exporter.py` | 10 | 6 import-untyped (`openpyxl`, `openpyxl.styles`, `openpyxl.utils`, `openpyxl.worksheet.worksheet`, `weasyprint`, `boto3`), 3 attr-defined (`put_object`, `generate_presigned_url`, `head_object` on `object`), 1 union-attr (`date \| None` has no `strftime`). |
+| `app/routers/trial_balances.py` | 8 | 6 arg-type, 2 assignment (`FinancialStatement` vs `ProcessingJob`). |
+| `app/schemas/copilot.py` | 6 | 5 attr-defined (`EvidenceExpenseShare`), 1 assignment (`EvidenceVarianceItem`). |
+| `app/services/export_job.py` | 6 | arg-type (`Export` vs `ExportStatusTarget`, `Organisation` vs `OrganisationTier`). |
+| `app/services/parser.py` | 4 | 3 import-untyped (`openpyxl`, `pandas`, `fitz`), 1 attr-defined. |
+| `app/services/gl_to_tb.py` | 4 | 2 import-untyped (`openpyxl`, `pandas`), 2 assignment. |
+| `app/routers/export.py` | 2 | arg-type (`regenerate_export_if_missing`: `Export` vs `ExportStatusTarget`, `Organisation` vs `OrganisationTier`). |
+| `app/services/tb_pipeline.py` | 1 | arg-type (`list[TBRow]` vs `Sequence[MappableAccount]`). |
+| `app/routers/users.py` | 1 | arg-type (`role: str` vs the role `Literal`). |
+| `app/routers/admin.py` | 1 | arg-type (`Sequence[Row[tuple[User, str]]]` vs `Sequence[tuple[User, str]]`). |
+| `app/routers/risk.py` | 1 | arg-type (`list[object]` vs `Sequence[Mapping[str, Any] \| VarianceAnalysisResult]`). |
 
 **Product 1 `companies` and `clients` policies cast the org setting without `NULLIF`.** `companies_org_isolation` uses `current_setting('app.current_org_id')::UUID` inside the client lookup, and `clients_org_isolation` uses `org_id = current_setting('app.current_org_id')::UUID`. There is no `NULLIF`. After `set_config('app.current_org_id', ..., true)` the setting is transaction-local, so `commit()` leaves it as `''`. The next statement on that connection then raises `invalid input syntax for type uuid: ""` instead of matching zero rows. Newer tables (source documents, trial-balance versions, fixed-asset versions, drafts, render jobs, confirmed mappings, and the audit-log chain) use `NULLIF(current_setting('app.current_org_id', true), '')::uuid`, which returns no rows when the setting is missing or empty. Do not change the Product 1 policies until that difference is chosen on purpose. A `NULLIF` form would hide the rows rather than raise, so a test that forgot to set the org id would update zero rows and continue.
 

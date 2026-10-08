@@ -457,6 +457,8 @@ async def test_fresh_statutory_upload_gets_mapping_suggestions(
 
 
 def test_request_handler_does_not_parse_the_workbook() -> None:
-    source = Path("/workspace/backend/app/routers/year_ends.py").read_text()
+    source = (
+        Path(__file__).resolve().parents[1] / "app" / "routers" / "year_ends.py"
+    ).read_text()
     assert "openpyxl" not in source
     assert "parse_tb_file" not in source

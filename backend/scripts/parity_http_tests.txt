@@ -1,0 +1,37 @@
+# HTTP/API modules. The parity job runs these with DATABASE_URL pointing at
+# the NOSUPERUSER findraft login. Unit tests stay on the backend job.
+tests/test_api.py
+tests/test_admin_api.py
+tests/test_adopted_trial_balance.py
+tests/test_audit_gdpr.py
+tests/test_beta_practice.py
+tests/test_clerk_user_email.py
+tests/test_client_limits.py
+tests/test_clients_api.py
+tests/test_company_details.py
+tests/test_contact_api.py
+tests/test_draft_locking.py
+tests/test_export_api.py
+tests/test_fa_ingestion.py
+tests/test_founder_notifications.py
+tests/test_gl_convert_api.py
+tests/test_mapping_confirm.py
+tests/test_misc_api.py
+tests/test_organisations_api.py
+tests/test_pdf_extract_api.py
+tests/test_period_start_persistence.py
+tests/test_product2_access.py
+tests/test_reconciliation.py
+tests/test_report_setup.py
+tests/test_role_enforcement.py
+tests/test_sentry.py
+tests/test_source_documents_api.py
+tests/test_statutory_evidence.py
+tests/test_statutory_pages.py
+tests/test_statutory_statements.py
+tests/test_tb_ingestion.py
+tests/test_trial_balance_soft_delete.py
+tests/test_variance_risk_api.py
+tests/test_version_endpoint.py
+tests/test_waitlist_api.py
+tests/test_webhooks_api.py

@@ -1,0 +1,40 @@
+# These tests cannot run while both application URLs log in as production
+# findraft (NOSUPERUSER, NOBYPASSRLS, not the table owner). The backend job
+# still runs every one of them. Its login is a superuser, so RLS does not
+# apply to its session and it can SET ROLE findraft_app.
+#
+# Not in the HTTP list, for the same reason:
+# tests/test_findraft_tenant_isolation.py
+#   Every test asserts the login is superuser and then SET ROLE findraft_app.
+#   Cleanup also DISABLE TRIGGER, which only the table owner can do.
+# tests/test_companies_migration.py::test_rls_disable_rolls_back_when_transaction_aborts
+#   ALTER TABLE ... DISABLE ROW LEVEL SECURITY. The production login is not
+#   the table owner. The rest of that file drives Alembic, not the HTTP API.
+#
+# Two shapes below. (1) SET ROLE findraft_app or DISABLE TRIGGER. Production
+# provision does not create findraft_app, and only the table owner can
+# disable a trigger. (2) The test's own SQL does not call set_rls_org_id.
+# Product 1 policies then cast current_setting('app.current_org_id') and
+# raise invalid input syntax for type uuid: "". Newer policies use NULLIF
+# and return no rows, so a follow-up count or scalar_one fails. The HTTP
+# status in those tests had already succeeded. The assertions were not
+# changed.
+
+tests/test_api.py::test_clerk_webhook_provisions_first_org_under_rls  SET ROLE findraft_app, then reads organisations as that role. provision_findraft_app_role.sql does not create findraft_app.
+tests/test_api.py::test_fresh_signup_succeeds_under_force_rls_without_bypass  SET ROLE findraft_app around the naked insert and the bootstrap. Same missing role.
+tests/test_company_details.py::test_new_columns_stay_inside_the_practice  Calls _as_app_role (SET ROLE findraft_app) and _delete_org, which DISABLE TRIGGER.
+tests/test_adopted_trial_balance.py::test_findraft_app_cannot_adopt_another_practices_trial_balance  SET ROLE findraft_app, then DISABLE TRIGGER in _delete_org.
+tests/test_audit_gdpr.py::test_tampered_audit_row_breaks_the_chain  ALTER TABLE audit_logs DISABLE TRIGGER. Only the table owner can do that.
+tests/test_audit_gdpr.py::test_client_erasure_keeps_archive_and_company  After the HTTP erasure, SELECT name FROM clients with no org setting. The clients policy casts an empty org id.
+tests/test_audit_gdpr.py::test_user_erasure_keeps_the_row_and_refuses_the_last_owner  SELECT email FROM users with no org setting. Same empty-org cast.
+tests/test_beta_practice.py::test_beta_position_stays_unsigned_and_acknowledgement_is_once  The acknowledgement HTTP call succeeds, then SELECT audit_logs with no org setting returns zero rows.
+tests/test_draft_locking.py::test_week10_lock_adjust_and_freeze_final  The adjustment HTTP call succeeds, then SELECT findraft_adjustment_journals with no org setting returns zero rows.
+tests/test_fa_ingestion.py::test_register_stays_pending_until_the_worker_and_reimport_is_a_new_version  SELECT findraft_fa_lines with no org setting after the worker commits, so scalar_one finds no row.
+tests/test_fa_ingestion.py::test_size_eligibility_uses_the_pack_thresholds  UPDATE companies SET functional_currency with no org setting. The companies policy casts an empty org id.
+tests/test_source_documents_api.py::test_another_practice_cannot_read_or_upload_for_the_company  The HTTP hide/deny checks succeed. Cleanup DELETE FROM companies with no org setting then hits the empty-org cast.
+tests/test_adopted_trial_balance.py::test_adopted_golden_keeps_engine_figures_without_a_statutory_copy  _pointer selects findraft_year_ends with no org setting and finds no row.
+tests/test_adopted_trial_balance.py::test_adopt_refuses_incomplete_unconfirmed_and_other_company  Same _pointer read. The HTTP refusals run before that read.
+tests/test_adopted_trial_balance.py::test_statements_trial_balance_opens_a_statutory_year_end  Same _pointer read after the HTTP adopt.
+tests/test_adopted_trial_balance.py::test_statutory_continuation_creates_the_year_end_when_missing  The HTTP create returns 200. _year_end_row then selects findraft_year_ends with no org setting and gets nothing.
+tests/test_adopted_trial_balance.py::test_statutory_continuation_refuses_a_different_pinned_pack  The HTTP call returns 409. The same _year_end_row read finds nothing.
+tests/test_adopted_trial_balance.py::test_adopted_draft_adjusts_discloses_notices_and_starts_a_new_report  The adjustment HTTP call returns 200. _child_count on findraft_adjustment_journals with no org setting is 0.

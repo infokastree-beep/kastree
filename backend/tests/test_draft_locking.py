@@ -341,6 +341,15 @@ async def test_week10_lock_adjust_and_freeze_final(
     row_version = await _answer_disclosures(
         api_client, headers, year_end_id, draft_id, 2
     )
+    approved = await api_client.put(
+        f"/year-ends/{year_end_id}/approval",
+        headers=headers,
+        json={
+            "approval_date": "2027-03-15",
+            "signing_directors": ["Ada Lovelace"],
+        },
+    )
+    assert approved.status_code == 200, approved.text
     ready = await api_client.get(
         _draft_path(year_end_id, draft_id, "dashboard"), headers=headers
     )
