@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import uuid
 from collections.abc import AsyncIterator, Iterator
 from datetime import datetime, timedelta, timezone
@@ -12,7 +13,8 @@ import openpyxl
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
 from app.db import SyncSessionLocal, set_rls_org_id
@@ -23,6 +25,32 @@ from app.services.org_provisioning import (
     organisation_id_for_clerk_org,
     provision_first_signup,
 )
+
+
+_owner_engine = None
+
+
+def open_owner_session() -> Session:
+    """Session that can disable triggers.
+
+    The production API logs in as ``findraft``, which is not the table owner,
+    so ``ALTER TABLE ... DISABLE TRIGGER`` fails for that login. Set
+    ``DATABASE_OWNER_URL`` to the superuser that ran migrations. When it is
+    unset, this is the same session the rest of the suite uses.
+    """
+    global _owner_engine
+    owner_url = os.environ.get("DATABASE_OWNER_URL")
+    if not owner_url:
+        return SyncSessionLocal()
+    if _owner_engine is None:
+        _owner_engine = create_engine(owner_url, pool_pre_ping=True)
+    factory = sessionmaker(
+        bind=_owner_engine,
+        autocommit=False,
+        autoflush=False,
+        expire_on_commit=False,
+    )
+    return factory()
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -62,7 +90,7 @@ def _force_rls_on_all_tables() -> None:
         "findraft_draft_operations",
         "findraft_render_jobs",
     )
-    with SyncSessionLocal() as session:
+    with open_owner_session() as session:
         for table in tables:
             session.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
         session.commit()
@@ -194,7 +222,7 @@ def provisioned_org() -> Iterator[dict]:
             ),
         }
     yield data
-    with SyncSessionLocal() as session:
+    with open_owner_session() as session:
         set_rls_org_id(session, data["org_id"])
         session.execute(
             text(
