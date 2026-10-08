@@ -6,7 +6,7 @@ import re
 from decimal import Decimal
 from pathlib import Path
 
-from app.services.statutory_display import format_whole
+from app.services.statutory_display import format_whole_prose
 from app.services.statutory_statements import (
     _CREDITORS_CROSS_REF,
     _retarget_cross_references,
@@ -177,13 +177,18 @@ def test_note_sentences_name_only_rendered_statements_and_notes() -> None:
         html = document.html
         for code in _INTERNAL_CODES:
             assert code not in html
-        assert "<th>Notes</th>" in html
+        income_html = _section_html(html, "income")
+        sofp_html = _section_html(html, "sofp")
+        assert "<th>Notes</th>" not in income_html
+        assert "<th>Notes</th>" in sofp_html
+        assert 'class="note-table"' in html
     loans = next(note for note in golden.notes if note.code == "N5_LOANS")
     assert "Note 5." in loans.body
     assert "Note 4" not in loans.body
     capital = next(note for note in golden.notes if note.code == "N6_CAPITAL")
     share = next(row for row in golden.sofp if row.label == "Called up share capital")
-    assert f"is {format_whole(share.current)}" in capital.body
+    assert f"is {format_whole_prose(share.current, 'EUR')}" in capital.body
+    assert "€" in capital.body
     assert "[share class analysis not recorded]" in capital.body
     assert "statement of changes" not in capital.body.lower()
     assert "<td>Trade debtors</td><td>4</td>" in golden.html
@@ -283,7 +288,7 @@ def test_note_sentences_name_only_rendered_statements_and_notes() -> None:
     assert golden.html is not None and first.html is not None
     for html in (golden.html, first.html):
         assert "<caption>" not in html
-        tables = re.findall(r"<table>.*?</table>", html, flags=re.DOTALL)
+        tables = re.findall(r"<table\b.*?</table>", html, flags=re.DOTALL)
         assert tables
         for table in tables:
             assert "for the year ended" not in table
@@ -295,3 +300,54 @@ def test_note_sentences_name_only_rendered_statements_and_notes() -> None:
     if _ARTIFACTS.is_dir():
         (_ARTIFACTS / "statutory-golden-notes.pdf").write_bytes(golden_pdf)
         (_ARTIFACTS / "statutory-first-period-notes.pdf").write_bytes(first_pdf)
+
+
+def _section_html(html: str, anchor: str) -> str:
+    marker = f'<section data-section="{anchor}">'
+    start = html.index(marker)
+    rest = html[start + len(marker) :]
+    nxt = rest.find('<section data-section="')
+    return rest if nxt < 0 else rest[:nxt]
+
+
+def test_share_capital_prose_uses_the_directors_report_symbol() -> None:
+    golden = _golden()
+    assert golden.net_assets == Decimal("455812.00")
+    assert golden.profit == Decimal("157650.00")
+    share = next(row for row in golden.sofp if row.label == "Called up share capital")
+    capital = next(note for note in golden.notes if note.code == "N6_CAPITAL")
+    euro = format_whole_prose(share.current, "EUR")
+    assert euro.startswith("€")
+    assert f"is {euro}." in capital.body
+    report = next(page for page in golden.pages if page.heading == "Directors' report")
+    assert any(line.startswith("Profit for the financial year is €") for line in report.paragraphs)
+    gbp = _golden(entity=_entity(currency="GBP"))
+    assert gbp.net_assets == golden.net_assets
+    assert gbp.profit == golden.profit
+    gbp_share = next(row for row in gbp.sofp if row.label == "Called up share capital")
+    gbp_capital = next(note for note in gbp.notes if note.code == "N6_CAPITAL")
+    assert f"is {format_whole_prose(gbp_share.current, 'GBP')}." in gbp_capital.body
+    assert "£" in gbp_capital.body
+
+
+def test_a_long_note_table_is_allowed_to_split() -> None:
+    from app.services.statutory_statements import NoteLine, StatementNote, _note_view
+
+    short = StatementNote(
+        code="N3_DEBTORS",
+        title="3. Debtors",
+        body="Amounts falling due within one year:",
+        lines=(NoteLine("TRADE_DEBTORS", Decimal("10"), Decimal("10")),),
+        fa_rows=(),
+    )
+    long = StatementNote(
+        code="N3_DEBTORS",
+        title="3. Debtors",
+        body="Amounts falling due within one year:",
+        lines=tuple(
+            NoteLine(f"LINE_{index}", Decimal("1"), Decimal("1")) for index in range(13)
+        ),
+        fa_rows=(),
+    )
+    assert _note_view(short, comparative=True)["lines_compact"] is True
+    assert _note_view(long, comparative=True)["lines_compact"] is False

@@ -236,6 +236,28 @@ def test_each_statement_starts_on_its_own_page() -> None:
         assert "Income statement" not in pages[sofp]
 
 
+def test_a_note_heading_is_not_left_at_the_foot_of_a_page() -> None:
+    golden = _golden()
+    assert golden.net_assets == Decimal("455812.00")
+    assert golden.profit == Decimal("157650.00")
+    assert golden.html is not None
+    assert ".note-title, .note-intro" in golden.html
+    assert "break-after: avoid" in golden.html
+    assert "table.note-table" in golden.html
+    assert "break-inside: avoid" in golden.html
+    pages = [page for page in _pdf_pages(write_statement_pdf(golden.html)) if page.strip()]
+    for code, companion in (
+        ("N3_DEBTORS", "Trade debtors"),
+        ("N4_CREDITORS", "Trade creditors"),
+    ):
+        title = next(note.title for note in golden.notes if note.code == code)
+        assert title is not None
+        page = next(item for item in pages if title in item)
+        assert companion in page
+        lines = [line.strip() for line in page.splitlines() if line.strip()]
+        assert lines[-1] != title
+
+
 def test_directors_report_uses_the_same_period_end_as_the_face() -> None:
     """The first-period file already passes period_end, so its report names the date.
 

@@ -36,6 +36,7 @@ from app.services.statutory_display import (
     face_display_rows,
     format_iso_date,
     format_whole,
+    format_whole_prose,
     note_display_lines,
     parse_iso_date,
     statement_period_phrase,
@@ -115,6 +116,14 @@ _DOCUMENT = """<!DOCTYPE html>
   .watermark { color: #9a3412; font-weight: 700; letter-spacing: 0.12em; }
   h1, h2, h3 { break-after: avoid; page-break-after: avoid; }
   tr, .signature { break-inside: avoid; page-break-inside: avoid; }
+  .note-title, .note-intro {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  table.note-table {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
   section[data-section="sofp"],
   section[data-section="income"] {
     break-before: page;
@@ -152,10 +161,10 @@ _DOCUMENT = """<!DOCTYPE html>
 {% if section.compliance %}<p>{{ section.compliance }}</p>{% endif %}
 </div>
 <table>
-<thead><tr><th>Line</th><th>Notes</th>{% for column in section.columns %}<th class="amount">{{ column }}</th>{% endfor %}</tr></thead>
+<thead><tr><th>Line</th>{% if section.show_notes %}<th>Notes</th>{% endif %}{% for column in section.columns %}<th class="amount">{{ column }}</th>{% endfor %}</tr></thead>
 <tbody>
 {% for row in section.rows %}
-<tr><td>{{ row.label }}</td><td>{{ row.note }}</td>{% for amount in row.amounts %}<td class="amount">{{ amount }}</td>{% endfor %}</tr>
+<tr><td>{{ row.label }}</td>{% if section.show_notes %}<td>{{ row.note }}</td>{% endif %}{% for amount in row.amounts %}<td class="amount">{{ amount }}</td>{% endfor %}</tr>
 {% endfor %}
 </tbody>
 </table>
@@ -177,11 +186,11 @@ _DOCUMENT = """<!DOCTYPE html>
 {% elif section.kind == "notes" %}
 <h2>{{ section.heading }}</h2>
 {% for note in section.notes %}
-<section>
-<h3>{{ note.title }}</h3>
-<div class="note-body">{{ note.body }}</div>
+<section class="note-block">
+<h3 class="note-title">{{ note.title }}</h3>
+<div class="note-body note-intro">{{ note.body }}</div>
 {% if note.lines %}
-<table>
+<table{% if note.lines_compact %} class="note-table"{% endif %}>
 <thead><tr><th>Line</th>{% for column in section.columns %}<th class="amount">{{ column }}</th>{% endfor %}</tr></thead>
 <tbody>
 {% for line in note.lines %}
@@ -191,7 +200,7 @@ _DOCUMENT = """<!DOCTYPE html>
 </table>
 {% endif %}
 {% if note.fa_rows %}
-<table>
+<table{% if note.fa_compact %} class="note-table"{% endif %}>
 <thead><tr><th>Class</th><th class="amount">NBV</th></tr></thead>
 <tbody>
 {% for row in note.fa_rows %}
@@ -471,6 +480,9 @@ def _employees_sentence(
 
 
 _RENDERED_SECTION_IDS = ("income", "sofp", "notes")
+# A note table this short stays on one page with its heading. A longer
+# table may split so it does not overflow the sheet.
+_SHORT_NOTE_TABLE_ROWS = 12
 
 
 def _statement_order(manifest: dict[str, object]) -> tuple[str, ...]:
@@ -496,12 +508,15 @@ def _statement_order(manifest: dict[str, object]) -> tuple[str, ...]:
     return tuple(order)
 
 
-def _share_capital_narrative(sofp: tuple[StatementRow, ...]) -> str:
+def _share_capital_narrative(
+    sofp: tuple[StatementRow, ...], *, currency: str
+) -> str:
+    """The amount uses the same symbolled prose form as the directors' report."""
     row = next((item for item in sofp if item.label == "Called up share capital"), None)
     shown = (
         "[called up share capital not on the face]"
         if row is None
-        else format_whole(row.current)
+        else format_whole_prose(row.current, currency)
     )
     return (
         "Called up share capital presented on the statement of financial position "
@@ -887,6 +902,7 @@ def _compose_notes(
     prior_canonical: dict[str, Decimal],
     fa_register: dict[str, dict[str, Decimal]] | None,
     sofp: tuple[StatementRow, ...],
+    currency: str,
     first_financial_period: bool = False,
 ) -> tuple[tuple[StatementNote, ...], tuple[RoundingFlag, ...], dict[str, int]]:
     chosen = [
@@ -929,7 +945,7 @@ def _compose_notes(
         if isinstance(departure, str):
             note_context["departure_clause"] = departure
         if code == "N6_CAPITAL":
-            parts = [_share_capital_narrative(sofp)]
+            parts = [_share_capital_narrative(sofp, currency=currency)]
         elif code == "N8_EMPLOYEES":
             parts = [
                 _employees_sentence(
@@ -975,6 +991,27 @@ def _compose_notes(
     return tuple(notes), tuple(flags), numbers
 
 
+def _note_view(note: StatementNote, *, comparative: bool) -> dict[str, object]:
+    """Heading, intro, and a short table are marked so the PDF keeps them together."""
+    lines = [
+        {**line, "label": _line_label(str(line["line"]))}
+        for line in note_display_lines(note.lines, comparative=comparative)
+    ]
+    fa_rows = [
+        {"asset_class": row.asset_class, "nbv_close": format_whole(row.nbv_close)}
+        for row in note.fa_rows
+    ]
+    return {
+        "code": note.code,
+        "title": note.title or "",
+        "body": note.body,
+        "lines": lines,
+        "lines_compact": 0 < len(lines) <= _SHORT_NOTE_TABLE_ROWS,
+        "fa_rows": fa_rows,
+        "fa_compact": 0 < len(fa_rows) <= _SHORT_NOTE_TABLE_ROWS,
+    }
+
+
 def _render_html(
     *,
     entity: StatementEntity,
@@ -1002,6 +1039,15 @@ def _render_html(
         comparative=comparative,
     )
     period_phrase = statement_period_phrase(start, end)
+
+    def _face(rows: tuple[StatementRow, ...]) -> list[dict[str, object]]:
+        labelled = _with_note_column(
+            face_display_rows(rows, comparative=comparative), note_numbers
+        )
+        return labelled
+
+    sofp_rows = _face(sofp)
+    income_rows = _face(income)
     sections: list[dict[str, object]] = [
         {
             "kind": "prose",
@@ -1019,9 +1065,8 @@ def _render_html(
             "period_phrase": as_at_phrase(end),
             "compliance": compliance,
             "columns": columns,
-            "rows": _with_note_column(
-                face_display_rows(sofp, comparative=comparative), note_numbers
-            ),
+            "rows": sofp_rows,
+            "show_notes": any(bool(row.get("note")) for row in sofp_rows),
         },
         "income": {
             "kind": "statement",
@@ -1030,9 +1075,8 @@ def _render_html(
             "period_phrase": period_phrase,
             "compliance": "",
             "columns": columns,
-            "rows": _with_note_column(
-                face_display_rows(income, comparative=comparative), note_numbers
-            ),
+            "rows": income_rows,
+            "show_notes": any(bool(row.get("note")) for row in income_rows),
         },
         "notes": {
             "kind": "notes",
@@ -1040,30 +1084,7 @@ def _render_html(
             "heading": "Notes",
             "period_phrase": "",
             "columns": columns,
-            "notes": [
-                {
-                    "code": note.code,
-                    "title": note.title or "",
-                    "body": note.body,
-                    "lines": [
-                        {
-                            **line,
-                            "label": _line_label(str(line["line"])),
-                        }
-                        for line in note_display_lines(
-                            note.lines, comparative=comparative
-                        )
-                    ],
-                    "fa_rows": [
-                        {
-                            "asset_class": row.asset_class,
-                            "nbv_close": format_whole(row.nbv_close),
-                        }
-                        for row in note.fa_rows
-                    ],
-                }
-                for note in notes
-            ],
+            "notes": [_note_view(note, comparative=comparative) for note in notes],
         },
     }
     for anchor in statement_order:
@@ -1136,6 +1157,7 @@ def _render_draft(
         prior_canonical=prior_canonical,
         fa_register=fa_register,
         sofp=sofp_rows,
+        currency=entity.currency,
         first_financial_period=first_financial_period,
     )
     pages = build_statutory_pages(
