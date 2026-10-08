@@ -156,6 +156,7 @@ class WorkspaceSectionOut(BaseModel):
     lock: str | None = None
     default: str | None = None
     built: bool | None = None
+    children: str | None = None
 
 
 class ReportingFrameworkOut(BaseModel):

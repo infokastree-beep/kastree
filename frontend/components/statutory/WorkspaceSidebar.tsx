@@ -1,6 +1,13 @@
 "use client";
 
-import type { WorkspaceSection } from "@/lib/workspace-sections";
+import { useEffect, useState } from "react";
+import type { PreviewChild } from "@/lib/section-preview";
+import {
+  groupIsOpen,
+  readClosedGroups,
+  writeClosedGroups,
+  type WorkspaceSection,
+} from "@/lib/workspace-sections";
 
 type SectionGroup = {
   id: string;
@@ -29,74 +36,115 @@ function groupsFrom(sections: readonly WorkspaceSection[]): SectionGroup[] {
 export function WorkspaceSidebar({
   sections,
   activeId,
+  activeChildren = [],
+  activeChildId = null,
   onSelect,
-  onToggle,
-  togglesEnabled = true,
+  onSelectChild,
 }: {
   sections: readonly WorkspaceSection[];
   activeId: string;
+  activeChildren?: readonly PreviewChild[];
+  activeChildId?: string | null;
   onSelect: (sectionId: string) => void;
-  onToggle?: (sectionId: string, enabled: boolean) => void;
-  togglesEnabled?: boolean;
+  onSelectChild?: (childId: string) => void;
 }) {
+  const [closed, setClosed] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    setClosed(readClosedGroups());
+  }, []);
+
+  function toggleGroup(groupId: string): void {
+    setClosed((current) => {
+      const next = { ...current };
+      if (groupIsOpen(current, groupId)) {
+        next[groupId] = false;
+      } else {
+        delete next[groupId];
+      }
+      writeClosedGroups(next);
+      return next;
+    });
+  }
+
   return (
     <nav
       aria-label="Draft sections"
       data-testid="statutory-sidebar"
       className="w-56 shrink-0"
     >
-      {groupsFrom(sections).map((group) => (
-        <div key={group.id} data-testid={`statutory-group-${group.id}`}>
-          <p className="px-3 pb-1 pt-3 text-xs font-semibold uppercase tracking-[0.12em] text-soft">
-            {group.label}
-          </p>
-          <ul className="space-y-1">
-            {group.sections.map((section) => {
-              const active = section.id === activeId;
-              return (
-                <li
-                  key={section.id}
-                  className={section.enabled === false ? "opacity-50" : undefined}
-                >
-                  <div className="flex items-center gap-1">
-                    {section.lock === "user" ? (
-                      <input
-                        type="checkbox"
-                        className="ml-2 h-4 w-4 shrink-0"
-                        checked={section.enabled === true}
-                        disabled={togglesEnabled !== true}
-                        aria-label={`Include ${section.label}`}
-                        data-testid={`statutory-toggle-${section.id}`}
-                        onChange={(event) =>
-                          onToggle?.(section.id, event.target.checked)
-                        }
-                      />
-                    ) : null}
-                    <button
-                      type="button"
-                      data-testid={`statutory-section-${section.id}`}
-                      aria-current={active ? "page" : undefined}
-                      onClick={() => onSelect(section.id)}
-                      className={`w-full rounded-md px-3 py-2 text-left text-sm ${
-                        active
-                          ? "bg-accent font-semibold text-accent-foreground"
-                          : "text-ink hover:bg-surface-elevated"
-                      }`}
-                    >
-                      <span className="block leading-snug">{section.label}</span>
-                      {section.built === false ? (
-                        <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.08em] opacity-70">
-                          not built
-                        </span>
+      {groupsFrom(sections).map((group) => {
+        const open = groupIsOpen(closed, group.id);
+        return (
+          <div key={group.id} data-testid={`statutory-group-${group.id}`}>
+            <button
+              type="button"
+              aria-expanded={open}
+              data-testid={`statutory-group-toggle-${group.id}`}
+              onClick={() => toggleGroup(group.id)}
+              className="flex w-full items-center justify-between px-3 pb-1 pt-3 text-left text-xs font-semibold uppercase tracking-[0.12em] text-soft"
+            >
+              <span>{group.label}</span>
+              <span aria-hidden="true">{open ? "▾" : "▸"}</span>
+            </button>
+            {open ? (
+              <ul className="space-y-1">
+                {group.sections.map((section) => {
+                  const active = section.id === activeId;
+                  return (
+                    <li key={section.id}>
+                      <button
+                        type="button"
+                        data-testid={`statutory-section-${section.id}`}
+                        aria-current={active ? "page" : undefined}
+                        onClick={() => onSelect(section.id)}
+                        className={`w-full rounded-md px-3 py-2 text-left text-sm ${
+                          active
+                            ? "bg-accent font-semibold text-accent-foreground"
+                            : "text-ink hover:bg-surface-elevated"
+                        }`}
+                      >
+                        {section.label}
+                        {section.built === false ? (
+                          <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.08em] opacity-70">
+                            not built
+                          </span>
+                        ) : null}
+                      </button>
+                      {section.id === activeId && activeChildren.length > 0 ? (
+                        <ul className="mb-1 space-y-0.5 pl-3">
+                          {activeChildren.map((child) => {
+                            const current = child.id === activeChildId;
+                            return (
+                              <li key={child.id}>
+                                <button
+                                  type="button"
+                                  data-testid={`statutory-child-${child.anchor}`}
+                                  aria-current={current ? "true" : undefined}
+                                  onClick={() => onSelectChild?.(child.id)}
+                                  className={`w-full rounded-md px-3 py-1.5 text-left text-xs ${
+                                    current
+                                      ? "bg-accent font-semibold text-accent-foreground"
+                                      : "text-ink-secondary hover:bg-surface-elevated"
+                                  }`}
+                                >
+                                  {child.number != null
+                                    ? `${child.number}. ${child.label}`
+                                    : child.label}
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
                       ) : null}
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+          </div>
+        );
+      })}
     </nav>
   );
 }

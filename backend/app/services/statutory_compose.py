@@ -68,7 +68,11 @@ _ENGINE_HEADINGS = {
     "approval": "Approval of the financial statements",
     "audit-exemption": "Audit exemption",
 }
-_CSS_PAGE_BREAK = frozenset({"income", "sofp"})
+# These start a page. The directors' narrative pages flow on after directors-info.
+_PAGE_START = frozenset(
+    {"cover", "contents", "directors-info", "income", "sofp", "notes"}
+)
+_NOTES_FOOTER = frozenset({"income", "sofp", "notes"})
 _STATEMENTS = frozenset({"income", "sofp", "notes"})
 
 
@@ -104,12 +108,23 @@ def compose_year_end_pdf(
     company: Company | None = None,
 ) -> str:
     """PDF HTML for one year end. A blank report setup still prints the pack pages."""
+    html, _sections = compose_year_end_parts(document, year_end, company=company)
+    return html
+
+
+def compose_year_end_parts(
+    document: StatutoryStatements,
+    year_end: YearEnd,
+    *,
+    company: Company | None = None,
+) -> tuple[str, list[dict[str, object]]]:
+    """PDF HTML plus the section dicts. Callers slice one section from the HTML."""
     currency = "GBP"
     letterhead = CompanyLetterhead()
     if company is not None:
         currency = company.functional_currency or "GBP"
         letterhead = letterhead_from_company(company)
-    return compose_pdf_html(
+    return compose_pdf_parts(
         document,
         report_setup=year_end.report_setup,
         period_start=year_end.period_start,
@@ -135,6 +150,33 @@ def compose_pdf_html(
     letterhead: CompanyLetterhead | None = None,
 ) -> str:
     """Filter and label a copy. ``document`` and its Decimals stay put."""
+    html, _sections = compose_pdf_parts(
+        document,
+        report_setup=report_setup,
+        period_start=period_start,
+        period_end=period_end,
+        first_financial_period=first_financial_period,
+        approval_date=approval_date,
+        signing_directors=signing_directors,
+        currency=currency,
+        letterhead=letterhead,
+    )
+    return html
+
+
+def compose_pdf_parts(
+    document: StatutoryStatements,
+    *,
+    report_setup: object | None,
+    period_start: date | None,
+    period_end: date,
+    first_financial_period: bool,
+    approval_date: date | None = None,
+    signing_directors: object = None,
+    currency: str = "EUR",
+    letterhead: CompanyLetterhead | None = None,
+) -> tuple[str, list[dict[str, object]]]:
+    """The PDF HTML and the section dicts that produced it."""
     if document.html is None:
         raise ValueError("Statutory statements are not renderable")
     if report_setup is None:
@@ -218,14 +260,145 @@ def compose_pdf_html(
         period_note=period_note,
     )
     approved = "" if approval_date is None else approval_date.isoformat()
-    return render_statutory_html(
+    html = render_statutory_html(
         company_name=document.company_name,
         sections=sections,
         watermark=document.watermark,
         approval_date=approved,
         signing_directors=_signing_phrase(signing_directors),
         statement_label=_statement_label(document, setup.statement_type),
+        composed=True,
     )
+    return html, sections
+
+
+PREVIEW_CONTENT_SECURITY_POLICY = (
+    "default-src 'none'; "
+    "script-src 'none'; "
+    "style-src 'unsafe-inline'; "
+    "img-src 'none'; "
+    "font-src 'none'; "
+    "connect-src 'none'; "
+    "frame-src 'none'; "
+    "object-src 'none'; "
+    "base-uri 'none'; "
+    "form-action 'none'; "
+    "frame-ancestors 'none'"
+)
+_INSERTED_WITH_COMPILATION = frozenset({"approval", "audit-exemption"})
+
+
+@dataclass(frozen=True)
+class PreviewChild:
+    id: str
+    number: int | None
+    label: str
+    anchor: str
+
+
+def extract_section_html(html: str, anchor: str) -> str | None:
+    """The one ``data-section`` element, including nested note and signature blocks."""
+    marker = f'<section data-section="{anchor}"'
+    start = html.find(marker)
+    if start < 0:
+        return None
+    depth = 0
+    index = start
+    while index < len(html):
+        next_open = html.find("<section", index)
+        next_close = html.find("</section>", index)
+        if next_close < 0:
+            return None
+        if next_open != -1 and next_open < next_close:
+            depth += 1
+            index = next_open + len("<section")
+            continue
+        depth -= 1
+        index = next_close + len("</section>")
+        if depth == 0:
+            return html[start:index]
+    return None
+
+
+def preview_document(full_html: str, section_html: str) -> str:
+    """One section inside the PDF head, watermark, and company name."""
+    body_at = full_html.find("<body>")
+    if body_at < 0:
+        raise ValueError("preview document has no body")
+    head = full_html[:body_at].replace(
+        "<head>",
+        "<head>"
+        '<meta http-equiv="Content-Security-Policy" content="'
+        + PREVIEW_CONTENT_SECURITY_POLICY
+        + '">',
+        1,
+    )
+    body = full_html[body_at:]
+    h1_end = body.find("</h1>")
+    if h1_end < 0:
+        raise ValueError("preview document has no company name")
+    prefix = body[: h1_end + len("</h1>")]
+    return f"{head}{prefix}{section_html}</body></html>"
+
+
+def children_of(
+    sections: Sequence[dict[str, object]], section_id: str
+) -> tuple[PreviewChild, ...]:
+    """Printed notes, or the pages the composer inserts after the compilation report."""
+    index = next(
+        (
+            position
+            for position, section in enumerate(sections)
+            if section.get("anchor") == section_id
+        ),
+        None,
+    )
+    if index is None:
+        return ()
+    section = sections[index]
+    if section.get("kind") == "notes":
+        return _note_children(section)
+    if section_id != "compilation":
+        return ()
+    inserted: list[PreviewChild] = []
+    for follower in sections[index + 1 :]:
+        anchor = follower.get("anchor")
+        heading = follower.get("heading")
+        if (
+            not isinstance(anchor, str)
+            or anchor not in _INSERTED_WITH_COMPILATION
+            or not isinstance(heading, str)
+        ):
+            break
+        inserted.append(
+            PreviewChild(id=anchor, number=None, label=heading, anchor=anchor)
+        )
+    return tuple(inserted)
+
+
+def _note_children(section: dict[str, object]) -> tuple[PreviewChild, ...]:
+    notes = section.get("notes")
+    if not isinstance(notes, list):
+        return ()
+    children: list[PreviewChild] = []
+    for note in notes:
+        if not isinstance(note, dict):
+            continue
+        code = note.get("code")
+        title = note.get("title")
+        if not isinstance(code, str) or not isinstance(title, str):
+            continue
+        number_text, separator, label = title.partition(". ")
+        number = int(number_text) if separator and number_text.isdigit() else None
+        children.append(
+            PreviewChild(
+                id=code,
+                number=number,
+                label=label if number is not None else title,
+                anchor=f"note-{code}",
+            )
+        )
+    return tuple(children)
 
 
 def unbuilt_section_notices(year_end: YearEnd) -> tuple[ReconciliationCheck, ...]:
@@ -421,12 +594,15 @@ def _advisers_line(advisers: tuple[dict[str, object], ...]) -> str:
     return "Advisers: " + "; ".join(parts) + "."
 
 
-def _cover_paragraphs(period_phrase: str, period_note: str) -> list[str]:
+def _cover_paragraphs(
+    period_phrase: str, period_note: str, company_number: str
+) -> list[str]:
     paragraphs: list[str] = []
     if period_phrase:
         paragraphs.append(period_phrase)
     if period_note:
         paragraphs.append(period_note)
+    paragraphs.append(f"Company number: {_shown(company_number)}")
     return paragraphs
 
 
@@ -452,21 +628,28 @@ def _prose(
     anchor: str,
     heading: str,
     paragraphs: list[str],
-    page_break: bool,
 ) -> dict[str, object]:
     return {
         "kind": "prose",
         "anchor": anchor,
         "heading": heading,
         "paragraphs": paragraphs,
-        "page_break": page_break,
     }
 
 
-def _contents_label(section_id: str, label: str) -> str:
-    if section_id == "cover":
-        return "Financial statements"
-    return label
+def _with_furniture(
+    section: dict[str, object],
+    *,
+    page_break: bool,
+    notes_footer: bool,
+    cover_page: bool,
+) -> dict[str, object]:
+    section["page_break"] = page_break
+    if notes_footer:
+        section["notes_footer"] = True
+    if cover_page:
+        section["cover_page"] = True
+    return section
 
 
 def _composed_sections(
@@ -500,74 +683,64 @@ def _composed_sections(
             continue
         planned.append((section_id, label))
     contents = [
-        {"label": _contents_label(section_id, label), "anchor": section_id}
+        {"label": label, "anchor": section_id}
         for section_id, label in planned
-        if section_id != "contents"
+        if section_id not in {"cover", "contents"}
     ]
     sections: list[dict[str, object]] = []
     for index, (section_id, label) in enumerate(planned):
-        page_break = index > 0 and section_id not in _CSS_PAGE_BREAK
+        page_break = index > 0 and section_id in _PAGE_START
+        notes_footer = section_id in _NOTES_FOOTER
+        cover_page = section_id == "cover"
+        block: dict[str, object] | None = None
         if section_id == "cover":
-            sections.append(
-                _prose(
-                    anchor="cover",
-                    heading="Financial statements",
-                    paragraphs=_cover_paragraphs(period_phrase, period_note),
-                    page_break=page_break,
-                )
+            block = _prose(
+                anchor="cover",
+                heading="Financial statements",
+                paragraphs=_cover_paragraphs(
+                    period_phrase, period_note, letterhead.company_number
+                ),
             )
-            continue
-        if section_id == "contents":
-            sections.append(
-                {
-                    "kind": "contents",
-                    "anchor": "contents",
-                    "heading": "Contents",
-                    "entries": contents,
-                    "page_break": page_break,
-                }
+        elif section_id == "contents":
+            block = {
+                "kind": "contents",
+                "anchor": "contents",
+                "heading": "Contents",
+                "entries": contents,
+            }
+        elif section_id == "directors-info":
+            block = _prose(
+                anchor="directors-info",
+                heading=label,
+                paragraphs=_directors_info_paragraphs(letterhead),
             )
-            continue
-        if section_id == "directors-info":
-            sections.append(
-                _prose(
-                    anchor="directors-info",
-                    heading=label,
-                    paragraphs=_directors_info_paragraphs(letterhead),
-                    page_break=page_break,
-                )
+        elif section_id == "directors-responsibilities":
+            block = _prose(
+                anchor="directors-responsibilities",
+                heading=label,
+                paragraphs=[DIRECTORS_RESPONSIBILITIES],
             )
-            continue
-        if section_id == "directors-responsibilities":
-            sections.append(
-                _prose(
-                    anchor="directors-responsibilities",
-                    heading=label,
-                    paragraphs=[DIRECTORS_RESPONSIBILITIES],
-                    page_break=page_break,
-                )
-            )
-            continue
-        if section_id in engine:
+        elif section_id in engine:
             page = engine[section_id]
-            sections.append(
-                _prose(
-                    anchor=section_id,
-                    heading=page.heading,
-                    paragraphs=list(page.paragraphs),
-                    page_break=page_break,
-                )
+            block = _prose(
+                anchor=section_id,
+                heading=page.heading,
+                paragraphs=list(page.paragraphs),
             )
-            continue
-        if section_id in _STATEMENTS:
+        elif section_id in _STATEMENTS:
             block = dict(built[section_id])
-            block["page_break"] = page_break
-            sections.append(block)
-            continue
-        if section_id in _UNBUILT:
+        elif section_id in _UNBUILT:
             block = _not_built(section_id, label)
-            block["page_break"] = page_break
-            sections.append(block)
+        if block is None:
+            continue
+        sections.append(
+            _with_furniture(
+                block,
+                page_break=page_break,
+                notes_footer=notes_footer,
+                cover_page=cover_page,
+            )
+        )
     return sections
 
 
@@ -577,7 +750,6 @@ def _not_built(section_id: str, label: str) -> dict[str, object]:
         "anchor": section_id,
         "heading": label,
         "paragraphs": [NOT_BUILT_LINE],
-        "page_break": True,
     }
 
 

@@ -9,8 +9,12 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   activeSection,
+  groupIsOpen,
+  navigatorSections,
+  parseGroupState,
   sectionIsOn,
   sectionsForFramework,
+  SIDEBAR_GROUPS_KEY,
   type ReportingFramework,
   type WorkspaceSection,
 } from "./workspace-sections.ts";
@@ -116,16 +120,101 @@ describe("sectionsForFramework", () => {
     ]) {
       assert.equal(source.includes(word), false, word);
     }
+    assert.equal(source.includes('section.lock === "user"'), false);
+    assert.equal(source.includes("statutory-toggle-"), false);
+    assert.equal(source.includes('type="checkbox"'), false);
     assert.equal(source.includes("section.built === false"), true);
     assert.equal(source.includes("not built"), true);
-    assert.equal(source.includes('section.lock === "user"'), true);
-    assert.equal(source.includes("statutory-toggle-"), true);
-    assert.equal(source.includes("opacity-50"), true);
+    assert.equal(source.includes("aria-expanded"), true);
+    assert.equal(source.includes("statutory-group-toggle-"), true);
+    assert.equal(SIDEBAR_GROUPS_KEY, "kastree.sidebar.groups.v1");
+    const setup = readFileSync(
+      join(here, "../components/statutory/SectionsSetup.tsx"),
+      "utf8",
+    );
+    assert.equal(setup.includes("statutory-toggle-"), true);
+    assert.equal(setup.includes("not built"), true);
+    assert.equal(setup.includes("locked"), true);
+    for (const word of ["frs102", "form11", "FRS", "Form 11"]) {
+      assert.equal(setup.includes(word), false, word);
+    }
+    const workspace = readFileSync(
+      join(here, "../components/statutory/StatutoryDraftWorkspace.tsx"),
+      "utf8",
+    );
+    assert.equal(workspace.includes("navigatorSections(sections)"), true);
+    assert.equal(workspace.includes("<SectionsSetup"), true);
     const form = readFileSync(
       join(here, "../components/statutory/ReportSetupForm.tsx"),
       "utf8",
     );
     assert.equal(form.includes("sections:"), false);
+  });
+});
+
+describe("navigatorSections", () => {
+  const rows: WorkspaceSection[] = [
+    section("review", "Review dashboard", "overview", "Overview", 1),
+    {
+      id: "sections-setup",
+      label: "Sections setup",
+      group: "sections",
+      group_label: "Sections",
+      order: 2,
+    },
+    {
+      id: "cover",
+      label: "Cover",
+      group: "sections",
+      group_label: "Sections",
+      order: 3,
+      lock: "user",
+      default: "on",
+      enabled: false,
+    },
+    {
+      id: "income",
+      label: "Income statement",
+      group: "sections",
+      group_label: "Sections",
+      order: 4,
+      lock: "locked",
+      enabled: true,
+      built: true,
+    },
+    {
+      id: "draft-pdf",
+      label: "Draft PDF",
+      group: "outputs",
+      group_label: "Outputs",
+      order: 5,
+    },
+  ];
+
+  it("drops a disabled pack section and keeps the setup row", () => {
+    assert.deepEqual(
+      navigatorSections(rows).map((item) => item.id),
+      ["review", "sections-setup", "income", "draft-pdf"],
+    );
+  });
+
+  it("opens the setup page when the address names a disabled section", () => {
+    assert.equal(activeSection(rows, "cover"), "sections-setup");
+    assert.equal(activeSection(rows, "income"), "income");
+    assert.equal(activeSection(rows, "review"), "review");
+  });
+});
+
+describe("group state", () => {
+  it("treats a missing key as open and keeps only closed groups", () => {
+    assert.equal(groupIsOpen({}, "sections"), true);
+    assert.equal(groupIsOpen({ sections: false }, "sections"), false);
+    assert.deepEqual(parseGroupState(null), {});
+    assert.deepEqual(parseGroupState("not-json"), {});
+    assert.deepEqual(
+      parseGroupState(JSON.stringify({ inputs: false, overview: true })),
+      { inputs: false },
+    );
   });
 });
 

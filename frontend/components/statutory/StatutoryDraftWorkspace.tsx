@@ -19,12 +19,19 @@ import {
   type ReportSetup,
   type ReportSetupWrite,
 } from "@/components/statutory/ReportSetupForm";
+import { SectionPreview } from "@/components/statutory/SectionPreview";
+import { SectionsSetup } from "@/components/statutory/SectionsSetup";
 import { StatutoryLoadError } from "@/components/statutory/StatutoryLoadError";
 import { StatutorySublineReview } from "@/components/statutory/StatutorySublineReview";
 import { WorkspaceSidebar } from "@/components/statutory/WorkspaceSidebar";
-import { displayAmount, type RoundingMode } from "@/lib/report-display";
+import {
+  scrollAnchorFor,
+  showsPageNumberNote,
+  type StatutoryPreview,
+} from "@/lib/section-preview";
 import {
   activeSection,
+  navigatorSections,
   sectionIsOn,
   sectionsForFramework,
   type ReportingFramework,
@@ -242,6 +249,32 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       }),
     enabled: yearEndQuery.isSuccess,
   });
+  const savedFlags = setupQuery.data?.sections ?? null;
+  const catalogue = sectionsForFramework(
+    frameworksQuery.data?.frameworks ?? [],
+    yearEndQuery.data?.pack_id ?? "",
+  ).map((section) =>
+    section.lock
+      ? { ...section, enabled: sectionIsOn(section, savedFlags) }
+      : section,
+  );
+  const openSectionId = activeSection(catalogue, searchParams.get("section"));
+  const openMeta = catalogue.find((section) => section.id === openSectionId);
+  const previewEnabled =
+    statementsQuery.data?.renderable === true &&
+    openMeta?.group === "sections" &&
+    openMeta.id !== "sections-setup" &&
+    openMeta.enabled !== false &&
+    openMeta.built !== false;
+  const previewQuery = useQuery({
+    queryKey: ["statutory-preview", yearEndId, openSectionId],
+    queryFn: () =>
+      apiFetch<StatutoryPreview>(
+        `/year-ends/${yearEndId}/statutory-preview?section=${encodeURIComponent(openSectionId)}`,
+        { getToken },
+      ),
+    enabled: previewEnabled,
+  });
 
   const forbidden = meQuery.data?.is_platform_admin === false;
   const dashboard = dashboardQuery.data;
@@ -272,6 +305,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       queryClient.setQueryData(["company-details", yearEndId], saved);
       setCompanySaved("Company details saved.");
       await queryClient.invalidateQueries({ queryKey: ["statutory-pack"] });
+      await queryClient.invalidateQueries({ queryKey: ["statutory-preview", yearEndId] });
       await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
     } catch (caught) {
       setCompanyError(saveMessage(caught, "Company details could not be saved."));
@@ -296,6 +330,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       queryClient.setQueryData(["company-details", yearEndId], saved);
       setApprovalSaved("Approval details saved.");
       await queryClient.invalidateQueries({ queryKey: ["statutory-pack"] });
+      await queryClient.invalidateQueries({ queryKey: ["statutory-preview", yearEndId] });
       await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
     } catch (caught) {
       setApprovalError(saveMessage(caught, "Approval details could not be saved."));
@@ -317,6 +352,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
         },
       );
       queryClient.setQueryData(["report-setup", yearEndId], saved);
+      await queryClient.invalidateQueries({ queryKey: ["statutory-preview", yearEndId] });
     } catch (caught) {
       setError(messageFrom(caught));
     } finally {
@@ -346,6 +382,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     await queryClient.invalidateQueries({ queryKey: ["working-draft", yearEndId] });
     await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
     await queryClient.invalidateQueries({ queryKey: ["statutory-pack"] });
+    await queryClient.invalidateQueries({ queryKey: ["statutory-preview", yearEndId] });
     await queryClient.invalidateQueries({ queryKey: ["year-end", yearEndId] });
   }
 
@@ -577,28 +614,46 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     yearEnd.period_start != null
       ? `${yearEnd.period_start} to ${yearEnd.period_end}`
       : `period ending ${yearEnd.period_end}`;
-  const savedFlags = setupQuery.data?.sections ?? null;
-  const sections = sectionsForFramework(
-    frameworksQuery.data?.frameworks ?? [],
-    yearEnd.pack_id,
-  ).map((section) =>
-    section.lock
-      ? { ...section, enabled: sectionIsOn(section, savedFlags) }
-      : section,
-  );
-  const sectionId = activeSection(sections, searchParams.get("section"));
-  const activeMeta = sections.find((section) => section.id === sectionId);
-  const rounding: RoundingMode = setupQuery.data?.rounding ?? "unit";
-  const headers = setupQuery.data?.column_headers;
+  const sections = catalogue;
+  const sectionId = openSectionId;
+  const activeMeta = openMeta;
+  const noteId = searchParams.get("note");
+  const previewChildren = previewQuery.data?.children ?? [];
+  const scrollAnchor = scrollAnchorFor(noteId, previewChildren);
+  const previewFrame = previewQuery.data ? (
+    <div className="space-y-2">
+      {showsPageNumberNote(sectionId) ? (
+        <p className="text-sm text-ink-secondary" data-testid="statutory-page-numbers">
+          Page numbers appear in the PDF.
+        </p>
+      ) : null}
+      <SectionPreview
+        html={previewQuery.data.html}
+        scrollAnchor={scrollAnchor}
+        title={activeMeta?.label ?? "Statutory section"}
+      />
+    </div>
+  ) : previewQuery.isError ? (
+    <p className="text-sm text-red-800" data-testid="statutory-preview-error">
+      {messageFrom(previewQuery.error)}
+    </p>
+  ) : previewEnabled ? (
+    <p className="text-sm text-soft">Loading the section…</p>
+  ) : null;
 
   return (
     <div className="flex items-start gap-6" data-testid="statutory-draft-workspace">
       <WorkspaceSidebar
-        sections={sections}
+        sections={navigatorSections(sections)}
         activeId={sectionId}
+        activeChildren={previewChildren}
+        activeChildId={noteId}
         onSelect={selectSection}
-        onToggle={(id, enabled) => void toggleSection(id, enabled)}
-        togglesEnabled={canEditDetails && setupQuery.isSuccess && busy === null}
+        onSelectChild={(childId) => {
+          router.replace(
+            `/year-ends/${yearEndId}/draft?section=${encodeURIComponent(sectionId)}&note=${encodeURIComponent(childId)}`,
+          );
+        }}
       />
       <div className="min-w-0 flex-1 space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -702,6 +757,15 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
         </div>
       ) : null}
 
+      {sectionId === "sections-setup" ? (
+        <SectionsSetup
+          title={activeMeta?.label ?? ""}
+          sections={sections}
+          onToggle={(id, enabled) => void toggleSection(id, enabled)}
+          togglesEnabled={canEditDetails && setupQuery.isSuccess && busy === null}
+        />
+      ) : null}
+
       {sectionId === "draft-pdf" ? (
         <section className="space-y-3" data-testid="statutory-outputs">
           <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-soft">
@@ -742,9 +806,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               [NOT BUILT: this pack does not build this statement]
             </p>
           ) : (
-            <p className="text-sm text-ink-secondary">
-              This section is included in the draft PDF.
-            </p>
+            previewFrame
           )}
         </section>
       ) : null}
@@ -1006,80 +1068,10 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
                 ))}
             </ul>
           ) : null}
-          {sectionId === "income" ? (
-            <FaceTable
-              title="Income statement"
-              rows={statementsQuery.data.income}
-              currentHeader={headers?.ended_current ?? "Current"}
-              priorHeader={headers?.ended_prior ?? "Prior"}
-              rounding={rounding}
-            />
-          ) : null}
-          {sectionId === "sofp" ? (
-            <FaceTable
-              title="Statement of financial position"
-              rows={statementsQuery.data.sofp}
-              currentHeader={headers?.as_at_current ?? "Current"}
-              priorHeader={headers?.as_at_prior ?? "Prior"}
-              rounding={rounding}
-            />
-          ) : null}
+          {sectionId === "income" || sectionId === "sofp" ? previewFrame : null}
         </section>
       ) : null}
       </div>
-    </div>
-  );
-}
-
-function FaceTable({
-  title,
-  rows,
-  currentHeader,
-  priorHeader,
-  rounding,
-}: {
-  title: string;
-  rows: StatementRow[];
-  currentHeader: string;
-  priorHeader: string;
-  rounding: RoundingMode;
-}) {
-  if (rows.length === 0) {
-    return null;
-  }
-  return (
-    <div className="overflow-x-auto rounded-md border border-line bg-surface-elevated">
-      <h3 className="border-b border-line px-4 py-3 text-sm font-semibold text-ink">
-        {title}
-      </h3>
-      <table className="min-w-full text-left text-sm">
-        <thead className="border-b border-line text-xs uppercase tracking-[0.12em] text-soft">
-          <tr>
-            <th className="px-4 py-3 font-semibold">Line</th>
-            <th className="px-4 py-3 text-right font-semibold">{currentHeader}</th>
-            <th className="px-4 py-3 text-right font-semibold">{priorHeader}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.label} className="border-b border-line/70">
-              <td className="px-4 py-2.5">{row.label}</td>
-              <td
-                className="px-4 py-2.5 text-right tabular-nums"
-                data-stored={row.current}
-              >
-                {displayAmount(row.current, rounding)}
-              </td>
-              <td
-                className="px-4 py-2.5 text-right tabular-nums"
-                data-stored={row.prior ?? ""}
-              >
-                {row.prior === null ? "—" : displayAmount(row.prior, rounding)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }
