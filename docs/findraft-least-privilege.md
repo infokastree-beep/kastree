@@ -20,6 +20,10 @@ back on an append-only table, and it does not grant `TRUNCATE`,
 `subscription_events` keeps `UPDATE`. The Stripe webhook inserts the event
 and then sets `processed_at`. `DELETE` on that table stays revoked.
 
+The hash-tamper check rewrites `archived_records.archived_data` as the
+migration owner (`DATABASE_OWNER_URL`). The `findraft` login has no
+`UPDATE` on that table, so the app cannot perform the same rewrite.
+
 ## Privilege snapshot (run on the production database)
 
 Run this before the migration and again after it. Diff the two results.
