@@ -25,6 +25,31 @@ from tests.conftest import (
 )
 
 
+def _as_app_role(session) -> None:
+    """Use the non-superuser role. A superuser login bypasses RLS even when rolbypassrls is false."""
+    session.execute(text("SET ROLE findraft_app"))
+    row = session.execute(
+        text(
+            """
+            SELECT session_user AS login_role,
+                   current_user AS executing_role,
+                   r.rolsuper,
+                   r.rolbypassrls
+            FROM pg_roles AS r
+            WHERE r.rolname = current_user
+            """
+        )
+    ).one()
+    print(
+        f"executing_role={row.executing_role} login_role={row.login_role} "
+        f"rolsuper={row.rolsuper} rolbypassrls={row.rolbypassrls}",
+        flush=True,
+    )
+    assert row.executing_role == "findraft_app"
+    assert row.rolsuper is False
+    assert row.rolbypassrls is False
+
+
 @pytest.mark.asyncio
 async def test_clerk_webhook_provisions_first_org_under_rls(
     api_client: AsyncClient,
@@ -51,6 +76,7 @@ async def test_clerk_webhook_provisions_first_org_under_rls(
 
     # Visible under matching RLS; invisible under a different org setting.
     with SyncSessionLocal() as session:
+        _as_app_role(session)
         set_rls_org_id(session, org_id)
         row = session.execute(
             text("SELECT name FROM organisations WHERE id = :oid"),
@@ -71,7 +97,8 @@ async def test_clerk_webhook_provisions_first_org_under_rls(
         ).scalar()
         assert hidden == 0
 
-        # Cleanup
+        # Cleanup as the table owner. The app role proved the hide above.
+        session.execute(text("RESET ROLE"))
         set_rls_org_id(session, org_id)
         session.execute(text("DELETE FROM users WHERE org_id = :oid"), {"oid": str(org_id)})
         session.execute(
@@ -83,11 +110,14 @@ async def test_clerk_webhook_provisions_first_org_under_rls(
 def test_fresh_signup_succeeds_under_force_rls_without_bypass() -> None:
     """Real Postgres: INSERT org without SET LOCAL fails; bootstrap succeeds.
 
-    Uses the findraft role (rolbypassrls=false) with FORCE ROW LEVEL SECURITY so
-    table ownership does not silently skip policies. Confirms the chicken-and-egg
-    fix — generate UUID, SET LOCAL, then INSERT org + user in one transaction.
+    The pytest login is a superuser named findraft, which bypasses RLS even
+    with rolbypassrls false. These checks SET ROLE findraft_app (NOSUPERUSER,
+    NOBYPASSRLS) so FORCE ROW LEVEL SECURITY applies. Confirms the
+    chicken-and-egg fix — generate UUID, SET LOCAL, then INSERT org + user
+    in one transaction.
     """
     with SyncSessionLocal() as session:
+        _as_app_role(session)
         bypass = session.execute(
             text("SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user")
         ).scalar()
@@ -103,6 +133,7 @@ def test_fresh_signup_succeeds_under_force_rls_without_bypass() -> None:
     # Without SET LOCAL / set_config, INSERT must fail under FORCE RLS.
     naked_id = uuid.uuid4()
     with SyncSessionLocal() as session:
+        _as_app_role(session)
         with pytest.raises(DBAPIError):
             session.execute(
                 text(
@@ -122,6 +153,7 @@ def test_fresh_signup_succeeds_under_force_rls_without_bypass() -> None:
     clerk_org_id = f"org_rls_{suffix}"
     clerk_user_id = f"user_rls_{suffix}"
     with SyncSessionLocal() as session:
+        _as_app_role(session)
         provisioned = provision_first_signup(
             session,
             clerk_org_id=clerk_org_id,
@@ -139,6 +171,7 @@ def test_fresh_signup_succeeds_under_force_rls_without_bypass() -> None:
     assert user_id is not None
 
     with SyncSessionLocal() as session:
+        _as_app_role(session)
         set_rls_org_id(session, org_id)
         assert (
             session.execute(
@@ -162,6 +195,7 @@ def test_fresh_signup_succeeds_under_force_rls_without_bypass() -> None:
             ).scalar()
             == 0
         )
+        session.execute(text("RESET ROLE"))
         set_rls_org_id(session, org_id)
         session.execute(text("DELETE FROM users WHERE org_id = :oid"), {"oid": str(org_id)})
         session.execute(

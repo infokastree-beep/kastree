@@ -154,6 +154,15 @@ async def test_first_practice_golden_final_keeps_the_engine_figures(
     row_version = await _answer_disclosures(
         api_client, headers, year_end_id, draft_id, 1
     )
+    approved = await api_client.put(
+        f"/year-ends/{year_end_id}/approval",
+        headers=headers,
+        json={
+            "approval_date": "2027-03-15",
+            "signing_directors": ["Ada Lovelace"],
+        },
+    )
+    assert approved.status_code == 200, approved.text
     final = await api_client.post(
         _draft_path(year_end_id, draft_id, "finalise"),
         headers={**headers, "Idempotency-Key": "week13-final"},

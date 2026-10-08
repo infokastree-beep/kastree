@@ -346,30 +346,30 @@ def _role_snapshot(session):
     ).one()
 
 
+def _print_role(row) -> None:
+    print(
+        f"executing_role={row.executing_role} login_role={row.login_role} "
+        f"rolsuper={row.rolsuper} rolbypassrls={row.rolbypassrls}",
+        flush=True,
+    )
+
+
 def _as_app_role(session) -> None:
     session.execute(text("SET ROLE findraft_app"))
     row = _role_snapshot(session)
+    _print_role(row)
     assert row.login_role == "findraft"
     assert row.executing_role == "findraft_app"
     assert row.rolsuper is False
     assert row.rolbypassrls is False
-    print(
-        f"executing_role={row.executing_role} login_role={row.login_role} "
-        f"rolsuper={row.rolsuper} rolbypassrls={row.rolbypassrls}",
-        flush=True,
-    )
 
 
 def _as_login_superuser(session) -> None:
     row = _role_snapshot(session)
+    _print_role(row)
     assert row.login_role == "findraft"
     assert row.executing_role == "findraft"
     assert row.rolsuper is True
-    print(
-        f"executing_role={row.executing_role} login_role={row.login_role} "
-        f"rolsuper={row.rolsuper} rolbypassrls={row.rolbypassrls}",
-        flush=True,
-    )
 
 
 def _insert_render_job(
@@ -564,7 +564,7 @@ def test_audit_log_app_role_cannot_update_or_delete(
                     {"id": str(row_id)},
                 )
             session.rollback()
-            session.execute(text("SET ROLE findraft_app"))
+            _as_app_role(session)
             session.execute(
                 text("SELECT set_config('app.current_org_id', :org, true)"),
                 {"org": str(first["org_id"])},
