@@ -77,6 +77,139 @@ see [`product-roadmap.md`](product-roadmap.md).
    [LinkedIn ads](#linkedin-ads--accountants--fractional-cfos-after-hero-is-live).
    Ads validate the public funnel; they do not replace (4).
 
+## Live testing — confirmed limitations (2 October 2026)
+
+Two limits found on the live product. The statutory-translation gap below
+is the single highest-priority item for the next dedicated Product 2
+session. Continuation stops on the first account with no single statutory
+line, and that refusal hits ordinary charts, not only fixed assets. The
+header-synonym item stays a later, separate change.
+
+### Statutory continuation has no single line for common Product 1 categories
+
+**Status:** accepted 2 October 2026 as the definitive scope for the next
+dedicated Product 2 session, and the single highest-priority item for that
+session. The work is real accounting judgment: decide, deliberately, the
+statutory home for each of the seven name-gated lines and the three
+untranslated mapping lines below. It is not a code change that forces a
+translation so testing can continue. Confirmed on a live continuation for both
+`property_plant_equipment` ("Fixed Assets - Office Equipment") and
+`operating_expenses` (ordinary names such as rent). Those are two of the
+most common canonical lines on a trial balance. The translator refuses with
+"has no single statutory line" rather than guessing. Without a decision on
+the lines below, statutory continuation will not complete for almost any
+real company.
+
+Audit of `engine_line_for_confirmed_mapping` on 2 October 2026. A line has
+a single confirmed translation only when it is in `_DIRECT`: one statutory
+line for every account name, and that target is in `statutory_lines()`.
+Every `_DIRECT` target below is in `statutory_lines()`. The account-mapping
+set is `MAPPING_TIE_BREAKER_CANONICAL_LINES` (33 lines). The wider chart in
+`shared/canonical_accounts.py` adds seven statement totals that accounts are
+not mapped to.
+
+**Single confirmed translation (23).** These do not depend on the account
+name:
+
+- `revenue` → `REVENUE`
+- `other_revenue` → `OTHER_OPERATING_INCOME`
+- `cost_of_sales` → `COST_OF_SALES`
+- `interest_income` → `INTEREST_RECEIVABLE`
+- `interest_expense` → `INTEREST_PAYABLE`
+- `inventory` → `STOCKS`
+- `trade_receivables` → `TRADE_DEBTORS`
+- `other_receivables` → `OTHER_DEBTORS`
+- `prepayments` → `PREPAYMENTS`
+- `accrued_income` → `ACCRUED_INCOME`
+- `cash` → `CASH`
+- `trade_payables` → `TRADE_CREDITORS`
+- `other_payables` → `OTHER_CREDITORS`
+- `provisions` → `PROVISIONS`
+- `accruals` → `ACCRUALS`
+- `deferred_income` → `DEFERRED_INCOME`
+- `taxes_payable` → `CORP_TAX`
+- `social_security_payable` → `PAYE_PRSI`
+- `share_capital` → `SHARE_CAPITAL`
+- `share_premium` → `SHARE_PREMIUM`
+- `retained_earnings` → `RETAINED_EARNINGS`
+- `dividends` → `DIVIDENDS`
+- `investments` → `FA_INVESTMENTS`
+
+**No single translation — a name token is required, otherwise refusal (7).**
+A generic or ordinary name on any of these stops continuation:
+
+- `property_plant_equipment`. Live refusal: "Fixed Assets - Office
+  Equipment". A name translates only when it contains motor (`FA_MOTOR_COST`),
+  fixture or fitting (`FA_FIXTURES_COST`), land or building
+  (`FA_LAND_BUILDINGS`), plant or machinery (`FA_PLANT_COST`), or
+  "accumulat" (`FA_ACCUM_DEP`).
+- `operating_expenses`. Live refusal on ordinary expense names (rent, wages,
+  insurance, light and heat, rates, telephone, advertising, bank charges,
+  professional fees). A name translates only when it contains distribution,
+  selling, or carriage (`DISTRIBUTION_COSTS`), or admin or overhead
+  (`ADMIN_EXPENSES`).
+- `loans`. "Bank loan", "Director loan", "Hire purchase", and "Mortgage"
+  refuse. A name translates only for overdraft (`BANK_OVERDRAFT`), a
+  long-term phrase such as "more than one year" or "non-current"
+  (`LOANS_GT1Y`), or a short-term phrase such as "within one year"
+  (`LOANS_LT1Y`).
+- `tax`. Bare "Tax", "VAT", and "Income tax" refuse. "charge" or "expense"
+  → `TAX_CHARGE`. "corporation tax", "corp tax", payable, creditor, or
+  liability → `CORP_TAX`.
+- `depreciation`. Not one line. "Depreciation" and "Depreciation charge" →
+  `DEPRECIATION_CHARGE`. "accumulat" → `FA_ACCUM_DEP`. "Depn - Buildings"
+  refuses, because the token is the whole word "depreciation", "charge",
+  or "expense".
+- `amortisation`. The names "Amortisation" and "Amortisation of goodwill"
+  refuse. The only match is "accumulat" → `FA_INTANGIBLE_AMORT`. There is
+  no profit-and-loss amortisation charge home in this function.
+- `intangible_assets`. "Intangible assets", goodwill, software, patent, or
+  "cost" → `FA_INTANGIBLE_COST`. "accumulat", amortisation, or amortization
+  → `FA_INTANGIBLE_AMORT`. "Website" and "Brand" refuse.
+
+**No translation path at all (3 account-mapping lines).** These are in the
+mapping allow-list and are not in `_DIRECT` or the name-token branches.
+Every account name refuses:
+
+- `capital_contribution`
+- `revaluation_reserve`
+- `unmapped`
+
+**Statement totals on the canonical chart, not account-mapping lines (7).**
+Accounts are not confirmed to these. If one were passed to the translator
+it would also refuse: `gross_profit`, `operating_profit`,
+`profit_before_tax`, `net_profit`, `total_assets`, `total_liabilities`,
+`total_equity`.
+
+The refusal is still the honest behaviour. The translator must not invent a
+statutory sub-line. This audit is the scope document for that session.
+Decide the statutory home for each of the seven name-gated lines and the
+three untranslated mapping lines — a defined detector, an explicit default,
+or a case that stays manual. Do not force a line just so continuation
+succeeds.
+
+### Standard TB headers `Code` and `Account` are rejected as a pair
+
+A standard Trial balance (Excel/CSV) upload rejected column headers `Code`
+and `Account`. The same file with `Account Code` and `Account Name` was
+accepted.
+
+`parser._detect_columns` already treats a bare `code` header as the code
+column. A bare `account` header is used only as a combined code-and-name
+column, and only when neither a code column nor a name column was found.
+With both short headers present, `Code` fills the code slot and `Account`
+is not a name synonym, so detection stops: "Could not detect account code
+and account name columns."
+
+**Future session.** Recognize these short headers, with the same care as
+the earlier ERP column-shape work (Product 1's generic importer covers the
+Sage, Xero, and QuickBooks shapes; the four vendor-named parsers stay
+cut). Substring matches are the false-positive risk: `account` also sits
+inside `Account Code`, and `code` sits inside unrelated headings. Add a
+test for the real `Code` / `Account` pair, and tests that the new synonyms
+do not steal a column from a file that already uses `Account Code` and
+`Account Name`, before shipping.
+
 ## Archival write paths
 
 Clients, companies, and trial balances soft-delete write to `archived_records`. See
