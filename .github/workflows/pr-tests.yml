@@ -108,6 +108,7 @@ jobs:
           npm run test:api-base
           npm run test:dev-routes
           npm run test:report-setup
+          npm run test:practice-jurisdiction
 
   lint:
     runs-on: ubuntu-latest
