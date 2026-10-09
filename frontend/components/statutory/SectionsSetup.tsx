@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { WorkspaceSection } from "@/lib/workspace-sections";
 
 export function SectionsSetup({
@@ -7,12 +8,17 @@ export function SectionsSetup({
   sections,
   onToggle,
   togglesEnabled,
+  canReset,
+  onReset,
 }: {
   title: string;
   sections: readonly WorkspaceSection[];
   onToggle: (sectionId: string, enabled: boolean) => void;
   togglesEnabled: boolean;
+  canReset: boolean;
+  onReset: () => void;
 }) {
+  const [confirming, setConfirming] = useState(false);
   const rows = sections.filter(
     (section) => section.group === "sections" && section.id !== "sections-setup",
   );
@@ -59,6 +65,39 @@ export function SectionsSetup({
           </li>
         ))}
       </ul>
+      {canReset ? (
+        confirming ? (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              data-testid="statutory-reset-sections-confirm"
+              className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground"
+              onClick={() => {
+                setConfirming(false);
+                onReset();
+              }}
+            >
+              Confirm reset
+            </button>
+            <button
+              type="button"
+              className="rounded-md border border-line px-4 py-2 text-sm font-semibold text-ink"
+              onClick={() => setConfirming(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            data-testid="statutory-reset-sections"
+            className="rounded-md border border-line px-4 py-2 text-sm font-semibold text-ink"
+            onClick={() => setConfirming(true)}
+          >
+            Reset to pack defaults
+          </button>
+        )
+      ) : null}
     </section>
   );
 }

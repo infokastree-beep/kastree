@@ -97,8 +97,9 @@ def pack_section_catalogue() -> dict[str, dict[str, str]]:
 class ReportSetupWrite(BaseModel):
     """Display fields a save may change. Basis stays on the year end.
 
-    ``sections`` omitted means keep the stored map. A map replaces it.
-    Absent keys inside the map mean the pack default.
+    ``sections`` omitted means keep the stored map. An empty map clears
+    overrides. Any other map replaces the stored one. Absent keys inside
+    the map mean the pack default.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -128,6 +129,14 @@ class ReportSetupWrite(BaseModel):
         if locked_off:
             raise ValueError(f"Locked section cannot be turned off: {locked_off[0]}")
         return value
+
+
+class ReportSetupReset(BaseModel):
+    """Which saved override returns to the pack default."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    scope: Literal["sections", "display"]
 
 
 class ReportSetupResponse(BaseModel):

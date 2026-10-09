@@ -10,13 +10,17 @@ from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import text
 
+from app.db import SyncSessionLocal, set_rls_org_id
 from app.services.draft_workflow import _can_finalise
+from app.services.report_setup import default_report_setup
 from app.services.statutory_compose import (
     DIRECTORS_RESPONSIBILITIES,
     NOT_BUILT_LINE,
     CompanyLetterhead,
     compose_pdf_html,
+    pack_display_notices,
     unbuilt_section_notices,
 )
 from app.services.statutory_present import statement_response
@@ -26,10 +30,22 @@ from app.services.statutory_statements import (
     write_statement_pdf,
 )
 from findraft.models.year_end import YearEnd
-from tests.conftest import auth_headers
+from tests.conftest import auth_headers, make_access_token
 from tests.test_adopted_trial_balance import _insert_tb
+from tests.test_findraft_tenant_isolation import _delete_org, _provision
+from tests.test_organisations_api import _add_org_user
 from tests.test_statutory_display import _pdf_pages
 from tests.test_statutory_statements import _golden
+
+_OPTIONAL = (
+    "cover",
+    "contents",
+    "directors-info",
+    "directors-report",
+    "directors-responsibilities",
+    "compilation",
+)
+_FORBIDDEN = "You don't have permission to access this resource."
 
 _ROOT = Path(__file__).resolve().parents[1]
 _ENGINE = _ROOT.parent / "findraft" / "engine"
@@ -763,6 +779,360 @@ async def test_downloaded_pdf_follows_the_include_list(
     assert "Directors&#39; report" in captured[2]
     assert ">Cash flow statement</h2>" not in captured[2]
     assert after.json()["net_assets"] == "18400.40"
+
+
+def _display(
+    headers: dict[str, str], sections: dict[str, bool] | None = None
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "rounding": "unit",
+        "statement_type": "draft",
+        "face_dates": {
+            "current_start": "2026-01-01",
+            "current_end": "2026-12-31",
+            "prior_start": None,
+            "prior_end": None,
+        },
+        "column_headers": headers,
+    }
+    if sections is not None:
+        payload["sections"] = sections
+    return payload
+
+
+def _symbol_headers() -> dict[str, str]:
+    return {
+        "as_at_current": "2026 £",
+        "as_at_prior": "2025 £",
+        "ended_current": "2026 £",
+        "ended_prior": "2025 £",
+    }
+
+
+def _year_headers() -> dict[str, str]:
+    return {
+        "as_at_current": "2026",
+        "as_at_prior": "2025",
+        "ended_current": "2026",
+        "ended_prior": "2025",
+    }
+
+
+def _checks(body: dict[str, object]) -> dict[str, dict[str, object]]:
+    raw = body["checks"]
+    assert isinstance(raw, list)
+    return {item["code"]: item for item in raw if isinstance(item, dict)}
+
+
+def _year_column_headers(html: str) -> list[str]:
+    return [
+        item
+        for item in re.findall(r'<th class="amount">([^<]+)</th>', html)
+        if item[:4].isdigit()
+    ]
+
+
+async def _open_draft(
+    api_client: AsyncClient, provisioned_org: dict[str, object]
+) -> tuple[str, dict[str, str], uuid.UUID]:
+    org_id = provisioned_org["org_id"]
+    company_id = provisioned_org["company_id"]
+    token = provisioned_org["token"]
+    assert isinstance(org_id, uuid.UUID)
+    assert isinstance(company_id, uuid.UUID)
+    assert isinstance(token, str)
+    tb_id = _insert_tb(
+        org_id=org_id,
+        company_id=company_id,
+        rows=(
+            ("2130", "Bank current account", "18400.40", "0.00", "18400.40", "cash"),
+            (
+                "3000",
+                "Called up share capital",
+                "0.00",
+                "18400.40",
+                "-18400.40",
+                "share_capital",
+            ),
+        ),
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 12, 31),
+    )
+    headers = auth_headers(token)
+    opened = await api_client.post(
+        f"/trial-balances/{tb_id}/statutory-year-end",
+        headers=headers,
+        json={},
+    )
+    assert opened.status_code == 200, opened.text
+    year_end_id = opened.json()["year_end_id"]
+    assert isinstance(year_end_id, str)
+    gate = await api_client.post(
+        f"/year-ends/{year_end_id}/first-financial-period",
+        headers=headers,
+    )
+    assert gate.status_code == 200, gate.text
+    return year_end_id, headers, org_id
+
+
+async def _pdf_html(
+    api_client: AsyncClient,
+    year_end_id: str,
+    headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> str:
+    captured: list[str] = []
+
+    def _capture(html: str) -> bytes:
+        captured.append(html)
+        return b"%PDF-1.7 captured"
+
+    monkeypatch.setattr("app.routers.year_ends.write_statement_pdf", _capture)
+    response = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    assert captured
+    return captured[-1]
+
+
+def test_saved_default_headers_keep_the_currency_symbol() -> None:
+    """A save of the displayed defaults keeps the symbol on the face and in notes."""
+    document = _golden()
+    year_end = YearEnd()
+    year_end.period_start = date(2025, 1, 1)
+    year_end.period_end = date(2025, 12, 31)
+    setup = default_report_setup(year_end, "EUR")
+    html = _compose(document, setup.model_dump(mode="json"))
+    income = html.index('id="income"')
+    sofp = html.index('id="sofp"')
+    assert '<th class="amount">2025 €</th>' in html[income:sofp]
+    debtors = html.index('id="note-N3_DEBTORS"')
+    assert '<th class="amount">2025 €</th>' in html[debtors : debtors + 1500]
+    assert 'content: "DRAFT"' in html
+    for anchor in _OPTIONAL:
+        assert f'id="{anchor}"' in html
+    assert document.net_assets == Decimal("455812.00")
+    assert document.profit == Decimal("157650.00")
+
+
+def test_pack_display_notices_name_switched_off_sections_and_header_drift() -> None:
+    quiet = YearEnd()
+    quiet.period_start = date(2026, 1, 1)
+    quiet.period_end = date(2026, 12, 31)
+    quiet.report_setup = None
+    assert pack_display_notices(quiet, "GBP") == ()
+    bare = YearEnd()
+    assert pack_display_notices(bare, "GBP") == ()
+    drifted = YearEnd()
+    drifted.period_start = date(2026, 1, 1)
+    drifted.period_end = date(2026, 12, 31)
+    drifted.report_setup = _display(
+        _year_headers(), {section_id: False for section_id in _OPTIONAL}
+    )
+    notices = pack_display_notices(drifted, "GBP")
+    assert [item.code for item in notices] == ["V-SEC-006", "V-SEC-007"]
+    assert notices[0].severity == "NOTICE"
+    assert notices[0].passed is False
+    assert notices[0].message == (
+        "6 sections are switched off: Cover, Contents, "
+        "Directors and other information, Directors' report, "
+        "Directors' responsibilities statement, Compilation report"
+    )
+    assert notices[1].message == "Report setup differs from defaults: column headers"
+    assert _can_finalise("amber", renderable=True, blocked=False, checks=notices)
+    cash_only = YearEnd()
+    cash_only.period_start = date(2026, 1, 1)
+    cash_only.period_end = date(2026, 12, 31)
+    cash_only.report_setup = _display(_symbol_headers(), {"cash-flow": False})
+    assert pack_display_notices(cash_only, "GBP") == ()
+
+
+@pytest.mark.asyncio
+async def test_no_saved_setup_includes_the_six_optional_sections(
+    api_client: AsyncClient,
+    provisioned_org: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    year_end_id, headers, _org_id = await _open_draft(api_client, provisioned_org)
+    setup = await api_client.get(
+        f"/year-ends/{year_end_id}/report-setup",
+        headers=headers,
+    )
+    assert setup.status_code == 200, setup.text
+    body = setup.json()
+    assert body["sections"] is None
+    assert body["column_headers"] == _symbol_headers()
+    html = await _pdf_html(api_client, year_end_id, headers, monkeypatch)
+    for anchor in _OPTIONAL:
+        assert f'id="{anchor}"' in html
+    assert _year_column_headers(html)
+    assert all("£" in item for item in _year_column_headers(html))
+    assert 'content: "DRAFT"' in html
+    figures = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
+        headers=headers,
+    )
+    assert figures.status_code == 200, figures.text
+    assert figures.json()["net_assets"] == "18400.40"
+
+
+@pytest.mark.asyncio
+async def test_empty_sections_map_is_not_stored_as_all_false(
+    api_client: AsyncClient,
+    provisioned_org: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    year_end_id, headers, _org_id = await _open_draft(api_client, provisioned_org)
+    saved = await api_client.put(
+        f"/year-ends/{year_end_id}/report-setup",
+        headers=headers,
+        json=_display(_symbol_headers(), {}),
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["sections"] is None
+    html = await _pdf_html(api_client, year_end_id, headers, monkeypatch)
+    for anchor in _OPTIONAL:
+        assert f'id="{anchor}"' in html
+
+
+@pytest.mark.asyncio
+async def test_reset_restores_sections_and_symbol_and_notices_track_them(
+    api_client: AsyncClient,
+    provisioned_org: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    year_end_id, headers, org_id = await _open_draft(api_client, provisioned_org)
+    draft = await api_client.get(f"/year-ends/{year_end_id}/draft", headers=headers)
+    assert draft.status_code == 200, draft.text
+    draft_id = draft.json()["draft_id"]
+
+    async def board() -> dict[str, dict[str, object]]:
+        response = await api_client.get(
+            f"/year-ends/{year_end_id}/drafts/{draft_id}/dashboard",
+            headers=headers,
+        )
+        assert response.status_code == 200, response.text
+        return _checks(response.json())
+
+    quiet = await board()
+    assert "V-SEC-006" not in quiet
+    assert "V-SEC-007" not in quiet
+    hidden = await api_client.put(
+        f"/year-ends/{year_end_id}/report-setup",
+        headers=headers,
+        json=_display(
+            _symbol_headers(), {section_id: False for section_id in _OPTIONAL}
+        ),
+    )
+    assert hidden.status_code == 200, hidden.text
+    sections_off = await board()
+    assert "V-SEC-006" in sections_off
+    assert sections_off["V-SEC-006"]["passed"] is False
+    assert sections_off["V-SEC-006"]["severity"] == "NOTICE"
+    assert "6 sections are switched off:" in str(sections_off["V-SEC-006"]["message"])
+    assert "V-SEC-007" not in sections_off
+    missing = await _pdf_html(api_client, year_end_id, headers, monkeypatch)
+    for anchor in _OPTIONAL:
+        assert f'id="{anchor}"' not in missing
+    assert 'content: "DRAFT"' in missing
+    drifted = await api_client.put(
+        f"/year-ends/{year_end_id}/report-setup",
+        headers=headers,
+        json=_display(_year_headers(), {section_id: False for section_id in _OPTIONAL}),
+    )
+    assert drifted.status_code == 200, drifted.text
+    both = await board()
+    assert "V-SEC-006" in both
+    assert both["V-SEC-007"]["message"] == (
+        "Report setup differs from defaults: column headers"
+    )
+    bare = await _pdf_html(api_client, year_end_id, headers, monkeypatch)
+    assert _year_column_headers(bare)
+    assert all("£" not in item for item in _year_column_headers(bare))
+    restored_sections = await api_client.post(
+        f"/year-ends/{year_end_id}/report-setup/reset",
+        headers=headers,
+        json={"scope": "sections"},
+    )
+    assert restored_sections.status_code == 200, restored_sections.text
+    assert restored_sections.json()["sections"] is None
+    after_sections = await board()
+    assert "V-SEC-006" not in after_sections
+    assert "V-SEC-007" in after_sections
+    back = await _pdf_html(api_client, year_end_id, headers, monkeypatch)
+    for anchor in _OPTIONAL:
+        assert f'id="{anchor}"' in back
+    restored_display = await api_client.post(
+        f"/year-ends/{year_end_id}/report-setup/reset",
+        headers=headers,
+        json={"scope": "display"},
+    )
+    assert restored_display.status_code == 200, restored_display.text
+    assert restored_display.json()["column_headers"] == _symbol_headers()
+    cleared = await board()
+    assert "V-SEC-006" not in cleared
+    assert "V-SEC-007" not in cleared
+    symbol = await _pdf_html(api_client, year_end_id, headers, monkeypatch)
+    assert _year_column_headers(symbol)
+    assert all("£" in item for item in _year_column_headers(symbol))
+    assert 'content: "DRAFT"' in symbol
+    figures = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
+        headers=headers,
+    )
+    assert figures.json()["net_assets"] == "18400.40"
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        count = session.execute(
+            text(
+                "SELECT count(*) FROM audit_logs WHERE org_id = :org "
+                "AND action = 'report_setup_reset'"
+            ),
+            {"org": str(org_id)},
+        ).scalar_one()
+    assert count == 2
+
+
+@pytest.mark.asyncio
+async def test_viewer_cannot_reset_and_another_practice_is_not_found(
+    api_client: AsyncClient,
+    provisioned_org: dict[str, object],
+) -> None:
+    year_end_id, _headers, org_id = await _open_draft(api_client, provisioned_org)
+    clerk_org_id = provisioned_org["clerk_org_id"]
+    assert isinstance(clerk_org_id, str)
+    _user_id, _clerk_user_id, viewer_token = _add_org_user(
+        org_id=org_id,
+        clerk_org_id=clerk_org_id,
+        role="viewer",
+        email_prefix="reset-viewer",
+    )
+    refused = await api_client.post(
+        f"/year-ends/{year_end_id}/report-setup/reset",
+        headers=auth_headers(viewer_token),
+        json={"scope": "sections"},
+    )
+    assert refused.status_code == 403, refused.text
+    assert refused.json()["detail"] == _FORBIDDEN
+    suffix = uuid.uuid4().hex[:10]
+    other = _provision(suffix)
+    try:
+        other_token = make_access_token(
+            clerk_user_id=f"user_fd_{suffix}",
+            clerk_org_id=f"org_fd_{suffix}",
+            org_uuid=other["org_id"],
+        )
+        hidden = await api_client.post(
+            f"/year-ends/{year_end_id}/report-setup/reset",
+            headers=auth_headers(other_token),
+            json={"scope": "display"},
+        )
+        assert hidden.status_code == 404, hidden.text
+        assert hidden.json()["detail"] == "Year end not found"
+    finally:
+        _delete_org(other["org_id"])
 
 
 def test_write_statement_pdf_is_unchanged_for_the_engine_html() -> None:

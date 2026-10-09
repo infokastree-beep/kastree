@@ -42,7 +42,10 @@ from app.services.adopted_trial_balance import (
     inputs_for_adopted_draft,
     load_adopted_inputs,
 )
-from app.services.statutory_compose import unbuilt_section_notices
+from app.services.statutory_compose import (
+    pack_display_notices,
+    unbuilt_section_notices,
+)
 from app.services.statutory_statements import (
     StatutoryStatements,
     statements_for_adopted,
@@ -403,11 +406,14 @@ async def dashboard_for_draft(
             Company.org_id == org_id,
         )
     )
+    currency = "GBP"
     if company is not None and not company.is_deleted:
         from app.services.company_details import company_detail_checks
 
         checks.extend(company_detail_checks(company, year_end))
+        currency = company.functional_currency or "GBP"
     checks.extend(unbuilt_section_notices(year_end))
+    checks.extend(pack_display_notices(year_end, currency))
     light = _traffic(
         tuple(checks), blocked=document.blocked, renderable=document.renderable
     )

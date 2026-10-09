@@ -9,6 +9,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +24,7 @@ from app.schemas.report_setup import (
     pack_section_catalogue,
 )
 from app.services.audit import append_audit_log
+from app.services.statutory_display import column_headings
 from findraft.engine.pack import load_manifest
 from findraft.models.year_end import YearEnd
 
@@ -234,10 +236,15 @@ def display_amount(amount: Decimal, rounding: str) -> str:
     return format(shown, "f")
 
 
-def default_report_setup(year_end: YearEnd) -> ReportSetupWrite:
-    """Words that match the year end until the practice saves its own."""
-    current_year = str(year_end.period_end.year)
-    prior_year = str(year_end.period_end.year - 1)
+def default_report_setup(year_end: YearEnd, currency: str) -> ReportSetupWrite:
+    """Year-and-symbol headings, matching an unsaved PDF, until a practice saves."""
+    headings = column_headings(
+        period_end=year_end.period_end,
+        currency_code=currency or "GBP",
+        comparative=True,
+    )
+    current = headings[0]
+    prior = headings[1]
     return ReportSetupWrite(
         rounding="unit",
         statement_type="draft",
@@ -248,10 +255,10 @@ def default_report_setup(year_end: YearEnd) -> ReportSetupWrite:
             prior_end=None,
         ),
         column_headers=ColumnHeaders(
-            as_at_current=current_year,
-            as_at_prior=prior_year,
-            ended_current=current_year,
-            ended_prior=prior_year,
+            as_at_current=current,
+            as_at_prior=prior,
+            ended_current=current,
+            ended_prior=prior,
         ),
         sections=None,
     )
@@ -271,15 +278,15 @@ def _stored_sections(previous: object) -> dict[str, bool] | None:
     return kept
 
 
-def _stored_setup(year_end: YearEnd) -> ReportSetupWrite:
+def _stored_setup(year_end: YearEnd, currency: str) -> ReportSetupWrite:
     raw = year_end.report_setup
     if raw is None:
-        return default_report_setup(year_end)
+        return default_report_setup(year_end, currency)
     return ReportSetupWrite.model_validate(raw)
 
 
-def report_setup_response(year_end: YearEnd) -> ReportSetupResponse:
-    setup = _stored_setup(year_end)
+def report_setup_response(year_end: YearEnd, currency: str) -> ReportSetupResponse:
+    setup = _stored_setup(year_end, currency)
     return ReportSetupResponse(
         basis_id=year_end.pack_id,
         basis_version=year_end.pack_version,
@@ -301,10 +308,12 @@ async def save_report_setup(
     user_id: uuid.UUID | None,
     year_end: YearEnd,
     body: ReportSetupWrite,
+    currency: str,
 ) -> ReportSetupResponse:
     """Replace display settings. Period columns and the pack pin stay put.
 
-    Omitting ``sections`` keeps the map already stored. A locked section
+    Omitting ``sections`` keeps the map already stored. An empty map clears
+    overrides, so it is not stored as every section off. A locked section
     set to false is rejected before this assignment.
     """
     previous = year_end.report_setup
@@ -315,6 +324,8 @@ async def save_report_setup(
             stored.pop("sections", None)
         else:
             stored["sections"] = kept
+    elif not body.sections:
+        stored.pop("sections", None)
     year_end.report_setup = stored
     await append_audit_log(
         session,
@@ -326,4 +337,53 @@ async def save_report_setup(
         old_value=previous if isinstance(previous, dict) else None,
         new_value=stored,
     )
-    return report_setup_response(year_end)
+    return report_setup_response(year_end, currency)
+
+
+def _display_defaults(
+    year_end: YearEnd, currency: str, sections: dict[str, bool] | None
+) -> dict[str, object]:
+    stored: dict[str, object] = default_report_setup(year_end, currency).model_dump(
+        mode="json"
+    )
+    stored.pop("sections", None)
+    if sections:
+        stored["sections"] = sections
+    return stored
+
+
+async def reset_report_setup(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    user_id: uuid.UUID | None,
+    year_end: YearEnd,
+    currency: str,
+    scope: Literal["sections", "display"],
+) -> ReportSetupResponse:
+    """Clear one saved override. Sections return to the pack. Display returns to defaults."""
+    previous = year_end.report_setup
+    if scope == "sections":
+        if isinstance(previous, dict) and any(key != "sections" for key in previous):
+            kept = dict(previous)
+            kept.pop("sections", None)
+            year_end.report_setup = kept
+        else:
+            year_end.report_setup = None
+    else:
+        year_end.report_setup = _display_defaults(
+            year_end, currency, _stored_sections(previous)
+        )
+    await append_audit_log(
+        session,
+        org_id=org_id,
+        user_id=user_id,
+        action="report_setup_reset",
+        entity_type="year_end",
+        entity_id=year_end.id,
+        old_value=previous if isinstance(previous, dict) else None,
+        new_value=(
+            year_end.report_setup if isinstance(year_end.report_setup, dict) else None
+        ),
+    )
+    return report_setup_response(year_end, currency)
