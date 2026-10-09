@@ -207,7 +207,6 @@ _NOTES_FOOTER = "The notes form part of these financial statements"
 _FLOWING = (
     "Directors' report",
     "Directors' responsibilities statement",
-    "Compilation report",
     "Approval of the financial statements",
     "Audit exemption",
 )
@@ -338,6 +337,7 @@ def test_short_sections_share_a_page() -> None:
         "Financial statements",
         "Contents",
         "Directors and other information",
+        "Compilation report",
         "Income statement",
         "Statement of financial position",
         "Notes",
@@ -1133,6 +1133,117 @@ async def test_viewer_cannot_reset_and_another_practice_is_not_found(
         assert hidden.json()["detail"] == "Year end not found"
     finally:
         _delete_org(other["org_id"])
+
+
+def _section_open(html: str, anchor: str) -> str:
+    return html.split(f'data-section="{anchor}"', 1)[1].split(">", 1)[0]
+
+
+def test_compilation_starts_a_new_page_unless_setup_overrides_it() -> None:
+    """The pack default is a new page. A saved map can flow it or force another."""
+    from app.services.statutory_compose import extract_section_html, preview_document
+
+    document = _golden()
+    html = _compose(document, _setup())
+    assert "page-break-before" in _section_open(html, "compilation")
+    assert "page-break-before" not in _section_open(html, "directors-report")
+    assert "page-break-before" not in _section_open(html, "approval")
+    preview = preview_document(html, extract_section_html(html, "compilation") or "")
+    assert 'data-section="compilation"' in preview
+    assert "page-break-before" in preview
+    flowed = _compose(
+        document,
+        _setup(page_starts={"compilation": False, "directors-report": True}),
+    )
+    assert "page-break-before" not in _section_open(flowed, "compilation")
+    assert "page-break-before" in _section_open(flowed, "directors-report")
+    anchors, _payload, _count = _anchor_pages(flowed)
+    pages = _pdf_pages(_payload)
+    if pages and pages[-1] == "":
+        pages.pop()
+    contents_at = anchors["contents"]
+    contents_text = "\n".join(pages[contents_at - 1 : contents_at + 1])
+    for anchor, label in _contents_entries(flowed):
+        assert _printed_contents_number(contents_text, label) == anchors[anchor], label
+    assert document.net_assets == Decimal("455812.00")
+    assert document.profit == Decimal("157650.00")
+
+
+def test_default_page_counts_for_the_golden_and_first_period_files() -> None:
+    """Defaults only. The numbers are the composed PDF, not the engine HTML."""
+    from tests.test_statutory_display import _first_period
+
+    golden = _golden()
+    golden_html = _compose(golden, _setup())
+    _golden_anchors, _golden_pdf, golden_pages = _anchor_pages(golden_html)
+    first = _first_period()
+    first_html = compose_pdf_html(
+        first,
+        report_setup=None,
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 12, 31),
+        first_financial_period=True,
+        currency="EUR",
+    )
+    _first_anchors, _first_pdf, first_pages = _anchor_pages(first_html)
+    assert golden.net_assets == Decimal("455812.00")
+    assert golden.profit == Decimal("157650.00")
+    assert first.net_assets == Decimal("35000.00")
+    assert first.profit == Decimal("25000.00")
+    assert (golden_pages, first_pages) == (10, 9)
+
+
+@pytest.mark.asyncio
+async def test_page_start_is_stored_and_cleared_by_sections_reset(
+    api_client: AsyncClient,
+    provisioned_org: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    year_end_id, headers, _org_id = await _open_draft(api_client, provisioned_org)
+    saved = await api_client.put(
+        f"/year-ends/{year_end_id}/report-setup",
+        headers=headers,
+        json={
+            **_display(_symbol_headers()),
+            "page_starts": {"compilation": False, "income": True},
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["page_starts"] == {"compilation": False}
+    assert saved.json()["sections"] is None
+    html = await _pdf_html(api_client, year_end_id, headers, monkeypatch)
+    assert "page-break-before" not in _section_open(html, "compilation")
+    kept = await api_client.put(
+        f"/year-ends/{year_end_id}/report-setup",
+        headers=headers,
+        json=_display(_symbol_headers()),
+    )
+    assert kept.status_code == 200, kept.text
+    assert kept.json()["page_starts"] == {"compilation": False}
+    drifted = await api_client.put(
+        f"/year-ends/{year_end_id}/report-setup",
+        headers=headers,
+        json=_display(_year_headers()),
+    )
+    assert drifted.status_code == 200, drifted.text
+    display_reset = await api_client.post(
+        f"/year-ends/{year_end_id}/report-setup/reset",
+        headers=headers,
+        json={"scope": "display"},
+    )
+    assert display_reset.status_code == 200, display_reset.text
+    assert display_reset.json()["page_starts"] == {"compilation": False}
+    assert display_reset.json()["column_headers"] == _symbol_headers()
+    restored = await api_client.post(
+        f"/year-ends/{year_end_id}/report-setup/reset",
+        headers=headers,
+        json={"scope": "sections"},
+    )
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["page_starts"] is None
+    assert restored.json()["sections"] is None
+    again = await _pdf_html(api_client, year_end_id, headers, monkeypatch)
+    assert "page-break-before" in _section_open(again, "compilation")
 
 
 def test_write_statement_pdf_is_unchanged_for_the_engine_html() -> None:

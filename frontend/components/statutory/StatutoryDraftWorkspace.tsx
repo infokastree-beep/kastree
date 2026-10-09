@@ -436,6 +436,27 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     });
   }
 
+  async function togglePageStart(sectionId: string, starts: boolean): Promise<void> {
+    const setup = setupQuery.data;
+    const section = catalogue.find((item) => item.id === sectionId);
+    if (setup == null || section == null) {
+      return;
+    }
+    const next = { ...(setup.page_starts ?? {}) };
+    if (starts === (section.new_page === true)) {
+      delete next[sectionId];
+    } else {
+      next[sectionId] = starts;
+    }
+    await saveReportSetup({
+      rounding: setup.rounding,
+      statement_type: setup.statement_type,
+      face_dates: setup.face_dates,
+      column_headers: setup.column_headers,
+      page_starts: next,
+    });
+  }
+
   async function refreshDraft(): Promise<void> {
     await queryClient.invalidateQueries({ queryKey: ["working-draft", yearEndId] });
     await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
@@ -824,6 +845,8 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
           title={activeMeta?.label ?? ""}
           sections={sections}
           onToggle={(id, enabled) => void toggleSection(id, enabled)}
+          pageStarts={setupQuery.data?.page_starts ?? null}
+          onPageStart={(id, starts) => void togglePageStart(id, starts)}
           togglesEnabled={canEditDetails && setupQuery.isSuccess && busy === null}
           canReset={canEditDetails && setupQuery.isSuccess}
           onReset={() => void resetReportSetup("sections")}

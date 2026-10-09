@@ -30,6 +30,7 @@ export type ReportSetup = {
   trial_balance_period_start: string | null;
   trial_balance_period_end: string;
   sections?: Record<string, boolean> | null;
+  page_starts?: Record<string, boolean> | null;
   currency: string;
   rounding_unit_label: string;
   rounding_thousands_label: string;
@@ -41,6 +42,7 @@ export type ReportSetupWrite = {
   face_dates: FaceDates;
   column_headers: ColumnHeaders;
   sections?: Record<string, boolean> | null;
+  page_starts?: Record<string, boolean> | null;
 };
 
 const STATEMENT_TYPES: StatementType[] = ["draft", "compilation"];

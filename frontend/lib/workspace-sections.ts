@@ -10,6 +10,7 @@ export type WorkspaceSection = {
   default?: "on" | "off" | "engine" | null;
   built?: boolean | null;
   enabled?: boolean;
+  new_page?: boolean | null;
 };
 
 export type ReportingFramework = {
@@ -58,6 +59,17 @@ export function sectionIsOn(
     return saved[section.id] === true;
   }
   return section.default === "on";
+}
+
+/** Pack default, unless this year end stored an override. */
+export function pageStartsOn(
+  section: WorkspaceSection,
+  saved: Readonly<Record<string, boolean>> | null | undefined,
+): boolean {
+  if (saved != null && Object.prototype.hasOwnProperty.call(saved, section.id)) {
+    return saved[section.id] === true;
+  }
+  return section.new_page === true;
 }
 
 /** Every catalogue row, including a pack section the practice has switched off. */

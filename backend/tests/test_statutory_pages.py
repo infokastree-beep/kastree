@@ -116,7 +116,10 @@ def test_pages_keep_engine_figures_and_leave_gaps() -> None:
     assert "not a review" in compilation
     assert "No audit opinion" in compilation
     report = _page(document, "Directors' report")
-    assert "The directors present their report for the year ended 31 December 2025." in report
+    assert (
+        "The directors present their report for the year ended 31 December 2025."
+        in report
+    )
     assert "The financial year end has not been recorded." not in report
     assert "as at 31 December 2025" in (document.html or "")
     assert "Ada Lovelace" in report
@@ -204,6 +207,54 @@ def test_build_docx_escapes_formula_leads(tmp_path: Path) -> None:
     assert "'-Directors" in xml
     assert "'@cmd" in xml
     assert "'-10.00" in xml
+    assert 'w:type="page"' not in xml
+
+
+def test_docx_page_breaks_follow_saved_page_starts(tmp_path: Path) -> None:
+    from app.services.render_jobs import annotate_page_starts
+    from app.services.statutory_docx import build_docx
+
+    payload = {
+        "watermark": "DRAFT",
+        "company_name": "Sample Limited",
+        "compliance_statement": "Prepared under FRS 102.",
+        "pages": [
+            {"heading": "Compilation report", "paragraphs": ["Compiled."]},
+            {"heading": "Directors' report", "paragraphs": ["The directors."]},
+            {
+                "heading": "Approval of the financial statements",
+                "paragraphs": ["Approved."],
+            },
+            {"heading": "Audit exemption", "paragraphs": ["Exempt."]},
+        ],
+        "sofp": [{"label": "Cash", "current": "1", "prior": ""}],
+        "income": [{"label": "Sales", "current": "1", "prior": ""}],
+        "notes": [
+            {
+                "code": "1",
+                "title": "Accounting policies",
+                "body": "Basis.",
+                "lines": [],
+            }
+        ],
+    }
+    defaulted = annotate_page_starts(payload, None)
+    dest = tmp_path / "default.docx"
+    build_docx(defaulted, dest)
+    assert _xml(dest.read_bytes()).count('w:type="page"') == 4
+    flowed = annotate_page_starts(
+        {
+            **payload,
+            "pages": [dict(page) for page in payload["pages"]],
+        },
+        {"page_starts": {"compilation": False, "directors-report": True}},
+    )
+    pages = flowed["pages"]
+    assert isinstance(pages, list)
+    assert pages[0]["new_page"] is False
+    assert pages[1]["new_page"] is True
+    assert flowed["income_new_page"] is True
+    assert flowed["notes_new_page"] is True
 
 
 def test_docx_child_sets_address_space_cap() -> None:
@@ -309,6 +360,8 @@ async def test_docx_job_escapes_formulas_and_replays(
     assert "auditor's report" not in xml.casefold()
     assert "455812.00" in xml
     assert "157650.00" in xml
+    # Compilation, statement of financial position, income, and notes.
+    assert xml.count('w:type="page"') == 4
 
     other = await _import_csv(
         api_client,
@@ -430,9 +483,7 @@ async def test_final_docx_reads_the_snapshot(
             {"id": str(provisioned_org["company_id"])},
         ).scalar_one()
         session.execute(
-            text(
-                "UPDATE companies SET principal_activity = :activity WHERE id = :id"
-            ),
+            text("UPDATE companies SET principal_activity = :activity WHERE id = :id"),
             {"activity": "Widgets", "id": str(provisioned_org["company_id"])},
         )
         session.commit()

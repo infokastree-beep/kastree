@@ -12,6 +12,7 @@ import {
   groupIsOpen,
   navigatorSections,
   parseGroupState,
+  pageStartsOn,
   sectionIsOn,
   sectionsForFramework,
   SIDEBAR_GROUPS_KEY,
@@ -146,6 +147,8 @@ describe("sectionsForFramework", () => {
       "utf8",
     );
     assert.equal(setup.includes("statutory-toggle-"), true);
+    assert.equal(setup.includes("statutory-page-start-"), true);
+    assert.equal(setup.includes("New page"), true);
     assert.equal(setup.includes("not built"), true);
     assert.equal(setup.includes("locked"), true);
     assert.equal(setup.includes("Reset to pack defaults"), false);
@@ -322,5 +325,31 @@ describe("sectionIsOn", () => {
       assert.equal(sectionIsOn(row, null), true);
       assert.equal(sectionIsOn(row, {}), true);
     }
+  });
+});
+
+describe("pageStartsOn", () => {
+  const compilation = section(
+    "compilation",
+    "Compilation report",
+    "sections",
+    "Sections",
+    6,
+  );
+  compilation.new_page = true;
+  const report = section(
+    "directors-report",
+    "Directors' report",
+    "sections",
+    "Sections",
+    4,
+  );
+  report.new_page = false;
+
+  it("uses the pack default until the saved map names the section", () => {
+    assert.equal(pageStartsOn(compilation, null), true);
+    assert.equal(pageStartsOn(report, {}), false);
+    assert.equal(pageStartsOn(compilation, { compilation: false }), false);
+    assert.equal(pageStartsOn(report, { "directors-report": true }), true);
   });
 });

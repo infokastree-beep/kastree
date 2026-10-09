@@ -1,12 +1,17 @@
 "use client";
 
 import { ResetDefaultsDialog } from "@/components/statutory/ResetDefaultsDialog";
-import type { WorkspaceSection } from "@/lib/workspace-sections";
+import {
+  pageStartsOn,
+  type WorkspaceSection,
+} from "@/lib/workspace-sections";
 
 export function SectionsSetup({
   title,
   sections,
   onToggle,
+  pageStarts,
+  onPageStart,
   togglesEnabled,
   canReset,
   onReset,
@@ -14,6 +19,8 @@ export function SectionsSetup({
   title: string;
   sections: readonly WorkspaceSection[];
   onToggle: (sectionId: string, enabled: boolean) => void;
+  pageStarts: Readonly<Record<string, boolean>> | null;
+  onPageStart: (sectionId: string, starts: boolean) => void;
   togglesEnabled: boolean;
   canReset: boolean;
   onReset: () => void;
@@ -38,6 +45,18 @@ export function SectionsSetup({
                 </span>
               ) : null}
             </span>
+            <label className="flex items-center gap-2 text-xs text-soft">
+              <input
+                type="checkbox"
+                className="h-4 w-4 shrink-0"
+                checked={pageStartsOn(section, pageStarts)}
+                disabled={togglesEnabled !== true}
+                aria-label={`Start ${section.label} on a new page`}
+                data-testid={`statutory-page-start-${section.id}`}
+                onChange={(event) => onPageStart(section.id, event.target.checked)}
+              />
+              New page
+            </label>
             {section.lock === "user" ? (
               <input
                 type="checkbox"

@@ -90,6 +90,10 @@ def pack_section_catalogue() -> dict[str, dict[str, str]]:
             raise ValueError(f"pack section {section_id} lock is malformed")
         if rule["default"] not in {"on", "off", "engine"}:
             raise ValueError(f"pack section {section_id} default is malformed")
+        new_page = item.get("new_page")
+        if new_page not in {"yes", "no"}:
+            raise ValueError(f"pack section {section_id} new_page is malformed")
+        rule["new_page"] = new_page
         catalogue[section_id] = rule
     return catalogue
 
@@ -109,6 +113,7 @@ class ReportSetupWrite(BaseModel):
     face_dates: FaceDates
     column_headers: ColumnHeaders
     sections: dict[str, bool] | None = None
+    page_starts: dict[str, bool] | None = None
 
     @field_validator("sections")
     @classmethod
@@ -130,6 +135,25 @@ class ReportSetupWrite(BaseModel):
             raise ValueError(f"Locked section cannot be turned off: {locked_off[0]}")
         return value
 
+    @field_validator("page_starts")
+    @classmethod
+    def page_starts_follow_the_pack(
+        cls, value: dict[str, bool] | None
+    ) -> dict[str, bool] | None:
+        """Keep only choices that differ from the pack. An empty map clears them."""
+        if value is None:
+            return None
+        catalogue = pack_section_catalogue()
+        unknown = sorted(set(value) - set(catalogue))
+        if unknown:
+            raise ValueError(f"Unknown section {unknown[0]}")
+        overrides: dict[str, bool] = {}
+        for section_id, starts in value.items():
+            default = catalogue[section_id]["new_page"] == "yes"
+            if starts is not default:
+                overrides[section_id] = starts
+        return overrides
+
 
 class ReportSetupReset(BaseModel):
     """Which saved override returns to the pack default."""
@@ -150,6 +174,7 @@ class ReportSetupResponse(BaseModel):
     face_dates: FaceDates
     column_headers: ColumnHeaders
     sections: dict[str, bool] | None = None
+    page_starts: dict[str, bool] | None = None
     trial_balance_period_start: date | None
     trial_balance_period_end: date
     currency: str
@@ -169,6 +194,7 @@ class WorkspaceSectionOut(BaseModel):
     default: str | None = None
     built: bool | None = None
     children: str | None = None
+    new_page: bool | None = None
 
 
 class ReportingFrameworkOut(BaseModel):

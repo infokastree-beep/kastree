@@ -524,7 +524,59 @@ def test_pack_declares_section_locks_and_defaults() -> None:
     assert catalogue["cash-flow"]["default"] == "off"
     assert catalogue["trading"]["default"] == "off"
     assert catalogue["cover"]["source_status"] == "pending-reviewer-signoff"
+    from pydantic import ValidationError
+
+    from app.schemas.report_setup import ReportSetupWrite
+
+    kept = ReportSetupWrite.model_validate(
+        {
+            "rounding": "unit",
+            "statement_type": "draft",
+            "face_dates": {},
+            "column_headers": {
+                "as_at_current": "2025 €",
+                "as_at_prior": "2024 €",
+                "ended_current": "2025 €",
+                "ended_prior": "2024 €",
+            },
+            "page_starts": {
+                "compilation": False,
+                "income": True,
+                "directors-report": True,
+            },
+        }
+    )
+    assert kept.page_starts == {"compilation": False, "directors-report": True}
+    with pytest.raises(ValidationError):
+        ReportSetupWrite.model_validate(
+            {
+                "rounding": "unit",
+                "statement_type": "draft",
+                "face_dates": {},
+                "column_headers": {
+                    "as_at_current": "2025 €",
+                    "as_at_prior": "2024 €",
+                    "ended_current": "2025 €",
+                    "ended_prior": "2024 €",
+                },
+                "page_starts": {"not-a-section": True},
+            }
+        )
     assert catalogue["notes"]["group"] == "frs-locked"
+    new_page = {
+        section_id
+        for section_id, rule in catalogue.items()
+        if rule["new_page"] == "yes"
+    }
+    assert new_page == {
+        "cover",
+        "contents",
+        "directors-info",
+        "compilation",
+        "income",
+        "sofp",
+        "notes",
+    }
 
 
 def test_not_built_comes_from_the_pack_flag() -> None:
@@ -580,16 +632,18 @@ def test_company_column_migration_grants_are_explicit() -> None:
 def test_notes_children_come_from_the_pack() -> None:
     from app.services.report_setup import section_children_marker
 
-    notes = next(section for section in sections_for("frs102-1a-ie") if section.id == "notes")
+    notes = next(
+        section for section in sections_for("frs102-1a-ie") if section.id == "notes"
+    )
     assert notes.children == "printed-notes"
-    cover = next(section for section in sections_for("frs102-1a-ie") if section.id == "cover")
+    cover = next(
+        section for section in sections_for("frs102-1a-ie") if section.id == "cover"
+    )
     assert cover.children is None
     assert section_children_marker({"children": "printed-notes"}) == "printed-notes"
     assert section_children_marker({}) is None
     assert (
-        section_children_marker(
-            {"children": [{"id": "approval", "label": "Approval"}]}
-        )
+        section_children_marker({"children": [{"id": "approval", "label": "Approval"}]})
         == "declared"
     )
     with pytest.raises(ValueError, match="children are malformed"):

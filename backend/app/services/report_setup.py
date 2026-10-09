@@ -40,6 +40,7 @@ class WorkspaceSection:
     default: str | None = None
     built: bool | None = None
     children: str | None = None
+    new_page: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -131,6 +132,7 @@ def _pack_sidebar() -> tuple[WorkspaceSection, ...]:
                 default=rule["default"],
                 built=_built_flag(item),
                 children=section_children_marker(item),
+                new_page=rule["new_page"] == "yes",
             )
         )
         order += 1
@@ -216,6 +218,7 @@ def framework_list() -> ReportingFrameworkList:
                         default=section.default,
                         built=section.built,
                         children=section.children,
+                        new_page=section.new_page,
                     )
                     for section in framework.sections
                 ],
@@ -264,18 +267,51 @@ def default_report_setup(year_end: YearEnd, currency: str) -> ReportSetupWrite:
     )
 
 
-def _stored_sections(previous: object) -> dict[str, bool] | None:
+def _stored_flag_map(previous: object, key: str) -> dict[str, bool] | None:
     if not isinstance(previous, dict):
         return None
-    raw = previous.get("sections")
+    raw = previous.get(key)
     if not isinstance(raw, dict) or not raw:
         return None
     kept: dict[str, bool] = {}
-    for key, value in raw.items():
-        if not isinstance(key, str) or not isinstance(value, bool):
+    for item_key, value in raw.items():
+        if not isinstance(item_key, str) or not isinstance(value, bool):
             return None
-        kept[key] = value
+        kept[item_key] = value
     return kept
+
+
+def _stored_sections(previous: object) -> dict[str, bool] | None:
+    return _stored_flag_map(previous, "sections")
+
+
+def _stored_page_starts(previous: object) -> dict[str, bool] | None:
+    return _stored_flag_map(previous, "page_starts")
+
+
+def page_start_overrides(report_setup: object) -> dict[str, bool]:
+    """Saved new-page choices. A missing map is the pack default."""
+    stored = _stored_page_starts(report_setup)
+    return {} if stored is None else stored
+
+
+def starts_new_page(section_id: str, report_setup: object) -> bool:
+    """Whether one section starts a sheet. Pack sections declare the default."""
+    overrides = page_start_overrides(report_setup)
+    if section_id in overrides:
+        return overrides[section_id]
+    rule = pack_section_catalogue().get(section_id)
+    if rule is None:
+        return False
+    return rule["new_page"] == "yes"
+
+
+def section_id_for_label(label: str) -> str | None:
+    """Pack section whose printed label matches. Approval is not a pack section."""
+    for section_id, rule in pack_section_catalogue().items():
+        if rule["label"] == label:
+            return section_id
+    return None
 
 
 def _stored_setup(year_end: YearEnd, currency: str) -> ReportSetupWrite:
@@ -298,6 +334,7 @@ def report_setup_response(year_end: YearEnd, currency: str) -> ReportSetupRespon
         face_dates=setup.face_dates,
         column_headers=setup.column_headers,
         sections=setup.sections,
+        page_starts=setup.page_starts or None,
         trial_balance_period_start=year_end.period_start,
         trial_balance_period_end=year_end.period_end,
         currency=cleaned,
@@ -317,20 +354,14 @@ async def save_report_setup(
 ) -> ReportSetupResponse:
     """Replace display settings. Period columns and the pack pin stay put.
 
-    Omitting ``sections`` keeps the map already stored. An empty map clears
-    overrides, so it is not stored as every section off. A locked section
-    set to false is rejected before this assignment.
+    Omitting ``sections`` or ``page_starts`` keeps the map already stored.
+    An empty map clears that override. A locked section set to false is
+    rejected before this assignment. Page-start defaults are not stored.
     """
     previous = year_end.report_setup
     stored = body.model_dump(mode="json")
-    if body.sections is None:
-        kept = _stored_sections(previous)
-        if kept is None:
-            stored.pop("sections", None)
-        else:
-            stored["sections"] = kept
-    elif not body.sections:
-        stored.pop("sections", None)
+    _keep_or_clear(stored, previous, body.sections, "sections")
+    _keep_or_clear(stored, previous, body.page_starts, "page_starts")
     year_end.report_setup = stored
     await append_audit_log(
         session,
@@ -345,15 +376,38 @@ async def save_report_setup(
     return report_setup_response(year_end, currency)
 
 
+def _keep_or_clear(
+    stored: dict[str, object],
+    previous: object,
+    incoming: dict[str, bool] | None,
+    key: str,
+) -> None:
+    """None keeps the stored map. An empty map removes it."""
+    if incoming is None:
+        kept = _stored_flag_map(previous, key)
+        if kept is None:
+            stored.pop(key, None)
+        else:
+            stored[key] = kept
+    elif not incoming:
+        stored.pop(key, None)
+
+
 def _display_defaults(
-    year_end: YearEnd, currency: str, sections: dict[str, bool] | None
+    year_end: YearEnd,
+    currency: str,
+    sections: dict[str, bool] | None,
+    page_starts: dict[str, bool] | None,
 ) -> dict[str, object]:
     stored: dict[str, object] = default_report_setup(year_end, currency).model_dump(
         mode="json"
     )
     stored.pop("sections", None)
+    stored.pop("page_starts", None)
     if sections:
         stored["sections"] = sections
+    if page_starts:
+        stored["page_starts"] = page_starts
     return stored
 
 
@@ -369,15 +423,21 @@ async def reset_report_setup(
     """Clear one saved override. Sections return to the pack. Display returns to defaults."""
     previous = year_end.report_setup
     if scope == "sections":
-        if isinstance(previous, dict) and any(key != "sections" for key in previous):
-            kept = dict(previous)
-            kept.pop("sections", None)
-            year_end.report_setup = kept
+        if isinstance(previous, dict):
+            kept = {
+                key: value
+                for key, value in previous.items()
+                if key not in {"sections", "page_starts"}
+            }
+            year_end.report_setup = kept or None
         else:
             year_end.report_setup = None
     else:
         year_end.report_setup = _display_defaults(
-            year_end, currency, _stored_sections(previous)
+            year_end,
+            currency,
+            _stored_sections(previous),
+            _stored_page_starts(previous),
         )
     await append_audit_log(
         session,

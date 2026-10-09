@@ -23,7 +23,11 @@ from app.schemas.report_setup import (
     pack_section_catalogue,
 )
 from app.services.reconciliation import ReconciliationCheck
-from app.services.report_setup import default_report_setup, display_amount
+from app.services.report_setup import (
+    default_report_setup,
+    display_amount,
+    starts_new_page,
+)
 from app.services.statutory_display import (
     _GROUPS,
     _keep,
@@ -68,10 +72,6 @@ _ENGINE_HEADINGS = {
     "approval": "Approval of the financial statements",
     "audit-exemption": "Audit exemption",
 }
-# These start a page. The directors' narrative pages flow on after directors-info.
-_PAGE_START = frozenset(
-    {"cover", "contents", "directors-info", "income", "sofp", "notes"}
-)
 _NOTES_FOOTER = frozenset({"income", "sofp", "notes"})
 _STATEMENTS = frozenset({"income", "sofp", "notes"})
 
@@ -253,6 +253,7 @@ def compose_pdf_parts(
     sections = _composed_sections(
         document,
         saved=saved,
+        page_starts=setup.page_starts,
         catalogue=catalogue,
         built=built,
         letterhead=facts,
@@ -479,6 +480,8 @@ def pack_display_notices(
         parts.append("face dates")
     if setup.column_headers != defaults.column_headers:
         parts.append("column headers")
+    if setup.page_starts:
+        parts.append("page starts")
     if parts:
         notices.append(
             ReconciliationCheck(
@@ -714,6 +717,7 @@ def _composed_sections(
     document: StatutoryStatements,
     *,
     saved: dict[str, bool] | None,
+    page_starts: dict[str, bool] | None,
     catalogue: dict[str, dict[str, str]],
     built: dict[str, dict[str, object]],
     letterhead: CompanyLetterhead,
@@ -747,7 +751,11 @@ def _composed_sections(
     ]
     sections: list[dict[str, object]] = []
     for index, (section_id, label) in enumerate(planned):
-        page_break = index > 0 and section_id in _PAGE_START
+        # The first sheet has nothing before it, so a yes default does not
+        # insert a leading blank page.
+        page_break = index > 0 and starts_new_page(
+            section_id, {"page_starts": page_starts}
+        )
         notes_footer = section_id in _NOTES_FOOTER
         cover_page = section_id == "cover"
         block: dict[str, object] | None = None
