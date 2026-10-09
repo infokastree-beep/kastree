@@ -54,6 +54,7 @@ from app.services.reconciliation import (
     build_reconciliation,
     load_confirmed_inputs,
 )
+from findraft.engine.lines import CREDITORS_LT1Y
 from findraft.engine.mapping import aggregate
 from findraft.engine.money import money
 from findraft.engine.notes import build_fa_grid, build_note_context, select_notes
@@ -962,6 +963,17 @@ def rounding_flag_for_lines(
     )
 
 
+def _note_amount(name: str, amount: Decimal) -> Decimal:
+    """Creditor note lines print the credit as a positive amount.
+
+    The face keeps the engine sign, so brackets stay on the statement.
+    """
+    signed = money(amount)
+    if name in CREDITORS_LT1Y:
+        return money(-signed)
+    return signed
+
+
 def _note_lines(
     names: list[str],
     aggregated: dict[str, Decimal],
@@ -972,8 +984,8 @@ def _note_lines(
         lines.append(
             NoteLine(
                 line=name,
-                current=money(aggregated.get(name, Decimal("0"))),
-                prior=money(prior_canonical.get(name, Decimal("0"))),
+                current=_note_amount(name, aggregated.get(name, Decimal("0"))),
+                prior=_note_amount(name, prior_canonical.get(name, Decimal("0"))),
             )
         )
     return tuple(lines)

@@ -101,6 +101,48 @@ def _row(rows: tuple[StatementRow, ...], label: str) -> StatementRow:
     return next(row for row in rows if row.label == label)
 
 
+def test_note_sign_convention_matches_the_face_in_absolute_value() -> None:
+    """Creditor notes are positive. Brackets stay on the face."""
+    document = _golden()
+    assert document.html is not None
+    pairs = (
+        (
+            "N4_CREDITORS",
+            ("Creditors: amounts falling due within one year",),
+        ),
+        (
+            "N3_DEBTORS",
+            ("Trade debtors", "Other debtors"),
+        ),
+    )
+    for code, labels in pairs:
+        note = next(item for item in document.notes if item.code == code)
+        face_total = sum(
+            (_row(document.sofp, label).current for label in labels),
+            Decimal("0"),
+        )
+        note_total = sum((line.current for line in note.lines), Decimal("0"))
+        assert note_total == abs(face_total)
+        prior_face = sum(
+            (
+                _row(document.sofp, label).prior or Decimal("0")
+                for label in labels
+            ),
+            Decimal("0"),
+        )
+        prior_note = sum((line.prior for line in note.lines), Decimal("0"))
+        assert prior_note == abs(prior_face)
+    creditors = next(item for item in document.notes if item.code == "N4_CREDITORS")
+    assert all(line.current >= 0 for line in creditors.lines)
+    trade = next(line for line in creditors.lines if line.line == "TRADE_CREDITORS")
+    assert trade.current == Decimal("67200.00")
+    face = _row(document.sofp, "Creditors: amounts falling due within one year")
+    assert face.current < 0
+    assert "(110,500)" in document.html
+    assert "(67,200)" not in document.html
+    assert "67,200" in document.html
+
+
 def test_golden_render_keeps_engine_figures_and_zero_lines() -> None:
     document = _golden()
     assert document.renderable is True
