@@ -1590,6 +1590,13 @@ comprehensive income, changes in equity, cash flow, trading statement) are
 not built. The sidebar catalogue stays the hardcoded list. Pending reviewer
 sign-off of statement order.
 
+### Note sign convention — reviewer sign-off
+
+Creditor lines in the notes are positive amounts. Brackets are printed on
+the face of the statement of financial position. Each note total equals the
+corresponding face line in absolute value. The engine stores those balances
+credit-negative. Pending reviewer sign-off.
+
 ### Share capital particulars — design only
 
 Not built. The share capital note still prints the face amount and
