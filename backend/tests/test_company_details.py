@@ -18,7 +18,7 @@ from app.db import SyncSessionLocal, set_rls_org_id
 from app.services.company_details import blocks_final
 from app.services.draft_workflow import _can_finalise
 from app.services.reconciliation import ReconciliationCheck
-from tests.conftest import auth_headers
+from tests.conftest import auth_headers, make_access_token
 from tests.test_adopted_trial_balance import _CASH_PAIR, _insert_tb
 from tests.test_findraft_tenant_isolation import (
     _as_app_role,
@@ -26,6 +26,7 @@ from tests.test_findraft_tenant_isolation import (
     _provision,
 )
 from tests.test_organisations_api import _add_org_user
+from tests.test_role_enforcement import _set_role
 
 
 @pytest.fixture
@@ -81,6 +82,44 @@ def test_non_euro_on_the_irish_pack_is_a_notice() -> None:
     )
     company.functional_currency = "USD"
     year_end.pack_id = "frs102-1a"
+    assert all(
+        item.code != "V-CO-007" for item in company_detail_checks(company, year_end)
+    )
+
+
+def test_currency_confirmation_clears_only_while_the_code_matches() -> None:
+    from app.models.company import Company
+    from app.services.company_details import company_detail_checks
+    from findraft.models.year_end import YearEnd
+
+    org_id = uuid.uuid4()
+    company = Company(
+        client_id=uuid.uuid4(),
+        org_id=org_id,
+        name="Northwind",
+        functional_currency="GBP",
+    )
+    year_end = YearEnd(
+        org_id=org_id,
+        company_id=uuid.uuid4(),
+        period_end=date(2025, 12, 31),
+        pack_id="frs102-1a-ie",
+        pack_version="2024.09",
+        currency_confirmed_code="GBP",
+    )
+    assert all(
+        item.code != "V-CO-007" for item in company_detail_checks(company, year_end)
+    )
+    company.functional_currency = "USD"
+    notice = next(
+        item
+        for item in company_detail_checks(company, year_end)
+        if item.code == "V-CO-007"
+    )
+    assert notice.passed is False
+    assert notice.message == "Company currency is USD. Confirm this is intended."
+    assert blocks_final((notice,)) is False
+    company.functional_currency = "EUR"
     assert all(
         item.code != "V-CO-007" for item in company_detail_checks(company, year_end)
     )
@@ -616,3 +655,173 @@ def test_new_columns_stay_inside_the_practice(
         finally:
             session.rollback()
             session.execute(text("RESET ROLE"))
+
+
+@pytest.mark.asyncio
+async def test_confirm_currency_records_the_acknowledgement_and_leaves_figures(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    org_id = provisioned_org["org_id"]
+    user_id = provisioned_org["user_id"]
+    company_id = provisioned_org["company_id"]
+    assert isinstance(org_id, uuid.UUID)
+    assert isinstance(user_id, uuid.UUID)
+    assert isinstance(company_id, uuid.UUID)
+    token = provisioned_org["token"]
+    assert isinstance(token, str)
+    tb_id = _insert_tb(
+        org_id=org_id,
+        company_id=company_id,
+        rows=_CASH_PAIR,
+        period_start=date(2026, 1, 1),
+    )
+    headers = auth_headers(token)
+    opened = await api_client.post(
+        f"/trial-balances/{tb_id}/statutory-year-end",
+        headers=headers,
+        json={},
+    )
+    assert opened.status_code == 200, opened.text
+    year_end_id = opened.json()["year_end_id"]
+    gate = await api_client.post(
+        f"/year-ends/{year_end_id}/first-financial-period",
+        headers=headers,
+    )
+    assert gate.status_code == 200, gate.text
+    before = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
+        headers=headers,
+    )
+    assert before.status_code == 200, before.text
+    figures = {
+        "profit": before.json()["profit"],
+        "net_assets": before.json()["net_assets"],
+    }
+    draft = await api_client.get(f"/year-ends/{year_end_id}/draft", headers=headers)
+    assert draft.status_code == 200, draft.text
+    dashboard_url = (
+        f"/year-ends/{year_end_id}/drafts/{draft.json()['draft_id']}/dashboard"
+    )
+    board = await api_client.get(dashboard_url, headers=headers)
+    assert board.status_code == 200, board.text
+    assert _checks(board.json())["V-CO-007"]["message"] == (
+        "Company currency is GBP. Confirm this is intended."
+    )
+
+    suffix = uuid.uuid4().hex[:8]
+    other = _provision(suffix)
+    try:
+        foreign = await api_client.post(
+            f"/year-ends/{year_end_id}/currency-confirmation",
+            headers=auth_headers(
+                make_access_token(
+                    clerk_user_id=f"user_fd_{suffix}",
+                    clerk_org_id=f"org_fd_{suffix}",
+                    org_uuid=other["org_id"],
+                )
+            ),
+        )
+        assert foreign.status_code == 404, foreign.text
+        assert foreign.json()["detail"] == "Year end not found"
+    finally:
+        _delete_org(other["org_id"])
+
+    _set_role(org_id=org_id, user_id=user_id, role="viewer")
+    viewer = await api_client.post(
+        f"/year-ends/{year_end_id}/currency-confirmation",
+        headers=headers,
+    )
+    assert viewer.status_code == 403, viewer.text
+    assert viewer.json()["detail"] == _FORBIDDEN
+    still = await api_client.get(dashboard_url, headers=headers)
+    assert still.status_code == 200, still.text
+    assert "V-CO-007" in _checks(still.json())
+
+    _set_role(org_id=org_id, user_id=user_id, role="member")
+    confirmed = await api_client.post(
+        f"/year-ends/{year_end_id}/currency-confirmation",
+        headers=headers,
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    body = confirmed.json()
+    assert body["currency"] == "GBP"
+    assert body["confirmed_by_user_id"] == str(user_id)
+    assert body["year_end_id"] == year_end_id
+    cleared = await api_client.get(dashboard_url, headers=headers)
+    assert cleared.status_code == 200, cleared.text
+    assert "V-CO-007" not in _checks(cleared.json())
+    after = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
+        headers=headers,
+    )
+    assert after.status_code == 200, after.text
+    assert after.json()["profit"] == figures["profit"]
+    assert after.json()["net_assets"] == figures["net_assets"]
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        stored = session.execute(
+            text(
+                """
+                SELECT currency_confirmed_code,
+                       currency_confirmed_by_user_id::text,
+                       currency_confirmed_at IS NOT NULL
+                FROM findraft_year_ends
+                WHERE id = :id
+                """
+            ),
+            {"id": str(year_end_id)},
+        ).one()
+        audit = session.execute(
+            text(
+                """
+                SELECT new_value->>'currency',
+                       new_value->>'confirmed_by_user_id'
+                FROM audit_logs
+                WHERE org_id = :org AND action = 'currency_confirmed'
+                """
+            ),
+            {"org": str(org_id)},
+        ).one()
+    assert stored == ("GBP", str(user_id), True)
+    assert audit == ("GBP", str(user_id))
+
+    changed = await api_client.put(
+        f"/companies/{company_id}",
+        headers=headers,
+        json={"functional_currency": "USD"},
+    )
+    assert changed.status_code == 403, changed.text
+    _set_role(org_id=org_id, user_id=user_id, role="owner")
+    changed = await api_client.put(
+        f"/companies/{company_id}",
+        headers=headers,
+        json={"functional_currency": "USD"},
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["functional_currency"] == "USD"
+    returned = await api_client.get(dashboard_url, headers=headers)
+    assert returned.status_code == 200, returned.text
+    assert _checks(returned.json())["V-CO-007"]["message"] == (
+        "Company currency is USD. Confirm this is intended."
+    )
+    relabelled = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
+        headers=headers,
+    )
+    assert relabelled.status_code == 200, relabelled.text
+    assert relabelled.json()["profit"] == figures["profit"]
+    assert relabelled.json()["net_assets"] == figures["net_assets"]
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        kept = session.execute(
+            text(
+                """
+                SELECT currency_confirmed_code
+                FROM findraft_year_ends
+                WHERE id = :id
+                """
+            ),
+            {"id": str(year_end_id)},
+        ).scalar_one()
+    assert kept == "GBP"

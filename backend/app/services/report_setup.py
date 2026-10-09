@@ -24,7 +24,7 @@ from app.schemas.report_setup import (
     pack_section_catalogue,
 )
 from app.services.audit import append_audit_log
-from app.services.statutory_display import column_headings
+from app.services.statutory_display import column_headings, rounding_labels
 from findraft.engine.pack import load_manifest
 from findraft.models.year_end import YearEnd
 
@@ -286,7 +286,9 @@ def _stored_setup(year_end: YearEnd, currency: str) -> ReportSetupWrite:
 
 
 def report_setup_response(year_end: YearEnd, currency: str) -> ReportSetupResponse:
-    setup = _stored_setup(year_end, currency)
+    cleaned = currency.strip().upper() or "GBP"
+    setup = _stored_setup(year_end, cleaned)
+    unit_label, thousands_label = rounding_labels(cleaned)
     return ReportSetupResponse(
         basis_id=year_end.pack_id,
         basis_version=year_end.pack_version,
@@ -298,6 +300,9 @@ def report_setup_response(year_end: YearEnd, currency: str) -> ReportSetupRespon
         sections=setup.sections,
         trial_balance_period_start=year_end.period_start,
         trial_balance_period_end=year_end.period_end,
+        currency=cleaned,
+        rounding_unit_label=unit_label,
+        rounding_thousands_label=thousands_label,
     )
 
 

@@ -188,6 +188,9 @@ const SETUP = {
   basis_label: "FRS 102 Section 1A (Ireland)",
   rounding: "unit" as const,
   statement_type: "draft" as const,
+  currency: "GBP",
+  rounding_unit_label: "Nearest pound",
+  rounding_thousands_label: "Nearest £'000",
   face_dates: {
     current_start: "2026-01-01",
     current_end: "2026-12-31",

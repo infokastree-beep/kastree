@@ -32,6 +32,12 @@ _MONTHS = (
 )
 _SYMBOLS = {"EUR": "€", "GBP": "£", "USD": "$"}
 _NAMES = {"EUR": "euro", "GBP": "pound sterling", "USD": "US dollar"}
+# Report-setup rounding options. The unit word follows the company currency.
+_ROUNDING_LABELS = {
+    "EUR": ("Nearest euro", "Nearest €'000"),
+    "GBP": ("Nearest pound", "Nearest £'000"),
+    "USD": ("Nearest dollar", "Nearest $'000"),
+}
 _NEUTRAL_CURRENCY = "the company's functional currency"
 _KEEP_ON_THE_FACE = frozenset(
     {"Net assets", "Total equity", "Profit for the financial year"}
@@ -185,6 +191,17 @@ def currency_name_for_policy(code: str) -> str:
     """euro, pound sterling, or US dollar. Otherwise a neutral phrase."""
     cleaned = code.strip().upper()
     return _NAMES.get(cleaned, _NEUTRAL_CURRENCY)
+
+
+def rounding_labels(code: str) -> tuple[str, str]:
+    """Unit and thousands labels for the report-setup rounding control."""
+    cleaned = code.strip().upper()
+    known = _ROUNDING_LABELS.get(cleaned)
+    if known is not None:
+        return known
+    if not cleaned:
+        return ("Nearest unit", "Nearest '000")
+    return (f"Nearest {cleaned}", f"Nearest {cleaned}'000")
 
 
 def format_whole(value: Decimal) -> str:

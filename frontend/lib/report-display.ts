@@ -23,7 +23,7 @@ function roundHalfAwayFromZero(numerator: bigint, denominator: bigint): bigint {
   return negative ? -rounded : rounded;
 }
 
-/** Nearest euro, or nearest €'000. Unparseable text is returned unchanged. */
+/** Display rounding. Unparseable text is returned unchanged. */
 export function displayAmount(stored: string, rounding: RoundingMode): string {
   const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(stored.trim());
   if (!match) {
