@@ -23,11 +23,11 @@ from app.dependencies import (
     AuthContext,
     get_db_session,
     require_client_admin,
-    require_owner,
     require_reader,
 )
 from app.models.organisation import Organisation
 from app.models.user import User
+from app.services.audit import append_audit_log
 from app.schemas.organisation import (
     InviteCreateRequest,
     InviteStubResponse,
@@ -83,7 +83,7 @@ async def get_my_organisation(
 @router.put("/me", response_model=OrganisationResponse)
 async def update_my_organisation(
     body: OrganisationUpdateRequest,
-    auth: Annotated[AuthContext, Depends(require_owner)],
+    auth: Annotated[AuthContext, Depends(require_client_admin)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Organisation:
     org = await _load_caller_org(session, auth)
@@ -92,12 +92,32 @@ async def update_my_organisation(
     for forbidden in _BILLING_FIELDS_NOT_UPDATABLE_HERE:
         raw.pop(forbidden, None)
     updates = {key: value for key, value in raw.items() if key in _ORG_UPDATABLE_FIELDS}
+    if auth.role != "owner" and any(key != "jurisdiction" for key in updates):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to access this resource.",
+        )
     if "name" in updates and updates["name"] is not None:
         updates["name"] = str(updates["name"]).strip()
     if "functional_currency" in updates and updates["functional_currency"] is not None:
         updates["functional_currency"] = str(updates["functional_currency"]).upper()
+    previous_jurisdiction = org.jurisdiction
     for field, value in updates.items():
         setattr(org, field, value)
+    if (
+        "jurisdiction" in updates
+        and org.jurisdiction != previous_jurisdiction
+    ):
+        await append_audit_log(
+            session,
+            org_id=org.id,
+            user_id=auth.user_id,
+            action="organisation_jurisdiction_changed",
+            entity_type="organisation",
+            entity_id=org.id,
+            old_value={"jurisdiction": previous_jurisdiction},
+            new_value={"jurisdiction": org.jurisdiction},
+        )
     await session.flush()
     await session.refresh(org)
     return org

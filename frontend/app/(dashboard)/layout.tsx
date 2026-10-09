@@ -33,6 +33,12 @@ export default function DashboardGroupLayout({
               >
                 Upload
               </Link>
+              <Link
+                href="/settings"
+                className="transition-colors hover:text-accent"
+              >
+                Settings
+              </Link>
               <AdminNavLink />
             </nav>
           </div>

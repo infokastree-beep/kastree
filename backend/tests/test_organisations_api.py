@@ -6,6 +6,7 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import text
 
 from app.db import SyncSessionLocal, set_rls_org_id
 from app.models.user import User
@@ -118,6 +119,73 @@ async def test_jurisdiction_preselects_eur_and_leaves_existing_companies(
         json={"jurisdiction": "US"},
     )
     assert rejected.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_admin_can_set_jurisdiction_without_changing_companies(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    org_id = provisioned_org["org_id"]
+    company_id = provisioned_org["company_id"]
+    _, _, admin_token = _add_org_user(
+        org_id=org_id,
+        clerk_org_id=provisioned_org["clerk_org_id"],
+        role="admin",
+        email_prefix="jurisdiction-admin",
+    )
+    admin_headers = auth_headers(admin_token)
+    owner_headers = auth_headers(provisioned_org["token"])
+    before = await api_client.get(f"/companies/{company_id}", headers=owner_headers)
+    assert before.json()["functional_currency"] == "GBP"
+
+    updated = await api_client.put(
+        "/organisations/me",
+        headers=admin_headers,
+        json={"jurisdiction": "GB"},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["jurisdiction"] == "GB"
+    after = await api_client.get(f"/companies/{company_id}", headers=owner_headers)
+    assert after.json()["functional_currency"] == "GBP"
+
+    wider = await api_client.put(
+        "/organisations/me",
+        headers=admin_headers,
+        json={"jurisdiction": "IE", "name": "Admin Rename"},
+    )
+    assert wider.status_code == 403, wider.text
+    still = await api_client.get("/organisations/me", headers=owner_headers)
+    assert still.json()["jurisdiction"] == "GB"
+    assert still.json()["name"] != "Admin Rename"
+
+    _, _, member_token = _add_org_user(
+        org_id=org_id,
+        clerk_org_id=provisioned_org["clerk_org_id"],
+        role="member",
+        email_prefix="jurisdiction-member",
+    )
+    forbidden = await api_client.put(
+        "/organisations/me",
+        headers=auth_headers(member_token),
+        json={"jurisdiction": "IE"},
+    )
+    assert forbidden.status_code == 403
+
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        rows = session.execute(
+            text(
+                """
+                SELECT old_value->>'jurisdiction', new_value->>'jurisdiction'
+                FROM audit_logs
+                WHERE org_id = :org
+                  AND action = 'organisation_jurisdiction_changed'
+                """
+            ),
+            {"org": str(org_id)},
+        ).all()
+    assert rows == [(None, "GB")]
 
 
 @pytest.mark.asyncio
