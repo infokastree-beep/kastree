@@ -102,3 +102,10 @@ role that can reference `users` runs the same statement. This is the gap:
 the acknowledgement user id is not enforced by the database under the
 current migration role.
 
+`i5j6k7l8m9` adds `findraft_render_jobs.draft_id` and tries a foreign key to
+`findraft_draft_versions (id, org_id, company_id)`. That unique key already
+exists (`findraft_draft_versions_id_org_company_key` from `v2w3x4y5z6`), so
+the migration does not add it. A non-superuser `findraft` login cannot add
+the foreign key because `REFERENCES` is revoked. The migration records a
+notice and keeps the column. A superuser migration creates the key.
+

@@ -152,6 +152,7 @@ from app.services.render_jobs import (
     DOCX_MEDIA,
     find_docx_job,
     insert_docx_job,
+    job_for_draft,
     job_for_version,
 )
 from app.services.source_storage import SourceObjectStorage, get_source_storage
@@ -2034,6 +2035,185 @@ async def _docx_watermark(
     except ReconciliationRejected as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     return document.renderable, document.watermark
+
+
+async def _owned_draft(
+    session: AsyncSession,
+    *,
+    year_end: YearEnd,
+    draft_id: uuid.UUID,
+    org_id: uuid.UUID,
+) -> DraftVersion:
+    draft = await session.get(DraftVersion, draft_id)
+    if (
+        draft is None
+        or draft.org_id != org_id
+        or draft.year_end_id != year_end.id
+        or draft.company_id != year_end.company_id
+    ):
+        raise HTTPException(status_code=404, detail="Draft not found")
+    return draft
+
+
+async def _draft_docx_watermark(
+    session: AsyncSession,
+    *,
+    year_end: YearEnd,
+    draft: DraftVersion,
+    org_id: uuid.UUID,
+) -> str:
+    if draft.status == "final":
+        snapshot = draft.snapshot if isinstance(draft.snapshot, dict) else None
+        stored = snapshot.get("composed_docx") if isinstance(snapshot, dict) else None
+        if not isinstance(stored, dict) or stored.get("watermark") != "FINAL":
+            raise HTTPException(status_code=409, detail="FINAL snapshot is missing")
+        return "FINAL"
+    try:
+        if draft.tb_version_id is None:
+            document = await statements_for_adopted(
+                session,
+                org_id=org_id,
+                year_end=year_end,
+                watermark="DRAFT",
+                use_draft=draft,
+            )
+        else:
+            version = await _owned_tb_version(
+                session,
+                year_end=year_end,
+                version_id=draft.tb_version_id,
+                org_id=org_id,
+            )
+            document = await statements_for_version(
+                session,
+                org_id=org_id,
+                year_end=year_end,
+                version=version,
+                watermark="DRAFT",
+                use_draft=draft,
+            )
+    except ReconciliationRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    if not document.renderable:
+        raise HTTPException(
+            status_code=400,
+            detail="Statutory statements are not renderable",
+        )
+    return "DRAFT"
+
+
+@router.post(
+    "/{year_end_id}/drafts/{draft_id}/document.docx",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=RenderJobResponse,
+)
+async def post_draft_docx(
+    year_end_id: uuid.UUID,
+    draft_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    idempotency_key: Annotated[str | None, Header()] = None,
+) -> RenderJobResponse:
+    """Queue a Word file of the composed draft. DRAFT unless the draft is FINAL."""
+    key = _idempotency_key(idempotency_key)
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    draft = await _owned_draft(
+        session, year_end=year_end, draft_id=draft_id, org_id=auth.org_id
+    )
+    existing = await find_docx_job(session, org_id=auth.org_id, idempotency_key=key)
+    if existing is not None:
+        if existing.draft_id != draft.id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Idempotency-Key was already used for a different draft",
+            )
+        return _job_response(existing)
+    watermark = await _draft_docx_watermark(
+        session, year_end=year_end, draft=draft, org_id=auth.org_id
+    )
+    try:
+        job = await insert_docx_job(
+            session,
+            org_id=year_end.org_id,
+            company_id=year_end.company_id,
+            tb_version_id=draft.tb_version_id,
+            draft_id=draft.id,
+            idempotency_key=key,
+            watermark=watermark,
+        )
+    except IntegrityError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Idempotency-Key was already used for a different draft",
+        ) from exc
+    return _job_response(job)
+
+
+@router.get(
+    "/{year_end_id}/drafts/{draft_id}/render-jobs/{job_id}",
+    response_model=RenderJobResponse,
+)
+async def get_draft_render_job(
+    year_end_id: uuid.UUID,
+    draft_id: uuid.UUID,
+    job_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> RenderJobResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    draft = await _owned_draft(
+        session, year_end=year_end, draft_id=draft_id, org_id=auth.org_id
+    )
+    job = await job_for_draft(
+        session, org_id=auth.org_id, draft_id=draft.id, job_id=job_id
+    )
+    if job is None:
+        raise HTTPException(status_code=404, detail="DOCX job not found")
+    return _job_response(job)
+
+
+@router.get(
+    "/{year_end_id}/drafts/{draft_id}/render-jobs/{job_id}/download",
+)
+async def download_draft_render_job(
+    year_end_id: uuid.UUID,
+    draft_id: uuid.UUID,
+    job_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    storage: Annotated[SourceObjectStorage, Depends(get_source_storage)],
+) -> Response:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    draft = await _owned_draft(
+        session, year_end=year_end, draft_id=draft_id, org_id=auth.org_id
+    )
+    job = await job_for_draft(
+        session, org_id=auth.org_id, draft_id=draft.id, job_id=job_id
+    )
+    if job is None:
+        raise HTTPException(status_code=404, detail="DOCX job not found")
+    if job.status != "ready" or job.storage_key is None:
+        raise HTTPException(status_code=409, detail="DOCX is not ready")
+    filename = (
+        "statutory-statements-final.docx"
+        if job.watermark == "FINAL"
+        else "statutory-statements-draft.docx"
+    )
+    body = storage.get(key=job.storage_key)
+    return Response(
+        content=body,
+        media_type=DOCX_MEDIA,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post(

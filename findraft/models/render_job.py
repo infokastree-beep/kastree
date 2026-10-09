@@ -63,6 +63,20 @@ class RenderJob(Base):
             name="findraft_render_jobs_version_fk",
             ondelete="CASCADE",
         ),
+        ForeignKeyConstraint(
+            ["draft_id", "org_id", "company_id"],
+            [
+                "findraft_draft_versions.id",
+                "findraft_draft_versions.org_id",
+                "findraft_draft_versions.company_id",
+            ],
+            name="findraft_render_jobs_draft_fk",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "tb_version_id IS NOT NULL OR draft_id IS NOT NULL",
+            name="findraft_render_jobs_source_check",
+        ),
         Index("idx_findraft_render_jobs_org_id", "org_id"),
         Index("idx_findraft_render_jobs_tb_version_id", "tb_version_id"),
     )
@@ -76,7 +90,12 @@ class RenderJob(Base):
         nullable=False,
     )
     company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    tb_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    tb_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    draft_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     format: Mapped[str] = mapped_column(
         String(8), nullable=False, default="docx", server_default="docx"
     )
