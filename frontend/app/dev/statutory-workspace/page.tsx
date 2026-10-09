@@ -334,6 +334,16 @@ export default function StatutoryWorkspacePreviewPage() {
             <p className="text-sm text-ink-secondary" data-testid="statutory-download-reason">
               This preview does not call the API.
             </p>
+            <div className="flex flex-wrap items-center gap-3" data-testid="statutory-word-row">
+              <button
+                type="button"
+                data-testid="statutory-download-word"
+                disabled
+                className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Download Word (.docx)
+              </button>
+            </div>
           </section>
         ) : null}
         {activeMeta?.lock != null && sectionId !== "income" && sectionId !== "sofp" ? (

@@ -109,6 +109,7 @@ jobs:
           npm run test:dev-routes
           npm run test:report-setup
           npm run test:practice-jurisdiction
+          npm run test:draft-word
 
   lint:
     runs-on: ubuntu-latest

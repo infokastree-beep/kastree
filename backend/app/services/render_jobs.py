@@ -22,7 +22,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db import AsyncSessionLocal, aset_rls_org_id, set_rls_org_id
+from app.db import AsyncSessionLocal, SyncSessionLocal, aset_rls_org_id, set_rls_org_id
 from app.models.tb_version import TrialBalanceVersion
 from app.models.company import Company
 from app.schemas.year_end import StatementResponse
@@ -137,6 +137,18 @@ async def job_for_version(
         )
     )
     return _as_job(found)
+
+
+def run_docx_job(
+    org_id: uuid.UUID,
+    job_id: uuid.UUID,
+    storage: SourceObjectStorage,
+) -> None:
+    """BackgroundTasks entry. A different session sees the committed job row."""
+    with SyncSessionLocal() as session:
+        process_render_job(
+            session, org_id=org_id, job_id=job_id, storage=storage
+        )
 
 
 def process_render_job(
