@@ -17,7 +17,9 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: postgres:15
+        # ECR Public mirrors the official image. Anonymous Docker Hub pulls of
+        # postgres:15 hit the rate limit and fail the job before the suite starts.
+        image: public.ecr.aws/docker/library/postgres:15
         env:
           POSTGRES_USER: findraft
           POSTGRES_PASSWORD: local
@@ -143,7 +145,8 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: postgres:15
+        # Same mirror as the backend job. Docker Hub anonymous pulls are rate limited.
+        image: public.ecr.aws/docker/library/postgres:15
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: local
