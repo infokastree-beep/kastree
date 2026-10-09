@@ -27,6 +27,7 @@ from app.models.tb_version import TrialBalanceVersion
 from app.schemas.year_end import StatementResponse
 from app.services.reconciliation import ReconciliationRejected
 from app.services.source_storage import SourceObjectStorage, practice_storage_key
+from app.services.report_setup import section_id_for_label, starts_new_page
 from app.services.statutory_statements import (
     StatutoryStatements,
     statements_for_version,
@@ -189,6 +190,40 @@ def docx_payload(document: StatutoryStatements) -> dict[str, object]:
     return payload_from_statement(statement)
 
 
+def annotate_page_starts(
+    payload: dict[str, object], report_setup: object
+) -> dict[str, object]:
+    """Copy the report-setup page-start choice onto the blocks Word writes."""
+    pages = payload.get("pages")
+    if isinstance(pages, list):
+        for page in pages:
+            if not isinstance(page, dict):
+                continue
+            heading = page.get("heading")
+            section_id = (
+                section_id_for_label(heading) if isinstance(heading, str) else None
+            )
+            page["new_page"] = (
+                False
+                if section_id is None
+                else starts_new_page(section_id, report_setup)
+            )
+    payload["sofp_new_page"] = starts_new_page("sofp", report_setup)
+    payload["income_new_page"] = starts_new_page("income", report_setup)
+    payload["notes_new_page"] = starts_new_page("notes", report_setup)
+    return payload
+
+
+def _report_setup_for_job(session: Session, job: RenderJob) -> object:
+    version = session.get(TrialBalanceVersion, job.tb_version_id)
+    if version is None:
+        return None
+    year_end = session.get(YearEnd, version.year_end_id)
+    if year_end is None or year_end.org_id != job.org_id:
+        return None
+    return year_end.report_setup
+
+
 def payload_from_statement(statement: Mapping[str, object]) -> dict[str, object]:
     parsed = StatementResponse.model_validate(statement)
     return {
@@ -247,11 +282,15 @@ def _payload(session: Session, job: RenderJob) -> dict[str, object]:
         statement = snapshot.get("statement")
         if not isinstance(statement, dict):
             raise ValueError("FINAL snapshot is missing")
-        return payload_from_statement(statement)
+        return annotate_page_starts(
+            payload_from_statement(statement), _report_setup_for_job(session, job)
+        )
     document = _load_live(job.org_id, job.tb_version_id)
     if not document.renderable:
         raise ValueError("Statutory statements are not renderable")
-    return docx_payload(document)
+    return annotate_page_starts(
+        docx_payload(document), _report_setup_for_job(session, job)
+    )
 
 
 def _load_live(org_id: uuid.UUID, tb_version_id: uuid.UUID) -> StatutoryStatements:

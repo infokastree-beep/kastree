@@ -60,6 +60,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         lock: "locked",
         default: "on",
         built: true,
+        new_page: true,
       },
       {
         id: "sofp",
@@ -70,6 +71,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         lock: "locked",
         default: "on",
         built: true,
+        new_page: true,
       },
       {
         id: "contents",
@@ -80,6 +82,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         lock: "user",
         default: "on",
         built: true,
+        new_page: true,
       },
       {
         id: "notes",
@@ -90,6 +93,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         lock: "locked",
         default: "on",
         built: true,
+        new_page: true,
       },
       {
         id: "compilation",
@@ -100,6 +104,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         lock: "user",
         default: "on",
         built: true,
+        new_page: true,
       },
       {
         id: "cover",
@@ -110,6 +115,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         lock: "user",
         default: "on",
         built: true,
+        new_page: true,
       },
       {
         id: "oci",
@@ -214,6 +220,7 @@ export default function StatutoryWorkspacePreviewPage() {
   const [header, setHeader] = useState("2026");
   const [saved, setSaved] = useState<string>("Nothing saved");
   const [flags, setFlags] = useState<Record<string, boolean>>({});
+  const [pageStarts, setPageStarts] = useState<Record<string, boolean>>({});
   const [noteId, setNoteId] = useState<string | null>(null);
   const sections = sectionsForFramework(FRAMEWORKS, frameworkId).map((item) =>
     item.lock ? { ...item, enabled: sectionIsOn(item, flags) } : item,
@@ -256,6 +263,7 @@ export default function StatutoryWorkspacePreviewPage() {
               setRequested(null);
               setNoteId(null);
               setFlags({});
+              setPageStarts({});
             }}
             className="rounded-md border border-line bg-surface-elevated px-3 py-2"
           >
@@ -297,10 +305,15 @@ export default function StatutoryWorkspacePreviewPage() {
             title={activeMeta?.label ?? ""}
             sections={sections}
             onToggle={onToggle}
+            pageStarts={pageStarts}
+            onPageStart={(id, starts) =>
+              setPageStarts((current) => ({ ...current, [id]: starts }))
+            }
             togglesEnabled
             canReset
             onReset={() => {
               setFlags({});
+              setPageStarts({});
               setSaved("Sections reset");
             }}
           />

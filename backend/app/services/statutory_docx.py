@@ -29,18 +29,22 @@ def build_docx(payload: Mapping[str, object], dest: Path) -> None:
         escape_export_text(_required_text(payload, "company_name")), level=1
     )
     for page in _mappings(payload.get("pages"), "pages"):
+        _start_new_page(document, page.get("new_page"))
         document.add_heading(
             escape_export_text(_required_text(page, "heading")), level=2
         )
         for paragraph in _strings(page.get("paragraphs"), "paragraphs"):
             document.add_paragraph(escape_export_text(paragraph))
+    _start_new_page(document, payload.get("sofp_new_page"))
     document.add_heading("Statement of financial position", level=2)
     compliance = payload.get("compliance_statement")
     if isinstance(compliance, str) and compliance:
         document.add_paragraph(escape_export_text(compliance))
     _amount_table(document, _mappings(payload.get("sofp"), "sofp"))
+    _start_new_page(document, payload.get("income_new_page"))
     document.add_heading("Income statement", level=2)
     _amount_table(document, _mappings(payload.get("income"), "income"))
+    _start_new_page(document, payload.get("notes_new_page"))
     document.add_heading("Notes", level=2)
     for note in _mappings(payload.get("notes"), "notes"):
         title = _required_text(note, "title")
@@ -52,6 +56,16 @@ def build_docx(payload: Mapping[str, object], dest: Path) -> None:
         if lines:
             _amount_table(document, _mappings(lines, "lines"), label_key="line")
     document.save(str(dest))
+
+
+def _start_new_page(document: object, enabled: object) -> None:
+    """A true flag inserts a page break. A missing flag keeps the old flow."""
+    if enabled is not True:
+        return
+    add_page_break = getattr(document, "add_page_break", None)
+    if not callable(add_page_break):
+        raise TypeError("document is missing")
+    add_page_break()
 
 
 def _amount_table(
