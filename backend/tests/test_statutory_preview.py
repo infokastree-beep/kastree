@@ -336,7 +336,14 @@ async def test_unrenderable_preview_uses_the_pdf_message(
         company_id=company_id,
         rows=(
             ("2130", "Bank current account", "10.00", "0.00", "10.00", "cash"),
-            ("3000", "Called up share capital", "0.00", "10.00", "-10.00", "share_capital"),
+            (
+                "3000",
+                "Called up share capital",
+                "0.00",
+                "10.00",
+                "-10.00",
+                "share_capital",
+            ),
         ),
         period_start=date(2026, 1, 1),
         period_end=date(2026, 12, 31),
@@ -356,3 +363,119 @@ async def test_unrenderable_preview_uses_the_pdf_message(
     )
     assert blocked.status_code == 400, blocked.text
     assert blocked.json()["detail"] == NOT_RENDERABLE
+
+
+@pytest.mark.asyncio
+async def test_section_outline_lists_children_without_preview_html(
+    api_client: AsyncClient,
+    provisioned_org: dict[str, object],
+) -> None:
+    year_end_id, _tb_id = await _open_renderable_year_end(api_client, provisioned_org)
+    headers = auth_headers(str(provisioned_org["token"]))
+    outline = await api_client.get(
+        f"/year-ends/{year_end_id}/section-outline",
+        headers=headers,
+    )
+    assert outline.status_code == 200, outline.text
+    body = outline.json()
+    assert "html" not in body
+    by_id = {item["id"]: item["children"] for item in body["sections"]}
+    assert list(by_id) == ["notes", "directors-report", "compilation"]
+    assert by_id["notes"]
+    assert all(isinstance(child["number"], int) for child in by_id["notes"])
+    assert [child["id"] for child in by_id["compilation"]] == [
+        "approval",
+        "audit-exemption",
+    ]
+    assert by_id["directors-report"] == []
+    hidden = await api_client.put(
+        f"/year-ends/{year_end_id}/report-setup",
+        headers=headers,
+        json={
+            "rounding": "unit",
+            "statement_type": "draft",
+            "face_dates": {
+                "current_start": "2026-01-01",
+                "current_end": "2026-12-31",
+                "prior_start": None,
+                "prior_end": None,
+            },
+            "column_headers": {
+                "as_at_current": "2026 £",
+                "as_at_prior": "2025 £",
+                "ended_current": "2026 £",
+                "ended_prior": "2025 £",
+            },
+            "sections": {"cover": False, "compilation": False},
+        },
+    )
+    assert hidden.status_code == 200, hidden.text
+    again = await api_client.get(
+        f"/year-ends/{year_end_id}/section-outline",
+        headers=headers,
+    )
+    assert again.status_code == 200, again.text
+    after = {item["id"]: item["children"] for item in again.json()["sections"]}
+    assert after["compilation"] == []
+    assert after["notes"]
+    captured: list[str] = []
+
+    def _capture(html: str) -> bytes:
+        captured.append(html)
+        return b"%PDF-1.7 captured"
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("app.routers.year_ends.write_statement_pdf", _capture)
+    pdf = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
+        headers=headers,
+    )
+    monkeypatch.undo()
+    assert pdf.status_code == 200, pdf.text
+    assert 'id="cover"' not in captured[0]
+    assert 'id="compilation"' not in captured[0]
+    assert 'id="notes"' in captured[0]
+    figures = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
+        headers=headers,
+    )
+    assert figures.json()["net_assets"] == "18400.40"
+
+
+@pytest.mark.asyncio
+async def test_outline_reader_and_other_practice(
+    api_client: AsyncClient,
+    provisioned_org: dict[str, object],
+) -> None:
+    year_end_id, _tb_id = await _open_renderable_year_end(api_client, provisioned_org)
+    org_id = provisioned_org["org_id"]
+    clerk_org_id = provisioned_org["clerk_org_id"]
+    assert isinstance(org_id, uuid.UUID)
+    assert isinstance(clerk_org_id, str)
+    _user_id, _clerk_user_id, viewer_token = _add_org_user(
+        org_id=org_id,
+        clerk_org_id=clerk_org_id,
+        role="viewer",
+        email_prefix="outline-viewer",
+    )
+    viewer = await api_client.get(
+        f"/year-ends/{year_end_id}/section-outline",
+        headers=auth_headers(viewer_token),
+    )
+    assert viewer.status_code == 200, viewer.text
+    suffix = uuid.uuid4().hex[:10]
+    other = _provision(suffix)
+    try:
+        other_token = make_access_token(
+            clerk_user_id=f"user_fd_{suffix}",
+            clerk_org_id=f"org_fd_{suffix}",
+            org_uuid=other["org_id"],
+        )
+        hidden = await api_client.get(
+            f"/year-ends/{year_end_id}/section-outline",
+            headers=auth_headers(other_token),
+        )
+        assert hidden.status_code == 404, hidden.text
+        assert hidden.json()["detail"] == "Year end not found"
+    finally:
+        _delete_org(other["org_id"])

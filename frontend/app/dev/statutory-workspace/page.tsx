@@ -264,13 +264,19 @@ export default function StatutoryWorkspacePreviewPage() {
         <WorkspaceSidebar
           sections={visible}
           activeId={sectionId}
-          activeChildren={previewChildren}
+          childrenBySection={{
+            notes: NOTE_CHILDREN,
+            compilation: COMPILATION_CHILDREN,
+          }}
           activeChildId={noteId}
           onSelect={(id) => {
             setRequested(id);
             setNoteId(null);
           }}
-          onSelectChild={setNoteId}
+          onSelectChild={(parentId, childId) => {
+            setRequested(parentId);
+            setNoteId(childId);
+          }}
         />
       </div>
       <div className="min-w-0 flex-1 space-y-6">

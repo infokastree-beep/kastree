@@ -7,6 +7,10 @@ export type PreviewChild = {
   anchor: string;
 };
 
+export type SectionOutline = {
+  sections: { id: string; children: PreviewChild[] }[];
+};
+
 export type StatutoryPreview = {
   section_id: string;
   anchor: string;

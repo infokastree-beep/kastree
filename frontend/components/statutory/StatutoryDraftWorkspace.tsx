@@ -27,6 +27,7 @@ import { WorkspaceSidebar } from "@/components/statutory/WorkspaceSidebar";
 import {
   scrollAnchorFor,
   showsPageNumberNote,
+  type SectionOutline,
   type StatutoryPreview,
 } from "@/lib/section-preview";
 import {
@@ -275,6 +276,14 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       ),
     enabled: previewEnabled,
   });
+  const outlineQuery = useQuery({
+    queryKey: ["statutory-outline", yearEndId],
+    queryFn: () =>
+      apiFetch<SectionOutline>(`/year-ends/${yearEndId}/section-outline`, {
+        getToken,
+      }),
+    enabled: statementsQuery.data?.renderable === true,
+  });
 
   const forbidden = meQuery.data?.is_platform_admin === false;
   const dashboard = dashboardQuery.data;
@@ -353,6 +362,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       );
       queryClient.setQueryData(["report-setup", yearEndId], saved);
       await queryClient.invalidateQueries({ queryKey: ["statutory-preview", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["statutory-outline", yearEndId] });
       await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
       await queryClient.invalidateQueries({ queryKey: ["statutory-pack"] });
     } catch (caught) {
@@ -376,6 +386,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       );
       queryClient.setQueryData(["report-setup", yearEndId], saved);
       await queryClient.invalidateQueries({ queryKey: ["statutory-preview", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["statutory-outline", yearEndId] });
       await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
       await queryClient.invalidateQueries({ queryKey: ["statutory-pack"] });
     } catch (caught) {
@@ -643,7 +654,11 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
   const sectionId = openSectionId;
   const activeMeta = openMeta;
   const noteId = searchParams.get("note");
-  const previewChildren = previewQuery.data?.children ?? [];
+  const outlineChildren = Object.fromEntries(
+    (outlineQuery.data?.sections ?? []).map((item) => [item.id, item.children]),
+  );
+  const previewChildren =
+    outlineChildren[sectionId] ?? previewQuery.data?.children ?? [];
   const scrollAnchor = scrollAnchorFor(noteId, previewChildren);
   const previewFrame = previewQuery.data ? (
     <div className="space-y-2">
@@ -671,12 +686,12 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       <WorkspaceSidebar
         sections={navigatorSections(sections)}
         activeId={sectionId}
-        activeChildren={previewChildren}
+        childrenBySection={outlineChildren}
         activeChildId={noteId}
         onSelect={selectSection}
-        onSelectChild={(childId) => {
+        onSelectChild={(parentId, childId) => {
           router.replace(
-            `/year-ends/${yearEndId}/draft?section=${encodeURIComponent(sectionId)}&note=${encodeURIComponent(childId)}`,
+            `/year-ends/${yearEndId}/draft?section=${encodeURIComponent(parentId)}&note=${encodeURIComponent(childId)}`,
           );
         }}
       />
@@ -825,9 +840,22 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
         <section className="space-y-2" data-testid="statutory-section-panel">
           <h2 className="text-sm font-semibold text-ink">{activeMeta.label}</h2>
           {activeMeta.enabled === false ? (
-            <p className="text-sm text-ink-secondary">
-              This section is off. Its data is kept.
-            </p>
+            <div className="space-y-2" data-testid="statutory-section-off">
+              <p className="text-sm text-ink-secondary">
+                This section is off and will not appear in the PDF. Its data is kept.
+              </p>
+              {canEditDetails ? (
+                <button
+                  type="button"
+                  data-testid="statutory-turn-on"
+                  disabled={!setupQuery.isSuccess || busy !== null}
+                  onClick={() => void toggleSection(sectionId, true)}
+                  className="rounded-md border border-line px-3 py-1.5 text-sm font-semibold text-ink disabled:opacity-50"
+                >
+                  Turn on
+                </button>
+              ) : null}
+            </div>
           ) : activeMeta.built === false ? (
             <p className="text-sm text-ink-secondary">
               [NOT BUILT: this pack does not build this statement]

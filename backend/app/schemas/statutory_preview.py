@@ -14,6 +14,21 @@ class PreviewChildOut(BaseModel):
     anchor: str
 
 
+class SectionOutlineItem(BaseModel):
+    """Child rows for one navigator parent. No section HTML."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    children: list[PreviewChildOut]
+
+
+class SectionOutlineResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sections: list[SectionOutlineItem]
+
+
 class StatutoryPreviewResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

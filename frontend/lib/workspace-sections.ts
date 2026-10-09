@@ -60,16 +60,11 @@ export function sectionIsOn(
   return section.default === "on";
 }
 
-/** Pack rows the practice has turned off stay on the setup page, not the nav. */
+/** Every catalogue row, including a pack section the practice has switched off. */
 export function navigatorSections(
   sections: readonly WorkspaceSection[],
 ): WorkspaceSection[] {
-  return sections.filter(
-    (section) =>
-      section.group !== "sections" ||
-      section.id === "sections-setup" ||
-      section.enabled !== false,
-  );
+  return [...sections];
 }
 
 export function activeSection(
@@ -79,15 +74,6 @@ export function activeSection(
   const requestedSection = requested
     ? sections.find((section) => section.id === requested)
     : undefined;
-  if (
-    requestedSection &&
-    requestedSection.group === "sections" &&
-    requestedSection.id !== "sections-setup" &&
-    requestedSection.enabled === false &&
-    sections.some((section) => section.id === "sections-setup")
-  ) {
-    return "sections-setup";
-  }
   if (requestedSection) {
     return requestedSection.id;
   }
