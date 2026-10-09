@@ -17,6 +17,7 @@ from sqlalchemy import text
 from app.db import SyncSessionLocal, set_rls_org_id
 from app.services.company_details import blocks_final
 from app.services.draft_workflow import _can_finalise
+from app.services.org_provisioning import provision_first_signup
 from app.services.reconciliation import ReconciliationCheck
 from tests.conftest import auth_headers, make_access_token
 from tests.test_adopted_trial_balance import _CASH_PAIR, _insert_tb
@@ -39,6 +40,31 @@ def two_practices() -> Iterator[tuple[dict, dict]]:
     finally:
         _delete_org(first["org_id"])
         _delete_org(second["org_id"])
+
+
+def _other_practice(suffix: str) -> uuid.UUID:
+    """A second practice with no statutory rows, so cleanup needs no trigger owner."""
+    with SyncSessionLocal() as session:
+        provisioned = provision_first_signup(
+            session,
+            clerk_org_id=f"org_fd_{suffix}",
+            org_name=f"FinDraft {suffix}",
+            clerk_user_id=f"user_fd_{suffix}",
+            email=f"fd-{suffix}@example.com",
+            role="owner",
+        )
+        session.commit()
+        return provisioned.organisation.id
+
+
+def _delete_other_practice(org_id: uuid.UUID) -> None:
+    with SyncSessionLocal() as session:
+        session.execute(text("RESET ROLE"))
+        set_rls_org_id(session, org_id)
+        oid = str(org_id)
+        session.execute(text("DELETE FROM users WHERE org_id = :oid"), {"oid": oid})
+        session.execute(text("DELETE FROM organisations WHERE id = :oid"), {"oid": oid})
+        session.commit()
 
 
 _FORBIDDEN = "You don't have permission to access this resource."
@@ -710,7 +736,7 @@ async def test_confirm_currency_records_the_acknowledgement_and_leaves_figures(
     )
 
     suffix = uuid.uuid4().hex[:8]
-    other = _provision(suffix)
+    other_org_id = _other_practice(suffix)
     try:
         foreign = await api_client.post(
             f"/year-ends/{year_end_id}/currency-confirmation",
@@ -718,14 +744,14 @@ async def test_confirm_currency_records_the_acknowledgement_and_leaves_figures(
                 make_access_token(
                     clerk_user_id=f"user_fd_{suffix}",
                     clerk_org_id=f"org_fd_{suffix}",
-                    org_uuid=other["org_id"],
+                    org_uuid=other_org_id,
                 )
             ),
         )
         assert foreign.status_code == 404, foreign.text
         assert foreign.json()["detail"] == "Year end not found"
     finally:
-        _delete_org(other["org_id"])
+        _delete_other_practice(other_org_id)
 
     _set_role(org_id=org_id, user_id=user_id, role="viewer")
     viewer = await api_client.post(
