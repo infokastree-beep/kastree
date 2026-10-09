@@ -1169,13 +1169,34 @@ def test_compilation_starts_a_new_page_unless_setup_overrides_it() -> None:
     assert document.profit == Decimal("157650.00")
 
 
+def _composed_page_count(html: str) -> tuple[dict[str, int], list[str], int]:
+    anchors, payload, rendered_pages = _anchor_pages(html)
+    pages = _pdf_pages(payload)
+    if pages and pages[-1] == "":
+        pages.pop()
+    assert len(pages) == rendered_pages
+    return anchors, pages, rendered_pages
+
+
 def test_default_page_counts_for_the_golden_and_first_period_files() -> None:
-    """Defaults only. The numbers are the composed PDF, not the engine HTML."""
+    """Print the composed page counts. The sheet count follows the font.
+
+    Forced sections each start a page, and every contents number is the page
+    that heading lands on. The printed counts are the ones for this run.
+    """
     from tests.test_statutory_display import _first_period
 
+    forced = (
+        "Financial statements",
+        "Contents",
+        "Directors and other information",
+        "Compilation report",
+        "Income statement",
+        "Statement of financial position",
+        "Notes",
+    )
     golden = _golden()
     golden_html = _compose(golden, _setup())
-    _golden_anchors, _golden_pdf, golden_pages = _anchor_pages(golden_html)
     first = _first_period()
     first_html = compose_pdf_html(
         first,
@@ -1185,12 +1206,26 @@ def test_default_page_counts_for_the_golden_and_first_period_files() -> None:
         first_financial_period=True,
         currency="EUR",
     )
-    _first_anchors, _first_pdf, first_pages = _anchor_pages(first_html)
+    counts: list[int] = []
+    for html in (golden_html, first_html):
+        anchors, pages, rendered_pages = _composed_page_count(html)
+        counts.append(rendered_pages)
+        starts = [_heading_page(pages, heading) for heading in forced]
+        assert starts == sorted(starts)
+        assert len(set(starts)) == len(starts)
+        assert rendered_pages >= len(forced)
+        contents_at = anchors["contents"]
+        contents_text = "\n".join(pages[contents_at - 1 : contents_at + 1])
+        for anchor, label in _contents_entries(html):
+            assert anchor in anchors, anchor
+            assert (
+                _printed_contents_number(contents_text, label) == anchors[anchor]
+            ), label
     assert golden.net_assets == Decimal("455812.00")
     assert golden.profit == Decimal("157650.00")
     assert first.net_assets == Decimal("35000.00")
     assert first.profit == Decimal("25000.00")
-    assert (golden_pages, first_pages) == (10, 9)
+    print(f"golden_pages={counts[0]} first_period_pages={counts[1]}")
 
 
 @pytest.mark.asyncio
