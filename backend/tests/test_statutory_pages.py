@@ -560,3 +560,42 @@ async def test_final_docx_reads_the_snapshot(
     headings = [page["heading"] for page in frozen.json()["pages"]]
     assert headings[0] == "Compilation report"
     assert "auditor" not in " ".join(headings).casefold()
+
+
+def test_composed_docx_labels_draft_and_keeps_display_text(tmp_path: Path) -> None:
+    from app.services.statutory_docx import build_docx
+
+    dest = tmp_path / "composed.docx"
+    build_docx(
+        {
+            "watermark": "DRAFT",
+            "company_name": "Acme Limited",
+            "composed": [
+                {
+                    "kind": "prose",
+                    "heading": "Financial statements",
+                    "paragraphs": ["Company number: 123"],
+                },
+                {
+                    "kind": "statement",
+                    "heading": "Statement of financial position",
+                    "page_break": True,
+                    "period_phrase": "As at 31 December 2025",
+                    "columns": ["2025", "2024"],
+                    "rows": [
+                        {
+                            "label": "Profit and loss account",
+                            "amounts": ["455,712", "0"],
+                        }
+                    ],
+                },
+            ],
+        },
+        dest,
+    )
+    xml = _xml(dest.read_bytes())
+    assert "DRAFT" in xml
+    assert "FINAL" not in xml
+    assert "455,712" in xml
+    assert "Profit and loss account" in xml
+    assert xml.count('w:type="page"') == 1

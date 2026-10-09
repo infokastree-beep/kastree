@@ -28,6 +28,11 @@ def build_docx(payload: Mapping[str, object], dest: Path) -> None:
     document.add_heading(
         escape_export_text(_required_text(payload, "company_name")), level=1
     )
+    composed = payload.get("composed")
+    if isinstance(composed, list):
+        _write_composed(document, composed)
+        document.save(str(dest))
+        return
     for page in _mappings(payload.get("pages"), "pages"):
         _start_new_page(document, page.get("new_page"))
         document.add_heading(
@@ -66,6 +71,84 @@ def _start_new_page(document: object, enabled: object) -> None:
     if not callable(add_page_break):
         raise TypeError("document is missing")
     add_page_break()
+
+
+def _write_composed(document: object, sections: Sequence[object]) -> None:
+    add_heading = getattr(document, "add_heading", None)
+    add_paragraph = getattr(document, "add_paragraph", None)
+    if not callable(add_heading) or not callable(add_paragraph):
+        raise TypeError("document is missing")
+    for section in sections:
+        if not isinstance(section, Mapping):
+            raise ValueError("composed section is missing")
+        _start_new_page(document, section.get("page_break") is True)
+        add_heading(escape_export_text(_required_text(section, "heading")), level=2)
+        kind = section.get("kind")
+        if kind == "contents":
+            for entry in _mappings(section.get("entries"), "entries"):
+                add_paragraph(escape_export_text(_required_text(entry, "label")))
+            continue
+        if kind == "statement":
+            phrase = section.get("period_phrase")
+            if isinstance(phrase, str) and phrase:
+                add_paragraph(escape_export_text(phrase))
+            note = section.get("period_note")
+            if isinstance(note, str) and note:
+                add_paragraph(escape_export_text(note))
+            compliance = section.get("compliance")
+            if isinstance(compliance, str) and compliance:
+                add_paragraph(escape_export_text(compliance))
+            _composed_table(
+                document,
+                _strings(section.get("columns"), "columns"),
+                _mappings(section.get("rows"), "rows"),
+            )
+            continue
+        if kind == "notes":
+            for note in _mappings(section.get("notes"), "notes"):
+                title = _required_text(note, "title")
+                code = _required_text(note, "code")
+                heading = code if not title else f"{code} {title}"
+                add_heading(escape_export_text(heading), level=3)
+                add_paragraph(escape_export_text(_required_text(note, "body")))
+                _composed_table(
+                    document,
+                    _strings(section.get("columns"), "columns"),
+                    _mappings(note.get("lines"), "lines"),
+                    label_key="label",
+                )
+            continue
+        for paragraph in _strings(section.get("paragraphs"), "paragraphs"):
+            add_paragraph(escape_export_text(paragraph))
+
+
+def _composed_table(
+    document: object,
+    columns: Sequence[str],
+    rows: Sequence[Mapping[str, object]],
+    *,
+    label_key: str = "label",
+) -> None:
+    add_table = getattr(document, "add_table", None)
+    if not callable(add_table):
+        raise TypeError("document is missing")
+    width = 1 + len(columns)
+    table = add_table(rows=1 + len(rows), cols=width)
+    headers = table.rows[0].cells
+    headers[0].text = "Line"
+    for index, column in enumerate(columns, start=1):
+        headers[index].text = escape_export_text(column)
+    for index, row in enumerate(rows, start=1):
+        cells = table.rows[index].cells
+        cells[0].text = escape_export_text(_required_text(row, label_key))
+        amounts = row.get("amounts")
+        if not isinstance(amounts, list):
+            raise ValueError("composed amounts are missing")
+        for column_index, amount in enumerate(amounts, start=1):
+            if not isinstance(amount, str):
+                raise ValueError("composed amount is missing")
+            if column_index < width:
+                cells[column_index].text = escape_export_text(amount)
 
 
 def _amount_table(

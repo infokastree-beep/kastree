@@ -24,12 +24,15 @@ from sqlalchemy.orm import Session
 
 from app.db import AsyncSessionLocal, aset_rls_org_id, set_rls_org_id
 from app.models.tb_version import TrialBalanceVersion
+from app.models.company import Company
 from app.schemas.year_end import StatementResponse
 from app.services.reconciliation import ReconciliationRejected
-from app.services.source_storage import SourceObjectStorage, practice_storage_key
 from app.services.report_setup import section_id_for_label, starts_new_page
+from app.services.source_storage import SourceObjectStorage, practice_storage_key
+from app.services.statutory_compose import compose_year_end_parts
 from app.services.statutory_statements import (
     StatutoryStatements,
+    statements_for_adopted,
     statements_for_version,
 )
 from findraft.models.draft_version import DraftVersion
@@ -77,15 +80,19 @@ async def insert_docx_job(
     *,
     org_id: uuid.UUID,
     company_id: uuid.UUID,
-    tb_version_id: uuid.UUID,
     idempotency_key: str,
     watermark: str,
+    tb_version_id: uuid.UUID | None = None,
+    draft_id: uuid.UUID | None = None,
 ) -> RenderJob:
+    if tb_version_id is None and draft_id is None:
+        raise RenderRejected("DOCX job has no source")
     await aset_rls_org_id(session, org_id)
     job = RenderJob(
         org_id=org_id,
         company_id=company_id,
         tb_version_id=tb_version_id,
+        draft_id=draft_id,
         format="docx",
         status="pending",
         idempotency_key=idempotency_key,
@@ -94,6 +101,24 @@ async def insert_docx_job(
     session.add(job)
     await session.flush()
     return job
+
+
+async def job_for_draft(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    draft_id: uuid.UUID,
+    job_id: uuid.UUID,
+) -> RenderJob | None:
+    await aset_rls_org_id(session, org_id)
+    found = await session.scalar(
+        select(RenderJob).where(
+            RenderJob.id == job_id,
+            RenderJob.org_id == org_id,
+            RenderJob.draft_id == draft_id,
+        )
+    )
+    return _as_job(found)
 
 
 async def job_for_version(
@@ -265,7 +290,93 @@ def payload_from_statement(statement: Mapping[str, object]) -> dict[str, object]
     }
 
 
+def payload_from_composed(
+    *,
+    watermark: str,
+    company_name: str,
+    sections: list[dict[str, object]],
+) -> dict[str, object]:
+    """DOCX payload built from composed sections. Amounts stay display text."""
+    return {
+        "watermark": watermark,
+        "company_name": company_name,
+        "composed": sections,
+    }
+
+
+def _composed_payload(session: Session, job: RenderJob) -> dict[str, object]:
+    draft_id = job.draft_id
+    if draft_id is None:
+        raise ValueError("Draft not found")
+    draft = session.get(DraftVersion, draft_id)
+    if draft is None or draft.org_id != job.org_id:
+        raise ValueError("Draft not found")
+    if draft.status == "final":
+        snapshot = draft.snapshot
+        stored = snapshot.get("composed_docx") if isinstance(snapshot, dict) else None
+        if not isinstance(stored, dict) or stored.get("watermark") != "FINAL":
+            raise ValueError("FINAL snapshot is missing")
+        return {str(key): value for key, value in stored.items()}
+    company_name, sections = _load_composed(job.org_id, draft.id)
+    return payload_from_composed(
+        watermark="DRAFT",
+        company_name=company_name,
+        sections=sections,
+    )
+
+
+def _load_composed(
+    org_id: uuid.UUID, draft_id: uuid.UUID
+) -> tuple[str, list[dict[str, object]]]:
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(
+            lambda: asyncio.run(_live_composed(org_id, draft_id))
+        ).result()
+
+
+async def _live_composed(
+    org_id: uuid.UUID, draft_id: uuid.UUID
+) -> tuple[str, list[dict[str, object]]]:
+    async with AsyncSessionLocal() as session:
+        await aset_rls_org_id(session, org_id)
+        draft = await session.get(DraftVersion, draft_id)
+        if draft is None or draft.org_id != org_id or draft.status == "final":
+            raise RuntimeError("Draft not found")
+        year_end = await session.get(YearEnd, draft.year_end_id)
+        if year_end is None or year_end.org_id != org_id:
+            raise RuntimeError("Year end not found")
+        company = await session.get(Company, year_end.company_id)
+        if company is None or company.org_id != org_id:
+            raise RuntimeError("Company not found")
+        if draft.tb_version_id is None:
+            document = await statements_for_adopted(
+                session,
+                org_id=org_id,
+                year_end=year_end,
+                watermark="DRAFT",
+                use_draft=draft,
+            )
+        else:
+            version = await session.get(TrialBalanceVersion, draft.tb_version_id)
+            if version is None or version.org_id != org_id:
+                raise RuntimeError("Trial balance version is not ready")
+            document = await statements_for_version(
+                session,
+                org_id=org_id,
+                year_end=year_end,
+                version=version,
+                watermark="DRAFT",
+                use_draft=draft,
+            )
+        if not document.renderable:
+            raise ValueError("Statutory statements are not renderable")
+        _html, sections = compose_year_end_parts(document, year_end, company=company)
+        return document.company_name, sections
+
+
 def _payload(session: Session, job: RenderJob) -> dict[str, object]:
+    if job.draft_id is not None:
+        return _composed_payload(session, job)
     draft = session.scalar(
         select(DraftVersion)
         .where(
@@ -285,6 +396,8 @@ def _payload(session: Session, job: RenderJob) -> dict[str, object]:
         return annotate_page_starts(
             payload_from_statement(statement), _report_setup_for_job(session, job)
         )
+    if job.tb_version_id is None:
+        raise ValueError("Trial balance version is not ready")
     document = _load_live(job.org_id, job.tb_version_id)
     if not document.renderable:
         raise ValueError("Statutory statements are not renderable")
