@@ -31,6 +31,9 @@ class CompanyUpdateRequest(BaseModel):
     industry: str | None = None
     company_type: CompanyType | None = None
     functional_currency: str | None = Field(default=None, min_length=3, max_length=3)
+    # Required only when functional_currency changes and trial balances exist.
+    # Amounts are never converted.
+    acknowledge_currency_change: bool = False
     materiality_threshold_pct: Decimal | None = None
     materiality_threshold_abs: Decimal | None = None
 

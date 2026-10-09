@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { FUNCTIONAL_CURRENCIES } from "@/lib/constants";
-import type { CompanyEntityFormValues } from "@/lib/company-form";
+import {
+  currencyChangeAllowed,
+  type CompanyEntityFormValues,
+} from "@/lib/company-form";
 
 export type { CompanyEntityFormValues } from "@/lib/company-form";
 export { DEFAULT_MATERIALITY_PCT, DEFAULT_MATERIALITY_ABS } from "@/lib/company-form";
@@ -51,23 +54,32 @@ export function CompanyEntityForm({
   const [companyType, setCompanyType] = useState<"trading" | "holding">(
     initialValues?.companyType ?? "trading",
   );
+  const [acknowledged, setAcknowledged] = useState(false);
 
   const currencyChanged =
     initialValues?.functionalCurrency != null &&
     functionalCurrency !== initialValues.functionalCurrency;
+  const needsAcknowledgement = Boolean(currencyChanged && currencyChangeWarning);
+  const canSubmitCurrency = currencyChangeAllowed({
+    currentCurrency: initialValues?.functionalCurrency ?? functionalCurrency,
+    nextCurrency: functionalCurrency,
+    hasTrialBalances: needsAcknowledgement,
+    acknowledged,
+  });
 
   return (
     <form
       className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
-        if (!name.trim()) return;
+        if (!name.trim() || !canSubmitCurrency) return;
         onSubmit({
           name: name.trim(),
           functionalCurrency,
           companyNumber,
           industry,
           companyType,
+          acknowledgeCurrencyChange: needsAcknowledgement && acknowledged,
         });
       }}
     >
@@ -96,7 +108,10 @@ export function CompanyEntityForm({
         <select
           className="w-full rounded border border-stone-300 bg-white px-3 py-2"
           value={functionalCurrency}
-          onChange={(event) => setFunctionalCurrency(event.target.value)}
+          onChange={(event) => {
+            setFunctionalCurrency(event.target.value);
+            setAcknowledged(false);
+          }}
           data-testid="company-form-currency"
         >
           {FUNCTIONAL_CURRENCIES.map((code) => (
@@ -108,12 +123,22 @@ export function CompanyEntityForm({
       </label>
 
       {currencyChanged && currencyChangeWarning ? (
-        <p
+        <div
           className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
           data-testid="company-currency-change-warning"
         >
-          {currencyChangeWarning}
-        </p>
+          <p>{currencyChangeWarning}</p>
+          <label className="mt-2 flex items-start gap-2">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={acknowledged}
+              onChange={(event) => setAcknowledged(event.target.checked)}
+              data-testid="company-currency-change-ack"
+            />
+            <span>I confirm this change does not convert any amounts.</span>
+          </label>
+        </div>
       ) : null}
 
       <label className="block text-sm">
@@ -174,7 +199,7 @@ export function CompanyEntityForm({
       <div className="flex flex-wrap gap-2">
         <button
           type="submit"
-          disabled={!name.trim() || isPending}
+          disabled={!name.trim() || isPending || !canSubmitCurrency}
           className="rounded bg-stone-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
           data-testid="company-form-submit"
         >

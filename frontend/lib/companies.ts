@@ -72,6 +72,9 @@ export async function updateCompanyEntity(
     company_number: values.companyNumber.trim() ? values.companyNumber.trim() : null,
     industry: values.industry.trim() ? values.industry.trim() : null,
   };
+  if (values.acknowledgeCurrencyChange) {
+    update.acknowledge_currency_change = true;
+  }
   return apiFetch<ICompany>(`/companies/${companyId}`, {
     method: "PUT",
     getToken,

@@ -52,6 +52,7 @@ export interface CompanyUpdateRequest {
   industry?: string | null;
   company_type?: "trading" | "holding";
   functional_currency?: string;
+  acknowledge_currency_change?: boolean;
   materiality_threshold_pct?: string;
   materiality_threshold_abs?: string;
 }

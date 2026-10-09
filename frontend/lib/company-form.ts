@@ -8,4 +8,20 @@ export type CompanyEntityFormValues = {
   companyNumber: string;
   industry: string;
   companyType: "trading" | "holding";
+  acknowledgeCurrencyChange?: boolean;
 };
+
+/** Whether a currency edit may be sent once trial balances exist. */
+export function currencyChangeAllowed(input: {
+  currentCurrency: string;
+  nextCurrency: string;
+  hasTrialBalances: boolean;
+  acknowledged: boolean;
+}): boolean {
+  const changing =
+    input.nextCurrency.toUpperCase() !== input.currentCurrency.toUpperCase();
+  if (!changing || !input.hasTrialBalances) {
+    return true;
+  }
+  return input.acknowledged;
+}
