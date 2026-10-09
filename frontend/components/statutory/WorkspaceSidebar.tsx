@@ -36,19 +36,22 @@ function groupsFrom(sections: readonly WorkspaceSection[]): SectionGroup[] {
 export function WorkspaceSidebar({
   sections,
   activeId,
-  activeChildren = [],
+  childrenBySection = {},
   activeChildId = null,
   onSelect,
   onSelectChild,
 }: {
   sections: readonly WorkspaceSection[];
   activeId: string;
-  activeChildren?: readonly PreviewChild[];
+  childrenBySection?: Readonly<Record<string, readonly PreviewChild[]>>;
   activeChildId?: string | null;
   onSelect: (sectionId: string) => void;
-  onSelectChild?: (childId: string) => void;
+  onSelectChild?: (sectionId: string, childId: string) => void;
 }) {
   const [closed, setClosed] = useState<Record<string, boolean>>({});
+  const [collapsedChildren, setCollapsedChildren] = useState<
+    Record<string, boolean>
+  >({});
 
   useEffect(() => {
     setClosed(readClosedGroups());
@@ -91,37 +94,69 @@ export function WorkspaceSidebar({
               <ul className="space-y-1">
                 {group.sections.map((section) => {
                   const active = section.id === activeId;
+                  const off = section.enabled === false;
+                  const children = childrenBySection[section.id] ?? [];
+                  const childrenOpen = collapsedChildren[section.id] !== true;
                   return (
-                    <li key={section.id}>
-                      <button
-                        type="button"
-                        data-testid={`statutory-section-${section.id}`}
-                        aria-current={active ? "page" : undefined}
-                        onClick={() => onSelect(section.id)}
-                        className={`w-full rounded-md px-3 py-2 text-left text-sm ${
-                          active
-                            ? "bg-accent font-semibold text-accent-foreground"
-                            : "text-ink hover:bg-surface-elevated"
-                        }`}
-                      >
-                        {section.label}
-                        {section.built === false ? (
-                          <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.08em] opacity-70">
-                            not built
-                          </span>
-                        ) : null}
-                      </button>
-                      {section.id === activeId && activeChildren.length > 0 ? (
-                        <ul className="mb-1 space-y-0.5 pl-3">
-                          {activeChildren.map((child) => {
-                            const current = child.id === activeChildId;
+                    <li key={section.id} className={off ? "opacity-60" : undefined}>
+                      <div className="flex items-start gap-1">
+                        {children.length > 0 ? (
+                          <button
+                            type="button"
+                            aria-expanded={childrenOpen}
+                            data-testid={`statutory-children-toggle-${section.id}`}
+                            onClick={() =>
+                              setCollapsedChildren((current) => ({
+                                ...current,
+                                [section.id]: childrenOpen,
+                              }))
+                            }
+                            className="mt-2 w-4 shrink-0 text-xs text-soft"
+                          >
+                            <span aria-hidden="true">{childrenOpen ? "▾" : "▸"}</span>
+                          </button>
+                        ) : (
+                          <span className="w-4 shrink-0" />
+                        )}
+                        <button
+                          type="button"
+                          data-testid={`statutory-section-${section.id}`}
+                          aria-current={active ? "page" : undefined}
+                          onClick={() => onSelect(section.id)}
+                          className={`w-full rounded-md px-3 py-2 text-left text-sm ${
+                            active
+                              ? "bg-accent font-semibold text-accent-foreground"
+                              : "text-ink hover:bg-surface-elevated"
+                          }`}
+                        >
+                          {section.label}
+                          {section.lock === "locked" ? (
+                            <span className="ml-2 text-[10px] font-semibold uppercase tracking-[0.08em] opacity-70">lock</span>
+                          ) : null}
+                          {off ? (
+                            <span className="ml-2 text-[10px] font-semibold uppercase tracking-[0.08em] opacity-70">off</span>
+                          ) : null}
+                          {section.built === false ? (
+                            <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.08em] opacity-70">
+                              not built
+                            </span>
+                          ) : null}
+                        </button>
+                      </div>
+                      {childrenOpen && children.length > 0 ? (
+                        <ul className="mb-1 space-y-0.5 pl-7">
+                          {children.map((child) => {
+                            const current =
+                              active && child.id === activeChildId;
                             return (
                               <li key={child.id}>
                                 <button
                                   type="button"
                                   data-testid={`statutory-child-${child.anchor}`}
                                   aria-current={current ? "true" : undefined}
-                                  onClick={() => onSelectChild?.(child.id)}
+                                  onClick={() =>
+                                    onSelectChild?.(section.id, child.id)
+                                  }
                                   className={`w-full rounded-md px-3 py-1.5 text-left text-xs ${
                                     current
                                       ? "bg-accent font-semibold text-accent-foreground"

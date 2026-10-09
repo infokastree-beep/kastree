@@ -124,7 +124,20 @@ describe("sectionsForFramework", () => {
     assert.equal(source.includes("statutory-toggle-"), false);
     assert.equal(source.includes('type="checkbox"'), false);
     assert.equal(source.includes("section.built === false"), true);
+    assert.equal(source.includes("section.enabled === false"), true);
+    assert.equal(source.includes('section.lock === "locked"'), true);
+    assert.equal(source.includes(">off<"), true);
+    assert.equal(source.includes(">lock<"), true);
     assert.equal(source.includes("not built"), true);
+    for (const word of [
+      "Signatories",
+      "Events log",
+      "Prior-year comparatives",
+      "Home",
+      "Trial balance",
+    ]) {
+      assert.equal(source.includes(word), false, word);
+    }
     assert.equal(source.includes("aria-expanded"), true);
     assert.equal(source.includes("statutory-group-toggle-"), true);
     assert.equal(SIDEBAR_GROUPS_KEY, "kastree.sidebar.groups.v1");
@@ -145,6 +158,15 @@ describe("sectionsForFramework", () => {
       "utf8",
     );
     assert.equal(workspace.includes("navigatorSections(sections)"), true);
+    assert.equal(workspace.includes("section-outline"), true);
+    assert.equal(
+      workspace.includes(
+        "This section is off and will not appear in the PDF. Its data is kept.",
+      ),
+      true,
+    );
+    assert.equal(workspace.includes("Turn on"), true);
+    assert.equal(workspace.includes("statutory-turn-on"), true);
     assert.equal(workspace.includes("<SectionsSetup"), true);
     assert.equal(workspace.includes("statutory-setup-notices"), true);
     assert.equal(workspace.includes("Ready to finalise."), true);
@@ -197,15 +219,53 @@ describe("navigatorSections", () => {
     },
   ];
 
-  it("drops a disabled pack section and keeps the setup row", () => {
+  it("lists every pack section in order with its on or off state", () => {
     assert.deepEqual(
-      navigatorSections(rows).map((item) => item.id),
-      ["review", "sections-setup", "income", "draft-pdf"],
+      navigatorSections(rows).map((item) => [item.id, item.enabled ?? null]),
+      [
+        ["review", null],
+        ["sections-setup", null],
+        ["cover", false],
+        ["income", true],
+        ["draft-pdf", null],
+      ],
+    );
+    const pack = [
+      section("cover", "Cover", "sections", "Sections", 1),
+      section("contents", "Contents", "sections", "Sections", 2),
+      section("income", "Income statement", "sections", "Sections", 3),
+      section("cash-flow", "Cash flow statement", "sections", "Sections", 4),
+    ];
+    pack[0].lock = "user";
+    pack[0].default = "on";
+    pack[0].enabled = false;
+    pack[1].lock = "user";
+    pack[1].default = "on";
+    pack[1].enabled = true;
+    pack[2].lock = "locked";
+    pack[2].enabled = true;
+    pack[3].lock = "user";
+    pack[3].default = "off";
+    pack[3].built = false;
+    pack[3].enabled = false;
+    assert.deepEqual(
+      navigatorSections(pack).map((item) => [
+        item.id,
+        item.enabled,
+        item.lock,
+        item.built,
+      ]),
+      [
+        ["cover", false, "user", undefined],
+        ["contents", true, "user", undefined],
+        ["income", true, "locked", undefined],
+        ["cash-flow", false, "user", false],
+      ],
     );
   });
 
-  it("opens the setup page when the address names a disabled section", () => {
-    assert.equal(activeSection(rows, "cover"), "sections-setup");
+  it("opens an off section on its own panel", () => {
+    assert.equal(activeSection(rows, "cover"), "cover");
     assert.equal(activeSection(rows, "income"), "income");
     assert.equal(activeSection(rows, "review"), "review");
   });

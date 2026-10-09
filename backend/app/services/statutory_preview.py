@@ -28,12 +28,14 @@ from app.services.statutory_compose import (
     extract_section_html,
     preview_document,
 )
+from app.services.reconciliation import ReconciliationRejected
 from app.services.statutory_statements import statements_for_adopted
 from findraft.engine.pack import pack_dir
 from findraft.models.year_end import YearEnd
 
 NOT_RENDERABLE = "Statutory statements are not renderable"
 SECTION_ABSENT = "Section is not in this draft"
+OUTLINE_PARENTS = ("notes", "directors-report", "compilation")
 
 
 class PreviewRejected(Exception):
@@ -147,9 +149,7 @@ async def preview_revision_payload(
         "git_sha": settings.resolved_git_sha(),
         "letterhead": _letterhead_payload(company),
         "mapping_fingerprint": fingerprint,
-        "pack_content_hash": pack_content_hash(
-            year_end.pack_id, year_end.pack_version
-        ),
+        "pack_content_hash": pack_content_hash(year_end.pack_id, year_end.pack_version),
         "pack_id": year_end.pack_id,
         "pack_version": year_end.pack_version,
         "period_end": year_end.period_end.isoformat(),
@@ -185,9 +185,7 @@ async def build_section_preview(
     payload = await preview_revision_payload(
         session, org_id=org_id, year_end=year_end, company=company
     )
-    document = await statements_for_adopted(
-        session, org_id=org_id, year_end=year_end
-    )
+    document = await statements_for_adopted(session, org_id=org_id, year_end=year_end)
     if not document.renderable or document.html is None:
         raise PreviewRejected(NOT_RENDERABLE, 400)
     full_html, sections = compose_year_end_parts(document, year_end, company=company)
@@ -206,3 +204,26 @@ async def build_section_preview(
         section_html=section_html,
         children=children_of(sections, section_id),
     )
+
+
+async def build_section_outline(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+    company: Company,
+) -> dict[str, tuple[PreviewChild, ...]]:
+    """Child rows for the navigator. The response carries no section HTML."""
+    empty: dict[str, tuple[PreviewChild, ...]] = {
+        parent: () for parent in OUTLINE_PARENTS
+    }
+    try:
+        document = await statements_for_adopted(
+            session, org_id=org_id, year_end=year_end
+        )
+    except ReconciliationRejected:
+        return empty
+    if not document.renderable or document.html is None:
+        return empty
+    _html, sections = compose_year_end_parts(document, year_end, company=company)
+    return {parent: children_of(sections, parent) for parent in OUTLINE_PARENTS}

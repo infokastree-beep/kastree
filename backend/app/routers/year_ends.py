@@ -48,7 +48,12 @@ from app.schemas.report_setup import (
     ReportSetupResponse,
     ReportSetupWrite,
 )
-from app.schemas.statutory_preview import PreviewChildOut, StatutoryPreviewResponse
+from app.schemas.statutory_preview import (
+    PreviewChildOut,
+    SectionOutlineItem,
+    SectionOutlineResponse,
+    StatutoryPreviewResponse,
+)
 from app.schemas.year_end import (
     FixedAssetLineOut,
     FixedAssetTotalOut,
@@ -166,9 +171,14 @@ from app.services.statutory_evidence import evidence_for_version
 from app.services.statutory_present import evidence_response, statement_response
 from app.services.statutory_compose import (
     PREVIEW_CONTENT_SECURITY_POLICY,
+    PreviewChild,
     compose_year_end_pdf,
 )
-from app.services.statutory_preview import PreviewRejected, build_section_preview
+from app.services.statutory_preview import (
+    PreviewRejected,
+    build_section_outline,
+    build_section_preview,
+)
 from app.services.statutory_statements import (
     StatutoryStatements,
     statements_for_adopted,
@@ -736,6 +746,52 @@ async def post_adopted_sublines(
     except ReconciliationRejected as exc:
         raise _adoption_error(exc) from exc
     return _subline_response(rows)
+
+
+def _preview_children(children: tuple[PreviewChild, ...]) -> list[PreviewChildOut]:
+    return [
+        PreviewChildOut(
+            id=child.id,
+            number=child.number,
+            label=child.label,
+            anchor=child.anchor,
+        )
+        for child in children
+    ]
+
+
+@router.get(
+    "/{year_end_id}/section-outline",
+    response_model=SectionOutlineResponse,
+)
+async def get_section_outline(
+    year_end_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> SectionOutlineResponse:
+    """Navigator children for notes, the directors' report, and compilation.
+
+    The body is the child list only. It does not include section HTML.
+    """
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    company = await _company_for_year_end(
+        session, year_end=year_end, org_id=auth.org_id
+    )
+    outline = await build_section_outline(
+        session,
+        org_id=auth.org_id,
+        year_end=year_end,
+        company=company,
+    )
+    return SectionOutlineResponse(
+        sections=[
+            SectionOutlineItem(id=section_id, children=_preview_children(children))
+            for section_id, children in outline.items()
+        ]
+    )
 
 
 @router.get(
