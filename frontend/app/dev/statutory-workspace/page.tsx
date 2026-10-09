@@ -289,6 +289,11 @@ export default function StatutoryWorkspacePreviewPage() {
             sections={sections}
             onToggle={onToggle}
             togglesEnabled
+            canReset
+            onReset={() => {
+              setFlags({});
+              setSaved("Sections reset");
+            }}
           />
         ) : null}
         {sectionId === "draft-pdf" ? (
@@ -349,6 +354,8 @@ export default function StatutoryWorkspacePreviewPage() {
             setup={SETUP}
             busy={false}
             onSave={onSave}
+            canReset
+            onReset={() => setSaved("Display reset")}
           />
         ) : null}
         <p className="text-sm" data-testid="preview-saved">

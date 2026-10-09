@@ -50,12 +50,17 @@ export function ReportSetupForm({
   setup,
   busy,
   onSave,
+  canReset,
+  onReset,
 }: {
   frameworks: readonly ReportingFramework[];
   setup: ReportSetup;
   busy: boolean;
   onSave: (next: ReportSetupWrite) => void;
+  canReset: boolean;
+  onReset: () => void;
 }) {
+  const [confirmingReset, setConfirmingReset] = useState(false);
   const [rounding, setRounding] = useState<RoundingMode>(setup.rounding);
   const [statementType, setStatementType] = useState<StatementType>(
     setup.statement_type,
@@ -209,14 +214,51 @@ export function ReportSetupForm({
         ))}
       </fieldset>
 
-      <button
-        type="submit"
-        disabled={busy}
-        data-testid="report-setup-save"
-        className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-50"
-      >
-        Save report setup
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="submit"
+          disabled={busy}
+          data-testid="report-setup-save"
+          className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+        >
+          Save report setup
+        </button>
+        {canReset ? (
+          confirmingReset ? (
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                data-testid="statutory-reset-display-confirm"
+                className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+                onClick={() => {
+                  setConfirmingReset(false);
+                  onReset();
+                }}
+              >
+                Confirm reset
+              </button>
+              <button
+                type="button"
+                className="rounded-md border border-line px-4 py-2 text-sm font-semibold text-ink"
+                onClick={() => setConfirmingReset(false)}
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              disabled={busy}
+              data-testid="statutory-reset-display"
+              className="rounded-md border border-line px-4 py-2 text-sm font-semibold text-ink disabled:opacity-50"
+              onClick={() => setConfirmingReset(true)}
+            >
+              Reset to pack defaults
+            </button>
+          )
+        ) : null}
+      </div>
     </form>
   );
 }

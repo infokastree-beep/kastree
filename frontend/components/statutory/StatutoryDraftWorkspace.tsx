@@ -353,6 +353,31 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       );
       queryClient.setQueryData(["report-setup", yearEndId], saved);
       await queryClient.invalidateQueries({ queryKey: ["statutory-preview", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["statutory-pack"] });
+    } catch (caught) {
+      setError(messageFrom(caught));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function resetReportSetup(scope: "sections" | "display"): Promise<void> {
+    setError(null);
+    setBusy("Resetting report setup…");
+    try {
+      const saved = await apiFetch<ReportSetup>(
+        `/year-ends/${yearEndId}/report-setup/reset`,
+        {
+          method: "POST",
+          getToken,
+          body: JSON.stringify({ scope }),
+        },
+      );
+      queryClient.setQueryData(["report-setup", yearEndId], saved);
+      await queryClient.invalidateQueries({ queryKey: ["statutory-preview", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["statutory-pack"] });
     } catch (caught) {
       setError(messageFrom(caught));
     } finally {
@@ -763,6 +788,8 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
           sections={sections}
           onToggle={(id, enabled) => void toggleSection(id, enabled)}
           togglesEnabled={canEditDetails && setupQuery.isSuccess && busy === null}
+          canReset={canEditDetails && setupQuery.isSuccess}
+          onReset={() => void resetReportSetup("sections")}
         />
       ) : null}
 
@@ -813,11 +840,13 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
 
       {sectionId === "report-setup" && setupQuery.data ? (
         <ReportSetupForm
-          key={`${setupQuery.data.rounding}-${setupQuery.data.statement_type}-${setupQuery.data.face_dates.current_end}`}
+          key={`${setupQuery.data.rounding}-${setupQuery.data.statement_type}-${setupQuery.data.face_dates.current_end}-${setupQuery.data.column_headers.ended_current}-${setupQuery.data.column_headers.as_at_current}`}
           frameworks={frameworksQuery.data?.frameworks ?? []}
           setup={setupQuery.data}
           busy={busy !== null}
+          canReset={canEditDetails}
           onSave={(next) => void saveReportSetup(next)}
+          onReset={() => void resetReportSetup("display")}
         />
       ) : null}
 
@@ -870,6 +899,20 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
             {dashboard.can_finalise
               ? " Ready to finalise."
               : " Not ready to finalise."}
+            {dashboard.checks.some(
+              (check) => check.code === "V-SEC-006" || check.code === "V-SEC-007",
+            ) ? (
+              <span data-testid="statutory-setup-notices">
+                {" "}
+                {dashboard.checks
+                  .filter(
+                    (check) =>
+                      check.code === "V-SEC-006" || check.code === "V-SEC-007",
+                  )
+                  .map((check) => check.message)
+                  .join(" ")}
+              </span>
+            ) : null}
           </p>
           <ul className="mt-3 space-y-1 text-sm">
             {dashboard.checks

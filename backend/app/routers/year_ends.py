@@ -44,6 +44,7 @@ from app.schemas.company_details import (
 )
 from app.schemas.report_setup import (
     ReportingFrameworkList,
+    ReportSetupReset,
     ReportSetupResponse,
     ReportSetupWrite,
 )
@@ -158,6 +159,7 @@ from app.services.company_details import (
 from app.services.report_setup import (
     framework_list,
     report_setup_response,
+    reset_report_setup,
     save_report_setup,
 )
 from app.services.statutory_evidence import evidence_for_version
@@ -329,7 +331,10 @@ async def get_report_setup(
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
-    return report_setup_response(year_end)
+    currency = await _currency_for_year_end(
+        session, year_end=year_end, org_id=auth.org_id
+    )
+    return report_setup_response(year_end, currency)
 
 
 @router.put("/{year_end_id}/report-setup", response_model=ReportSetupResponse)
@@ -344,13 +349,49 @@ async def put_report_setup(
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
+    currency = await _currency_for_year_end(
+        session, year_end=year_end, org_id=auth.org_id
+    )
     return await save_report_setup(
         session,
         org_id=auth.org_id,
         user_id=auth.user_id,
         year_end=year_end,
         body=body,
+        currency=currency,
     )
+
+
+@router.post("/{year_end_id}/report-setup/reset", response_model=ReportSetupResponse)
+async def post_report_setup_reset(
+    year_end_id: uuid.UUID,
+    body: ReportSetupReset,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> ReportSetupResponse:
+    """Clear saved section flags or display overrides. Member and above."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    currency = await _currency_for_year_end(
+        session, year_end=year_end, org_id=auth.org_id
+    )
+    return await reset_report_setup(
+        session,
+        org_id=auth.org_id,
+        user_id=auth.user_id,
+        year_end=year_end,
+        currency=currency,
+        scope=body.scope,
+    )
+
+
+async def _currency_for_year_end(
+    session: AsyncSession, *, year_end: YearEnd, org_id: uuid.UUID
+) -> str:
+    company = await _company_for_year_end(session, year_end=year_end, org_id=org_id)
+    return company.functional_currency or "GBP"
 
 
 async def _company_for_year_end(

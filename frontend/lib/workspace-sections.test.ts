@@ -135,6 +135,8 @@ describe("sectionsForFramework", () => {
     assert.equal(setup.includes("statutory-toggle-"), true);
     assert.equal(setup.includes("not built"), true);
     assert.equal(setup.includes("locked"), true);
+    assert.equal(setup.includes("Reset to pack defaults"), true);
+    assert.equal(setup.includes("Confirm reset"), true);
     for (const word of ["frs102", "form11", "FRS", "Form 11"]) {
       assert.equal(setup.includes(word), false, word);
     }
@@ -144,11 +146,15 @@ describe("sectionsForFramework", () => {
     );
     assert.equal(workspace.includes("navigatorSections(sections)"), true);
     assert.equal(workspace.includes("<SectionsSetup"), true);
+    assert.equal(workspace.includes("statutory-setup-notices"), true);
+    assert.equal(workspace.includes("Ready to finalise."), true);
     const form = readFileSync(
       join(here, "../components/statutory/ReportSetupForm.tsx"),
       "utf8",
     );
     assert.equal(form.includes("sections:"), false);
+    assert.equal(form.includes("Reset to pack defaults"), true);
+    assert.equal(form.includes("Confirm reset"), true);
   });
 });
 
@@ -231,9 +237,26 @@ describe("sectionIsOn", () => {
 
   it("uses the pack default until a saved map names the section", () => {
     assert.equal(sectionIsOn(cover, null), true);
+    assert.equal(sectionIsOn(cover, {}), true);
     assert.equal(sectionIsOn(cash, null), false);
+    assert.equal(sectionIsOn(cash, {}), false);
     assert.equal(sectionIsOn(income, { income: false }), true);
     assert.equal(sectionIsOn(cover, { cover: false, "cash-flow": true }), false);
     assert.equal(sectionIsOn(cash, { cover: false, "cash-flow": true }), true);
+    const optional = [
+      "cover",
+      "contents",
+      "directors-info",
+      "directors-report",
+      "directors-responsibilities",
+      "compilation",
+    ];
+    for (const id of optional) {
+      const row = section(id, id, "sections", "Sections", 1);
+      row.lock = "user";
+      row.default = "on";
+      assert.equal(sectionIsOn(row, null), true);
+      assert.equal(sectionIsOn(row, {}), true);
+    }
   });
 });

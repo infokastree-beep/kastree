@@ -23,7 +23,7 @@ from app.schemas.report_setup import (
     pack_section_catalogue,
 )
 from app.services.reconciliation import ReconciliationCheck
-from app.services.report_setup import display_amount
+from app.services.report_setup import default_report_setup, display_amount
 from app.services.statutory_display import (
     _GROUPS,
     _keep,
@@ -431,6 +431,64 @@ def unbuilt_section_notices(year_end: YearEnd) -> tuple[ReconciliationCheck, ...
             message=message,
         ),
     )
+
+
+def pack_display_notices(
+    year_end: YearEnd, currency: str
+) -> tuple[ReconciliationCheck, ...]:
+    """Notices when a default-on section is off, or display settings differ.
+
+    Neither notice blocks finalising. An empty or missing map is the pack default.
+    """
+    notices: list[ReconciliationCheck] = []
+    saved = _saved_flags(year_end.report_setup)
+    if saved is not None:
+        catalogue = pack_section_catalogue()
+        labels = [
+            rule["label"]
+            for _section_id, rule in catalogue.items()
+            if rule["default"] == "on"
+            and rule["lock"] == "user"
+            and saved.get(_section_id) is False
+        ]
+        if labels:
+            notices.append(
+                ReconciliationCheck(
+                    code="V-SEC-006",
+                    severity="NOTICE",
+                    passed=False,
+                    message=(
+                        f"{len(labels)} sections are switched off: {', '.join(labels)}"
+                    ),
+                )
+            )
+    raw = year_end.report_setup
+    if not isinstance(raw, dict) or not raw or year_end.period_end is None:
+        return tuple(notices)
+    try:
+        setup = ReportSetupWrite.model_validate(raw)
+    except ValidationError:
+        return tuple(notices)
+    defaults = default_report_setup(year_end, currency or "GBP")
+    parts: list[str] = []
+    if setup.rounding != defaults.rounding:
+        parts.append("rounding")
+    if setup.statement_type != defaults.statement_type:
+        parts.append("statement type")
+    if setup.face_dates != defaults.face_dates:
+        parts.append("face dates")
+    if setup.column_headers != defaults.column_headers:
+        parts.append("column headers")
+    if parts:
+        notices.append(
+            ReconciliationCheck(
+                code="V-SEC-007",
+                severity="NOTICE",
+                passed=False,
+                message=f"Report setup differs from defaults: {', '.join(parts)}",
+            )
+        )
+    return tuple(notices)
 
 
 def _validated_setup(raw: dict[str, object]) -> ReportSetupWrite:
