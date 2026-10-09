@@ -15,6 +15,7 @@ from app.services.statutory_display import (
     format_whole,
     format_whole_prose,
     is_twelve_months,
+    rounding_labels,
     statement_period_phrase,
 )
 from app.services.statutory_statements import (
@@ -121,6 +122,14 @@ def test_first_period_omits_the_comparative_and_a_short_period_keeps_it() -> Non
     assert "for the period from 1 March 2026 to 31 December 2026" in short.html
     assert "2025 €" in short.html
     assert short.compliance_statement == SOFP_COMPLIANCE_STATEMENT
+
+
+def test_rounding_labels_follow_the_company_currency() -> None:
+    assert rounding_labels("GBP") == ("Nearest pound", "Nearest £'000")
+    assert rounding_labels("eur") == ("Nearest euro", "Nearest €'000")
+    assert rounding_labels("USD") == ("Nearest dollar", "Nearest $'000")
+    assert rounding_labels("CHF") == ("Nearest CHF", "Nearest CHF'000")
+    assert rounding_labels("  ") == ("Nearest unit", "Nearest '000")
 
 
 def test_a_non_euro_currency_does_not_change_the_irish_pack_wording() -> None:

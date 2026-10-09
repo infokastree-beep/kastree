@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date
+import uuid
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -63,6 +64,17 @@ class ApprovalWrite(BaseModel):
 
     approval_date: date | None = None
     signing_directors: list[str] = Field(default_factory=list)
+
+
+class CurrencyConfirmationResponse(BaseModel):
+    """Acknowledgement only. No amount is stored or converted."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    year_end_id: uuid.UUID
+    currency: str
+    confirmed_at: datetime
+    confirmed_by_user_id: uuid.UUID
 
 
 class CompanyDetailsResponse(BaseModel):

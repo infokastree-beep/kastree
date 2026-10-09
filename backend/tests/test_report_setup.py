@@ -285,6 +285,9 @@ async def test_report_setup_does_not_change_stored_figures_or_rebuild(
     assert body["trial_balance_period_start"] == "2026-01-01"
     assert body["trial_balance_period_end"] == "2026-12-31"
     assert body["basis_id"] == "frs102-1a-ie"
+    assert body["currency"] == "GBP"
+    assert body["rounding_unit_label"] == "Nearest pound"
+    assert body["rounding_thousands_label"] == "Nearest £'000"
     monkeypatch.setattr(
         "app.services.statutory_statements.statements_for_adopted",
         original_build,

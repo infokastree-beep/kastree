@@ -19,6 +19,10 @@ import {
   type ReportSetup,
   type ReportSetupWrite,
 } from "@/components/statutory/ReportSetupForm";
+import {
+  currencyCodeFromNotice,
+  finaliseStatusLine,
+} from "@/lib/finalise-status";
 import { SectionPreview } from "@/components/statutory/SectionPreview";
 import { SectionsSetup } from "@/components/statutory/SectionsSetup";
 import { StatutoryLoadError } from "@/components/statutory/StatutoryLoadError";
@@ -365,6 +369,24 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       await queryClient.invalidateQueries({ queryKey: ["statutory-outline", yearEndId] });
       await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
       await queryClient.invalidateQueries({ queryKey: ["statutory-pack"] });
+    } catch (caught) {
+      setError(messageFrom(caught));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function confirmCurrency(): Promise<void> {
+    setError(null);
+    setBusy("Confirming currency…");
+    try {
+      await apiFetch(`/year-ends/${yearEndId}/currency-confirmation`, {
+        method: "POST",
+        getToken,
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["draft-dashboard", yearEndId],
+      });
     } catch (caught) {
       setError(messageFrom(caught));
     } finally {
@@ -924,9 +946,10 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
           </p>
           <p className="mt-1 text-sm">
             Draft version {draft?.version_number}. Status {dashboard.status}.
-            {dashboard.can_finalise
-              ? " Ready to finalise."
-              : " Not ready to finalise."}
+            {finaliseStatusLine({
+              canFinalise: dashboard.can_finalise,
+              tbVersionId: draft?.tb_version_id ?? null,
+            })}
             {dashboard.checks.some(
               (check) => check.code === "V-SEC-006" || check.code === "V-SEC-007",
             ) ? (
@@ -948,6 +971,25 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               .map((check) => (
                 <li key={check.code}>
                   {check.severity} {check.code}: {check.message}
+                  {check.code === "V-CO-007" &&
+                  canEditDetails &&
+                  currencyCodeFromNotice(check.message) ? (
+                    <span className="mt-2 block">
+                      <span>
+                        Confirm the company reports in{" "}
+                        <code>{currencyCodeFromNotice(check.message)}</code>.
+                      </span>{" "}
+                      <button
+                        type="button"
+                        data-testid="statutory-confirm-currency"
+                        disabled={busy !== null}
+                        className="rounded-md border border-line px-3 py-1.5 text-sm font-semibold text-ink disabled:opacity-50"
+                        onClick={() => void confirmCurrency()}
+                      >
+                        Confirm currency
+                      </button>
+                    </span>
+                  ) : null}
                 </li>
               ))}
           </ul>

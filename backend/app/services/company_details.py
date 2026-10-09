@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +14,7 @@ from app.schemas.company_details import (
     ApprovalWrite,
     CompanyDetailsResponse,
     CompanyDetailsWrite,
+    CurrencyConfirmationResponse,
     DirectorRecord,
     ShareClassOut,
     ShareClassWrite,
@@ -453,6 +454,54 @@ async def save_approval_details(
     return company_details_response(company, year_end)
 
 
+def _confirmation_snapshot(year_end: YearEnd) -> dict[str, object]:
+    confirmed_at = year_end.currency_confirmed_at
+    confirmed_by = year_end.currency_confirmed_by_user_id
+    return {
+        "currency": year_end.currency_confirmed_code,
+        "confirmed_at": None if confirmed_at is None else confirmed_at.isoformat(),
+        "confirmed_by_user_id": None if confirmed_by is None else str(confirmed_by),
+    }
+
+
+async def confirm_currency(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    user_id: uuid.UUID,
+    company: Company,
+    year_end: YearEnd,
+) -> CurrencyConfirmationResponse:
+    """Record that this year end reports in the company's currency.
+
+    The company currency is copied as a label. Amounts are not converted.
+    """
+    code = company.functional_currency.strip().upper()
+    if not code:
+        raise CompanyDetailsRejected("Company currency is not recorded.")
+    previous = _confirmation_snapshot(year_end)
+    confirmed_at = datetime.now(UTC)
+    year_end.currency_confirmed_code = code
+    year_end.currency_confirmed_by_user_id = user_id
+    year_end.currency_confirmed_at = confirmed_at
+    await append_audit_log(
+        session,
+        org_id=org_id,
+        user_id=user_id,
+        action="currency_confirmed",
+        entity_type="year_end",
+        entity_id=year_end.id,
+        old_value=previous,
+        new_value=_confirmation_snapshot(year_end),
+    )
+    return CurrencyConfirmationResponse(
+        year_end_id=year_end.id,
+        currency=code,
+        confirmed_at=confirmed_at,
+        confirmed_by_user_id=user_id,
+    )
+
+
 def _check(code: str, severity: str, passed: bool, message: str) -> ReconciliationCheck:
     return ReconciliationCheck(
         code=code, severity=severity, passed=passed, message=message
@@ -559,11 +608,17 @@ def company_detail_checks(
 
 
 def _currency_notice(company: Company, year_end: YearEnd) -> ReconciliationCheck | None:
-    """Irish pack only. A non-euro currency is a notice, never a block."""
+    """Irish pack only. A non-euro currency is a notice, never a block.
+
+    A confirmation applies only while it names the company's current currency.
+    """
     if year_end.pack_id != "frs102-1a-ie":
         return None
     code = company.functional_currency.strip().upper()
     if not code or code == "EUR":
+        return None
+    confirmed = (year_end.currency_confirmed_code or "").strip().upper()
+    if confirmed == code:
         return None
     return _check(
         "V-CO-007",

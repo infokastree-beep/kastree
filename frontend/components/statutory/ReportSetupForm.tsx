@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ResetDefaultsDialog } from "@/components/statutory/ResetDefaultsDialog";
 import type { RoundingMode, StatementType } from "@/lib/report-display";
 import type { ReportingFramework } from "@/lib/workspace-sections";
 
@@ -29,6 +30,9 @@ export type ReportSetup = {
   trial_balance_period_start: string | null;
   trial_balance_period_end: string;
   sections?: Record<string, boolean> | null;
+  currency: string;
+  rounding_unit_label: string;
+  rounding_thousands_label: string;
 };
 
 export type ReportSetupWrite = {
@@ -60,7 +64,6 @@ export function ReportSetupForm({
   canReset: boolean;
   onReset: () => void;
 }) {
-  const [confirmingReset, setConfirmingReset] = useState(false);
   const [rounding, setRounding] = useState<RoundingMode>(setup.rounding);
   const [statementType, setStatementType] = useState<StatementType>(
     setup.statement_type,
@@ -127,8 +130,8 @@ export function ReportSetupForm({
           value={rounding}
           onChange={(event) => setRounding(event.target.value as RoundingMode)}
         >
-          <option value="unit">Nearest euro</option>
-          <option value="thousands">Nearest €&apos;000</option>
+          <option value="unit">{setup.rounding_unit_label}</option>
+          <option value="thousands">{setup.rounding_thousands_label}</option>
         </select>
       </label>
 
@@ -224,39 +227,12 @@ export function ReportSetupForm({
           Save report setup
         </button>
         {canReset ? (
-          confirmingReset ? (
-            <>
-              <button
-                type="button"
-                disabled={busy}
-                data-testid="statutory-reset-display-confirm"
-                className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-50"
-                onClick={() => {
-                  setConfirmingReset(false);
-                  onReset();
-                }}
-              >
-                Confirm reset
-              </button>
-              <button
-                type="button"
-                className="rounded-md border border-line px-4 py-2 text-sm font-semibold text-ink"
-                onClick={() => setConfirmingReset(false)}
-              >
-                Cancel
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              disabled={busy}
-              data-testid="statutory-reset-display"
-              className="rounded-md border border-line px-4 py-2 text-sm font-semibold text-ink disabled:opacity-50"
-              onClick={() => setConfirmingReset(true)}
-            >
-              Reset to pack defaults
-            </button>
-          )
+          <ResetDefaultsDialog
+            askTestId="statutory-reset-display"
+            confirmTestId="statutory-reset-display-confirm"
+            busy={busy}
+            onReset={onReset}
+          />
         ) : null}
       </div>
     </form>

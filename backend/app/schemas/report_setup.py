@@ -152,6 +152,9 @@ class ReportSetupResponse(BaseModel):
     sections: dict[str, bool] | None = None
     trial_balance_period_start: date | None
     trial_balance_period_end: date
+    currency: str
+    rounding_unit_label: str
+    rounding_thousands_label: str
 
 
 class WorkspaceSectionOut(BaseModel):

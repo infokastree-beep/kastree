@@ -148,8 +148,8 @@ describe("sectionsForFramework", () => {
     assert.equal(setup.includes("statutory-toggle-"), true);
     assert.equal(setup.includes("not built"), true);
     assert.equal(setup.includes("locked"), true);
-    assert.equal(setup.includes("Reset to pack defaults"), true);
-    assert.equal(setup.includes("Confirm reset"), true);
+    assert.equal(setup.includes("Reset to pack defaults"), false);
+    assert.equal(setup.includes("ResetDefaultsDialog"), true);
     for (const word of ["frs102", "form11", "FRS", "Form 11"]) {
       assert.equal(setup.includes(word), false, word);
     }
@@ -169,14 +169,18 @@ describe("sectionsForFramework", () => {
     assert.equal(workspace.includes("statutory-turn-on"), true);
     assert.equal(workspace.includes("<SectionsSetup"), true);
     assert.equal(workspace.includes("statutory-setup-notices"), true);
-    assert.equal(workspace.includes("Ready to finalise."), true);
+    assert.equal(workspace.includes("finaliseStatusLine"), true);
+    assert.equal(workspace.includes("statutory-confirm-currency"), true);
+    assert.equal(workspace.includes("Ready to finalise."), false);
     const form = readFileSync(
       join(here, "../components/statutory/ReportSetupForm.tsx"),
       "utf8",
     );
     assert.equal(form.includes("sections:"), false);
-    assert.equal(form.includes("Reset to pack defaults"), true);
-    assert.equal(form.includes("Confirm reset"), true);
+    assert.equal(form.includes("Nearest euro"), false);
+    assert.equal(form.includes("rounding_unit_label"), true);
+    assert.equal(form.includes("Reset to pack defaults"), false);
+    assert.equal(form.includes("ResetDefaultsDialog"), true);
   });
 });
 

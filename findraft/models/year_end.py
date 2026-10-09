@@ -92,6 +92,19 @@ class YearEnd(Base):
     report_setup: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     approval_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     signing_directors: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    # Acknowledgement that this year end reports in the company currency.
+    # A later change of companies.functional_currency no longer matches.
+    currency_confirmed_code: Mapped[str | None] = mapped_column(
+        String(3), nullable=True
+    )
+    currency_confirmed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    currency_confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

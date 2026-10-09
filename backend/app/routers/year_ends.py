@@ -41,6 +41,7 @@ from app.schemas.company_details import (
     ApprovalWrite,
     CompanyDetailsResponse,
     CompanyDetailsWrite,
+    CurrencyConfirmationResponse,
 )
 from app.schemas.report_setup import (
     ReportingFrameworkList,
@@ -157,6 +158,7 @@ from app.services.source_storage import SourceObjectStorage, get_source_storage
 from app.services.tb_import_worker import run_tb_import_job
 from app.services.company_details import (
     CompanyDetailsRejected,
+    confirm_currency,
     company_details_response,
     save_approval_details,
     save_company_details,
@@ -452,6 +454,35 @@ async def put_company_details(
             company=company,
             year_end=year_end,
             body=body,
+        )
+    except CompanyDetailsRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+
+@router.post(
+    "/{year_end_id}/currency-confirmation",
+    response_model=CurrencyConfirmationResponse,
+)
+async def post_currency_confirmation(
+    year_end_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> CurrencyConfirmationResponse:
+    """Acknowledge the company currency for this year end. Nothing is converted."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    company = await _company_for_year_end(
+        session, year_end=year_end, org_id=auth.org_id
+    )
+    try:
+        return await confirm_currency(
+            session,
+            org_id=auth.org_id,
+            user_id=auth.user_id,
+            company=company,
+            year_end=year_end,
         )
     except CompanyDetailsRejected as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
