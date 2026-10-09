@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { currencyChangeAllowed } from "./company-form.ts";
+import { currencyChangeAllowed, defaultCompanyCurrency } from "./company-form.ts";
 
 describe("currencyChangeAllowed", () => {
   it("allows a currency change when the company has no trial balances", () => {
@@ -51,5 +51,14 @@ describe("currencyChangeAllowed", () => {
       }),
       true,
     );
+  });
+});
+
+describe("defaultCompanyCurrency", () => {
+  it("preselects euro for an Irish practice and pound otherwise", () => {
+    assert.equal(defaultCompanyCurrency("IE"), "EUR");
+    assert.equal(defaultCompanyCurrency("GB"), "GBP");
+    assert.equal(defaultCompanyCurrency(null), "GBP");
+    assert.equal(defaultCompanyCurrency(undefined), "GBP");
   });
 });

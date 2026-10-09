@@ -42,6 +42,9 @@ class Organisation(Base):
     functional_currency: Mapped[str] = mapped_column(
         String(3), nullable=False, server_default=text("'GBP'")
     )
+    # NULL until a practice sets it. Never backfilled, and never copied onto
+    # companies that already exist.
+    jurisdiction: Mapped[str | None] = mapped_column(String(2), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -17,6 +17,7 @@ class OrganisationResponse(BaseModel):
     subscription_tier: str
     subscription_status: str
     functional_currency: str
+    jurisdiction: str | None
     created_at: datetime
 
 
@@ -32,6 +33,7 @@ class OrganisationUpdateRequest(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=500)
     functional_currency: str | None = Field(default=None, min_length=3, max_length=3)
+    jurisdiction: Literal["IE", "GB"] | None = None
     # Explicitly acknowledged + ignored by the router (not updatable here).
     subscription_tier: str | None = None
     subscription_status: str | None = None

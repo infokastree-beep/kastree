@@ -9,6 +9,7 @@ import {
 } from "@/components/clients/CompanyEntityForm";
 import type { CompanyEntityFormValues } from "@/lib/company-form";
 import { useAuth } from "@/hooks/useAuth";
+import { useDefaultCompanyCurrency } from "@/hooks/useDefaultCompanyCurrency";
 import { ApiError, apiFetch } from "@/lib/api";
 import { createCompanyEntity } from "@/lib/companies";
 import type { ClientCreateRequest, IClient } from "@/types";
@@ -87,6 +88,7 @@ export function CreateClientForm({
     },
   });
 
+  const practiceCurrency = useDefaultCompanyCurrency();
   const activeError =
     step === "client" ? createClientMutation.error : createCompanyMutation.error;
   const errorMessage =
@@ -95,8 +97,13 @@ export function CreateClientForm({
     step === "client" ? clientLimitUpgradeUrl(createClientMutation.error) : null;
 
   if (step === "company" && createdClient) {
+    if (!practiceCurrency.ready) {
+      return <p className="text-sm text-stone-500">Loading company form…</p>;
+    }
     return (
       <CompanyEntityForm
+        key={practiceCurrency.currency}
+        defaultCurrency={practiceCurrency.currency}
         title={`Now add the first company under ${createdClient.name}`}
         intro={
           <p className="text-sm text-stone-600">

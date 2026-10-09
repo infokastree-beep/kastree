@@ -1,5 +1,15 @@
 /** Shared TypeScript types for the core upload → mapping → dashboard loop. */
 
+export interface IOrganisation {
+  id: string;
+  name: string;
+  subscription_tier: string;
+  subscription_status: string;
+  functional_currency: string;
+  jurisdiction: string | null;
+  created_at: string;
+}
+
 export interface IClient {
   id: string;
   org_id: string;

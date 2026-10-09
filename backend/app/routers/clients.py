@@ -104,9 +104,7 @@ async def list_clients(
         Client.org_id == auth.org_id,
         Client.is_deleted.is_(False),
     )
-    total = await session.scalar(
-        select(func.count()).select_from(base.subquery())
-    )
+    total = await session.scalar(select(func.count()).select_from(base.subquery()))
     result = await session.execute(
         base.order_by(Client.created_at.desc()).limit(limit).offset(offset)
     )
@@ -148,7 +146,9 @@ async def update_client(
     return client
 
 
-@router.delete("/{client_id}", status_code=status.HTTP_200_OK, response_model=ClientResponse)
+@router.delete(
+    "/{client_id}", status_code=status.HTTP_200_OK, response_model=ClientResponse
+)
 async def soft_delete_client(
     client_id: uuid.UUID,
     auth: Annotated[AuthContext, Depends(require_client_admin)],
@@ -211,7 +211,12 @@ async def create_company_for_client(
     if org is None:
         raise HTTPException(status_code=401, detail="Unknown organisation")
 
-    currency = (body.functional_currency or org.functional_currency or "GBP").upper()
+    if body.functional_currency:
+        currency = body.functional_currency.upper()
+    elif org.jurisdiction == "IE":
+        currency = "EUR"
+    else:
+        currency = (org.functional_currency or "GBP").upper()
     company = Company(
         client_id=client.id,
         org_id=client.org_id,
@@ -302,7 +307,9 @@ async def bulk_delete_client_mappings(
         .all()
     )
     if not company_ids:
-        return ClientGroupBulkDeleteMappingsResponse(client_id=client_id, deleted_count=0)
+        return ClientGroupBulkDeleteMappingsResponse(
+            client_id=client_id, deleted_count=0
+        )
     result = await session.execute(
         delete(AccountMapping)
         .where(AccountMapping.company_id.in_(company_ids))
