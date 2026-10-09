@@ -48,7 +48,7 @@ _BILLING_FIELDS_NOT_UPDATABLE_HERE = frozenset(
         "stripe_subscription_id",
     }
 )
-_ORG_UPDATABLE_FIELDS = frozenset({"name", "functional_currency"})
+_ORG_UPDATABLE_FIELDS = frozenset({"name", "functional_currency", "jurisdiction"})
 
 INVITES_SCHEMA_GAP_DETAIL = (
     "No invites table exists in Product Spec §9.1 DDL. Invite was not persisted. "

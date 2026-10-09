@@ -8,6 +8,7 @@ import { CompanyEntityForm } from "@/components/clients/CompanyEntityForm";
 import { GlPeriodFields } from "@/components/upload/GlPeriodFields";
 import type { CompanyEntityFormValues } from "@/lib/company-form";
 import { useAuth } from "@/hooks/useAuth";
+import { useDefaultCompanyCurrency } from "@/hooks/useDefaultCompanyCurrency";
 import { apiFetch, existingTbIdFromConflict, existingTbStatusFromConflict } from "@/lib/api";
 import { createCompanyEntity } from "@/lib/companies";
 import {
@@ -108,6 +109,7 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { getToken } = useAuth();
+  const practiceCurrency = useDefaultCompanyCurrency();
   const deepLinkInitialized = useRef(false);
 
   const [file, setFile] = useState<File | null>(null);
@@ -944,7 +946,10 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
 
       {showAddCompany && clientId ? (
         <div className="rounded border border-stone-200 bg-white p-4">
+          {practiceCurrency.ready ? (
           <CompanyEntityForm
+            key={practiceCurrency.currency}
+            defaultCurrency={practiceCurrency.currency}
             intro={
               <p className="text-sm text-stone-600">
                 Add a company to this client group. It will be selected automatically
@@ -960,6 +965,9 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
               addCompanyMutation.reset();
             }}
           />
+          ) : (
+            <p className="text-sm text-stone-500">Loading company form…</p>
+          )}
         </div>
       ) : null}
 

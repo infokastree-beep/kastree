@@ -11,8 +11,8 @@ export type { CompanyEntityFormValues } from "@/lib/company-form";
 export { DEFAULT_MATERIALITY_PCT, DEFAULT_MATERIALITY_ABS } from "@/lib/company-form";
 
 type CompanyEntityFormProps = {
-  /** Prefill for edit mode; create mode leaves defaults. */
-  initialValues?: Partial<CompanyEntityFormValues>;
+  /** Create-mode preselect. Edit mode uses initialValues instead. */
+  defaultCurrency?: string;
   initialName?: string;
   namePlaceholder?: string;
   title?: string;
@@ -30,6 +30,7 @@ type CompanyEntityFormProps = {
 
 export function CompanyEntityForm({
   initialValues,
+  defaultCurrency = "GBP",
   initialName = "",
   namePlaceholder = "Acme Ltd",
   title,
@@ -45,7 +46,7 @@ export function CompanyEntityForm({
 }: CompanyEntityFormProps) {
   const [name, setName] = useState(initialValues?.name ?? initialName);
   const [functionalCurrency, setFunctionalCurrency] = useState(
-    initialValues?.functionalCurrency ?? "GBP",
+    initialValues?.functionalCurrency ?? defaultCurrency,
   );
   const [companyNumber, setCompanyNumber] = useState(
     initialValues?.companyNumber ?? "",

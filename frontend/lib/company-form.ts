@@ -11,6 +11,12 @@ export type CompanyEntityFormValues = {
   acknowledgeCurrencyChange?: boolean;
 };
 
+export function defaultCompanyCurrency(
+  jurisdiction: string | null | undefined,
+): string {
+  return jurisdiction === "IE" ? "EUR" : "GBP";
+}
+
 /** Whether a currency edit may be sent once trial balances exist. */
 export function currencyChangeAllowed(input: {
   currentCurrency: string;

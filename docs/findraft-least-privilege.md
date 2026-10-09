@@ -90,3 +90,15 @@ statements deletes `financial_statements`; clearing a disclosure deletes
 `findraft_prior_year_lines`. `findraft_year_ends.adopted_trial_balance_id`
 is `ON DELETE SET NULL` only when the trial-balance row itself is deleted.
 The product's delete endpoint does not do that.
+
+## Users foreign key gap
+
+`g3h4i5j6k7` adds `findraft_year_ends.currency_confirmed_by_user_id` and
+tries `REFERENCES users (id)`. The migration login in this environment is
+`findraft`. That role has `REFERENCES` revoked, so the constraint raises
+`permission denied for table users` and the migration records a notice and
+continues. The column is stored. The foreign key is not created unless a
+role that can reference `users` runs the same statement. This is the gap:
+the acknowledgement user id is not enforced by the database under the
+current migration role.
+

@@ -6,7 +6,6 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import text
 
 from app.db import SyncSessionLocal, set_rls_org_id
 from app.models.user import User
@@ -68,6 +67,57 @@ async def test_get_and_update_own_organisation(
     assert updated.status_code == 200, updated.text
     assert updated.json()["name"] == "Renamed Walkthrough Org"
     assert updated.json()["functional_currency"] == "EUR"
+
+
+@pytest.mark.asyncio
+async def test_jurisdiction_preselects_eur_and_leaves_existing_companies(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    headers = auth_headers(provisioned_org["token"])
+    company_id = provisioned_org["company_id"]
+    client_id = provisioned_org["client_id"]
+
+    current = await api_client.get("/organisations/me", headers=headers)
+    assert current.status_code == 200
+    assert current.json()["jurisdiction"] is None
+
+    existing = await api_client.get(f"/companies/{company_id}", headers=headers)
+    assert existing.json()["functional_currency"] == "GBP"
+
+    updated = await api_client.put(
+        "/organisations/me",
+        headers=headers,
+        json={"jurisdiction": "IE"},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["jurisdiction"] == "IE"
+
+    unchanged = await api_client.get(f"/companies/{company_id}", headers=headers)
+    assert unchanged.json()["functional_currency"] == "GBP"
+
+    created = await api_client.post(
+        f"/clients/{client_id}/companies",
+        headers=headers,
+        json={"name": "Irish Default Co"},
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["functional_currency"] == "EUR"
+
+    explicit = await api_client.post(
+        f"/clients/{client_id}/companies",
+        headers=headers,
+        json={"name": "Explicit Pound Co", "functional_currency": "GBP"},
+    )
+    assert explicit.status_code == 201, explicit.text
+    assert explicit.json()["functional_currency"] == "GBP"
+
+    rejected = await api_client.put(
+        "/organisations/me",
+        headers=headers,
+        json={"jurisdiction": "US"},
+    )
+    assert rejected.status_code == 422
 
 
 @pytest.mark.asyncio

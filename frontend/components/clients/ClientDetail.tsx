@@ -8,6 +8,7 @@ import { CompanyEntityForm } from "@/components/clients/CompanyEntityForm";
 import { CompanyMaterialitySettings } from "@/components/clients/CompanyMaterialitySettings";
 import type { CompanyEntityFormValues } from "@/lib/company-form";
 import { useAuth } from "@/hooks/useAuth";
+import { useDefaultCompanyCurrency } from "@/hooks/useDefaultCompanyCurrency";
 import { ApiError, apiFetch } from "@/lib/api";
 import { createCompanyEntity, deleteCompanyEntity, updateCompanyEntity } from "@/lib/companies";
 import { formatDate, formatDateTime } from "@/lib/utils";
@@ -401,6 +402,7 @@ export function ClientDetail({ clientId }: { clientId: string }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { getToken } = useAuth();
+  const practiceCurrency = useDefaultCompanyCurrency();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showAddCompany, setShowAddCompany] = useState(false);
 
@@ -570,7 +572,10 @@ export function ClientDetail({ clientId }: { clientId: string }) {
 
         {showAddCompany ? (
           <div className="rounded border border-stone-200 bg-white p-4">
+            {practiceCurrency.ready ? (
             <CompanyEntityForm
+              key={practiceCurrency.currency}
+              defaultCurrency={practiceCurrency.currency}
               intro={
                 <p className="text-sm text-stone-600">
                   Add a company entity to{" "}
@@ -586,6 +591,9 @@ export function ClientDetail({ clientId }: { clientId: string }) {
                 addCompanyMutation.reset();
               }}
             />
+            ) : (
+              <p className="text-sm text-stone-500">Loading company form…</p>
+            )}
           </div>
         ) : null}
 
