@@ -1,5 +1,5 @@
 # FinDraft backend — production image (Railway / Render / any Docker host).
-FROM python:3.11-slim
+FROM public.ecr.aws/docker/library/python:3.11-slim
 
 WORKDIR /app
 
