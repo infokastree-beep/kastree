@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,7 @@ from app.dependencies import (
 )
 from app.models.account_mapping import AccountMapping
 from app.models.company import Company
+from app.models.trial_balance import TrialBalance
 from app.schemas.company import (
     BulkDeleteMappingsResponse,
     CompanyMappingsResponse,
@@ -44,6 +45,50 @@ async def get_company(
     return await get_owned_company(session, company_id=company_id, org_id=auth.org_id)
 
 
+_CURRENCY_CHANGE_MESSAGE = (
+    "This company already has trial balances. Changing the currency does not "
+    "convert any amounts. Resend with acknowledge_currency_change set to true "
+    "to confirm."
+)
+
+
+async def _refuse_unacknowledged_currency_change(
+    session: AsyncSession,
+    *,
+    company: Company,
+    new_currency: str,
+    acknowledged: bool,
+) -> None:
+    """Block a real currency change once trial balances exist, unless acknowledged.
+
+    The acknowledgement does not convert figures. It only records that the
+    caller accepted a label change.
+    """
+    if new_currency == company.functional_currency.upper():
+        return
+    if acknowledged:
+        return
+    has_trial_balance = (
+        await session.execute(
+            select(TrialBalance.id)
+            .where(
+                TrialBalance.company_id == company.id,
+                TrialBalance.is_deleted.is_(False),
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if has_trial_balance is None:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "message": _CURRENCY_CHANGE_MESSAGE,
+            "code": "CURRENCY_CHANGE_ACK_REQUIRED",
+        },
+    )
+
+
 @router.put("/{company_id}", response_model=CompanyResponse)
 async def update_company(
     company_id: uuid.UUID,
@@ -52,20 +97,26 @@ async def update_company(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Company:
     await aset_rls_org_id(session, auth.org_id)
-    company = await get_owned_company(session, company_id=company_id, org_id=auth.org_id)
+    company = await get_owned_company(
+        session, company_id=company_id, org_id=auth.org_id
+    )
     updates = body.model_dump(exclude_unset=True)
+    updates.pop("acknowledge_currency_change", None)
     if "functional_currency" in updates and updates["functional_currency"] is not None:
         updates["functional_currency"] = updates["functional_currency"].upper()
+        await _refuse_unacknowledged_currency_change(
+            session,
+            company=company,
+            new_currency=updates["functional_currency"],
+            acknowledged=body.acknowledge_currency_change,
+        )
     if "name" in updates and updates["name"] is not None:
         updates["name"] = updates["name"].strip()
     # Changing company type resurfaces the materiality suggestion banner.
     if "company_type" in updates and updates["company_type"] != company.company_type:
         company.materiality_suggestion_dismissed_at = None
     # Applying new thresholds clears dismiss so a later drift can prompt again.
-    if (
-        "materiality_threshold_pct" in updates
-        or "materiality_threshold_abs" in updates
-    ):
+    if "materiality_threshold_pct" in updates or "materiality_threshold_abs" in updates:
         company.materiality_suggestion_dismissed_at = None
     for field, value in updates.items():
         setattr(company, field, value)
@@ -85,7 +136,9 @@ async def dismiss_materiality_suggestion(
 ) -> MaterialitySuggestionDismissResponse:
     """Soft-dismiss the materiality suggestion banner for this company."""
     await aset_rls_org_id(session, auth.org_id)
-    company = await get_owned_company(session, company_id=company_id, org_id=auth.org_id)
+    company = await get_owned_company(
+        session, company_id=company_id, org_id=auth.org_id
+    )
     now = datetime.now(timezone.utc)
     company.materiality_suggestion_dismissed_at = now
     await session.flush()
@@ -97,7 +150,9 @@ async def dismiss_materiality_suggestion(
     )
 
 
-@router.delete("/{company_id}", status_code=status.HTTP_200_OK, response_model=CompanyResponse)
+@router.delete(
+    "/{company_id}", status_code=status.HTTP_200_OK, response_model=CompanyResponse
+)
 async def soft_delete_company(
     company_id: uuid.UUID,
     auth: Annotated[AuthContext, Depends(require_client_admin)],
@@ -113,7 +168,9 @@ async def soft_delete_company(
     do. Child rows stay ``is_deleted=false`` until deleted on their own.
     """
     await aset_rls_org_id(session, auth.org_id)
-    company = await get_owned_company(session, company_id=company_id, org_id=auth.org_id)
+    company = await get_owned_company(
+        session, company_id=company_id, org_id=auth.org_id
+    )
     now = datetime.now(timezone.utc)
     company.is_deleted = True
     company.deleted_at = now

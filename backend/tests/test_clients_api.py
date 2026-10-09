@@ -15,6 +15,7 @@ from sqlalchemy import select, text
 from app.db import SyncSessionLocal, set_rls_org_id
 from app.models.account_mapping import AccountMapping
 from app.models.archived_record import ArchivedRecord
+from app.models.trial_balance import TrialBalance
 from app.services.archival import RETENTION_YEARS, add_years, sha256_hex
 from app.services.org_provisioning import provision_first_signup
 from tests.conftest import auth_headers, make_access_token
@@ -213,6 +214,78 @@ async def test_update_company_fields(
 
 
 @pytest.mark.asyncio
+async def test_currency_change_with_trial_balances_requires_acknowledgement(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    headers = auth_headers(provisioned_org["token"])
+    company_id = provisioned_org["company_id"]
+    org_id = provisioned_org["org_id"]
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        session.add(
+            TrialBalance(
+                company_id=company_id,
+                period_end=date(2025, 12, 31),
+                file_url="file:///tmp/currency-ack.csv",
+                file_type="csv",
+                status="complete",
+                currency="GBP",
+            )
+        )
+        session.commit()
+
+    refused = await api_client.put(
+        f"/companies/{company_id}",
+        headers=headers,
+        json={"functional_currency": "EUR"},
+    )
+    assert refused.status_code == 409, refused.text
+    detail = refused.json()["detail"]
+    assert detail["code"] == "CURRENCY_CHANGE_ACK_REQUIRED"
+    assert "does not convert" in detail["message"]
+
+    unchanged = await api_client.get(f"/companies/{company_id}", headers=headers)
+    assert unchanged.status_code == 200
+    assert unchanged.json()["functional_currency"] == "GBP"
+
+    same = await api_client.put(
+        f"/companies/{company_id}",
+        headers=headers,
+        json={"functional_currency": "gbp"},
+    )
+    assert same.status_code == 200, same.text
+    assert same.json()["functional_currency"] == "GBP"
+
+    accepted = await api_client.put(
+        f"/companies/{company_id}",
+        headers=headers,
+        json={
+            "functional_currency": "EUR",
+            "acknowledge_currency_change": True,
+        },
+    )
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["functional_currency"] == "EUR"
+
+
+@pytest.mark.asyncio
+async def test_currency_change_without_trial_balances_needs_no_acknowledgement(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    headers = auth_headers(provisioned_org["token"])
+    company_id = provisioned_org["company_id"]
+    updated = await api_client.put(
+        f"/companies/{company_id}",
+        headers=headers,
+        json={"functional_currency": "USD"},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["functional_currency"] == "USD"
+
+
+@pytest.mark.asyncio
 async def test_soft_delete_writes_archived_record_with_valid_hash(
     api_client: AsyncClient,
     provisioned_org: dict,
@@ -232,7 +305,9 @@ async def test_soft_delete_writes_archived_record_with_valid_hash(
     assert deleted.json()["is_deleted"] is True
     assert deleted.json()["deleted_at"] is not None
 
-    assert (await api_client.get(f"/clients/{client_id}", headers=headers)).status_code == 404
+    assert (
+        await api_client.get(f"/clients/{client_id}", headers=headers)
+    ).status_code == 404
 
     with SyncSessionLocal() as session:
         set_rls_org_id(session, org_id)
@@ -261,11 +336,14 @@ async def test_soft_delete_writes_archived_record_with_valid_hash(
         assert row.archive_hash == sha256_hex(row.archived_data)
         tampered = dict(row.archived_data)
         tampered["name"] = "Tampered"
-        assert row.archive_hash != hashlib.sha256(
-            json.dumps(
-                tampered, sort_keys=True, separators=(",", ":"), default=str
-            ).encode()
-        ).hexdigest()
+        assert (
+            row.archive_hash
+            != hashlib.sha256(
+                json.dumps(
+                    tampered, sort_keys=True, separators=(",", ":"), default=str
+                ).encode()
+            ).hexdigest()
+        )
         today = date.today()
         expected = add_years(today, RETENTION_YEARS)
         assert abs((row.retention_until - expected).days) <= 1
@@ -403,7 +481,9 @@ async def test_mappings_list_and_bulk_delete(
     assert wiped.status_code == 200, wiped.text
     assert wiped.json()["deleted_count"] == 2
 
-    listed_after = await api_client.get(f"/clients/{client_id}/mappings", headers=headers)
+    listed_after = await api_client.get(
+        f"/clients/{client_id}/mappings", headers=headers
+    )
     assert listed_after.json()["mappings"] == []
 
     with SyncSessionLocal() as session:

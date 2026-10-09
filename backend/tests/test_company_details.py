@@ -822,7 +822,10 @@ async def test_confirm_currency_records_the_acknowledgement_and_leaves_figures(
     changed = await api_client.put(
         f"/companies/{company_id}",
         headers=headers,
-        json={"functional_currency": "USD"},
+        json={
+            "functional_currency": "USD",
+            "acknowledge_currency_change": True,
+        },
     )
     assert changed.status_code == 200, changed.text
     assert changed.json()["functional_currency"] == "USD"
