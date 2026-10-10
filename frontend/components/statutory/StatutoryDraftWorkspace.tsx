@@ -44,6 +44,10 @@ import {
   type StatutoryPreview,
 } from "@/lib/section-preview";
 import {
+  STATUTORY_SIGNOFF,
+  statutoryGateDiagnosis,
+} from "@/lib/statutory-gate";
+import {
   activeSection,
   navigatorSections,
   sectionIsOn,
@@ -51,10 +55,8 @@ import {
   type ReportingFramework,
 } from "@/lib/workspace-sections";
 
-const SIGNOFF =
-  "Draft statutory packs stay limited to platform administrators until a qualified reviewer signs off the wording.";
-
 type UserMe = {
+  email: string;
   role: "owner" | "admin" | "member" | "viewer";
   is_platform_admin: boolean;
 };
@@ -738,9 +740,12 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
   }
   if (forbidden) {
     return (
-      <p className="text-sm text-ink-secondary" data-testid="statutory-draft-signoff">
-        {SIGNOFF}
-      </p>
+      <div className="space-y-2" data-testid="statutory-draft-signoff">
+        <p className="text-sm text-ink-secondary">{STATUTORY_SIGNOFF}</p>
+        <p className="text-sm text-ink-secondary">
+          {statutoryGateDiagnosis(meQuery.data?.email)}
+        </p>
+      </div>
     );
   }
   if (meQuery.error || yearEndQuery.error || !yearEnd) {

@@ -7,10 +7,15 @@ import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
 import { downloadDraftPdf, pdfBlockReason } from "@/lib/draft-pdf";
 import { formatCurrency } from "@/lib/currency";
+import {
+  STATUTORY_SIGNOFF,
+  statutoryGateDiagnosis,
+} from "@/lib/statutory-gate";
 import { confidenceBadgeClass, formatConfidence } from "@/lib/utils";
 import type { ClientListResponse, CompanyListResponse, ICompany } from "@/types";
 
 type UserMe = {
+  email: string;
   is_platform_admin: boolean;
 };
 
@@ -190,9 +195,9 @@ export function StatutoryWorkbench() {
     return (
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">Statutory accounts</h1>
+        <p className="text-sm text-stone-600">{STATUTORY_SIGNOFF}</p>
         <p className="text-sm text-stone-600">
-          Draft statutory packs stay limited to platform administrators until a
-          qualified reviewer signs off the wording.
+          {statutoryGateDiagnosis(meQuery.data?.email)}
         </p>
       </div>
     );
