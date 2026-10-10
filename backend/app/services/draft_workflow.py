@@ -46,7 +46,7 @@ from app.services.adopted_trial_balance import (
 )
 from app.services.statutory_compose import (
     compose_year_end_parts,
-    docx_presentation,
+    docx_presentation_for_year_end,
     pack_display_notices,
     unbuilt_section_notices,
 )
@@ -1159,12 +1159,7 @@ async def finalise_draft(
     composed_html, sections = compose_year_end_parts(
         document, year_end, company=letterhead
     )
-    page_header, signature = docx_presentation(
-        document,
-        report_setup=year_end.report_setup,
-        approval_date=year_end.approval_date,
-        signing_directors=year_end.signing_directors,
-    )
+    page_header, signature = docx_presentation_for_year_end(document, year_end)
     composed_docx = payload_from_composed(
         watermark=document.watermark,
         company_name=document.company_name,
