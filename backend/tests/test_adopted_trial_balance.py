@@ -1641,6 +1641,29 @@ def _pdf_text(payload: bytes) -> str:
     return completed.stdout.decode("utf-8")
 
 
+def _refuse_draft_change(
+    org_id: uuid.UUID,
+    draft_id: str,
+    assignment: str,
+    match: str,
+    extra: dict[str, object] | None = None,
+) -> None:
+    params: dict[str, object] = {"id": draft_id}
+    if extra is not None:
+        params.update(extra)
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        with pytest.raises(DBAPIError, match=match):
+            session.execute(
+                text(
+                    f"UPDATE findraft_draft_versions SET {assignment} WHERE id = :id"
+                ),
+                params,
+            )
+            session.commit()
+        session.rollback()
+
+
 def _source_documents(org_id: uuid.UUID) -> int:
     with SyncSessionLocal() as session:
         set_rls_org_id(session, org_id)
@@ -1729,8 +1752,11 @@ async def test_finalised_adopted_draft_ignores_a_later_mapping_edit(
     assert isinstance(sections, list) and sections
     current = stored["canonical_current"]
     assert isinstance(current, dict)
-    assert Decimal(str(current["RETAINED_EARNINGS"])) == Decimal(reserves_before)
-    assert Decimal(str(current["RETAINED_EARNINGS"])) != Decimal("-322062.00")
+    closing = Decimal(str(current["RETAINED_EARNINGS"]))
+    print(f"canonical_current RETAINED_EARNINGS={closing}")
+    assert closing == Decimal("455712.00")
+    assert closing != Decimal("322062.00")
+    assert closing == Decimal(reserves_before)
     evidence = stored["evidence"]
     assert isinstance(evidence, dict)
     documents = evidence["documents"]
@@ -1937,6 +1963,85 @@ async def test_frozen_adopted_draft_finalises_from_frozen_inputs(
 
 
 @pytest.mark.asyncio
+async def test_frozen_status_guard_refuses_every_other_change(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """The guard allows one frozen transition: draft to final. Nothing else."""
+    year_end_id, first_id, headers = await _open_adopted(
+        api_client, provisioned_org, rows=_CASH_PAIR
+    )
+    started = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{first_id}/new-report",
+        headers=headers,
+        json={"row_version": _draft_version(first_id, provisioned_org["org_id"])},
+    )
+    assert started.status_code == 200, started.text
+    org_id = provisioned_org["org_id"]
+    _refuse_draft_change(
+        org_id, first_id, "is_frozen = false", "frozen draft is immutable"
+    )
+    _refuse_draft_change(
+        org_id,
+        first_id,
+        "frozen_inputs = '{\"replaced\": true}'::jsonb",
+        "frozen draft is immutable",
+    )
+    _refuse_draft_change(
+        org_id,
+        first_id,
+        "mappings_sha256 = :sha",
+        "frozen draft is immutable",
+        {"sha": "c" * 64},
+    )
+    _refuse_draft_change(
+        org_id, first_id, "status = 'locked'", "frozen draft is immutable"
+    )
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        updated = session.execute(
+            text(
+                """
+                UPDATE findraft_draft_versions
+                SET status = 'final',
+                    snapshot = '{"watermark": "FINAL"}'::jsonb,
+                    inputs_sha256 = :inputs,
+                    engine_sha = :engine
+                WHERE id = :id
+                """
+            ),
+            {
+                "id": first_id,
+                "inputs": "a" * 64,
+                "engine": "b" * 64,
+            },
+        )
+        assert updated.rowcount == 1
+        session.commit()
+    for assignment, match, extra in (
+        ("status = 'draft'", "FINAL draft is immutable", None),
+        ("status = 'locked'", "FINAL draft is immutable", None),
+        (
+            "snapshot = '{\"watermark\": \"CHANGED\"}'::jsonb",
+            "FINAL draft is immutable",
+            None,
+        ),
+        ("inputs_sha256 = :sha", "FINAL draft is immutable", {"sha": "d" * 64}),
+        ("engine_sha = :sha", "FINAL draft is immutable", {"sha": "e" * 64}),
+        ("pack_id = 'other-pack'", "FINAL draft is immutable", None),
+        ("pack_version = '1999.01'", "FINAL draft is immutable", None),
+        ("is_frozen = false", "frozen draft is immutable", None),
+        (
+            "frozen_inputs = '{\"replaced\": true}'::jsonb",
+            "frozen draft is immutable",
+            None,
+        ),
+        ("mappings_sha256 = :sha", "frozen draft is immutable", {"sha": "f" * 64}),
+    ):
+        _refuse_draft_change(org_id, first_id, assignment, match, extra)
+
+
+@pytest.mark.asyncio
 async def test_carried_disclosure_answers_need_an_acknowledgement(
     api_client: AsyncClient,
     provisioned_org: dict,
@@ -1955,6 +2060,12 @@ async def test_carried_disclosure_answers_need_an_acknowledgement(
     )
     assert created.status_code == 200, created.text
     child_id = created.json()["draft_id"]
+    child_board = await api_client.get(
+        f"/year-ends/{year_end_id}/drafts/{child_id}/dashboard",
+        headers=headers,
+    )
+    assert child_board.status_code == 200, child_board.text
+    assert "HAS_EMPLOYEES" in child_board.json()["carried_disclosures"]
     refused = await api_client.post(
         f"/year-ends/{year_end_id}/drafts/{child_id}/finalise",
         headers={**headers, "Idempotency-Key": "carried-without-ack"},

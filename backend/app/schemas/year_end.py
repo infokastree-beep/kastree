@@ -395,6 +395,7 @@ class DashboardResponse(BaseModel):
     traffic: Literal["red", "amber", "green"]
     can_finalise: bool
     unanswered_disclosures: list[str]
+    carried_disclosures: list[str] = Field(default_factory=list)
     checks: list[DashboardCheckOut]
 
 

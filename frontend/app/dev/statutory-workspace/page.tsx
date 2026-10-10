@@ -6,7 +6,9 @@
  */
 
 import { useState } from "react";
+import { FinaliseDraft } from "@/components/statutory/FinaliseDraft";
 import { ReportSetupForm, type ReportSetupWrite } from "@/components/statutory/ReportSetupForm";
+import { FINALISED_STATE, pdfDownloadLabel } from "@/lib/finalise-status";
 import { SectionPreview } from "@/components/statutory/SectionPreview";
 import { SectionsSetup } from "@/components/statutory/SectionsSetup";
 import { StatutoryLoadError } from "@/components/statutory/StatutoryLoadError";
@@ -222,6 +224,10 @@ export default function StatutoryWorkspacePreviewPage() {
   const [flags, setFlags] = useState<Record<string, boolean>>({});
   const [pageStarts, setPageStarts] = useState<Record<string, boolean>>({});
   const [noteId, setNoteId] = useState<string | null>(null);
+  const [previewRole, setPreviewRole] = useState("owner");
+  const [draftStatus, setDraftStatus] = useState("draft");
+  const [showCarried, setShowCarried] = useState(true);
+  const [previewRefusal, setPreviewRefusal] = useState(false);
   const sections = sectionsForFramework(FRAMEWORKS, frameworkId).map((item) =>
     item.lock ? { ...item, enabled: sectionIsOn(item, flags) } : item,
   );
@@ -318,18 +324,78 @@ export default function StatutoryWorkspacePreviewPage() {
             }}
           />
         ) : null}
+        {sectionId === "review" ? (
+          <section
+            className="space-y-3 rounded-md border border-line bg-surface-elevated px-4 py-3"
+            data-testid="statutory-review-dashboard"
+          >
+            <p className="text-xs font-semibold uppercase tracking-[0.12em]">
+              Review dashboard
+            </p>
+            <label className="flex flex-col gap-1 text-sm text-ink">
+              Preview role
+              <select
+                data-testid="preview-finalise-role"
+                value={previewRole}
+                onChange={(event) => setPreviewRole(event.target.value)}
+                className="max-w-xs rounded-md border border-line bg-surface-elevated px-3 py-2"
+              >
+                <option value="owner">owner</option>
+                <option value="admin">admin</option>
+                <option value="member">member</option>
+                <option value="viewer">viewer</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                data-testid="preview-carried"
+                checked={showCarried}
+                onChange={(event) => setShowCarried(event.target.checked)}
+              />
+              Carried disclosures
+            </label>
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                data-testid="preview-finalise-refusal"
+                checked={previewRefusal}
+                onChange={(event) => setPreviewRefusal(event.target.checked)}
+              />
+              Preview a refusal
+            </label>
+            <FinaliseDraft
+              role={previewRole}
+              status={draftStatus}
+              canFinalise
+              carriedDisclosures={showCarried ? ["HAS_EMPLOYEES"] : []}
+              onConfirm={async () => {
+                if (previewRefusal) {
+                  return "Directors have not been recorded.";
+                }
+                setDraftStatus("final");
+                return null;
+              }}
+            />
+          </section>
+        ) : null}
         {sectionId === "draft-pdf" ? (
           <section className="space-y-3" data-testid="statutory-outputs">
             <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-soft">
               Outputs
             </h2>
+            {draftStatus === "final" ? (
+              <p className="text-sm font-semibold text-ink" data-testid="statutory-outputs-state">
+                {FINALISED_STATE}
+              </p>
+            ) : null}
             <button
               type="button"
               data-testid="statutory-download"
               disabled
               className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Download draft PDF
+              {pdfDownloadLabel(draftStatus)}
             </button>
             <p className="text-sm text-ink-secondary" data-testid="statutory-download-reason">
               This preview does not call the API.

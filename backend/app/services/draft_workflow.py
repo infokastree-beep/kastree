@@ -101,6 +101,7 @@ class Dashboard:
     can_finalise: bool
     checks: tuple[ReconciliationCheck, ...]
     unanswered_disclosures: tuple[str, ...]
+    carried_disclosures: tuple[str, ...]
 
 
 def engine_sha() -> str:
@@ -359,6 +360,7 @@ async def dashboard_for_draft(
             can_finalise=False,
             checks=tuple(checks),
             unanswered_disclosures=(),
+            carried_disclosures=(),
         )
     try:
         if draft.tb_version_id is None:
@@ -417,6 +419,7 @@ async def dashboard_for_draft(
     light = _traffic(
         tuple(checks), blocked=document.blocked, renderable=document.renderable
     )
+    carried = await _carried_disclosure_names(session, org_id=org_id, draft=draft)
     return Dashboard(
         draft_id=draft.id,
         status=draft.status,
@@ -430,6 +433,7 @@ async def dashboard_for_draft(
         ),
         checks=tuple(checks),
         unanswered_disclosures=unanswered,
+        carried_disclosures=tuple(sorted(carried)),
     )
 
 
@@ -1278,6 +1282,7 @@ def _dashboard_dict(board: Dashboard) -> dict[str, object]:
         "traffic": board.traffic,
         "can_finalise": board.can_finalise,
         "unanswered_disclosures": list(board.unanswered_disclosures),
+        "carried_disclosures": list(board.carried_disclosures),
         "checks": [
             {
                 "code": item.code,
@@ -1309,6 +1314,10 @@ def _dashboard_from_response(payload: dict[str, object]) -> Dashboard:
     names = (
         tuple(str(item) for item in unanswered) if isinstance(unanswered, list) else ()
     )
+    raw_carried = payload.get("carried_disclosures")
+    carried = (
+        tuple(str(item) for item in raw_carried) if isinstance(raw_carried, list) else ()
+    )
     return Dashboard(
         draft_id=uuid.UUID(str(payload["draft_id"])),
         status=str(payload["status"]),
@@ -1317,6 +1326,7 @@ def _dashboard_from_response(payload: dict[str, object]) -> Dashboard:
         can_finalise=bool(payload.get("can_finalise")),
         checks=tuple(checks),
         unanswered_disclosures=names,
+        carried_disclosures=carried,
     )
 
 

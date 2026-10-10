@@ -1316,6 +1316,7 @@ def _dashboard_response(board: Dashboard) -> DashboardResponse:
         traffic=board.traffic,
         can_finalise=board.can_finalise,
         unanswered_disclosures=list(board.unanswered_disclosures),
+        carried_disclosures=list(board.carried_disclosures),
         checks=[
             DashboardCheckOut(
                 code=item.code,
