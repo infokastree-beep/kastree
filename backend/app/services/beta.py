@@ -1,20 +1,23 @@
 """First-practice beta position.
 
 A qualified reviewer has not signed off the statutory wording. The practice
-records that it will review every output itself. The record is one audit row.
-This module does not file, and it does not claim the golden suite has run.
+records that it will review every output itself. The current state is the
+acknowledgement columns on the organisation. Each recording also appends one
+audit row. This module does not file, and it does not claim the golden suite
+has run.
 """
 
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Literal
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
-from app.models.audit_log import AuditLog
+from app.models.organisation import Organisation
 from app.services.audit import append_audit_log
 
 PACK_ID: Literal["frs102-1a-ie"] = "frs102-1a-ie"
@@ -31,13 +34,16 @@ BETA_STATEMENT = (
 
 
 async def beta_acknowledged(session: AsyncSession, *, org_id: uuid.UUID) -> bool:
+    """True when this practice's acknowledgement columns are set.
+
+    An old ``beta_self_review`` audit row is history. It does not keep the
+    practice on after the columns are cleared.
+    """
     await aset_rls_org_id(session, org_id)
-    found = await session.scalar(
-        select(AuditLog.id)
-        .where(AuditLog.org_id == org_id, AuditLog.action == BETA_ACTION)
-        .limit(1)
+    acknowledged_at = await session.scalar(
+        select(Organisation.product2_acknowledged_at).where(Organisation.id == org_id)
     )
-    return found is not None
+    return acknowledged_at is not None
 
 
 async def acknowledge_beta_self_review(
@@ -46,14 +52,21 @@ async def acknowledge_beta_self_review(
     org_id: uuid.UUID,
     actor_user_id: uuid.UUID,
 ) -> bool:
-    """Append one audit row. A second call records nothing."""
+    """Set the practice columns and append one audit row.
+
+    A second call while the columns are set records nothing. Clearing the
+    columns allows another acknowledgement, which appends a new audit row.
+    """
     await aset_rls_org_id(session, org_id)
     await session.execute(
         text("SELECT id FROM organisations WHERE id = :id FOR UPDATE"),
         {"id": str(org_id)},
     )
-    if await beta_acknowledged(session, org_id=org_id):
+    practice = await session.get(Organisation, org_id)
+    if practice is None or practice.product2_acknowledged_at is not None:
         return False
+    practice.product2_acknowledged_at = datetime.now(UTC)
+    practice.product2_acknowledged_by_user_id = actor_user_id
     await append_audit_log(
         session,
         org_id=org_id,
@@ -67,6 +80,7 @@ async def acknowledge_beta_self_review(
             "self_review_required": True,
             "filing_included": False,
             "pack_id": PACK_ID,
+            "source": "practice",
         },
     )
     return True
