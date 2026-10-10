@@ -25,12 +25,10 @@ def build_docx(payload: Mapping[str, object], dest: Path) -> None:
 
     document = Document()
     composed = payload.get("composed")
-    opening = _required_text(payload, "watermark")
-    if isinstance(composed, list):
-        page_header = payload.get("page_header")
-        if isinstance(page_header, str) and page_header:
-            opening = page_header
-    document.add_paragraph(escape_export_text(opening))
+    # The composed file already prints DRAFT or FINAL in the page header.
+    # A body copy sits on the cover as a second, and with the header a third.
+    if not isinstance(composed, list):
+        document.add_paragraph(escape_export_text(_required_text(payload, "watermark")))
     document.add_heading(
         escape_export_text(_required_text(payload, "company_name")), level=1
     )
@@ -118,6 +116,7 @@ def _write_composed(
             "names": [],
         }
     contents_anchors = _contents_anchors(sections)
+    banner = _banner_texts(payload, page_header)
     notes_footer = False
     _configure_word_section(
         _word_section(document, 0),
@@ -143,11 +142,12 @@ def _write_composed(
             _start_new_page(document, True)
         heading = escape_export_text(_required_text(section, "heading"))
         anchor = section.get("anchor")
-        if isinstance(anchor, str) and anchor in contents_anchors:
-            add_heading(heading, level=2)
-        else:
-            title = add_paragraph(heading)
-            _bold_paragraph(title)
+        if heading.strip() not in banner:
+            if isinstance(anchor, str) and anchor in contents_anchors:
+                add_heading(heading, level=2)
+            else:
+                title = add_paragraph(heading)
+                _bold_paragraph(title)
         kind = section.get("kind")
         if kind == "contents":
             labels = [
@@ -192,7 +192,19 @@ def _write_composed(
                     _fa_table(document, _mappings(fa_rows, "fa_rows"))
             continue
         for paragraph in _strings(section.get("paragraphs"), "paragraphs"):
-            add_paragraph(escape_export_text(paragraph))
+            shown = escape_export_text(paragraph)
+            if shown.strip() in banner:
+                continue
+            add_paragraph(shown)
+
+
+def _banner_texts(payload: Mapping[str, object], page_header: str) -> frozenset[str]:
+    """Labels that belong in the header, not again in the cover body."""
+    texts = {page_header.strip()}
+    watermark = payload.get("watermark")
+    if isinstance(watermark, str) and watermark.strip():
+        texts.add(watermark.strip())
+    return frozenset(texts)
 
 
 def _contents_anchors(sections: Sequence[object]) -> frozenset[str]:
@@ -498,17 +510,18 @@ def _format_amount_table(
     layout.set(qn("w:type"), "fixed")
     tbl_pr.append(layout)
     usable = 182
+    notes_width = 12
+    amount_width = 22
     if notes_column:
-        notes_width = 18
-        amount_width = 28
-        label_width = usable - notes_width - amount_width * (column_count - 2)
+        other = notes_width + amount_width * max(column_count - 2, 0)
     else:
-        amount_width = 32
-        label_width = usable - amount_width * (column_count - 1)
+        other = amount_width * max(column_count - 1, 0)
+    label_width = max(usable - other, 40)
     widths = [label_width]
     if notes_column:
-        widths.append(18)
+        widths.append(notes_width)
     widths.extend([amount_width] * (column_count - len(widths)))
+    _set_table_widths(tbl, widths)
     rows = getattr(table, "rows", None)
     if rows is None:
         raise TypeError("document is missing")
@@ -524,6 +537,35 @@ def _format_amount_table(
                 if bold:
                     for run in paragraph.runs:
                         run.bold = True
+
+
+def _set_table_widths(tbl: object, widths_mm: list[int]) -> None:
+    """Write the grid Word uses. Cell widths alone leave the columns equal."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Mm
+
+    find = getattr(tbl, "find", None)
+    tbl_pr = getattr(tbl, "tblPr", None)
+    if not callable(find) or tbl_pr is None:
+        raise TypeError("document is missing")
+    twips = [int(Mm(width).twips) for width in widths_mm]
+    tbl_w = tbl_pr.find(qn("w:tblW"))
+    if tbl_w is None:
+        tbl_w = OxmlElement("w:tblW")
+        tbl_pr.append(tbl_w)
+    tbl_w.set(qn("w:w"), str(sum(twips)))
+    tbl_w.set(qn("w:type"), "dxa")
+    grid = find(qn("w:tblGrid"))
+    if grid is None:
+        grid = OxmlElement("w:tblGrid")
+        tbl_pr.addnext(grid)
+    for child in list(grid):
+        grid.remove(child)
+    for width in twips:
+        column = OxmlElement("w:gridCol")
+        column.set(qn("w:w"), str(width))
+        grid.append(column)
 
 
 def _cell_bottom_rule(cell: object) -> None:
