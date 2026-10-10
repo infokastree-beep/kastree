@@ -33,6 +33,55 @@ HEADER_FIRST_CELL_KEYWORDS = (
 # names ("Opening Balance Equity", "Bank Balance"). Totals rows in a TB say "Total".
 TOTALS_NAME_KEYWORDS = ("total", "subtotal", "sum")
 
+# Headings match the whole cell after normalisation, not a substring.
+# "Credit Limit", "Account Manager", and "Description of the amount" do not match.
+_CODE_HEADERS = frozenset(
+    {
+        "account code",
+        "account no",
+        "account number",
+        "acct code",
+        "acc no",
+        "a/c",
+        "a/c no",
+        "gl code",
+        "nominal",
+        "nominal code",
+        "ledger code",
+        "code",
+    }
+)
+_NAME_HEADERS = frozenset(
+    {
+        "account name",
+        "account description",
+        "nominal name",
+        "description",
+        "particulars",
+        "narrative",
+        "name",
+    }
+)
+# Bare "account" is the Xero/QuickBooks combined column. It is the name only
+# when a separate code heading is already present.
+_COMBINED_HEADERS = frozenset(
+    {"gl account", "ledger account", "account title", "account"}
+)
+_DEBIT_HEADERS = frozenset({"debit", "debits", "dr"})
+_CREDIT_HEADERS = frozenset({"credit", "credits", "cr"})
+# A signed balance is safe only for these headings. Positive is debit and
+# negative is credit, which is the same rule as before. A generic "Amount"
+# column is not supported.
+_BALANCE_HEADERS = frozenset({"balance", "net balance"})
+_DATE_HEADERS = frozenset(
+    {"date", "txn date", "transaction date", "posting date"}
+)
+_CURRENCY_HEADER_TAILS = frozenset({"gbp", "eur", "usd"})
+_GL_ON_TB_MESSAGE = (
+    "This looks like a general ledger, not a trial balance — "
+    "try the General ledger option instead."
+)
+
 SYMBOL_TO_CURRENCY: dict[str, str] = {
     "£": "GBP",
     "€": "EUR",
@@ -348,22 +397,36 @@ def _parse_dataframe(
 
     working = dataframe.fillna("").astype(str)
     header_row_index = _find_header_row(working)
-    if header_row_index is not None:
-        headers = [_normalize_header(value) for value in working.iloc[header_row_index].tolist()]
-        body = working.iloc[header_row_index + 1 :].reset_index(drop=True)
-        body.columns = _make_unique_columns(headers, width=len(body.columns))
-    else:
-        body = working.reset_index(drop=True)
-        body.columns = [f"col_{index}" for index in range(len(body.columns))]
+    if header_row_index is None:
+        unrecognised = _find_unrecognised_header_row(working)
+        if unrecognised is not None:
+            found = _columns_found_phrase(working.iloc[unrecognised].tolist())
+            raise ParseError(_missing_code_name_message(found))
+        if _dataframe_looks_like_general_ledger(working):
+            raise ParseError(_GL_ON_TB_MESSAGE)
+        raise ParseError(_missing_code_name_message("(none)"))
+
+    raw_headers = working.iloc[header_row_index].tolist()
+    normalized = [_normalize_header(value) for value in raw_headers]
+    columns_found = _columns_found_phrase(raw_headers)
+    if _header_row_matches_gl_pattern(normalized):
+        raise ParseError(_GL_ON_TB_MESSAGE)
+    if _has_duplicate_heading(normalized):
+        raise ParseError(_missing_code_name_message(columns_found))
+
+    body = working.iloc[header_row_index + 1 :].reset_index(drop=True)
+    column_names = _make_unique_columns(normalized, width=len(body.columns))
+    body.columns = column_names
 
     try:
-        column_map, tb_format = _detect_columns(list(body.columns))
+        column_map, tb_format = _detect_columns(
+            normalized,
+            column_names,
+            columns_found=columns_found,
+        )
     except ParseError as exc:
         if _dataframe_looks_like_general_ledger(working):
-            raise ParseError(
-                "This looks like a general ledger, not a trial balance — "
-                "try the General ledger option instead."
-            ) from exc
+            raise ParseError(_GL_ON_TB_MESSAGE) from exc
         raise
     default_currency, per_row_currency = _detect_currency(
         body,
@@ -447,22 +510,121 @@ def _parse_dataframe(
 
 
 def _find_header_row(dataframe: pd.DataFrame) -> int | None:
+    """First row in the top of the sheet whose cells are column headings.
+
+    Title rows such as "Trial Balance" are skipped. A match is a whole cell,
+    so the word "balance" inside "balanced" does not count.
+    """
     for index in range(min(10, len(dataframe))):
-        row_values = [_normalize_header(value) for value in dataframe.iloc[index].tolist()]
-        joined = " ".join(value for value in row_values if value)
-        if any(keyword in joined for keyword in ("debit", "credit")):
-            return index
-        if "account" in joined and any(
-            keyword in joined for keyword in ("code", "name", "description")
-        ):
-            return index
-        if "balance" in joined and "account" in joined:
+        normalized = [_normalize_header(value) for value in dataframe.iloc[index].tolist()]
+        if _row_has_heading(normalized):
             return index
     return None
 
 
+def _find_unrecognised_header_row(dataframe: pd.DataFrame) -> int | None:
+    """A heading row that matches none of the known names.
+
+    Used only so the error can list those headings. A row with a monetary
+    cell is data, and its values are not reported.
+    """
+    for index in range(min(10, len(dataframe))):
+        raw = dataframe.iloc[index].tolist()
+        if _row_looks_like_unrecognised_headings(raw):
+            return index
+    return None
+
+
+def _row_looks_like_unrecognised_headings(raw: list[object]) -> bool:
+    texts: list[str] = []
+    for value in raw:
+        text = str(value).strip()
+        if not text:
+            continue
+        texts.append(text)
+        try:
+            parse_monetary(text)
+        except ParseError:
+            continue
+        return False
+    return len(texts) >= 2
+
+
+def _row_has_heading(headers: list[str]) -> bool:
+    saw_amount = False
+    saw_code = False
+    saw_name = False
+    for header in headers:
+        if _heading_matches(header, _DEBIT_HEADERS | _CREDIT_HEADERS | _BALANCE_HEADERS):
+            saw_amount = True
+        elif _heading_matches(header, _CODE_HEADERS):
+            saw_code = True
+        elif _heading_matches(header, _NAME_HEADERS | _COMBINED_HEADERS):
+            saw_name = True
+    if saw_amount:
+        return True
+    return saw_code and saw_name
+
+
 def _normalize_header(value: object) -> str:
-    return re.sub(r"\s+", " ", str(value).strip().lower())
+    text = str(value).strip().lower()
+    text = text.replace("£", " gbp ").replace("€", " eur ").replace("$", " usd ")
+    text = re.sub(r"[^a-z0-9/]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _heading_key(header: str) -> str:
+    """Drop a trailing currency token so "Debit GBP" is still Debit."""
+    parts = header.rsplit(" ", 1)
+    if len(parts) == 2 and parts[1] in _CURRENCY_HEADER_TAILS:
+        return parts[0]
+    return header
+
+
+def _heading_matches(header: str, synonyms: frozenset[str]) -> bool:
+    if not header:
+        return False
+    return _heading_key(header) in synonyms
+
+
+def _columns_found_phrase(raw_headers: list[object]) -> str:
+    """Heading text only. Data cells are not passed in."""
+    labels: list[str] = []
+    for value in raw_headers:
+        text = str(value).strip()
+        if text:
+            labels.append(text)
+    if not labels:
+        return "(none)"
+    return ", ".join(labels)
+
+
+def _missing_code_name_message(columns_found: str) -> str:
+    return (
+        "Could not detect account code and account name columns. "
+        f"Columns found: {columns_found}. "
+        "Expected headings such as Account Code and Account Name."
+    )
+
+
+def _missing_amount_message(columns_found: str) -> str:
+    return (
+        "Could not detect debit and credit columns. "
+        f"Columns found: {columns_found}. "
+        "A single signed Balance column is not supported unless the heading is Balance. "
+        "Expected headings such as Debit and Credit, or Balance."
+    )
+
+
+def _has_duplicate_heading(headers: list[str]) -> bool:
+    seen: set[str] = set()
+    for header in headers:
+        if not header:
+            continue
+        if header in seen:
+            return True
+        seen.add(header)
+    return False
 
 
 def _make_unique_columns(headers: list[str], *, width: int) -> list[str]:
@@ -478,20 +640,19 @@ def _make_unique_columns(headers: list[str], *, width: int) -> list[str]:
 
 
 def _header_row_matches_gl_pattern(headers: list[str]) -> bool:
-    """True when a header row looks like a transaction GL, not a summarised TB."""
-    joined = " ".join(headers)
-    has_date = any(
-        token in joined
-        for token in ("date", "txn date", "transaction date", "posting date")
-    )
-    has_code = any(
-        token in joined for token in ("account code", "acct code", "gl code", "a/c")
-    ) or ("code" in joined and "account" in joined)
+    """True when a header row looks like a transaction GL, not a summarised TB.
+
+    Each cell must be a heading. A sentence that merely contains "date" or
+    "account" does not qualify.
+    """
+    has_date = any(_heading_matches(header, _DATE_HEADERS) for header in headers)
+    has_code = any(_heading_matches(header, _CODE_HEADERS) for header in headers)
     has_name = any(
-        token in joined
-        for token in ("account name", "description", "particulars", "narrative")
-    ) or ("name" in joined and "account" in joined)
-    has_amounts = ("debit" in joined or "credit" in joined) or "amount" in joined
+        _heading_matches(header, _NAME_HEADERS | _COMBINED_HEADERS) for header in headers
+    )
+    has_amounts = any(
+        _heading_matches(header, _DEBIT_HEADERS | _CREDIT_HEADERS) for header in headers
+    )
     return has_date and has_code and has_name and has_amounts
 
 
@@ -504,36 +665,89 @@ def _dataframe_looks_like_general_ledger(dataframe: pd.DataFrame) -> bool:
     return False
 
 
-def _detect_columns(columns: list[str]) -> tuple[dict[str, str], TBFormat]:
-    def find(*candidates: str) -> str | None:
-        for column in columns:
-            for candidate in candidates:
-                if candidate == column or candidate in column:
-                    return column
+def _role_indexes(headers: list[str], synonyms: frozenset[str]) -> list[int]:
+    return [
+        index
+        for index, header in enumerate(headers)
+        if _heading_matches(header, synonyms)
+    ]
+
+
+def _one_column(
+    indexes: list[int],
+    column_names: list[str],
+    *,
+    columns_found: str,
+    amount: bool,
+) -> str | None:
+    if len(indexes) > 1:
+        message = (
+            _missing_amount_message(columns_found)
+            if amount
+            else _missing_code_name_message(columns_found)
+        )
+        raise ParseError(message)
+    if not indexes:
         return None
+    return column_names[indexes[0]]
 
-    account_code = find(
-        "account code", "acct code", "gl code", "nominal code", "ledger code",
-        "code", "col_0",
-    )
-    account_name = find(
-        "account name", "account description", "description", "particulars",
-        "narrative", "name", "col_1",
-    )
-    debit = find("debit", "debits", "col_2")
-    credit = find("credit", "credits", "col_3")
-    balance = find("balance", "net balance", "amount")
 
-    if account_code is None and account_name is None:
-        # Single combined account column (Xero / QuickBooks export just "Account"
-        # holding code+name together). Use it for both so downstream mapping works.
-        combined = find("gl account", "ledger account", "account title", "account")
-        if combined is not None:
-            account_code = combined
-            account_name = combined
+def _detect_columns(
+    headers: list[str],
+    column_names: list[str],
+    *,
+    columns_found: str,
+) -> tuple[dict[str, str], TBFormat]:
+    """Map headings to roles. Two headings for one role is a refusal."""
+    code_indexes = _role_indexes(headers, _CODE_HEADERS)
+    name_indexes = _role_indexes(headers, _NAME_HEADERS)
+    combined_indexes = [
+        index
+        for index in _role_indexes(headers, _COMBINED_HEADERS)
+        if index not in code_indexes and index not in name_indexes
+    ]
+    account_code = _one_column(
+        code_indexes, column_names, columns_found=columns_found, amount=False
+    )
+    account_name = _one_column(
+        name_indexes, column_names, columns_found=columns_found, amount=False
+    )
+
+    if account_code is not None and account_name is None and len(combined_indexes) == 1:
+        # "Code" plus "Account": Account is the name, not a second code.
+        account_name = column_names[combined_indexes[0]]
+    elif account_code is None and account_name is None and len(combined_indexes) == 1:
+        # Xero / QuickBooks: one Account column holds the code and the name.
+        account_code = column_names[combined_indexes[0]]
+        account_name = account_code
+    elif (
+        account_code is None
+        and account_name is None
+        and len(combined_indexes) > 1
+    ):
+        raise ParseError(_missing_code_name_message(columns_found))
 
     if account_code is None or account_name is None:
-        raise ParseError("Could not detect account code and account name columns.")
+        raise ParseError(_missing_code_name_message(columns_found))
+
+    debit = _one_column(
+        _role_indexes(headers, _DEBIT_HEADERS),
+        column_names,
+        columns_found=columns_found,
+        amount=True,
+    )
+    credit = _one_column(
+        _role_indexes(headers, _CREDIT_HEADERS),
+        column_names,
+        columns_found=columns_found,
+        amount=True,
+    )
+    balance = _one_column(
+        _role_indexes(headers, _BALANCE_HEADERS),
+        column_names,
+        columns_found=columns_found,
+        amount=True,
+    )
 
     if debit is not None and credit is not None:
         return {
@@ -543,6 +757,9 @@ def _detect_columns(columns: list[str]) -> tuple[dict[str, str], TBFormat]:
             "credit": credit,
         }, "four_column"
 
+    if debit is not None or credit is not None:
+        raise ParseError(_missing_amount_message(columns_found))
+
     if balance is not None:
         return {
             "account_code": account_code,
@@ -550,22 +767,7 @@ def _detect_columns(columns: list[str]) -> tuple[dict[str, str], TBFormat]:
             "balance": balance,
         }, "single_balance"
 
-    if len(columns) >= 4:
-        return {
-            "account_code": columns[0],
-            "account_name": columns[1],
-            "debit": columns[2],
-            "credit": columns[3],
-        }, "four_column"
-
-    if len(columns) == 3:
-        return {
-            "account_code": columns[0],
-            "account_name": columns[1],
-            "balance": columns[2],
-        }, "single_balance"
-
-    raise ParseError("Could not detect trial balance column layout.")
+    raise ParseError(_missing_amount_message(columns_found))
 
 
 def _detect_currency(

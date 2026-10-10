@@ -116,7 +116,8 @@ Two limits found on the live product. The statutory-translation gap below
 is the single highest-priority item for the next dedicated Product 2
 session. Continuation stops on the first account with no single statutory
 line, and that refusal hits ordinary charts, not only fixed assets. The
-header-synonym item stays a later, separate change.
+header-synonym change is in the trial-balance parser: whole-heading matches,
+with a refusal when two headings claim the same column.
 
 ### Statutory continuation has no single line for common Product 1 categories
 
@@ -223,25 +224,13 @@ succeeds.
 
 ### Standard TB headers `Code` and `Account` are rejected as a pair
 
-A standard Trial balance (Excel/CSV) upload rejected column headers `Code`
-and `Account`. The same file with `Account Code` and `Account Name` was
-accepted.
-
-`parser._detect_columns` already treats a bare `code` header as the code
-column. A bare `account` header is used only as a combined code-and-name
-column, and only when neither a code column nor a name column was found.
-With both short headers present, `Code` fills the code slot and `Account`
-is not a name synonym, so detection stops: "Could not detect account code
-and account name columns."
-
-**Future session.** Recognize these short headers, with the same care as
-the earlier ERP column-shape work (Product 1's generic importer covers the
-Sage, Xero, and QuickBooks shapes; the four vendor-named parsers stay
-cut). Substring matches are the false-positive risk: `account` also sits
-inside `Account Code`, and `code` sits inside unrelated headings. Add a
-test for the real `Code` / `Account` pair, and tests that the new synonyms
-do not steal a column from a file that already uses `Account Code` and
-`Account Name`, before shipping.
+**Status:** resolved in the trial-balance parser. `Code` is the code column
+and `Account` is the name when both are present. A file with only `Account`
+still uses that one column for the code and the name (Xero / QuickBooks).
+Headings match the whole cell. `Credit Limit`, `Account Manager`, and
+`Description of the amount` do not take a column. Two headings for one role,
+or no heading row at all, refuse and list the headings that were found.
+A generic `Amount` column is not treated as a signed balance.
 
 
 ## Archival write paths
