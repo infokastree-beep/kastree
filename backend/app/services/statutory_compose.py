@@ -45,6 +45,7 @@ from app.services.statutory_statements import (
     _SHORT_NOTE_TABLE_ROWS,
     _director_phrase,
     _line_label,
+    _signature_view,
     _signing_phrase,
     _with_note_column,
     render_statutory_html,
@@ -99,6 +100,30 @@ def letterhead_from_company(company: Company) -> CompanyLetterhead:
         directors=tuple(item for item in directors if isinstance(item, dict)),
         advisers=tuple(item for item in advisers if isinstance(item, dict)),
     )
+
+
+def docx_presentation(
+    document: StatutoryStatements,
+    *,
+    report_setup: object | None,
+    approval_date: date | None,
+    signing_directors: object,
+) -> tuple[str, dict[str, object]]:
+    """Header and signature the PDF template already prints.
+
+    The Word file reads these beside the same composed sections. A compilation
+    draft is ``DRAFT Compilation``. A final file stays ``FINAL``.
+    """
+    statement_type = "draft"
+    if isinstance(report_setup, dict):
+        raw = report_setup.get("statement_type")
+        if isinstance(raw, str) and raw:
+            statement_type = raw
+    label = _statement_label(document, statement_type)
+    page_header = f"{document.watermark} {label}" if label else document.watermark
+    approved = "" if approval_date is None else approval_date.isoformat()
+    signature = _signature_view(approved, _signing_phrase(signing_directors))
+    return page_header, signature
 
 
 def compose_year_end_pdf(
