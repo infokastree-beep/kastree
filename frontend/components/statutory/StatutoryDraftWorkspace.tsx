@@ -7,6 +7,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
 import { downloadDraftPdf, pdfBlockReason } from "@/lib/draft-pdf";
+import {
+  WORD_DOWNLOAD_LABEL,
+  WORD_PROGRESS_LABEL,
+  downloadDraftWord,
+} from "@/lib/draft-word";
 import { messageFromPdfBody } from "@/lib/workspace-load-error";
 import {
   CompanyDetailsForm,
@@ -178,6 +183,8 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [wordPreparing, setWordPreparing] = useState(false);
+  const [wordError, setWordError] = useState<string | null>(null);
   const [companyError, setCompanyError] = useState<string | null>(null);
   const [companySaved, setCompanySaved] = useState<string | null>(null);
   const [approvalError, setApprovalError] = useState<string | null>(null);
@@ -657,6 +664,25 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     }
   }
 
+  async function downloadWord(): Promise<void> {
+    if (
+      pdfReason !== null ||
+      statementsQuery.data?.renderable !== true ||
+      draft?.draft_id == null
+    ) {
+      return;
+    }
+    setWordError(null);
+    setWordPreparing(true);
+    try {
+      await downloadDraftWord(yearEndId, draft.draft_id, getToken);
+    } catch (caught) {
+      setWordError(messageFrom(caught));
+    } finally {
+      setWordPreparing(false);
+    }
+  }
+
   function updateLine(index: number, patch: Partial<AdjustmentLine>): void {
     setLines((current) =>
       current.map((line, lineIndex) =>
@@ -875,6 +901,36 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
             {pdfReason !== null ? (
               <p className="text-sm text-ink-secondary" data-testid="statutory-download-reason">
                 {pdfReason}
+              </p>
+            ) : null}
+          </div>
+          <div
+            className="flex flex-wrap items-center gap-3"
+            data-testid="statutory-word-row"
+          >
+            <button
+              type="button"
+              data-testid="statutory-download-word"
+              disabled={
+                busy !== null ||
+                wordPreparing ||
+                pdfReason !== null ||
+                statementsQuery.data?.renderable !== true ||
+                draft?.draft_id == null
+              }
+              onClick={() => void downloadWord()}
+              className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {WORD_DOWNLOAD_LABEL}
+            </button>
+            {wordPreparing ? (
+              <p className="text-sm text-ink-secondary" data-testid="statutory-word-progress">
+                {WORD_PROGRESS_LABEL}
+              </p>
+            ) : null}
+            {wordError ? (
+              <p className="text-sm text-red-800" data-testid="statutory-word-error">
+                {wordError}
               </p>
             ) : null}
           </div>

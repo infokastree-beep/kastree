@@ -154,6 +154,7 @@ from app.services.render_jobs import (
     insert_docx_job,
     job_for_draft,
     job_for_version,
+    run_docx_job,
 )
 from app.services.source_storage import SourceObjectStorage, get_source_storage
 from app.services.tb_import_worker import run_tb_import_job
@@ -2112,6 +2113,8 @@ async def post_draft_docx(
     draft_id: uuid.UUID,
     auth: Annotated[AuthContext, Depends(require_member_work)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    background_tasks: BackgroundTasks,
+    storage: Annotated[SourceObjectStorage, Depends(get_source_storage)],
     idempotency_key: Annotated[str | None, Header()] = None,
 ) -> RenderJobResponse:
     """Queue a Word file of the composed draft. DRAFT unless the draft is FINAL."""
@@ -2149,6 +2152,8 @@ async def post_draft_docx(
             status_code=status.HTTP_409_CONFLICT,
             detail="Idempotency-Key was already used for a different draft",
         ) from exc
+    await session.commit()
+    background_tasks.add_task(run_docx_job, auth.org_id, job.id, storage)
     return _job_response(job)
 
 

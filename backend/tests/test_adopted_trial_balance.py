@@ -1448,10 +1448,23 @@ async def test_adopted_draft_word_export_is_draft_without_tb_version(
             job_id=uuid.UUID(job_id),
             storage=stored_files,
         )
-    assert processed is not None
-    assert processed.status == "ready", processed.error_message
-    assert processed.storage_key is not None
-    content = stored_files.get(key=processed.storage_key)
+    if processed is None:
+        with SyncSessionLocal() as session:
+            set_rls_org_id(session, provisioned_org["org_id"])
+            stored_job = session.execute(
+                text(
+                    "SELECT status, storage_key, error_message "
+                    "FROM findraft_render_jobs WHERE id = :id"
+                ),
+                {"id": job_id},
+            ).one()
+        assert stored_job[0] == "ready", stored_job[2]
+        assert stored_job[1] is not None
+        content = stored_files.get(key=stored_job[1])
+    else:
+        assert processed.status == "ready", processed.error_message
+        assert processed.storage_key is not None
+        content = stored_files.get(key=processed.storage_key)
     assert content.startswith(b"PK")
     with zipfile.ZipFile(BytesIO(content)) as archive:
         xml = archive.read("word/document.xml").decode()
