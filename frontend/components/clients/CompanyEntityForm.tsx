@@ -5,6 +5,7 @@ import { FUNCTIONAL_CURRENCIES } from "@/lib/constants";
 import {
   currencyChangeAllowed,
   type CompanyEntityFormValues,
+  type CompanyEntityInitialValues,
 } from "@/lib/company-form";
 
 export type { CompanyEntityFormValues } from "@/lib/company-form";
@@ -13,6 +14,7 @@ export { DEFAULT_MATERIALITY_PCT, DEFAULT_MATERIALITY_ABS } from "@/lib/company-
 type CompanyEntityFormProps = {
   /** Create-mode preselect. Edit mode uses initialValues instead. */
   defaultCurrency?: string;
+  initialValues?: CompanyEntityInitialValues;
   initialName?: string;
   namePlaceholder?: string;
   title?: string;

@@ -6,7 +6,10 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { CompanyEntityForm } from "@/components/clients/CompanyEntityForm";
 import { CompanyMaterialitySettings } from "@/components/clients/CompanyMaterialitySettings";
-import type { CompanyEntityFormValues } from "@/lib/company-form";
+import {
+  editCompanyInitialValues,
+  type CompanyEntityFormValues,
+} from "@/lib/company-form";
 import { useAuth } from "@/hooks/useAuth";
 import { useDefaultCompanyCurrency } from "@/hooks/useDefaultCompanyCurrency";
 import { ApiError, apiFetch } from "@/lib/api";
@@ -171,13 +174,7 @@ function CompanyTrialBalances({ company }: { company: ICompany }) {
           <CompanyEntityForm
             key={company.id}
             title="Edit company"
-            initialValues={{
-              name: company.name,
-              functionalCurrency: company.functional_currency,
-              companyNumber: company.company_number ?? "",
-              industry: company.industry ?? "",
-              companyType: company.company_type,
-            }}
+            initialValues={editCompanyInitialValues(company)}
             currencyChangeWarning={
               hasTrialBalances
                 ? "This company already has trial balances. Changing currency only updates the label on existing statements and exports — amounts are not converted. Future uploads will use the new currency."

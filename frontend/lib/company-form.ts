@@ -11,6 +11,31 @@ export type CompanyEntityFormValues = {
   acknowledgeCurrencyChange?: boolean;
 };
 
+/** Values the edit form shows before the user changes them. */
+export type CompanyEntityInitialValues = {
+  name: string;
+  functionalCurrency: string;
+  companyNumber: string;
+  industry: string;
+  companyType: CompanyEntityFormValues["companyType"];
+};
+
+export function editCompanyInitialValues(company: {
+  name: string;
+  functional_currency: string;
+  company_number?: string | null;
+  industry?: string | null;
+  company_type: CompanyEntityInitialValues["companyType"];
+}): CompanyEntityInitialValues {
+  return {
+    name: company.name,
+    functionalCurrency: company.functional_currency,
+    companyNumber: company.company_number ?? "",
+    industry: company.industry ?? "",
+    companyType: company.company_type,
+  };
+}
+
 export function defaultCompanyCurrency(
   jurisdiction: string | null | undefined,
 ): string {

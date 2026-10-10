@@ -110,6 +110,17 @@ jobs:
           npm run test:report-setup
           npm run test:practice-jurisdiction
           npm run test:draft-word
+          npm run test:company-form
+
+      - name: Frontend build
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_CLERK_READY: "false"
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_placeholder
+          CLERK_SECRET_KEY: sk_test_placeholder
+          NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8000
+          NEXT_PUBLIC_GIT_SHA: ci
+        run: npm run build
 
   lint:
     runs-on: ubuntu-latest
