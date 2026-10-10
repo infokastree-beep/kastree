@@ -29,7 +29,7 @@ from app.schemas.year_end import StatementResponse
 from app.services.reconciliation import ReconciliationRejected
 from app.services.report_setup import section_id_for_label, starts_new_page
 from app.services.source_storage import SourceObjectStorage, practice_storage_key
-from app.services.statutory_compose import compose_year_end_parts
+from app.services.statutory_compose import compose_year_end_parts, docx_presentation
 from app.services.statutory_statements import (
     StatutoryStatements,
     statements_for_adopted,
@@ -146,9 +146,7 @@ def run_docx_job(
 ) -> None:
     """BackgroundTasks entry. A different session sees the committed job row."""
     with SyncSessionLocal() as session:
-        process_render_job(
-            session, org_id=org_id, job_id=job_id, storage=storage
-        )
+        process_render_job(session, org_id=org_id, job_id=job_id, storage=storage)
 
 
 def process_render_job(
@@ -307,13 +305,19 @@ def payload_from_composed(
     watermark: str,
     company_name: str,
     sections: list[dict[str, object]],
+    page_header: str | None = None,
+    signature: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """DOCX payload built from composed sections. Amounts stay display text."""
-    return {
+    payload: dict[str, object] = {
         "watermark": watermark,
         "company_name": company_name,
+        "page_header": page_header if page_header else watermark,
         "composed": sections,
     }
+    if signature is not None:
+        payload["signature"] = dict(signature)
+    return payload
 
 
 def _composed_payload(session: Session, job: RenderJob) -> dict[str, object]:
@@ -329,26 +333,17 @@ def _composed_payload(session: Session, job: RenderJob) -> dict[str, object]:
         if not isinstance(stored, dict) or stored.get("watermark") != "FINAL":
             raise ValueError("FINAL snapshot is missing")
         return {str(key): value for key, value in stored.items()}
-    company_name, sections = _load_composed(job.org_id, draft.id)
-    return payload_from_composed(
-        watermark="DRAFT",
-        company_name=company_name,
-        sections=sections,
-    )
+    return _load_composed(job.org_id, draft.id)
 
 
-def _load_composed(
-    org_id: uuid.UUID, draft_id: uuid.UUID
-) -> tuple[str, list[dict[str, object]]]:
+def _load_composed(org_id: uuid.UUID, draft_id: uuid.UUID) -> dict[str, object]:
     with ThreadPoolExecutor(max_workers=1) as pool:
         return pool.submit(
             lambda: asyncio.run(_live_composed(org_id, draft_id))
         ).result()
 
 
-async def _live_composed(
-    org_id: uuid.UUID, draft_id: uuid.UUID
-) -> tuple[str, list[dict[str, object]]]:
+async def _live_composed(org_id: uuid.UUID, draft_id: uuid.UUID) -> dict[str, object]:
     async with AsyncSessionLocal() as session:
         await aset_rls_org_id(session, org_id)
         draft = await session.get(DraftVersion, draft_id)
@@ -383,7 +378,19 @@ async def _live_composed(
         if not document.renderable:
             raise ValueError("Statutory statements are not renderable")
         _html, sections = compose_year_end_parts(document, year_end, company=company)
-        return document.company_name, sections
+        page_header, signature = docx_presentation(
+            document,
+            report_setup=year_end.report_setup,
+            approval_date=year_end.approval_date,
+            signing_directors=year_end.signing_directors,
+        )
+        return payload_from_composed(
+            watermark=document.watermark,
+            company_name=document.company_name,
+            sections=sections,
+            page_header=page_header,
+            signature=signature,
+        )
 
 
 def _payload(session: Session, job: RenderJob) -> dict[str, object]:

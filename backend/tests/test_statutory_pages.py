@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import uuid
 import zipfile
 from collections.abc import Iterator
+from dataclasses import replace
+from datetime import date
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
@@ -20,13 +23,16 @@ from app.main import app
 from app.services.docx_child import RENDER_AS_LIMIT
 from app.services.render_jobs import process_render_job
 from app.services.source_storage import LocalPracticeStorage, get_source_storage
-from app.services.statutory_docx import escape_export_text
+from app.services.report_setup import starts_new_page
+from app.services.statutory_compose import compose_pdf_parts, docx_presentation
+from app.services.statutory_docx import build_docx, escape_export_text
 from app.services.statutory_pages import build_statutory_pages
 from tests.conftest import auth_headers, make_access_token
 from tests.test_draft_locking import _answer_disclosures, _draft_path
 from tests.test_organisations_api import _add_org_user
 from tests.test_reconciliation import _TINY, _import_csv
 from tests.test_role_enforcement import _set_role
+from tests.test_statutory_compose import _setup
 from tests.test_statutory_statements import (
     _entity,
     _golden,
@@ -599,3 +605,230 @@ def test_composed_docx_labels_draft_and_keeps_display_text(tmp_path: Path) -> No
     assert "455,712" in xml
     assert "Profit and loss account" in xml
     assert xml.count('w:type="page"') == 1
+
+
+_NOTES_IN_XML = "The notes form part of these financial statements."
+_NOTES_FOOTER = "The notes form part of these financial statements"
+_NOTE_CODE = re.compile(r"N\d+_[A-Z0-9]+")
+
+
+def _part(content: bytes, name: str) -> str:
+    with zipfile.ZipFile(BytesIO(content)) as archive:
+        return archive.read(name).decode()
+
+
+def _parts_named(content: bytes, prefix: str) -> list[str]:
+    with zipfile.ZipFile(BytesIO(content)) as archive:
+        names = [name for name in archive.namelist() if name.startswith(prefix)]
+        return [archive.read(name).decode() for name in names]
+
+
+def _header_text(content: bytes) -> str:
+    return "\n".join(_parts_named(content, "word/header"))
+
+
+def _page_breaks(xml: str) -> int:
+    """Explicit breaks plus a Word section that starts on a new page.
+
+    python-docx omits ``w:type`` when the start is the default next page.
+    A continuous section changes the footer without adding a page.
+    """
+    explicit = xml.count('w:type="page"')
+    sections = xml.count("<w:sectPr")
+    continuous = xml.count('w:val="continuous"')
+    return explicit + max(sections - 1 - continuous, 0)
+
+
+def _table_after(xml: str, heading: str) -> str:
+    """The table after the real heading, not the same words in the contents field."""
+    start = xml.rindex(heading)
+    table_at = xml.index("<w:tbl", start)
+    return xml[table_at : xml.index("</w:tbl>", table_at)]
+
+
+def _display_amounts(sections: list[dict[str, object]]) -> list[str]:
+    amounts: list[str] = []
+    for section in sections:
+        kind = section.get("kind")
+        if kind == "statement":
+            rows = section.get("rows")
+            assert isinstance(rows, list)
+            for row in rows:
+                assert isinstance(row, dict)
+                values = row.get("amounts")
+                assert isinstance(values, list)
+                amounts.extend(
+                    value for value in values if isinstance(value, str) and value
+                )
+        elif kind == "notes":
+            notes = section.get("notes")
+            assert isinstance(notes, list)
+            for note in notes:
+                assert isinstance(note, dict)
+                lines = note.get("lines")
+                assert isinstance(lines, list)
+                for line in lines:
+                    assert isinstance(line, dict)
+                    values = line.get("amounts")
+                    assert isinstance(values, list)
+                    amounts.extend(
+                        value for value in values if isinstance(value, str) and value
+                    )
+                fa_rows = note.get("fa_rows")
+                assert isinstance(fa_rows, list)
+                for fa_row in fa_rows:
+                    assert isinstance(fa_row, dict)
+                    shown = fa_row.get("nbv_close")
+                    if isinstance(shown, str) and shown:
+                        amounts.append(shown)
+    return amounts
+
+
+def test_composed_docx_matches_the_pdf_furniture_and_figures(tmp_path: Path) -> None:
+    """The Tier 4 adopted draft is the EUR golden file. Word reads its sections."""
+    document = _golden()
+    assert document.net_assets == Decimal("455812.00")
+    assert document.profit == Decimal("157650.00")
+    html, sections = compose_pdf_parts(
+        document,
+        report_setup=_setup(),
+        period_start=date(2025, 1, 1),
+        period_end=date(2025, 12, 31),
+        first_financial_period=False,
+        approval_date=date(2026, 3, 17),
+        signing_directors=["Ada Lovelace"],
+        currency="EUR",
+    )
+    page_header, signature = docx_presentation(
+        document,
+        report_setup=_setup(),
+        approval_date=date(2026, 3, 17),
+        signing_directors=["Ada Lovelace"],
+    )
+    assert page_header == "DRAFT"
+    compilation_header, _ignored = docx_presentation(
+        document,
+        report_setup=_setup(statement_type="compilation"),
+        approval_date=None,
+        signing_directors=[],
+    )
+    assert compilation_header == "DRAFT Compilation"
+    final_header, _final_signature = docx_presentation(
+        replace(document, watermark="FINAL"),
+        report_setup=_setup(statement_type="compilation"),
+        approval_date=None,
+        signing_directors=[],
+    )
+    assert final_header == "FINAL"
+    dest = tmp_path / "golden.docx"
+    build_docx(
+        {
+            "watermark": document.watermark,
+            "company_name": document.company_name,
+            "page_header": page_header,
+            "signature": signature,
+            "composed": sections,
+        },
+        dest,
+    )
+    by_anchor = {section["anchor"]: section for section in sections}
+    for index, section in enumerate(sections):
+        anchor = section["anchor"]
+        assert isinstance(anchor, str)
+        expected_break = index > 0 and starts_new_page(anchor, {"page_starts": None})
+        assert section.get("page_break") is expected_break
+    assert by_anchor["income"].get("notes_footer") is True
+    assert by_anchor["sofp"].get("notes_footer") is True
+    assert by_anchor["notes"].get("notes_footer") is True
+    assert by_anchor["contents"].get("notes_footer") is not True
+    assert by_anchor["sofp"].get("show_notes") is True
+    content = dest.read_bytes()
+    xml = _xml(content)
+    assert _NOTE_CODE.search(xml) is None
+    headers = _parts_named(content, "word/header")
+    assert headers
+    assert all("DRAFT" in header and "FINAL" not in header for header in headers)
+    sofp_table = _table_after(xml, "Statement of financial position")
+    assert ">Notes<" in sofp_table
+    assert "Approved by the board and signed on its behalf by" in xml
+    assert document.compliance_statement in xml
+    assert "Approved on 17 March 2026." in xml
+    assert "Ada Lovelace" in xml
+    assert "Director" in xml
+    assert _NOTES_IN_XML in xml
+    footers = _parts_named(content, "word/footer")
+    assert footers
+    assert all("PAGE" in footer for footer in footers)
+    noted = [footer for footer in footers if _NOTES_FOOTER in footer]
+    plain = [footer for footer in footers if _NOTES_FOOTER not in footer]
+    assert noted and plain
+    assert all(_NOTES_IN_XML not in footer for footer in footers)
+    for table in re.findall(r"<w:tbl\b.*?</w:tbl>", xml, re.DOTALL):
+        assert table.count("<w:tr") >= 2
+    amounts = _display_amounts(sections)
+    assert "455,812" in amounts
+    assert "157,650" in amounts
+    for amount in amounts:
+        assert amount in html
+        assert amount in xml
+    breaks = sum(1 for section in sections if section.get("page_break") is True)
+    assert _page_breaks(xml) == breaks
+    assert 'TOC \\o "2-2"' in xml
+    entries = by_anchor["contents"].get("entries")
+    assert isinstance(entries, list)
+    for entry in entries:
+        assert isinstance(entry, dict)
+        label = entry.get("label")
+        assert isinstance(label, str) and label in xml
+    assert "<w:updateFields" in _part(content, "word/settings.xml")
+    overridden = _setup(page_starts={"income": False, "directors-info": False})
+    _over_html, over_sections = compose_pdf_parts(
+        document,
+        report_setup=overridden,
+        period_start=date(2025, 1, 1),
+        period_end=date(2025, 12, 31),
+        first_financial_period=False,
+        approval_date=date(2026, 3, 17),
+        signing_directors=["Ada Lovelace"],
+        currency="EUR",
+    )
+    over_flags = {
+        section["anchor"]: section.get("page_break") for section in over_sections
+    }
+    assert over_flags["income"] is False
+    assert over_flags["directors-info"] is False
+    assert over_flags["sofp"] is True
+    over_dest = tmp_path / "overridden.docx"
+    build_docx(
+        {
+            "watermark": document.watermark,
+            "company_name": document.company_name,
+            "page_header": "DRAFT Compilation",
+            "signature": signature,
+            "composed": over_sections,
+        },
+        over_dest,
+    )
+    over_content = over_dest.read_bytes()
+    over_breaks = sum(
+        1 for section in over_sections if section.get("page_break") is True
+    )
+    assert _page_breaks(_xml(over_content)) == over_breaks
+    assert all(
+        "DRAFT Compilation" in header
+        for header in _parts_named(over_content, "word/header")
+    )
+    final_dest = tmp_path / "final.docx"
+    build_docx(
+        {
+            "watermark": "FINAL",
+            "company_name": document.company_name,
+            "page_header": "FINAL",
+            "signature": signature,
+            "composed": sections,
+        },
+        final_dest,
+    )
+    final_headers = _parts_named(final_dest.read_bytes(), "word/header")
+    assert final_headers
+    assert all("FINAL" in header and "DRAFT" not in header for header in final_headers)
