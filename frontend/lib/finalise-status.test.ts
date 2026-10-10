@@ -1,5 +1,5 @@
 /**
- * The Ready line must not claim an adopted draft can finalise.
+ * A draft that passed its checks is ready, including a Product 1 draft.
  * Run: node --experimental-strip-types --test lib/finalise-status.test.ts
  */
 import assert from "node:assert/strict";
@@ -17,10 +17,10 @@ describe("finaliseStatusLine", () => {
     );
   });
 
-  it("does not offer finalise for a Product 1 draft", () => {
+  it("offers finalise for a Product 1 draft once checks have passed", () => {
     assert.equal(
       finaliseStatusLine({ canFinalise: true, tbVersionId: null }),
-      " Checks passed. Finalising is not yet available for this draft.",
+      " Ready to finalise.",
     );
   });
 

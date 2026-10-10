@@ -781,6 +781,19 @@ async def _latest_draft(
     ).first()
 
 
+async def final_adopted_snapshot(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+) -> dict[str, object] | None:
+    """Stored FINAL output for the active adopted draft, once it has been finalised."""
+    draft = await active_adopted_draft(session, org_id=org_id, year_end=year_end)
+    if draft is None or draft.status != "final" or not isinstance(draft.snapshot, dict):
+        return None
+    return draft.snapshot
+
+
 async def active_adopted_draft(
     session: AsyncSession,
     *,

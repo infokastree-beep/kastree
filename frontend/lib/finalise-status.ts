@@ -1,4 +1,4 @@
-/** Review-dashboard sentence. Adopted drafts cannot finalise yet. */
+/** Review-dashboard sentence. A draft that passed its checks can finalise. */
 
 const CURRENCY_NOTICE =
   /^Company currency is ([A-Z]{3})\. Confirm this is intended\.$/;
@@ -13,9 +13,6 @@ export function finaliseStatusLine(input: {
 }): string {
   if (!input.canFinalise) {
     return " Not ready to finalise.";
-  }
-  if (input.tbVersionId == null) {
-    return " Checks passed. Finalising is not yet available for this draft.";
   }
   return " Ready to finalise.";
 }

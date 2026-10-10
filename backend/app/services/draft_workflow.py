@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
 from app.models.company import Company
+from app.services.audit import append_audit_log
 from app.services.draft_inputs import (
     DraftInputError,
     adjusted_for_draft,
@@ -34,7 +35,8 @@ from app.services.reconciliation import (
     ReconciliationRejected,
     load_confirmed_inputs,
 )
-from app.services.statutory_evidence import evidence_for_version
+from app.services.render_jobs import payload_from_composed
+from app.services.statutory_evidence import evidence_for_adopted, evidence_for_version
 from app.services.statutory_present import evidence_response, statement_response
 from app.services.adopted_trial_balance import (
     current_mapping_fingerprint,
@@ -43,11 +45,14 @@ from app.services.adopted_trial_balance import (
     load_adopted_inputs,
 )
 from app.services.statutory_compose import (
+    compose_year_end_parts,
+    docx_presentation,
     pack_display_notices,
     unbuilt_section_notices,
 )
 from app.services.statutory_statements import (
     StatutoryStatements,
+    canonical_current,
     statements_for_adopted,
     statements_for_version,
 )
@@ -179,12 +184,7 @@ def _can_finalise(
 ) -> bool:
     from app.services.company_details import blocks_final
 
-    return (
-        traffic != "red"
-        and renderable
-        and not blocked
-        and not blocks_final(checks)
-    )
+    return traffic != "red" and renderable and not blocked and not blocks_final(checks)
 
 
 async def _draft_for_update(
@@ -531,11 +531,7 @@ async def post_adjustment(
             from app.models.tb_version import TrialBalanceVersion
 
             version = await session.get(TrialBalanceVersion, draft.tb_version_id)
-            if (
-                version is None
-                or version.org_id != org_id
-                or version.status != "ready"
-            ):
+            if version is None or version.org_id != org_id or version.status != "ready":
                 raise DraftRejected("Trial balance version is not ready")
             loaded = await load_confirmed_inputs(
                 session, org_id=org_id, year_end=year_end, version=version
@@ -807,9 +803,7 @@ async def start_new_report(
     )
     _expect_version(draft, row_version)
     if draft.tb_version_id is not None or year_end.adopted_trial_balance_id is None:
-        raise DraftRejected(
-            "A new statutory report starts from the adopted draft", 409
-        )
+        raise DraftRejected("A new statutory report starts from the adopted draft", 409)
     if draft.status == "final":
         raise DraftRejected("FINAL output is never recomputed", 409)
     current = (
@@ -822,9 +816,7 @@ async def start_new_report(
     if draft.is_frozen or draft.version_number != int(current):
         raise DraftRejected("This draft is not the active report", 409)
     try:
-        loaded = await load_adopted_inputs(
-            session, org_id=org_id, year_end=year_end
-        )
+        loaded = await load_adopted_inputs(session, org_id=org_id, year_end=year_end)
         fingerprint = await current_mapping_fingerprint(
             session, org_id=org_id, year_end=year_end
         )
@@ -852,9 +844,7 @@ async def start_new_report(
             session.add(created)
             await session.flush()
     except IntegrityError as exc:
-        raise DraftRejected(
-            "A report for this year end was just started", 409
-        ) from exc
+        raise DraftRejected("A report for this year end was just started", 409) from exc
     return {
         "draft_id": str(created.id),
         "version_number": created.version_number,
@@ -907,6 +897,84 @@ async def recompute_draft(
     return board
 
 
+def _json_copy(value: object) -> object:
+    try:
+        copied: object = json.loads(json.dumps(value))
+    except (TypeError, ValueError) as exc:
+        raise DraftRejected("composed snapshot is unreadable") from exc
+    return copied
+
+
+async def _carried_disclosure_names(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    draft: DraftVersion,
+) -> frozenset[str]:
+    """Flag names copied forward by ``new_version_from_locked``.
+
+    That path is the only one that copies answers, and it starts from a
+    locked draft. A new report leaves the previous draft unfrozen of that
+    copy, so its status stays draft and nothing here is carried over.
+    """
+    if draft.version_number < 2:
+        return frozenset()
+    previous = await session.scalar(
+        select(DraftVersion).where(
+            DraftVersion.org_id == org_id,
+            DraftVersion.year_end_id == draft.year_end_id,
+            DraftVersion.version_number == draft.version_number - 1,
+        )
+    )
+    if previous is None or previous.status != "locked":
+        return frozenset()
+    current = await disclosure_flags(session, org_id=org_id, draft_id=draft.id)
+    parent = await disclosure_flags(session, org_id=org_id, draft_id=previous.id)
+    return frozenset(set(current) & set(parent))
+
+
+async def _adopted_inputs_sha(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+    draft: DraftVersion,
+) -> str:
+    loaded = await _loaded_for_check(
+        session, org_id=org_id, year_end=year_end, draft=draft
+    )
+    adjusted = await adjusted_for_draft(
+        session,
+        org_id=org_id,
+        draft=draft,
+        tb_lines=loaded.tb_lines,
+        mappings=loaded.mappings,
+    )
+    adopted_id = year_end.adopted_trial_balance_id
+    return _sha(
+        {
+            "adopted_trial_balance_id": None if adopted_id is None else str(adopted_id),
+            "frozen": draft.is_frozen,
+            "pack_id": year_end.pack_id,
+            "pack_version": year_end.pack_version,
+            "mappings": sorted(adjusted.mappings.items()),
+            "lines": [
+                (
+                    line.nominal_code,
+                    line.account_name,
+                    str(line.debit),
+                    str(line.credit),
+                )
+                for line in adjusted.tb_lines
+            ],
+            "flags": sorted(adjusted.flags.items()),
+            "prior": sorted(
+                (key, str(value)) for key, value in loaded.prior_canonical.items()
+            ),
+        }
+    )
+
+
 async def finalise_draft(
     session: AsyncSession,
     *,
@@ -916,8 +984,15 @@ async def finalise_draft(
     row_version: int,
     user_id: uuid.UUID,
     idempotency_key: str,
+    reviewed_carried_disclosures: bool = False,
 ) -> dict[str, object]:
-    request_sha = _sha({"row_version": row_version, "action": "finalise"})
+    request_sha = _sha(
+        {
+            "row_version": row_version,
+            "action": "finalise",
+            "reviewed_carried_disclosures": reviewed_carried_disclosures,
+        }
+    )
     replay = await _replay(
         session, org_id=org_id, key=idempotency_key, request_sha=request_sha
     )
@@ -929,21 +1004,36 @@ async def finalise_draft(
     _expect_version(draft, row_version)
     if draft.status == "final":
         raise DraftRejected("FINAL output is never recomputed", 409)
-    if draft.tb_version_id is None:
+    adopted = draft.tb_version_id is None
+    if adopted and year_end.adopted_trial_balance_id is None:
         raise DraftRejected("Draft has no trial balance")
-    from app.models.tb_version import TrialBalanceVersion
+    version_id: uuid.UUID | None = None
+    try:
+        if adopted:
+            document = await statements_for_adopted(
+                session,
+                org_id=org_id,
+                year_end=year_end,
+                watermark="FINAL",
+                use_draft=draft,
+            )
+        else:
+            from app.models.tb_version import TrialBalanceVersion
 
-    version = await session.get(TrialBalanceVersion, draft.tb_version_id)
-    if version is None or version.org_id != org_id or version.status != "ready":
-        raise DraftRejected("Trial balance version is not ready")
-    document = await statements_for_version(
-        session,
-        org_id=org_id,
-        year_end=year_end,
-        version=version,
-        watermark="FINAL",
-        use_draft=draft,
-    )
+            version = await session.get(TrialBalanceVersion, draft.tb_version_id)
+            if version is None or version.org_id != org_id or version.status != "ready":
+                raise DraftRejected("Trial balance version is not ready")
+            version_id = version.id
+            document = await statements_for_version(
+                session,
+                org_id=org_id,
+                year_end=year_end,
+                version=version,
+                watermark="FINAL",
+                use_draft=draft,
+            )
+    except ReconciliationRejected as exc:
+        raise DraftRejected(exc.detail, exc.status_code) from exc
     disc = await _disclosure_check(
         session, org_id=org_id, year_end=year_end, draft=draft
     )
@@ -987,15 +1077,36 @@ async def finalise_draft(
             disc.message if disc is not None else "critical checks block FINAL"
         )
         raise DraftRejected(detail, 409)
-    graph = await evidence_for_version(
-        session,
-        org_id=org_id,
-        year_end=year_end,
-        version=version,
-        use_draft=draft,
-    )
+    if adopted:
+        graph = await evidence_for_adopted(
+            session,
+            org_id=org_id,
+            year_end=year_end,
+            use_draft=draft,
+        )
+    else:
+        from app.models.tb_version import TrialBalanceVersion
+
+        if version_id is None:
+            raise DraftRejected("Trial balance version is not ready")
+        version = await session.get(TrialBalanceVersion, version_id)
+        if version is None or version.org_id != org_id:
+            raise DraftRejected("Trial balance version is not ready")
+        graph = await evidence_for_version(
+            session,
+            org_id=org_id,
+            year_end=year_end,
+            version=version,
+            use_draft=draft,
+        )
     if not graph.renderable:
         raise DraftRejected(graph.build_error or "evidence graph does not tie", 409)
+    carried = await _carried_disclosure_names(session, org_id=org_id, draft=draft)
+    if carried and not reviewed_carried_disclosures:
+        raise DraftRejected(
+            "Carried-over disclosure answers have not been acknowledged.",
+            409,
+        )
     statement = statement_response(
         StatutoryStatements(
             watermark=document.watermark,
@@ -1016,21 +1127,84 @@ async def finalise_draft(
         )
     ).model_dump(mode="json")
     evidence = evidence_response(graph).model_dump(mode="json")
-    inputs = await _inputs_sha(
-        session, org_id=org_id, year_end=year_end, draft=draft, version_id=version.id
+    loaded = await _loaded_for_check(
+        session, org_id=org_id, year_end=year_end, draft=draft
     )
+    adjusted = await adjusted_for_draft(
+        session,
+        org_id=org_id,
+        draft=draft,
+        tb_lines=loaded.tb_lines,
+        mappings=loaded.mappings,
+    )
+    if adopted:
+        inputs = await _adopted_inputs_sha(
+            session, org_id=org_id, year_end=year_end, draft=draft
+        )
+    elif version_id is not None:
+        inputs = await _inputs_sha(
+            session,
+            org_id=org_id,
+            year_end=year_end,
+            draft=draft,
+            version_id=version_id,
+        )
+    else:
+        raise DraftRejected("Trial balance version is not ready")
+    letterhead = (
+        company
+        if company is not None and company.org_id == org_id and not company.is_deleted
+        else None
+    )
+    composed_html, sections = compose_year_end_parts(
+        document, year_end, company=letterhead
+    )
+    page_header, signature = docx_presentation(
+        document,
+        report_setup=year_end.report_setup,
+        approval_date=year_end.approval_date,
+        signing_directors=year_end.signing_directors,
+    )
+    composed_docx = payload_from_composed(
+        watermark=document.watermark,
+        company_name=document.company_name,
+        sections=sections,
+        page_header=page_header,
+        signature=signature,
+    )
+    copied_sections = _json_copy(sections)
+    copied_docx = _json_copy(composed_docx)
+    if not isinstance(copied_sections, list) or not isinstance(copied_docx, dict):
+        raise DraftRejected("composed snapshot is unreadable")
+    current = canonical_current(adjusted.tb_lines, adjusted.mappings)
     digest = engine_sha()
+    draft.inputs_sha256 = inputs
+    draft.engine_sha = digest
+    draft.finalised_by_user_id = user_id
     draft.status = "final"
     draft.snapshot = {
         "watermark": "FINAL",
         "html": document.html or "",
+        "composed_html": composed_html,
+        "composed_sections": copied_sections,
+        "composed_docx": copied_docx,
+        "canonical_current": {
+            key: str(amount) for key, amount in sorted(current.items())
+        },
         "statement": statement,
         "evidence": evidence,
         "traffic": light,
     }
-    draft.inputs_sha256 = inputs
-    draft.engine_sha = digest
-    draft.finalised_by_user_id = user_id
+    if carried:
+        await append_audit_log(
+            session,
+            org_id=org_id,
+            user_id=user_id,
+            action="carried_disclosures_reviewed",
+            entity_type="draft_version",
+            entity_id=draft.id,
+            new_value={"reviewed": True, "flag_names": sorted(carried)},
+        )
     draft.row_version = row_version + 1
     draft.updated_at = datetime.now(UTC)
     response: dict[str, object] = {

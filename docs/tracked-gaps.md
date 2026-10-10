@@ -1804,9 +1804,9 @@ the active draft.
 
 **Status:** the four connections below are built. A Product 1 trial balance
 stays in `trial_balances`. Continuation does not copy it into
-`findraft_tb_versions`. FINAL evidence and DOCX stay on the statutory
-version path (`evidence_for_version` reads `findraft_tb_lines` and
-`source_document_id`; `findraft_render_jobs.tb_version_id` is NOT NULL).
+`findraft_tb_versions`. An adopted draft can be finalised. Its evidence
+stops at the Product 1 accounts and that file's hash. The adopted PDF and
+the Word export then serve the stored snapshot.
 
 Four decisions:
 
@@ -1859,19 +1859,18 @@ What this connection does:
   the notice when the live Product 1 set differs. Acknowledge updates the
   fingerprint. Starting a new report freezes the previous draft so later
   Product 1 edits do not rewrite its history.
-- `finalise_draft` still requires a trial-balance version. An adopted draft
-  can be worked on and saved. FINAL evidence and DOCX remain out of this
-  connection.
+- `finalise_draft` accepts an adopted draft, including one already frozen
+  by a later report. It reads `frozen_inputs` and does not rewrite them.
+  Revision `j6k7l8m9n0` lets that frozen row move to status `final`;
+  `is_frozen`, `frozen_inputs`, and `mappings_sha256` stay put. The snapshot
+  keeps the engine HTML and adds `composed_html`, `composed_sections`, and
+  the Word payload. `canonical_current` stores closing retained earnings.
+  Carried-over disclosure answers need an explicit review acknowledgement,
+  stored as an audit row. Owner or admin can finalise.
 
-When Evidence and DOCX are connected, the statutory draft page
-(`/year-ends/{id}/draft`) gets its own export control, separate from the
-Statements page export. Word (DOCX), the Week 11 statutory render, is the
-primary format accountants use for final review before filing. PDF is a
-secondary option. That control is additive to the existing Statements
-export. It stays blocked until the render path can read a Product 1 source:
-`finalise_draft` still requires a trial-balance version,
-`evidence_for_version` reads `findraft_tb_lines` and `source_document_id`,
-and `findraft_render_jobs.tb_version_id` is NOT NULL.
+The statutory draft page (`/year-ends/{id}/draft`) exports Word from the
+draft. After finalise, that Word file and the adopted PDF are the stored
+snapshot. PDF on the Statements page stays a separate download.
 
 ### Statutory workspace — one page, one dropdown, in-page sidebar
 

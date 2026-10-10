@@ -123,6 +123,7 @@ def evidence_response(graph: EvidenceGraph) -> EvidenceResponse:
                 filename=document.filename,
                 detected_type=document.detected_type,
                 role=document.role,
+                file_hash=document.file_hash,
             )
             for document in graph.documents
         ],

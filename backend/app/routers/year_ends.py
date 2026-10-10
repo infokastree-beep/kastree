@@ -95,6 +95,7 @@ from app.schemas.year_end import (
     DisclosureAnswerRequest,
     DisclosureAnswerResponse,
     DraftMutationRequest,
+    FinaliseRequest,
     DraftStatusResponse,
     WorkingDraftResponse,
     FinaliseResponse,
@@ -121,6 +122,7 @@ from app.services.adopted_trial_balance import (
     SublineReviewRow,
     adopt_confirmed_trial_balance,
     confirm_statutory_sublines,
+    final_adopted_snapshot,
     list_adoptable_trial_balances,
     mapping_notice_for,
     reconcile_adopted,
@@ -714,6 +716,14 @@ async def get_adopted_statements(
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
+    frozen = await final_adopted_snapshot(
+        session, org_id=auth.org_id, year_end=year_end
+    )
+    if frozen is not None:
+        statement = frozen.get("statement")
+        if not isinstance(statement, dict):
+            raise HTTPException(status_code=500, detail="FINAL snapshot is missing")
+        return StatementResponse.model_validate(statement)
     try:
         document = await statements_for_adopted(
             session, org_id=auth.org_id, year_end=year_end
@@ -893,29 +903,36 @@ async def get_adopted_statement_pdf(
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
-    try:
-        document = await statements_for_adopted(
-            session, org_id=auth.org_id, year_end=year_end
-        )
-    except ReconciliationRejected as exc:
-        raise _adoption_error(exc) from exc
-    if not document.renderable or document.html is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Statutory statements are not renderable",
-        )
-    company = await _company_for_year_end(
-        session, year_end=year_end, org_id=auth.org_id
+    frozen = await final_adopted_snapshot(
+        session, org_id=auth.org_id, year_end=year_end
     )
-    pdf = write_statement_pdf(compose_year_end_pdf(document, year_end, company=company))
+    if frozen is not None:
+        html = frozen.get("composed_html")
+        if not isinstance(html, str) or not html:
+            raise HTTPException(status_code=409, detail="FINAL snapshot is missing")
+        filename = "statutory-statements-final.pdf"
+    else:
+        try:
+            document = await statements_for_adopted(
+                session, org_id=auth.org_id, year_end=year_end
+            )
+        except ReconciliationRejected as exc:
+            raise _adoption_error(exc) from exc
+        if not document.renderable or document.html is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Statutory statements are not renderable",
+            )
+        company = await _company_for_year_end(
+            session, year_end=year_end, org_id=auth.org_id
+        )
+        html = compose_year_end_pdf(document, year_end, company=company)
+        filename = "statutory-statements-draft.pdf"
+    pdf = write_statement_pdf(html)
     return Response(
         content=pdf,
         media_type="application/pdf",
-        headers={
-            "Content-Disposition": (
-                'attachment; filename="statutory-statements-draft.pdf"'
-            )
-        },
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -1893,7 +1910,7 @@ async def post_draft_recompute(
 async def post_draft_finalise(
     year_end_id: uuid.UUID,
     draft_id: uuid.UUID,
-    body: DraftMutationRequest,
+    body: FinaliseRequest,
     auth: Annotated[AuthContext, Depends(require_client_admin)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     idempotency_key: Annotated[str | None, Header()] = None,
@@ -1912,6 +1929,7 @@ async def post_draft_finalise(
             row_version=body.row_version,
             user_id=auth.user_id,
             idempotency_key=key,
+            reviewed_carried_disclosures=body.reviewed_carried_disclosures,
         )
     except DraftRejected as exc:
         raise _draft_error(exc) from exc

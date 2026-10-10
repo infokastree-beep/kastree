@@ -4,8 +4,9 @@ The engine still owns the amounts. This module reads ``aggregate().sources``
 and checks that those accounts, with the statement's presentation sign,
 add back to each face figure. A graph that does not tie is withheld.
 
-The chain stops at the trial-balance source document. Row 13 keeps journals,
-and any other document, outside this graph.
+The chain stops at the trial-balance source document. An adopted draft
+stops at the Product 1 trial-balance accounts and that one file's hash.
+Row 13 keeps journals, and any other document, outside this graph.
 """
 
 from __future__ import annotations
@@ -21,6 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import aset_rls_org_id
 from app.models.source_document import SourceDocument
 from app.models.tb_version import TrialBalanceLine, TrialBalanceVersion
+from app.models.trial_balance import TrialBalance
+from app.services.adopted_trial_balance import inputs_for_adopted_draft
 from app.services.draft_inputs import adjusted_for_draft, latest_draft
 from app.services.reconciliation import (
     ReconciliationCheck,
@@ -29,6 +32,7 @@ from app.services.reconciliation import (
 from app.services.statutory_statements import (
     StatementRow,
     StatutoryStatements,
+    statements_for_adopted,
     statements_for_version,
 )
 from findraft.engine import lines as L
@@ -204,6 +208,7 @@ class EvidenceDocument:
     filename: str
     detected_type: str
     role: Literal["trial_balance"]
+    file_hash: str | None = None
 
 
 @dataclass(frozen=True)
@@ -452,5 +457,83 @@ async def evidence_for_version(
         build_error=None,
         checks=document.checks,
         documents=(trial_balance,),
+        lines=lines,
+    )
+
+
+async def evidence_for_adopted(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+    use_draft: DraftVersion | None = None,
+) -> EvidenceGraph:
+    """Face figures tied to Product 1 accounts. The file is named by its hash."""
+    document = await statements_for_adopted(
+        session,
+        org_id=org_id,
+        year_end=year_end,
+        use_draft=use_draft,
+    )
+    if not document.renderable:
+        return _withheld(document)
+    if year_end.adopted_trial_balance_id is None:
+        return _withheld(document, "No confirmed trial balance is selected")
+    draft = use_draft
+    if draft is None:
+        from app.services.adopted_trial_balance import active_adopted_draft
+
+        draft = await active_adopted_draft(session, org_id=org_id, year_end=year_end)
+    loaded = await inputs_for_adopted_draft(
+        session, org_id=org_id, year_end=year_end, draft=draft
+    )
+    adjustment_keys: frozenset[tuple[str, str, Decimal]] = frozenset()
+    tb_lines = loaded.tb_lines
+    mappings = loaded.mappings
+    if draft is not None and draft.status != "final":
+        adjusted = await adjusted_for_draft(
+            session,
+            org_id=org_id,
+            draft=draft,
+            tb_lines=loaded.tb_lines,
+            mappings=loaded.mappings,
+        )
+        tb_lines = adjusted.tb_lines
+        mappings = adjusted.mappings
+        adjustment_keys = adjusted.adjustment_keys
+    await aset_rls_org_id(session, org_id)
+    trial_balance = await session.get(TrialBalance, year_end.adopted_trial_balance_id)
+    if (
+        trial_balance is None
+        or trial_balance.company_id != year_end.company_id
+        or trial_balance.is_deleted
+    ):
+        return _withheld(document, "trial balance file is missing")
+    file_hash = trial_balance.file_hash or ""
+    source = EvidenceDocument(
+        id=trial_balance.id,
+        filename=file_hash,
+        detected_type=trial_balance.file_type,
+        role="trial_balance",
+        file_hash=file_hash or None,
+    )
+    try:
+        lines = build_evidence_lines(
+            tb_lines=tb_lines,
+            mappings=mappings,
+            sofp=document.sofp,
+            income=document.income,
+            line_ids=None,
+            source_document_id=None,
+            adjustment_keys=adjustment_keys,
+        )
+    except ValueError as exc:
+        return _withheld(document, str(exc))
+    return EvidenceGraph(
+        renderable=True,
+        blocked=False,
+        build_error=None,
+        checks=document.checks,
+        documents=(source,),
         lines=lines,
     )
