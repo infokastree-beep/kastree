@@ -8,6 +8,21 @@ see [`product-roadmap.md`](product-roadmap.md).
 
 The GitHub repository was made private on 8 October 2026 and made public again the same day. See [Pre-launch checklist](#pre-launch-checklist).
 
+## Supersede a FINAL draft (next, design only)
+
+Not built. A practice that finalises by mistake, or finds an error after FINAL, has nothing to do in the product today.
+
+`findraft_draft_status_guard` refuses any later change to a FINAL row's status, snapshot, `inputs_sha256`, `engine_sha`, `pack_id`, or `pack_version` (`FINAL draft is immutable`). `is_frozen`, `frozen_inputs`, and `mappings_sha256` stay refused as well. `new_version_from_locked` starts only from a locked draft (`a new version starts from a locked draft`). `start_new_report`, recompute, and mapping acknowledgement refuse a FINAL draft (`FINAL output is never recomputed`). The year-end adopted PDF and Word export serve `final_adopted_snapshot`, which is the latest unfrozen adopted draft once its status is `final`. There is no amend, unlock, or successor action.
+
+The next design is a supersede, not an edit:
+
+1. Owner or admin only. The year-end router keeps `enforce_product2_production_access`, so production still requires the platform-admin allowlist as well as that role.
+2. An explicit action on one FINAL draft inserts a new `DraftVersion` for the same year end. Status is `draft`. It is not frozen. It copies that draft's adjustment journals and disclosure answers the same way `new_version_from_locked` does. It does not copy the snapshot.
+3. The FINAL row is not updated. Its snapshot, hashes, pack pin, and freeze columns stay as stored. Its own draft Word route can still return that file.
+4. The successor has the higher `version_number` and is the latest unfrozen adopted draft, so `final_adopted_snapshot` stops serving the previous FINAL. The year-end PDF and Word follow the successor, and they serve a new snapshot only after that successor is itself finalised.
+5. Copied disclosure answers still require `reviewed_carried_disclosures` before that successor can finalise. The acknowledgement stays an audit row.
+6. No table and no column. Do not add a status value, and do not weaken the FINAL immutability check to make this work. Build this as its own change after the adopted-draft finalise path is live.
+
 ## Pre-launch checklist
 
 Do these before the product takes payments or a real client uses Product 2.

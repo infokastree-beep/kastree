@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   CARRIED_ACK_LABEL,
   FINALISED_STATE,
+  FINALISE_LOCK_NOTE,
   canOfferFinalise,
   carriedAcknowledgementRequired,
 } from "@/lib/finalise-status";
@@ -79,6 +80,9 @@ export function FinaliseDraft({
     >
       <p id="statutory-finalise-title" className="text-sm">
         Finalise this draft? The stored statements will not change after this.
+      </p>
+      <p className="text-sm" data-testid="statutory-finalise-lock">
+        {FINALISE_LOCK_NOTE}
       </p>
       {needsAck ? (
         <label className="flex items-start gap-2 text-sm">

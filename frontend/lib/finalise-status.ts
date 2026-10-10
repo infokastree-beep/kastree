@@ -22,6 +22,9 @@ export const FINALISED_STATE = "FINAL";
 export const CARRIED_ACK_LABEL =
   "I have reviewed the carried-over disclosure answers.";
 
+export const FINALISE_LOCK_NOTE =
+  "Finalising locks this draft. Corrections require a new version.";
+
 export const FINALISED_409 = [
   "Directors have not been recorded.",
   "Carried-over disclosure answers have not been acknowledged.",

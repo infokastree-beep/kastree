@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 import {
   CARRIED_ACK_LABEL,
   FINALISED_409,
+  FINALISE_LOCK_NOTE,
   FINALISED_STATE,
   canOfferFinalise,
   carriedAcknowledgementRequired,
@@ -70,6 +71,10 @@ describe("finalise offer", () => {
     assert.equal(
       CARRIED_ACK_LABEL,
       "I have reviewed the carried-over disclosure answers.",
+    );
+    assert.equal(
+      FINALISE_LOCK_NOTE,
+      "Finalising locks this draft. Corrections require a new version.",
     );
   });
 
