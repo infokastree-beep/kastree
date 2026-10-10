@@ -8,6 +8,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
 import { downloadDraftPdf, pdfBlockReason } from "@/lib/draft-pdf";
 import { formatCurrency } from "@/lib/currency";
+import {
+  STATUTORY_SIGNOFF,
+  statutoryGateDiagnosis,
+} from "@/lib/statutory-gate";
 import { formatDate } from "@/lib/utils";
 
 const FRAMEWORKS = [
@@ -18,10 +22,8 @@ const FRAMEWORKS = [
   },
 ] as const;
 
-const SIGNOFF =
-  "Draft statutory packs stay limited to platform administrators until a qualified reviewer signs off the wording.";
-
 type UserMe = {
+  email: string;
   is_platform_admin: boolean;
 };
 
@@ -163,7 +165,9 @@ export function StatutoryContinuation({
       router.push(`/year-ends/${continued.year_end_id}/draft`);
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 403) {
-        setError(SIGNOFF);
+        setError(
+          `${STATUTORY_SIGNOFF} ${statutoryGateDiagnosis(meQuery.data?.email)}`,
+        );
       } else {
         setError(messageFrom(caught));
       }
@@ -259,9 +263,15 @@ export function StatutoryContinuation({
       {busy ? <p className="text-sm text-soft">{busy}</p> : null}
 
       {forbidden ? (
-        <p className="text-sm text-ink-secondary" data-testid="statutory-signoff">
-          {SIGNOFF}
-        </p>
+        <div className="space-y-2" data-testid="statutory-signoff">
+          <p className="text-sm text-ink-secondary">{STATUTORY_SIGNOFF}</p>
+          <p
+            className="text-sm text-ink-secondary"
+            data-testid="statutory-signoff-diagnosis"
+          >
+            {statutoryGateDiagnosis(meQuery.data?.email)}
+          </p>
+        </div>
       ) : (
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex min-w-[16rem] flex-col gap-1.5 text-sm">

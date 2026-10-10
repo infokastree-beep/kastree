@@ -111,6 +111,7 @@ jobs:
           npm run test:practice-jurisdiction
           npm run test:draft-word
           npm run test:company-form
+          npm run test:statutory-gate
 
       - name: Frontend build
         working-directory: frontend

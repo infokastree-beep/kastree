@@ -14,7 +14,8 @@
     "test:report-setup": "node --experimental-strip-types --test lib/report-display.test.ts lib/workspace-sections.test.ts lib/workspace-load-error.test.ts lib/draft-pdf.test.ts lib/section-preview.test.ts lib/finalise-status.test.ts lib/reset-confirm.test.ts",
     "test:practice-jurisdiction": "node --experimental-strip-types --test lib/practice-jurisdiction.test.ts",
     "test:draft-word": "node --experimental-strip-types --test lib/draft-word.test.ts",
-    "test:company-form": "node --experimental-strip-types --test lib/company-form.test.ts"
+    "test:company-form": "node --experimental-strip-types --test lib/company-form.test.ts",
+    "test:statutory-gate": "node --experimental-strip-types --test lib/statutory-gate.test.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^5.7.6",
