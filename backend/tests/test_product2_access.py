@@ -1,4 +1,4 @@
-"""Product 2 stays off ordinary production accounts until wording is signed off."""
+"""Product 2 in production follows the practice acknowledgement or platform admin."""
 
 from __future__ import annotations
 
@@ -8,16 +8,19 @@ from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.config import settings
 from app.db import SyncSessionLocal, set_rls_org_id
 from app.main import app
 from app.models.user import User
+from app.services.org_provisioning import provision_first_signup
 from app.services.source_storage import LocalPracticeStorage, get_source_storage
-from tests.conftest import auth_headers
+from tests.conftest import auth_headers, make_access_token
+from tests.test_organisations_api import _add_org_user
 
 _FORBIDDEN = "You don't have permission to access this resource."
+_ACCEPTED = {"accepted": True}
 
 _CSV = (
     "Account Code,Account Name,Debit,Credit\n"
@@ -86,10 +89,21 @@ async def test_production_hides_product2_from_an_ordinary_owner(
     assert uploaded.status_code == 403, uploaded.text
 
     beta = await api_client.get("/beta", headers=headers)
-    assert beta.status_code == 403, beta.text
+    assert beta.status_code == 200, beta.text
+    assert beta.json()["acknowledged"] is False
+    assert beta.json()["wording_signed_off"] is False
 
     policy = await api_client.get("/audit-logs/policy", headers=headers)
     assert policy.status_code == 403, policy.text
+    audit = await api_client.get("/audit-logs", headers=headers)
+    assert audit.status_code == 403, audit.text
+
+    continued = await api_client.post(
+        f"/trial-balances/{uuid.uuid4()}/statutory-year-end",
+        headers=headers,
+        json={"pack_id": "frs102-1a-ie", "pack_version": "2024.09"},
+    )
+    assert continued.status_code == 403, continued.text
 
     clients = await api_client.get("/clients?limit=20", headers=headers)
     assert clients.status_code == 200, clients.text
@@ -127,6 +141,172 @@ async def test_development_keeps_product2_on_the_ordinary_owner_role(
         json=_year_end_body(provisioned_org),
     )
     assert response.status_code == 201, response.text
+
+
+def _other_practice() -> tuple[uuid.UUID, str, str]:
+    suffix = uuid.uuid4().hex[:10]
+    clerk_org_id = f"org_other_{suffix}"
+    clerk_user_id = f"user_other_{suffix}"
+    with SyncSessionLocal() as session:
+        other = provision_first_signup(
+            session,
+            clerk_org_id=clerk_org_id,
+            org_name=f"Other Practice {suffix}",
+            clerk_user_id=clerk_user_id,
+            email=f"other-{suffix}@example.com",
+        )
+        session.commit()
+        org_id = other.organisation.id
+    token = make_access_token(
+        clerk_user_id=clerk_user_id,
+        clerk_org_id=clerk_org_id,
+        org_uuid=org_id,
+    )
+    return org_id, clerk_org_id, token
+
+
+def _delete_practice(org_id: uuid.UUID) -> None:
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        session.execute(
+            text(
+                "ALTER TABLE audit_logs DISABLE TRIGGER findraft_audit_log_append_only"
+            )
+        )
+        try:
+            session.execute(
+                text("DELETE FROM audit_logs WHERE org_id = :oid"),
+                {"oid": str(org_id)},
+            )
+            session.execute(
+                text("DELETE FROM organisations WHERE id = :oid"),
+                {"oid": str(org_id)},
+            )
+            session.commit()
+        finally:
+            session.execute(
+                text(
+                    "ALTER TABLE audit_logs ENABLE TRIGGER findraft_audit_log_append_only"
+                )
+            )
+            session.commit()
+
+
+@pytest.mark.asyncio
+async def test_production_acknowledgement_opens_only_that_practice(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "platform_admin_emails", "founder-only@example.com")
+    headers = auth_headers(provisioned_org["token"])
+
+    missing = await api_client.post("/beta/acknowledgement", headers=headers)
+    assert missing.status_code == 422, missing.text
+    unticked = await api_client.post(
+        "/beta/acknowledgement",
+        headers=headers,
+        json={"accepted": False},
+    )
+    assert unticked.status_code == 422, unticked.text
+
+    _, _, member_token = _add_org_user(
+        org_id=provisioned_org["org_id"],
+        clerk_org_id=provisioned_org["clerk_org_id"],
+        role="member",
+        email_prefix="gate-member",
+    )
+    member_refused = await api_client.post(
+        "/beta/acknowledgement",
+        headers=auth_headers(member_token),
+        json=_ACCEPTED,
+    )
+    assert member_refused.status_code == 403, member_refused.text
+
+    _, _, admin_token = _add_org_user(
+        org_id=provisioned_org["org_id"],
+        clerk_org_id=provisioned_org["clerk_org_id"],
+        role="admin",
+        email_prefix="gate-admin",
+    )
+    recorded = await api_client.post(
+        "/beta/acknowledgement",
+        headers=auth_headers(admin_token),
+        json=_ACCEPTED,
+    )
+    assert recorded.status_code == 200, recorded.text
+    assert recorded.json()["recorded"] is True
+    assert recorded.json()["wording_signed_off"] is False
+
+    year_end = await api_client.post(
+        "/year-ends",
+        headers=headers,
+        json=_year_end_body(provisioned_org),
+    )
+    assert year_end.status_code == 201, year_end.text
+    year_end_id = year_end.json()["id"]
+
+    _, _, viewer_token = _add_org_user(
+        org_id=provisioned_org["org_id"],
+        clerk_org_id=provisioned_org["clerk_org_id"],
+        role="viewer",
+        email_prefix="gate-viewer",
+    )
+    visible = await api_client.get(
+        f"/year-ends/{year_end_id}",
+        headers=auth_headers(viewer_token),
+    )
+    assert visible.status_code == 200, visible.text
+
+    finalise = f"/year-ends/{year_end_id}/drafts/{uuid.uuid4()}/finalise"
+    member_final = await api_client.post(
+        finalise,
+        headers={**auth_headers(member_token), "Idempotency-Key": "member-final"},
+        json={"row_version": 1},
+    )
+    assert member_final.status_code == 403, member_final.text
+    owner_final = await api_client.post(
+        finalise,
+        headers={**headers, "Idempotency-Key": "owner-final"},
+        json={"row_version": 1},
+    )
+    assert owner_final.status_code != 403, owner_final.text
+
+    other_org_id, _, other_token = _other_practice()
+    try:
+        other_headers = auth_headers(other_token)
+        other_year_end = await api_client.post(
+            "/year-ends",
+            headers=other_headers,
+            json=_year_end_body(provisioned_org),
+        )
+        assert other_year_end.status_code == 403, other_year_end.text
+        hidden = await api_client.get(
+            f"/year-ends/{year_end_id}",
+            headers=other_headers,
+        )
+        assert hidden.status_code == 403, hidden.text
+
+        other_ack = await api_client.post(
+            "/beta/acknowledgement",
+            headers=other_headers,
+            json=_ACCEPTED,
+        )
+        assert other_ack.status_code == 200, other_ack.text
+        cross = await api_client.get(
+            f"/year-ends/{year_end_id}",
+            headers=other_headers,
+        )
+        assert cross.status_code == 404, cross.text
+        stolen = await api_client.post(
+            "/year-ends",
+            headers=other_headers,
+            json=_year_end_body(provisioned_org),
+        )
+        assert stolen.status_code == 404, stolen.text
+    finally:
+        _delete_practice(other_org_id)
 
 
 @pytest.mark.asyncio

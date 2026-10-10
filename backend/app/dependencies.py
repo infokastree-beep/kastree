@@ -32,6 +32,7 @@ from app.config import settings
 from app.db import AsyncSessionLocal, aset_rls_org_id
 from app.models.organisation import Organisation
 from app.models.user import User
+from app.services.beta import beta_acknowledged
 from app.services.org_provisioning import organisation_id_for_clerk_org
 
 logger = logging.getLogger(__name__)
@@ -322,20 +323,24 @@ def require_platform_admin():
 
 async def enforce_product2_production_access(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> AuthContext:
     """Production gate for Product 2 statutory routes.
 
-    Qualified-reviewer sign-off is still pending, so a production caller must
-    be on PLATFORM_ADMIN_EMAILS (the same allowlist as /admin). Development
-    and test keep the route's own role check, so the suite can run as an
-    ordinary owner.
+    A production caller must be a platform administrator or belong to a
+    practice whose acknowledgement columns are set. Development and test
+    keep the route's own role check, so the suite can run as an ordinary
+    owner. ``/beta`` is not on this gate: that is how a practice records
+    the acknowledgement.
     """
-    if settings.app_env == "production" and not is_platform_admin(auth):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to access this resource.",
-        )
-    return auth
+    if settings.app_env != "production" or is_platform_admin(auth):
+        return auth
+    if await beta_acknowledged(session, org_id=auth.org_id):
+        return auth
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="You don't have permission to access this resource.",
+    )
 
 
 async def get_db(

@@ -23,6 +23,7 @@ from tests.test_statutory_statements import _ready_golden, _statements_path
 from tests.test_tb_ingestion import _year_end
 
 _FORBIDDEN = "You don't have permission to access this resource."
+_ACCEPTED = {"accepted": True}
 _ENGINE_ROOT = Path(__file__).resolve().parents[2] / "findraft"
 
 
@@ -54,6 +55,18 @@ async def test_beta_position_stays_unsigned_and_acknowledgement_is_once(
     assert "iXBRL" in body["statement"]
     assert "not in this beta" in body["statement"]
 
+    missing = await api_client.post("/beta/acknowledgement", headers=headers)
+    assert missing.status_code == 422, missing.text
+    unticked = await api_client.post(
+        "/beta/acknowledgement",
+        headers=headers,
+        json={"accepted": False},
+    )
+    assert unticked.status_code == 422, unticked.text
+    still_open = await api_client.get("/beta", headers=headers)
+    assert still_open.status_code == 200, still_open.text
+    assert still_open.json()["acknowledged"] is False
+
     user_id, clerk_user_id, _issued = _add_org_user(
         org_id=provisioned_org["org_id"],
         clerk_org_id=provisioned_org["clerk_org_id"],
@@ -71,18 +84,24 @@ async def test_beta_position_stays_unsigned_and_acknowledgement_is_once(
     readable = await api_client.get("/beta", headers=viewer)
     assert readable.status_code == 200, readable.text
     assert readable.json()["acknowledged"] is False
-    refused = await api_client.post("/beta/acknowledgement", headers=viewer)
+    refused = await api_client.post(
+        "/beta/acknowledgement", headers=viewer, json=_ACCEPTED
+    )
     assert refused.status_code == 403
     assert refused.json()["detail"] == _FORBIDDEN
 
-    recorded = await api_client.post("/beta/acknowledgement", headers=headers)
+    recorded = await api_client.post(
+        "/beta/acknowledgement", headers=headers, json=_ACCEPTED
+    )
     assert recorded.status_code == 200, recorded.text
     assert recorded.json()["recorded"] is True
     assert recorded.json()["acknowledged"] is True
     assert recorded.json()["wording_signed_off"] is False
     assert recorded.json()["filing_included"] is False
     assert recorded.json()["statement"] == BETA_STATEMENT
-    again = await api_client.post("/beta/acknowledgement", headers=headers)
+    again = await api_client.post(
+        "/beta/acknowledgement", headers=headers, json=_ACCEPTED
+    )
     assert again.status_code == 200, again.text
     assert again.json()["recorded"] is False
     assert again.json()["wording_signed_off"] is False
@@ -130,7 +149,9 @@ async def test_first_practice_golden_final_keeps_the_engine_figures(
     stored_files: LocalPracticeStorage,
 ) -> None:
     headers = auth_headers(provisioned_org["token"])
-    recorded = await api_client.post("/beta/acknowledgement", headers=headers)
+    recorded = await api_client.post(
+        "/beta/acknowledgement", headers=headers, json=_ACCEPTED
+    )
     assert recorded.status_code == 200, recorded.text
     assert recorded.json()["recorded"] is True
 
@@ -234,7 +255,9 @@ async def test_acknowledgement_columns_follow_the_earliest_audit_row(
     columns cleared does not count as acknowledged.
     """
     headers = auth_headers(provisioned_org["token"])
-    recorded = await api_client.post("/beta/acknowledgement", headers=headers)
+    recorded = await api_client.post(
+        "/beta/acknowledgement", headers=headers, json=_ACCEPTED
+    )
     assert recorded.status_code == 200, recorded.text
     org_id = provisioned_org["org_id"]
 
@@ -261,7 +284,9 @@ async def test_acknowledgement_columns_follow_the_earliest_audit_row(
     assert cleared.status_code == 200, cleared.text
     assert cleared.json()["acknowledged"] is False
 
-    again = await api_client.post("/beta/acknowledgement", headers=headers)
+    again = await api_client.post(
+        "/beta/acknowledgement", headers=headers, json=_ACCEPTED
+    )
     assert again.status_code == 200, again.text
     assert again.json()["recorded"] is True
 

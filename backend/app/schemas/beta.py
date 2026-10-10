@@ -18,6 +18,14 @@ class BetaPositionResponse(BaseModel):
     statement: str
 
 
+class BetaAcknowledgementRequest(BaseModel):
+    """The checkbox must be sent true on this request. It is not stored."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    accepted: Literal[True]
+
+
 class BetaAcknowledgementResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
