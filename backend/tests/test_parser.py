@@ -315,7 +315,9 @@ def test_tb_path_keeps_generic_message_for_unrecognisable_layout() -> None:
         parse_tb_file(_xlsx_bytes(build), filename="mystery.xlsx", functional_currency="GBP")
 
     assert str(exc_info.value) == (
-        "Could not detect account code and account name columns."
+        "Could not detect account code and account name columns. "
+        "Columns found: Ref, Label, Debit, Credit. "
+        "Expected headings such as Account Code and Account Name."
     )
 
 
@@ -339,3 +341,167 @@ def test_apex_manufacturing_gl_xlsx_on_tb_path_shows_gl_hint() -> None:
     message = str(exc_info.value)
     assert "This looks like a general ledger, not a trial balance" in message
     assert "General ledger option" in message
+
+
+def test_code_and_account_headers_are_code_and_name() -> None:
+    """Bare Code plus Account is the code column and the name column."""
+
+    def build(ws) -> None:
+        ws.append(["Code", "Account", "Debit", "Credit"])
+        ws.append(["1000", "Cash at bank", "15.00", "0.00"])
+        ws.append(["3000", "Capital", "0.00", "15.00"])
+
+    rows = parse_tb_file(_xlsx_bytes(build), filename="tb.xlsx", functional_currency="EUR")
+    assert rows[0].account_code == "1000"
+    assert rows[0].account_name == "Cash at bank"
+    assert rows[0].debit == Decimal("15.00")
+    assert rows[0].credit == Decimal("0.00")
+    assert rows[1].account_name == "Capital"
+    assert rows[1].credit == Decimal("15.00")
+
+
+def test_accountant_heading_synonyms_and_a_title_row() -> None:
+    def build(ws) -> None:
+        ws.append(["Northwind Practice"])
+        ws.append(["Trial Balance as at 30 June 2026"])
+        ws.append([])
+        ws.append(["Acc No", "Nominal Name", "Dr", "Cr"])
+        ws.append(["1000", "Cash", "40.00", "0.00"])
+        ws.append(["2000", "Sales", "0.00", "40.00"])
+
+    rows = parse_tb_file(_xlsx_bytes(build), filename="tb.xlsx", functional_currency="EUR")
+    assert [(row.account_code, row.account_name, row.debit, row.credit) for row in rows] == [
+        ("1000", "Cash", Decimal("40.00"), Decimal("0.00")),
+        ("2000", "Sales", Decimal("0.00"), Decimal("40.00")),
+    ]
+    assert rows[0].row_index == 5
+
+
+def test_extra_columns_do_not_steal_code_name_or_credit() -> None:
+    """A generic word inside a longer heading is not that column."""
+
+    def build(ws) -> None:
+        ws.append(
+            [
+                "Account Code",
+                "Account Name",
+                "Description of the amount",
+                "Credit Limit",
+                "Account Manager",
+                "Debit",
+                "Credit",
+            ]
+        )
+        ws.append(["1000", "Cash", "opening float", "50000", "Alice", "10.00", "0.00"])
+        ws.append(["2000", "Sales", "invoices", "0", "Bob", "0.00", "10.00"])
+
+    rows = parse_tb_file(_xlsx_bytes(build), filename="tb.xlsx", functional_currency="EUR")
+    cash = rows[0]
+    assert cash.account_code == "1000"
+    assert cash.account_name == "Cash"
+    assert cash.debit == Decimal("10.00")
+    assert cash.credit == Decimal("0.00")
+    assert rows[1].account_name == "Sales"
+    assert rows[1].credit == Decimal("10.00")
+
+
+def test_ambiguous_headings_refuse_instead_of_guessing() -> None:
+    def build(ws) -> None:
+        ws.append(["Description of the amount", "Credit Limit", "Account Manager"])
+        ws.append(["opening float", "50000", "Alice Example"])
+
+    with pytest.raises(ParseError) as exc_info:
+        parse_tb_file(_xlsx_bytes(build), filename="tb.xlsx", functional_currency="EUR")
+
+    message = str(exc_info.value)
+    assert message == (
+        "Could not detect account code and account name columns. "
+        "Columns found: Description of the amount, Credit Limit, Account Manager. "
+        "Expected headings such as Account Code and Account Name."
+    )
+    assert "opening float" not in message
+    assert "50000" not in message
+    assert "Alice" not in message
+
+
+def test_duplicate_headings_refuse() -> None:
+    def build(ws) -> None:
+        ws.append(["Account Code", "Account Name", "Debit", "Debit"])
+        ws.append(["1000", "Cash", "10.00", "0.00"])
+        ws.append(["2000", "Sales", "0.00", "10.00"])
+
+    with pytest.raises(ParseError) as exc_info:
+        parse_tb_file(_xlsx_bytes(build), filename="tb.xlsx", functional_currency="EUR")
+
+    message = str(exc_info.value)
+    assert message == (
+        "Could not detect account code and account name columns. "
+        "Columns found: Account Code, Account Name, Debit, Debit. "
+        "Expected headings such as Account Code and Account Name."
+    )
+    assert "Cash" not in message
+    assert "10.00" not in message
+
+
+def test_two_name_headings_refuse() -> None:
+    def build(ws) -> None:
+        ws.append(["Account Code", "Description", "Account Name", "Debit", "Credit"])
+        ws.append(["1000", "till", "Cash", "10.00", "0.00"])
+        ws.append(["2000", "invoices", "Sales", "0.00", "10.00"])
+
+    with pytest.raises(ParseError) as exc_info:
+        parse_tb_file(_xlsx_bytes(build), filename="tb.xlsx", functional_currency="EUR")
+
+    message = str(exc_info.value)
+    assert "Columns found: Account Code, Description, Account Name, Debit, Credit." in message
+    assert "till" not in message
+    assert "Cash" not in message
+
+
+def test_debit_and_dr_together_refuse() -> None:
+    def build(ws) -> None:
+        ws.append(["Account Code", "Account Name", "Debit", "Dr", "Credit"])
+        ws.append(["1000", "Cash", "10.00", "0.00", "0.00"])
+        ws.append(["2000", "Sales", "0.00", "0.00", "10.00"])
+
+    with pytest.raises(ParseError) as exc_info:
+        parse_tb_file(_xlsx_bytes(build), filename="tb.xlsx", functional_currency="EUR")
+
+    message = str(exc_info.value)
+    assert message.startswith("Could not detect debit and credit columns.")
+    assert "Columns found: Account Code, Account Name, Debit, Dr, Credit." in message
+    assert "not supported unless the heading is Balance" in message
+    assert "Cash" not in message
+
+
+def test_numbers_only_first_column_without_a_header_refuses() -> None:
+    content = b"1000,Cash,10000.00,0.00\n2000,Sales,0.00,10000.00\n"
+    with pytest.raises(ParseError) as exc_info:
+        parse_tb_file(content, filename="no-header.csv", functional_currency="EUR")
+
+    message = str(exc_info.value)
+    assert message == (
+        "Could not detect account code and account name columns. "
+        "Columns found: (none). "
+        "Expected headings such as Account Code and Account Name."
+    )
+    assert "Cash" not in message
+    assert "10000" not in message
+    assert "Sales" not in message
+
+
+def test_generic_amount_column_is_not_a_signed_balance() -> None:
+    def build(ws) -> None:
+        ws.append(["Account Code", "Account Name", "Amount"])
+        ws.append(["1000", "Cash", "10.00"])
+        ws.append(["2000", "Sales", "-10.00"])
+
+    with pytest.raises(ParseError) as exc_info:
+        parse_tb_file(_xlsx_bytes(build), filename="tb.xlsx", functional_currency="EUR")
+
+    message = str(exc_info.value)
+    assert "Could not detect debit and credit columns." in message
+    assert "Columns found: Account Code, Account Name, Amount." in message
+    assert "not supported unless the heading is Balance" in message
+    assert "Cash" not in message
+    assert "10.00" not in message
