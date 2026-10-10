@@ -1468,7 +1468,16 @@ async def test_adopted_draft_word_export_is_draft_without_tb_version(
     assert content.startswith(b"PK")
     with zipfile.ZipFile(BytesIO(content)) as archive:
         xml = archive.read("word/document.xml").decode()
-    assert "DRAFT" in xml
+        header_parts = [
+            archive.read(name).decode()
+            for name in archive.namelist()
+            if name.startswith("word/header")
+        ]
+    assert header_parts
+    assert all(
+        "DRAFT" in header and "FINAL" not in header for header in header_parts
+    )
+    assert "DRAFT" not in xml
     assert "FINAL" not in xml
     replay = await api_client.post(
         f"/year-ends/{year_end_id}/drafts/{draft_id}/document.docx",

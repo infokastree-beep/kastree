@@ -599,8 +599,10 @@ def test_composed_docx_labels_draft_and_keeps_display_text(tmp_path: Path) -> No
         },
         dest,
     )
-    xml = _xml(dest.read_bytes())
-    assert "DRAFT" in xml
+    content = dest.read_bytes()
+    xml = _xml(content)
+    assert "DRAFT" not in xml
+    assert "DRAFT" in _header_text(content)
     assert "FINAL" not in xml
     assert "455,712" in xml
     assert "Profit and loss account" in xml
@@ -637,6 +639,10 @@ def _page_breaks(xml: str) -> int:
     sections = xml.count("<w:sectPr")
     continuous = xml.count('w:val="continuous"')
     return explicit + max(sections - 1 - continuous, 0)
+
+
+def _grid_widths(table: str) -> list[int]:
+    return [int(item) for item in re.findall(r'<w:gridCol\b[^>]*w:w="(\d+)"', table)]
 
 
 def _table_after(xml: str, heading: str) -> str:
@@ -745,11 +751,18 @@ def test_composed_docx_matches_the_pdf_furniture_and_figures(tmp_path: Path) -> 
     content = dest.read_bytes()
     xml = _xml(content)
     assert _NOTE_CODE.search(xml) is None
+    assert "<w:t>DRAFT</w:t>" not in xml
+    assert "<w:t>FINAL</w:t>" not in xml
     headers = _parts_named(content, "word/header")
     assert headers
-    assert all("DRAFT" in header and "FINAL" not in header for header in headers)
+    assert all(header.count("<w:t>DRAFT</w:t>") == 1 for header in headers)
+    assert all("FINAL" not in header for header in headers)
     sofp_table = _table_after(xml, "Statement of financial position")
     assert ">Notes<" in sofp_table
+    income_widths = _grid_widths(xml[xml.index("<w:tbl") : xml.index("</w:tbl>")])
+    sofp_widths = _grid_widths(sofp_table)
+    assert income_widths[0] > income_widths[1] * 2
+    assert sofp_widths[0] > max(sofp_widths[1:]) * 2
     assert "Approved by the board and signed on its behalf by" in xml
     assert document.compliance_statement in xml
     assert "Approved on 17 March 2026." in xml
