@@ -327,6 +327,7 @@ class EvidenceDocumentOut(BaseModel):
     filename: str
     detected_type: str
     role: Literal["trial_balance"]
+    file_hash: str | None = None
 
 
 class EvidenceResponse(BaseModel):
@@ -394,6 +395,7 @@ class DashboardResponse(BaseModel):
     traffic: Literal["red", "amber", "green"]
     can_finalise: bool
     unanswered_disclosures: list[str]
+    carried_disclosures: list[str] = Field(default_factory=list)
     checks: list[DashboardCheckOut]
 
 
@@ -445,6 +447,15 @@ class DraftMutationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     row_version: int = Field(ge=1)
+
+
+class FinaliseRequest(BaseModel):
+    """Finalise one draft. The review flag is required when answers were copied."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    row_version: int = Field(ge=1)
+    reviewed_carried_disclosures: bool = False
 
 
 class DraftStatusResponse(BaseModel):

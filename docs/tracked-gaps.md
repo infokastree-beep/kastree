@@ -8,6 +8,21 @@ see [`product-roadmap.md`](product-roadmap.md).
 
 The GitHub repository was made private on 8 October 2026 and made public again the same day. See [Pre-launch checklist](#pre-launch-checklist).
 
+## Supersede a FINAL draft (next, design only)
+
+Not built. A practice that finalises by mistake, or finds an error after FINAL, has nothing to do in the product today.
+
+`findraft_draft_status_guard` refuses any later change to a FINAL row's status, snapshot, `inputs_sha256`, `engine_sha`, `pack_id`, or `pack_version` (`FINAL draft is immutable`). `is_frozen`, `frozen_inputs`, and `mappings_sha256` stay refused as well. `new_version_from_locked` starts only from a locked draft (`a new version starts from a locked draft`). `start_new_report`, recompute, and mapping acknowledgement refuse a FINAL draft (`FINAL output is never recomputed`). The year-end adopted PDF and Word export serve `final_adopted_snapshot`, which is the latest unfrozen adopted draft once its status is `final`. There is no amend, unlock, or successor action.
+
+The next design is a supersede, not an edit:
+
+1. Owner or admin only. The year-end router keeps `enforce_product2_production_access`, so production still requires the platform-admin allowlist as well as that role.
+2. An explicit action on one FINAL draft inserts a new `DraftVersion` for the same year end. Status is `draft`. It is not frozen. It copies that draft's adjustment journals and disclosure answers the same way `new_version_from_locked` does. It does not copy the snapshot.
+3. The FINAL row is not updated. Its snapshot, hashes, pack pin, and freeze columns stay as stored. Its own draft Word route can still return that file.
+4. The successor has the higher `version_number` and is the latest unfrozen adopted draft, so `final_adopted_snapshot` stops serving the previous FINAL. The year-end PDF and Word follow the successor, and they serve a new snapshot only after that successor is itself finalised.
+5. Copied disclosure answers still require `reviewed_carried_disclosures` before that successor can finalise. The acknowledgement stays an audit row.
+6. No table and no column. Do not add a status value, and do not weaken the FINAL immutability check to make this work. Build this as its own change after the adopted-draft finalise path is live.
+
 ## Pre-launch checklist
 
 Do these before the product takes payments or a real client uses Product 2.
@@ -1804,9 +1819,9 @@ the active draft.
 
 **Status:** the four connections below are built. A Product 1 trial balance
 stays in `trial_balances`. Continuation does not copy it into
-`findraft_tb_versions`. FINAL evidence and DOCX stay on the statutory
-version path (`evidence_for_version` reads `findraft_tb_lines` and
-`source_document_id`; `findraft_render_jobs.tb_version_id` is NOT NULL).
+`findraft_tb_versions`. An adopted draft can be finalised. Its evidence
+stops at the Product 1 accounts and that file's hash. The adopted PDF and
+the Word export then serve the stored snapshot.
 
 Four decisions:
 
@@ -1859,19 +1874,18 @@ What this connection does:
   the notice when the live Product 1 set differs. Acknowledge updates the
   fingerprint. Starting a new report freezes the previous draft so later
   Product 1 edits do not rewrite its history.
-- `finalise_draft` still requires a trial-balance version. An adopted draft
-  can be worked on and saved. FINAL evidence and DOCX remain out of this
-  connection.
+- `finalise_draft` accepts an adopted draft, including one already frozen
+  by a later report. It reads `frozen_inputs` and does not rewrite them.
+  Revision `j6k7l8m9n0` lets that frozen row move to status `final`;
+  `is_frozen`, `frozen_inputs`, and `mappings_sha256` stay put. The snapshot
+  keeps the engine HTML and adds `composed_html`, `composed_sections`, and
+  the Word payload. `canonical_current` stores closing retained earnings.
+  Carried-over disclosure answers need an explicit review acknowledgement,
+  stored as an audit row. Owner or admin can finalise.
 
-When Evidence and DOCX are connected, the statutory draft page
-(`/year-ends/{id}/draft`) gets its own export control, separate from the
-Statements page export. Word (DOCX), the Week 11 statutory render, is the
-primary format accountants use for final review before filing. PDF is a
-secondary option. That control is additive to the existing Statements
-export. It stays blocked until the render path can read a Product 1 source:
-`finalise_draft` still requires a trial-balance version,
-`evidence_for_version` reads `findraft_tb_lines` and `source_document_id`,
-and `findraft_render_jobs.tb_version_id` is NOT NULL.
+The statutory draft page (`/year-ends/{id}/draft`) exports Word from the
+draft. After finalise, that Word file and the adopted PDF are the stored
+snapshot. PDF on the Statements page stays a separate download.
 
 ### Statutory workspace — one page, one dropdown, in-page sidebar
 

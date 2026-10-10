@@ -514,7 +514,7 @@ async def test_week10_lock_adjust_and_freeze_final(
     final = await api_client.post(
         _draft_path(year_end_id, new_id, "finalise"),
         headers={**headers, "Idempotency-Key": "week10-final"},
-        json={"row_version": 1},
+        json={"row_version": 1, "reviewed_carried_disclosures": True},
     )
     assert final.status_code == 200, final.text
     stored = final.json()
@@ -527,7 +527,7 @@ async def test_week10_lock_adjust_and_freeze_final(
     again = await api_client.post(
         _draft_path(year_end_id, new_id, "finalise"),
         headers={**headers, "Idempotency-Key": "week10-final"},
-        json={"row_version": 1},
+        json={"row_version": 1, "reviewed_carried_disclosures": True},
     )
     assert again.status_code == 200, again.text
     assert again.json()["row_version"] == stored["row_version"]

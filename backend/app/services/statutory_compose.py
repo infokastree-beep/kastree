@@ -126,6 +126,23 @@ def docx_presentation(
     return page_header, signature
 
 
+def docx_presentation_for_year_end(
+    document: StatutoryStatements,
+    year_end: YearEnd,
+) -> tuple[str, dict[str, object]]:
+    """Word header and signature for one year end.
+
+    The draft workflow calls this so it does not read presentation settings
+    itself. Figures stay on the engine document.
+    """
+    return docx_presentation(
+        document,
+        report_setup=year_end.report_setup,
+        approval_date=year_end.approval_date,
+        signing_directors=year_end.signing_directors,
+    )
+
+
 def compose_year_end_pdf(
     document: StatutoryStatements,
     year_end: YearEnd,

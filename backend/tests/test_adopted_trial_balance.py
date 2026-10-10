@@ -6,6 +6,9 @@ created, and account_mappings are not copied into findraft_confirmed_mappings.
 
 from __future__ import annotations
 
+import shutil
+import subprocess
+import tempfile
 import uuid
 import zipfile
 from collections.abc import Iterator
@@ -33,6 +36,8 @@ from app.services.adopted_trial_balance import (
 from app.services.fa_import_worker import process_fa_version
 from app.services.reconciliation import ReconciliationRejected
 from app.services.render_jobs import process_render_job
+from findraft.engine.notes import ANSWER_FLAGS
+from findraft.models.adjustments import DisclosureAnswer
 from app.services.statutory_sublines import needs_statutory_subline, suggest_subline
 from app.services.source_storage import LocalPracticeStorage, get_source_storage
 from tests.conftest import auth_headers, make_access_token
@@ -236,8 +241,9 @@ def _golden_rows() -> tuple[tuple[str, str, str, str, str, str], ...]:
     return tuple(built)
 
 
-def _retire(tb_id: uuid.UUID) -> None:
+def _retire(tb_id: uuid.UUID, org_id: uuid.UUID) -> None:
     with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
         session.execute(
             text(
                 "UPDATE trial_balances "
@@ -248,8 +254,9 @@ def _retire(tb_id: uuid.UUID) -> None:
         session.commit()
 
 
-def _pointer(year_end_id: str) -> str | None:
+def _pointer(year_end_id: str, org_id: uuid.UUID) -> str | None:
     with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
         value = session.execute(
             text(
                 "SELECT adopted_trial_balance_id FROM findraft_year_ends "
@@ -262,8 +269,9 @@ def _pointer(year_end_id: str) -> str | None:
     return str(value)
 
 
-def _draft_count(year_end_id: str) -> int:
+def _draft_count(year_end_id: str, org_id: uuid.UUID) -> int:
     with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
         count = session.execute(
             text(
                 "SELECT count(*) FROM findraft_draft_versions "
@@ -274,7 +282,7 @@ def _draft_count(year_end_id: str) -> int:
     return int(count)
 
 
-def _child_count(table: str, draft_id: str) -> int:
+def _child_count(table: str, draft_id: str, org_id: uuid.UUID) -> int:
     if table == "findraft_adjustment_journals":
         statement = (
             "SELECT count(*) FROM findraft_adjustment_journals "
@@ -288,12 +296,16 @@ def _child_count(table: str, draft_id: str) -> int:
     else:
         raise AssertionError(table)
     with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
         count = session.execute(text(statement), {"id": draft_id}).scalar_one()
     return int(count)
 
 
-def _frozen_mapping(draft_id: str, nominal_code: str) -> str | None:
+def _frozen_mapping(
+    draft_id: str, nominal_code: str, org_id: uuid.UUID
+) -> str | None:
     with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
         value = session.execute(
             text(
                 "SELECT frozen_inputs->'mappings'->>:code "
@@ -306,8 +318,14 @@ def _frozen_mapping(draft_id: str, nominal_code: str) -> str | None:
     return str(value)
 
 
-def _remap(company_id: uuid.UUID, source_code: str, canonical_line: str) -> None:
+def _remap(
+    company_id: uuid.UUID,
+    source_code: str,
+    canonical_line: str,
+    org_id: uuid.UUID,
+) -> None:
     with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
         session.execute(
             text(
                 "UPDATE account_mappings SET canonical_line = :line "
@@ -334,6 +352,7 @@ def _sofp_amount(body: dict[str, object], label: str) -> str:
 
 def _statutory_copy_counts(org_id: uuid.UUID, year_end_id: str) -> tuple[int, int]:
     with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
         versions = session.execute(
             text("SELECT count(*) FROM findraft_tb_versions WHERE year_end_id = :id"),
             {"id": year_end_id},
@@ -417,7 +436,7 @@ async def test_adopted_golden_keeps_engine_figures_without_a_statutory_copy(
     assert {
         line["nominal_code"]: line["canonical_line"] for line in body["lines"]
     } == _MAPPINGS
-    assert _pointer(year_end_id) == str(tb_id)
+    assert _pointer(year_end_id, provisioned_org["org_id"]) == str(tb_id)
     assert _statutory_copy_counts(provisioned_org["org_id"], year_end_id) == (0, 0)
 
     statements = await api_client.get(
@@ -533,8 +552,8 @@ async def test_adopt_refuses_incomplete_unconfirmed_and_other_company(
             json={"trial_balance_id": str(tb_id)},
         )
         assert response.status_code == 400, response.text
-        assert _pointer(year_end_id) is None
-        _retire(tb_id)
+        assert _pointer(year_end_id, org_id) is None
+        _retire(tb_id, org_id)
 
     # A confirmed chart that still needs a sub-line can be adopted. The
     # draft opens; statement generation stays closed until the choice.
@@ -560,7 +579,7 @@ async def test_adopt_refuses_incomplete_unconfirmed_and_other_company(
     )
     assert listed.status_code == 200, listed.text
     assert [item["id"] for item in listed.json()["items"]] == [str(waiting)]
-    _retire(waiting)
+    _retire(waiting, org_id)
     cleared = await api_client.get(
         f"/year-ends/{year_end_id}/adoptable-trial-balances",
         headers=headers,
@@ -575,7 +594,7 @@ async def test_adopt_refuses_incomplete_unconfirmed_and_other_company(
             json={"trial_balance_id": str(tb_id)},
         )
         assert response.status_code == status, response.text
-        assert _pointer(year_end_id) is None
+        assert _pointer(year_end_id, org_id) is None
 
 
 @pytest.mark.asyncio
@@ -640,9 +659,10 @@ async def test_viewer_can_read_adoption_and_cannot_adopt(
     assert listed.json()["items"][0]["id"] == str(tb_id)
 
 
-def _insert_bare_tb(company_id: uuid.UUID) -> uuid.UUID:
+def _insert_bare_tb(company_id: uuid.UUID, org_id: uuid.UUID) -> uuid.UUID:
     tb_id = uuid.uuid4()
     with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
         session.execute(
             text(
                 """
@@ -667,8 +687,8 @@ def test_findraft_app_cannot_adopt_another_practices_trial_balance() -> None:
     suffix = uuid.uuid4().hex[:8]
     first = _provision(f"a{suffix}")
     second = _provision(f"b{suffix}")
-    first_tb = _insert_bare_tb(first["company_id"])
-    second_tb = _insert_bare_tb(second["company_id"])
+    first_tb = _insert_bare_tb(first["company_id"], first["org_id"])
+    second_tb = _insert_bare_tb(second["company_id"], second["org_id"])
     try:
         with SyncSessionLocal() as session:
             try:
@@ -756,6 +776,7 @@ def test_findraft_app_cannot_adopt_another_practices_trial_balance() -> None:
                 session.rollback()
                 session.execute(text("RESET ROLE"))
         with SyncSessionLocal() as session:
+            set_rls_org_id(session, first["org_id"])
             with pytest.raises(
                 DBAPIError, match="adopted trial balance belongs to another company"
             ):
@@ -779,9 +800,10 @@ def test_findraft_app_cannot_adopt_another_practices_trial_balance() -> None:
 
 
 def _year_end_row(
-    company_id: uuid.UUID, period_end: date
+    company_id: uuid.UUID, period_end: date, org_id: uuid.UUID
 ) -> tuple[str, str | None] | None:
     with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
         row = session.execute(
             text(
                 "SELECT id::text, adopted_trial_balance_id::text "
@@ -834,7 +856,7 @@ async def test_statements_trial_balance_opens_a_statutory_year_end(
     assert {
         line["nominal_code"]: line["canonical_line"] for line in body["lines"]
     } == _MAPPINGS
-    assert _pointer(year_end_id) == str(tb_id)
+    assert _pointer(year_end_id, provisioned_org["org_id"]) == str(tb_id)
     assert _statutory_copy_counts(provisioned_org["org_id"], year_end_id) == (0, 0)
 
     second = await api_client.post(
@@ -899,7 +921,9 @@ async def test_statutory_continuation_creates_the_year_end_when_missing(
         json={},
     )
     assert response.status_code == 200, response.text
-    stored = _year_end_row(provisioned_org["company_id"], date(2026, 12, 31))
+    stored = _year_end_row(
+        provisioned_org["company_id"], date(2026, 12, 31), provisioned_org["org_id"]
+    )
     assert stored is not None
     assert stored[0] == response.json()["year_end_id"]
     assert stored[1] == str(tb_id)
@@ -926,14 +950,14 @@ async def test_statutory_continuation_creates_the_year_end_when_missing(
     assert draft.json()["version_number"] == 1
     assert draft.json()["mapping_notice"] is None
     assert draft.json()["frozen"] is False
-    assert _draft_count(response.json()["year_end_id"]) == 1
+    assert _draft_count(response.json()["year_end_id"], provisioned_org["org_id"]) == 1
     again = await api_client.post(
         f"/trial-balances/{tb_id}/statutory-year-end",
         headers=headers,
         json={},
     )
     assert again.status_code == 200, again.text
-    assert _draft_count(response.json()["year_end_id"]) == 1
+    assert _draft_count(response.json()["year_end_id"], provisioned_org["org_id"]) == 1
     assert _statutory_copy_counts(provisioned_org["org_id"], stored[0]) == (0, 0)
     unknown = await api_client.get(
         f"/year-ends/{uuid.uuid4()}",
@@ -968,7 +992,7 @@ async def test_statutory_continuation_refuses_unconfirmed_incomplete_and_early_p
     )
     assert refused.status_code == 400, refused.text
     assert "is not confirmed" in refused.json()["detail"]
-    assert _year_end_row(company_id, date(2026, 12, 31)) is None
+    assert _year_end_row(company_id, date(2026, 12, 31), org_id) is None
 
     incomplete = _insert_tb(
         org_id=org_id,
@@ -988,7 +1012,7 @@ async def test_statutory_continuation_refuses_unconfirmed_incomplete_and_early_p
     )
     assert not_ready.status_code == 400, not_ready.text
     assert "not a completed" in not_ready.json()["detail"]
-    assert _year_end_row(company_id, date(2026, 6, 30)) is None
+    assert _year_end_row(company_id, date(2026, 6, 30), org_id) is None
 
     missing_start = _insert_tb(
         org_id=org_id,
@@ -1006,7 +1030,7 @@ async def test_statutory_continuation_refuses_unconfirmed_incomplete_and_early_p
     )
     assert no_start.status_code == 400, no_start.text
     assert no_start.json()["detail"] == "This trial balance has no period start"
-    assert _year_end_row(company_id, date(2026, 9, 30)) is None
+    assert _year_end_row(company_id, date(2026, 9, 30), org_id) is None
 
     early = _insert_tb(
         org_id=org_id,
@@ -1025,7 +1049,7 @@ async def test_statutory_continuation_refuses_unconfirmed_incomplete_and_early_p
     )
     assert too_early.status_code == 400, too_early.text
     assert "2026-01-01" in too_early.json()["detail"]
-    assert _year_end_row(company_id, date(2025, 12, 31)) is None
+    assert _year_end_row(company_id, date(2025, 12, 31), org_id) is None
 
 
 @pytest.mark.asyncio
@@ -1069,18 +1093,116 @@ async def test_statutory_continuation_refuses_a_different_pinned_pack(
     )
     assert response.status_code == 409, response.text
     assert "other-pack 1999.01" in response.json()["detail"]
-    stored = _year_end_row(company_id, date(2026, 12, 31))
+    stored = _year_end_row(company_id, date(2026, 12, 31), org_id)
     assert stored is not None
     assert stored[1] is None
 
 
-def _draft_version(draft_id: str) -> int:
+def _draft_version(draft_id: str, org_id: uuid.UUID) -> int:
     with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
         value = session.execute(
             text("SELECT row_version FROM findraft_draft_versions WHERE id = :id"),
             {"id": draft_id},
         ).scalar_one()
     return int(value)
+
+
+_FILE_HASH = "ab" * 32
+
+
+def _set_file_hash(tb_id: uuid.UUID, org_id: uuid.UUID, digest: str) -> None:
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        session.execute(
+            text("UPDATE trial_balances SET file_hash = :digest WHERE id = :id"),
+            {"digest": digest, "id": str(tb_id)},
+        )
+        session.commit()
+
+
+def _snapshot(draft_id: str, org_id: uuid.UUID) -> dict[str, object] | None:
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        value = session.execute(
+            text("SELECT snapshot FROM findraft_draft_versions WHERE id = :id"),
+            {"id": draft_id},
+        ).scalar_one()
+    if value is None:
+        return None
+    assert isinstance(value, dict)
+    return value
+
+
+def _answer_all_no(*, org_id: uuid.UUID, company_id: uuid.UUID, draft_id: str) -> None:
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        for name in sorted(ANSWER_FLAGS):
+            session.add(
+                DisclosureAnswer(
+                    org_id=org_id,
+                    company_id=company_id,
+                    draft_version_id=uuid.UUID(draft_id),
+                    flag_name=name,
+                    answer=False,
+                )
+            )
+        session.commit()
+
+
+async def _record_letterhead(
+    api_client: AsyncClient, headers: dict[str, str], year_end_id: str
+) -> None:
+    saved = await api_client.put(
+        f"/year-ends/{year_end_id}/company-details",
+        headers=headers,
+        json={
+            "registered_office": "1 Harbour Street, Dublin",
+            "company_number": "AB123456",
+            "directors": [{"name": "Ada Lovelace"}],
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    approved = await api_client.put(
+        f"/year-ends/{year_end_id}/approval",
+        headers=headers,
+        json={
+            "approval_date": "2027-03-15",
+            "signing_directors": ["Ada Lovelace"],
+        },
+    )
+    assert approved.status_code == 200, approved.text
+
+
+async def _open_adopted(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+    *,
+    rows: tuple[tuple[str, str, str, str, str, str], ...],
+) -> tuple[str, str, dict[str, str]]:
+    tb_id = _insert_tb(
+        org_id=provisioned_org["org_id"],
+        company_id=provisioned_org["company_id"],
+        rows=rows,
+        period_start=date(2026, 1, 1),
+    )
+    _set_file_hash(tb_id, provisioned_org["org_id"], _FILE_HASH)
+    headers = auth_headers(provisioned_org["token"])
+    opened = await api_client.post(
+        f"/trial-balances/{tb_id}/statutory-year-end",
+        headers=headers,
+        json={},
+    )
+    assert opened.status_code == 200, opened.text
+    year_end_id = opened.json()["year_end_id"]
+    period = await api_client.post(
+        f"/year-ends/{year_end_id}/first-financial-period",
+        headers=headers,
+    )
+    assert period.status_code == 200, period.text
+    draft = await api_client.get(f"/year-ends/{year_end_id}/draft", headers=headers)
+    assert draft.status_code == 200, draft.text
+    return year_end_id, draft.json()["draft_id"], headers
 
 
 @pytest.mark.asyncio
@@ -1150,7 +1272,9 @@ async def test_adopted_draft_adjusts_discloses_notices_and_starts_a_new_report(
         },
     )
     assert posted.status_code == 200, posted.text
-    assert _child_count("findraft_adjustment_journals", first_id) == 1
+    assert _child_count(
+        "findraft_adjustment_journals", first_id, provisioned_org["org_id"]
+    ) == 1
     moved = await api_client.get(
         f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
         headers=headers,
@@ -1169,14 +1293,21 @@ async def test_adopted_draft_adjusts_discloses_notices_and_starts_a_new_report(
         },
     )
     assert answered.status_code == 200, answered.text
-    assert _child_count("findraft_disclosure_answers", first_id) == 1
+    assert _child_count(
+        "findraft_disclosure_answers", first_id, provisioned_org["org_id"]
+    ) == 1
     recomputed = await api_client.post(
         f"/year-ends/{year_end_id}/drafts/{first_id}/recompute",
         headers={**headers, "Idempotency-Key": "adopted-recompute"},
         json={"row_version": answered.json()["row_version"]},
     )
     assert recomputed.status_code == 200, recomputed.text
-    _remap(provisioned_org["company_id"], "2130", "other_receivables")
+    _remap(
+        provisioned_org["company_id"],
+        "2130",
+        "other_receivables",
+        provisioned_org["org_id"],
+    )
     noticed = await api_client.get(f"/year-ends/{year_end_id}/draft", headers=headers)
     assert noticed.status_code == 200, noticed.text
     assert noticed.json()["mapping_notice"] == (
@@ -1209,12 +1340,22 @@ async def test_adopted_draft_adjusts_discloses_notices_and_starts_a_new_report(
     second_id = started.json()["draft_id"]
     assert second_id != first_id
     assert started.json()["version_number"] == 2
-    assert _frozen_mapping(first_id, "2130") == "OTHER_DEBTORS"
-    assert _child_count("findraft_adjustment_journals", first_id) == 1
-    assert _child_count("findraft_adjustment_journals", second_id) == 0
-    assert _child_count("findraft_disclosure_answers", first_id) == 1
-    assert _child_count("findraft_disclosure_answers", second_id) == 0
-    _remap(provisioned_org["company_id"], "2130", "cash")
+    assert _frozen_mapping(first_id, "2130", provisioned_org["org_id"]) == "OTHER_DEBTORS"
+    assert _child_count(
+        "findraft_adjustment_journals", first_id, provisioned_org["org_id"]
+    ) == 1
+    assert _child_count(
+        "findraft_adjustment_journals", second_id, provisioned_org["org_id"]
+    ) == 0
+    assert _child_count(
+        "findraft_disclosure_answers", first_id, provisioned_org["org_id"]
+    ) == 1
+    assert _child_count(
+        "findraft_disclosure_answers", second_id, provisioned_org["org_id"]
+    ) == 0
+    _remap(
+        provisioned_org["company_id"], "2130", "cash", provisioned_org["org_id"]
+    )
     active = await api_client.get(
         f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
         headers=headers,
@@ -1222,7 +1363,7 @@ async def test_adopted_draft_adjusts_discloses_notices_and_starts_a_new_report(
     assert active.status_code == 200, active.text
     assert active.json()["renderable"] is True, active.text
     assert _sofp_amount(active.json(), "Cash at bank and in hand") != cash_when_remapped
-    assert _frozen_mapping(first_id, "2130") == "OTHER_DEBTORS"
+    assert _frozen_mapping(first_id, "2130", provisioned_org["org_id"]) == "OTHER_DEBTORS"
     current = await api_client.get(f"/year-ends/{year_end_id}/draft", headers=headers)
     assert current.status_code == 200, current.text
     assert current.json()["draft_id"] == second_id
@@ -1233,7 +1374,7 @@ async def test_adopted_draft_adjusts_discloses_notices_and_starts_a_new_report(
     stale = await api_client.post(
         f"/year-ends/{year_end_id}/drafts/{first_id}/new-report",
         headers=headers,
-        json={"row_version": _draft_version(first_id)},
+        json={"row_version": _draft_version(first_id, provisioned_org["org_id"])},
     )
     assert stale.status_code == 409, stale.text
     assert stale.json()["detail"] == "This draft is not the active report"
@@ -1247,10 +1388,11 @@ async def test_adopted_draft_adjusts_discloses_notices_and_starts_a_new_report(
         headers={**headers, "Idempotency-Key": "adopted-finalise"},
         json={"row_version": current.json()["row_version"]},
     )
-    assert refused.status_code == 400, refused.text
-    assert refused.json()["detail"] == "Draft has no trial balance"
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["detail"] == "Directors have not been recorded."
+    assert _snapshot(second_id, provisioned_org["org_id"]) is None
     assert _statutory_copy_counts(provisioned_org["org_id"], year_end_id) == (0, 0)
-    assert _draft_count(year_end_id) == 2
+    assert _draft_count(year_end_id, provisioned_org["org_id"]) == 2
 
 
 @pytest.mark.asyncio
@@ -1474,9 +1616,7 @@ async def test_adopted_draft_word_export_is_draft_without_tb_version(
             if name.startswith("word/header")
         ]
     assert header_parts
-    assert all(
-        "DRAFT" in header and "FINAL" not in header for header in header_parts
-    )
+    assert all("DRAFT" in header and "FINAL" not in header for header in header_parts)
     assert "DRAFT" not in xml
     assert "FINAL" not in xml
     replay = await api_client.post(
@@ -1485,3 +1625,476 @@ async def test_adopted_draft_word_export_is_draft_without_tb_version(
     )
     assert replay.status_code == 202, replay.text
     assert replay.json()["job_id"] == job_id
+
+
+def _pdf_text(payload: bytes) -> str:
+    exe = shutil.which("pdftotext")
+    assert exe is not None, "pdftotext is not installed"
+    with tempfile.NamedTemporaryFile(suffix=".pdf") as handle:
+        handle.write(payload)
+        handle.flush()
+        completed = subprocess.run(
+            [exe, "-layout", handle.name, "-"],
+            check=True,
+            capture_output=True,
+        )
+    return completed.stdout.decode("utf-8")
+
+
+def _refuse_draft_change(
+    org_id: uuid.UUID,
+    draft_id: str,
+    assignment: str,
+    match: str,
+    extra: dict[str, object] | None = None,
+) -> None:
+    params: dict[str, object] = {"id": draft_id}
+    if extra is not None:
+        params.update(extra)
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        with pytest.raises(DBAPIError, match=match):
+            session.execute(
+                text(
+                    f"UPDATE findraft_draft_versions SET {assignment} WHERE id = :id"
+                ),
+                params,
+            )
+            session.commit()
+        session.rollback()
+
+
+def _source_documents(org_id: uuid.UUID) -> int:
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        count = session.execute(
+            text("SELECT count(*) FROM findraft_source_documents WHERE org_id = :org"),
+            {"org": str(org_id)},
+        ).scalar_one()
+    return int(count)
+
+
+async def _ready_golden(
+    api_client: AsyncClient, provisioned_org: dict
+) -> tuple[str, str, dict[str, str]]:
+    """Golden chart with the opening reserve confirmed as the prior year.
+
+    A first period stores no opening reserve, so the roll-forward check
+    would stay critical. Confirming that credit lets FINAL proceed.
+    """
+    tb_id = _insert_tb(
+        org_id=provisioned_org["org_id"],
+        company_id=provisioned_org["company_id"],
+        rows=_golden_rows(),
+        period_start=date(2026, 1, 1),
+    )
+    _set_file_hash(tb_id, provisioned_org["org_id"], _FILE_HASH)
+    headers = auth_headers(provisioned_org["token"])
+    opened = await api_client.post(
+        f"/trial-balances/{tb_id}/statutory-year-end",
+        headers=headers,
+        json={},
+    )
+    assert opened.status_code == 200, opened.text
+    year_end_id = opened.json()["year_end_id"]
+    prior = await api_client.post(
+        f"/year-ends/{year_end_id}/prior-year",
+        headers=headers,
+        json={"lines": [{"canonical_line": "RETAINED_EARNINGS", "amount": "-322062.00"}]},
+    )
+    assert prior.status_code == 200, prior.text
+    draft = await api_client.get(f"/year-ends/{year_end_id}/draft", headers=headers)
+    assert draft.status_code == 200, draft.text
+    draft_id = draft.json()["draft_id"]
+    await _record_letterhead(api_client, headers, year_end_id)
+    _answer_all_no(
+        org_id=provisioned_org["org_id"],
+        company_id=provisioned_org["company_id"],
+        draft_id=draft_id,
+    )
+    board = await api_client.get(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/dashboard",
+        headers=headers,
+    )
+    assert board.status_code == 200, board.text
+    assert board.json()["can_finalise"] is True, board.text
+    return year_end_id, draft_id, headers
+
+
+@pytest.mark.asyncio
+async def test_finalised_adopted_draft_ignores_a_later_mapping_edit(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+    stored_files: LocalPracticeStorage,
+) -> None:
+    """Product 1 edits after FINAL do not change the stored PDF or Word file."""
+    year_end_id, draft_id, headers = await _ready_golden(api_client, provisioned_org)
+    before = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
+        headers=headers,
+    )
+    assert before.status_code == 200, before.text
+    cash_before = _sofp_amount(before.json(), "Cash at bank and in hand")
+    reserves_before = _sofp_amount(before.json(), "Profit and loss account")
+    finalised = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/finalise",
+        headers={**headers, "Idempotency-Key": "adopted-final-snapshot"},
+        json={"row_version": _draft_version(draft_id, provisioned_org["org_id"])},
+    )
+    assert finalised.status_code == 200, finalised.text
+    assert finalised.json()["status"] == "final"
+    stored = _snapshot(draft_id, provisioned_org["org_id"])
+    assert stored is not None
+    assert stored["html"]
+    assert stored["composed_html"]
+    assert stored["html"] != stored["composed_html"]
+    sections = stored["composed_sections"]
+    assert isinstance(sections, list) and sections
+    current = stored["canonical_current"]
+    assert isinstance(current, dict)
+    closing = Decimal(str(current["RETAINED_EARNINGS"]))
+    print(f"canonical_current RETAINED_EARNINGS={closing}")
+    assert closing == Decimal("455712.00")
+    assert closing != Decimal("322062.00")
+    assert closing == Decimal(reserves_before)
+    evidence = stored["evidence"]
+    assert isinstance(evidence, dict)
+    documents = evidence["documents"]
+    assert isinstance(documents, list) and len(documents) == 1
+    assert documents[0]["file_hash"] == _FILE_HASH
+    assert documents[0]["filename"] == _FILE_HASH
+    assert "file://" not in str(evidence)
+    lines = evidence["lines"]
+    assert isinstance(lines, list)
+    codes: list[str] = []
+    for line in lines:
+        assert isinstance(line, dict)
+        accounts = line["accounts"]
+        assert isinstance(accounts, list)
+        for account in accounts:
+            assert isinstance(account, dict)
+            assert account["source_document_id"] is None
+            assert account["tb_line_id"] is None
+            codes.append(str(account["nominal_code"]))
+    assert "2130" in codes
+    assert "3100" in codes
+    assert _source_documents(provisioned_org["org_id"]) == 0
+    _remap(
+        provisioned_org["company_id"],
+        "2130",
+        "other_receivables",
+        provisioned_org["org_id"],
+    )
+    after = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
+        headers=headers,
+    )
+    assert after.status_code == 200, after.text
+    assert _sofp_amount(after.json(), "Cash at bank and in hand") == cash_before
+    assert after.json()["profit"] == before.json()["profit"]
+    pdf = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
+        headers=headers,
+    )
+    assert pdf.status_code == 200, pdf.text
+    assert pdf.content.startswith(b"%PDF")
+    assert pdf.headers["content-disposition"].endswith(
+        'filename="statutory-statements-final.pdf"'
+    )
+    composed = stored["composed_html"]
+    assert isinstance(composed, str)
+    # WeasyPrint stamps a fresh document id, so two renders of the same
+    # HTML are not byte-identical. The extracted face still shows the cash
+    # that was frozen before the Product 1 remap.
+    rendered = _pdf_text(pdf.content)
+    assert "284,912" in rendered
+    assert "FINAL" in rendered
+    created = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/document.docx",
+        headers={**headers, "Idempotency-Key": "adopted-final-word"},
+    )
+    assert created.status_code == 202, created.text
+    job_id = created.json()["job_id"]
+    with SyncSessionLocal() as session:
+        processed = process_render_job(
+            session,
+            org_id=provisioned_org["org_id"],
+            job_id=uuid.UUID(job_id),
+            storage=stored_files,
+        )
+    if processed is None:
+        with SyncSessionLocal() as session:
+            set_rls_org_id(session, provisioned_org["org_id"])
+            stored_job = session.execute(
+                text(
+                    "SELECT status, storage_key, error_message "
+                    "FROM findraft_render_jobs WHERE id = :id"
+                ),
+                {"id": job_id},
+            ).one()
+        assert stored_job[0] == "ready", stored_job[2]
+        assert stored_job[1] is not None
+        content = stored_files.get(key=stored_job[1])
+    else:
+        assert processed.status == "ready", processed.error_message
+        assert processed.storage_key is not None
+        content = stored_files.get(key=processed.storage_key)
+    with zipfile.ZipFile(BytesIO(content)) as archive:
+        xml = archive.read("word/document.xml").decode()
+        header_parts = [
+            archive.read(name).decode()
+            for name in archive.namelist()
+            if name.startswith("word/header")
+        ]
+    assert header_parts
+    assert all("FINAL" in header and "DRAFT" not in header for header in header_parts)
+    assert "284,912" in xml
+
+
+@pytest.mark.asyncio
+async def test_member_cannot_finalise_an_adopted_draft(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    year_end_id, draft_id, _headers = await _open_adopted(
+        api_client, provisioned_org, rows=_CASH_PAIR
+    )
+    _user_id, clerk_user_id, _issued = _add_org_user(
+        org_id=provisioned_org["org_id"],
+        clerk_org_id=provisioned_org["clerk_org_id"],
+        role="member",
+        email_prefix="finalise-member",
+    )
+    member = auth_headers(
+        make_access_token(
+            clerk_user_id=clerk_user_id,
+            clerk_org_id=provisioned_org["clerk_org_id"],
+            role="owner",
+            org_uuid=provisioned_org["org_id"],
+        )
+    )
+    refused = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/finalise",
+        headers={**member, "Idempotency-Key": "member-finalise"},
+        json={"row_version": _draft_version(draft_id, provisioned_org["org_id"])},
+    )
+    assert refused.status_code == 403, refused.text
+    assert refused.json()["detail"] == _FORBIDDEN
+    assert _snapshot(draft_id, provisioned_org["org_id"]) is None
+
+
+@pytest.mark.asyncio
+async def test_missing_directors_block_finalise_without_a_snapshot(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    year_end_id, draft_id, headers = await _open_adopted(
+        api_client, provisioned_org, rows=_CASH_PAIR
+    )
+    refused = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/finalise",
+        headers={**headers, "Idempotency-Key": "missing-directors"},
+        json={"row_version": _draft_version(draft_id, provisioned_org["org_id"])},
+    )
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["detail"] == "Directors have not been recorded."
+    assert _snapshot(draft_id, provisioned_org["org_id"]) is None
+
+
+@pytest.mark.asyncio
+async def test_frozen_adopted_draft_finalises_from_frozen_inputs(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """A report started later does not change the frozen draft's FINAL figures."""
+    year_end_id, first_id, headers = await _ready_golden(api_client, provisioned_org)
+    before = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
+        headers=headers,
+    )
+    assert before.status_code == 200, before.text
+    cash_before = _sofp_amount(before.json(), "Cash at bank and in hand")
+    started = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{first_id}/new-report",
+        headers=headers,
+        json={"row_version": _draft_version(first_id, provisioned_org["org_id"])},
+    )
+    assert started.status_code == 200, started.text
+    _remap(
+        provisioned_org["company_id"],
+        "2130",
+        "other_receivables",
+        provisioned_org["org_id"],
+    )
+    active = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
+        headers=headers,
+    )
+    assert active.status_code == 200, active.text
+    assert _sofp_amount(active.json(), "Cash at bank and in hand") != cash_before
+    finalised = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{first_id}/finalise",
+        headers={**headers, "Idempotency-Key": "frozen-finalise"},
+        json={"row_version": _draft_version(first_id, provisioned_org["org_id"])},
+    )
+    assert finalised.status_code == 200, finalised.text
+    stored = _snapshot(first_id, provisioned_org["org_id"])
+    assert stored is not None
+    statement = stored["statement"]
+    assert isinstance(statement, dict)
+    assert _sofp_amount(statement, "Cash at bank and in hand") == cash_before
+    still_live = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
+        headers=headers,
+    )
+    assert still_live.status_code == 200, still_live.text
+    assert _sofp_amount(still_live.json(), "Cash at bank and in hand") != cash_before
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
+        with pytest.raises(DBAPIError, match="frozen draft is immutable"):
+            session.execute(
+                text(
+                    "UPDATE findraft_draft_versions SET is_frozen = false WHERE id = :id"
+                ),
+                {"id": first_id},
+            )
+            session.commit()
+        session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_frozen_status_guard_refuses_every_other_change(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """The guard allows one frozen transition: draft to final. Nothing else."""
+    year_end_id, first_id, headers = await _open_adopted(
+        api_client, provisioned_org, rows=_CASH_PAIR
+    )
+    started = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{first_id}/new-report",
+        headers=headers,
+        json={"row_version": _draft_version(first_id, provisioned_org["org_id"])},
+    )
+    assert started.status_code == 200, started.text
+    org_id = provisioned_org["org_id"]
+    _refuse_draft_change(
+        org_id, first_id, "is_frozen = false", "frozen draft is immutable"
+    )
+    _refuse_draft_change(
+        org_id,
+        first_id,
+        "frozen_inputs = '{\"replaced\": true}'::jsonb",
+        "frozen draft is immutable",
+    )
+    _refuse_draft_change(
+        org_id,
+        first_id,
+        "mappings_sha256 = :sha",
+        "frozen draft is immutable",
+        {"sha": "c" * 64},
+    )
+    _refuse_draft_change(
+        org_id, first_id, "status = 'locked'", "frozen draft is immutable"
+    )
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        updated = session.execute(
+            text(
+                """
+                UPDATE findraft_draft_versions
+                SET status = 'final',
+                    snapshot = '{"watermark": "FINAL"}'::jsonb,
+                    inputs_sha256 = :inputs,
+                    engine_sha = :engine
+                WHERE id = :id
+                """
+            ),
+            {
+                "id": first_id,
+                "inputs": "a" * 64,
+                "engine": "b" * 64,
+            },
+        )
+        assert updated.rowcount == 1
+        session.commit()
+    for assignment, match, extra in (
+        ("status = 'draft'", "FINAL draft is immutable", None),
+        ("status = 'locked'", "FINAL draft is immutable", None),
+        (
+            "snapshot = '{\"watermark\": \"CHANGED\"}'::jsonb",
+            "FINAL draft is immutable",
+            None,
+        ),
+        ("inputs_sha256 = :sha", "FINAL draft is immutable", {"sha": "d" * 64}),
+        ("engine_sha = :sha", "FINAL draft is immutable", {"sha": "e" * 64}),
+        ("pack_id = 'other-pack'", "FINAL draft is immutable", None),
+        ("pack_version = '1999.01'", "FINAL draft is immutable", None),
+        ("is_frozen = false", "frozen draft is immutable", None),
+        (
+            "frozen_inputs = '{\"replaced\": true}'::jsonb",
+            "frozen draft is immutable",
+            None,
+        ),
+        ("mappings_sha256 = :sha", "frozen draft is immutable", {"sha": "f" * 64}),
+    ):
+        _refuse_draft_change(org_id, first_id, assignment, match, extra)
+
+
+@pytest.mark.asyncio
+async def test_carried_disclosure_answers_need_an_acknowledgement(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    year_end_id, draft_id, headers = await _ready_golden(api_client, provisioned_org)
+    locked = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/lock",
+        headers=headers,
+        json={"row_version": _draft_version(draft_id, provisioned_org["org_id"])},
+    )
+    assert locked.status_code == 200, locked.text
+    created = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/new-version",
+        headers=headers,
+        json={"row_version": locked.json()["row_version"]},
+    )
+    assert created.status_code == 200, created.text
+    child_id = created.json()["draft_id"]
+    child_board = await api_client.get(
+        f"/year-ends/{year_end_id}/drafts/{child_id}/dashboard",
+        headers=headers,
+    )
+    assert child_board.status_code == 200, child_board.text
+    assert "HAS_EMPLOYEES" in child_board.json()["carried_disclosures"]
+    refused = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{child_id}/finalise",
+        headers={**headers, "Idempotency-Key": "carried-without-ack"},
+        json={"row_version": created.json()["row_version"]},
+    )
+    assert refused.status_code == 409, refused.text
+    assert (
+        refused.json()["detail"]
+        == "Carried-over disclosure answers have not been acknowledged."
+    )
+    assert _snapshot(child_id, provisioned_org["org_id"]) is None
+    finalised = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{child_id}/finalise",
+        headers={**headers, "Idempotency-Key": "carried-with-ack"},
+        json={
+            "row_version": created.json()["row_version"],
+            "reviewed_carried_disclosures": True,
+        },
+    )
+    assert finalised.status_code == 200, finalised.text
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
+        recorded = session.execute(
+            text(
+                "SELECT new_value FROM audit_logs WHERE org_id = :org "
+                "AND entity_id = :draft AND action = 'carried_disclosures_reviewed'"
+            ),
+            {"org": str(provisioned_org["org_id"]), "draft": child_id},
+        ).scalar_one()
+    assert isinstance(recorded, dict)
+    assert recorded["reviewed"] is True
+    assert "HAS_EMPLOYEES" in recorded["flag_names"]

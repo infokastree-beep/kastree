@@ -174,6 +174,23 @@ async def preview_revision_payload(
     }
 
 
+def _composed_from_snapshot(
+    snapshot: object,
+) -> tuple[str, list[dict[str, object]]] | None:
+    if not isinstance(snapshot, dict):
+        return None
+    html = snapshot.get("composed_html")
+    sections = snapshot.get("composed_sections")
+    if not isinstance(html, str) or not html or not isinstance(sections, list):
+        return None
+    typed: list[dict[str, object]] = []
+    for item in sections:
+        if not isinstance(item, dict):
+            return None
+        typed.append({str(key): value for key, value in item.items()})
+    return html, typed
+
+
 async def build_section_preview(
     session: AsyncSession,
     *,
@@ -185,10 +202,24 @@ async def build_section_preview(
     payload = await preview_revision_payload(
         session, org_id=org_id, year_end=year_end, company=company
     )
-    document = await statements_for_adopted(session, org_id=org_id, year_end=year_end)
-    if not document.renderable or document.html is None:
-        raise PreviewRejected(NOT_RENDERABLE, 400)
-    full_html, sections = compose_year_end_parts(document, year_end, company=company)
+    draft = await active_adopted_draft(session, org_id=org_id, year_end=year_end)
+    watermark = "DRAFT"
+    if draft is not None and draft.status == "final":
+        stored = _composed_from_snapshot(draft.snapshot)
+        if stored is None:
+            raise PreviewRejected("FINAL snapshot is missing", 409)
+        full_html, sections = stored
+        watermark = "FINAL"
+    else:
+        document = await statements_for_adopted(
+            session, org_id=org_id, year_end=year_end
+        )
+        if not document.renderable or document.html is None:
+            raise PreviewRejected(NOT_RENDERABLE, 400)
+        full_html, sections = compose_year_end_parts(
+            document, year_end, company=company
+        )
+        watermark = document.watermark
     section_html = extract_section_html(full_html, section_id)
     if section_html is None:
         raise PreviewRejected(SECTION_ABSENT, 404)
@@ -199,7 +230,7 @@ async def build_section_preview(
         anchor=section_id,
         row_version=row_version,
         preview_revision=revision_token(payload),
-        watermark=document.watermark,
+        watermark=watermark,
         html=preview_document(full_html, section_html),
         section_html=section_html,
         children=children_of(sections, section_id),
@@ -217,6 +248,12 @@ async def build_section_outline(
     empty: dict[str, tuple[PreviewChild, ...]] = {
         parent: () for parent in OUTLINE_PARENTS
     }
+    draft = await active_adopted_draft(session, org_id=org_id, year_end=year_end)
+    if draft is not None and draft.status == "final":
+        stored = _composed_from_snapshot(draft.snapshot)
+        if stored is None:
+            return empty
+        return {parent: children_of(stored[1], parent) for parent in OUTLINE_PARENTS}
     try:
         document = await statements_for_adopted(
             session, org_id=org_id, year_end=year_end

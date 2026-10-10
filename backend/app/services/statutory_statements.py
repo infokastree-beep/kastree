@@ -1398,6 +1398,28 @@ def _render_draft(
     )
 
 
+def canonical_current(
+    tb_lines: list[TBLine],
+    mappings: dict[str, str],
+) -> dict[str, Decimal]:
+    """Current canonical balances. Retained earnings is the closing figure.
+
+    Other lines stay the trial-balance aggregate, debit-positive. Retained
+    earnings is the profit and loss account on the statement of financial
+    position: the opening reserve, plus profit, minus dividends. Statement
+    builders keep reading the trial-balance aggregate, not this map.
+    """
+    aggregated = aggregate(tb_lines, mappings)
+    current = {str(key): money(value) for key, value in aggregated.items()}
+    profit = build_income_statement(aggregated, {}).get("profit")
+    if not isinstance(profit, Decimal):
+        raise ValueError("profit is missing")
+    opening = money(aggregated.get("RETAINED_EARNINGS", Decimal("0")))
+    dividends = money(aggregated.get("DIVIDENDS", Decimal("0")))
+    current["RETAINED_EARNINGS"] = money(-opening + profit - dividends)
+    return current
+
+
 def build_statutory_statements(
     *,
     prior_year_validated: bool,

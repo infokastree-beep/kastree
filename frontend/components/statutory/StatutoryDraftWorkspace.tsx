@@ -24,9 +24,13 @@ import {
   type ReportSetup,
   type ReportSetupWrite,
 } from "@/components/statutory/ReportSetupForm";
+import { FinaliseDraft } from "@/components/statutory/FinaliseDraft";
 import {
+  FINALISED_STATE,
   currencyCodeFromNotice,
+  finaliseFailureMessage,
   finaliseStatusLine,
+  pdfDownloadLabel,
 } from "@/lib/finalise-status";
 import { SectionPreview } from "@/components/statutory/SectionPreview";
 import { SectionsSetup } from "@/components/statutory/SectionsSetup";
@@ -91,6 +95,7 @@ type DraftDashboard = {
   traffic: "red" | "amber" | "green";
   can_finalise: boolean;
   unanswered_disclosures: string[];
+  carried_disclosures: string[];
   checks: DashboardCheck[];
 };
 
@@ -618,6 +623,40 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     }
   }
 
+  async function finaliseDraft(reviewedCarriedDisclosures: boolean): Promise<string | null> {
+    if (draft?.draft_id == null || dashboard == null) {
+      return "This draft could not be finalised.";
+    }
+    setError(null);
+    setBusy("Finalising…");
+    try {
+      await apiFetch(
+        `/year-ends/${yearEndId}/drafts/${draft.draft_id}/finalise`,
+        {
+          method: "POST",
+          getToken,
+          headers: { "Idempotency-Key": crypto.randomUUID() },
+          body: JSON.stringify({
+            row_version: dashboard.row_version,
+            reviewed_carried_disclosures: reviewedCarriedDisclosures,
+          }),
+        },
+      );
+      await queryClient.invalidateQueries({ queryKey: ["working-draft", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["statutory-pack"] });
+      await queryClient.invalidateQueries({ queryKey: ["statutory-preview", yearEndId] });
+      return null;
+    } catch (caught) {
+      if (caught instanceof ApiError) {
+        return finaliseFailureMessage(caught.status, messageFromPdfBody(caught.body));
+      }
+      return finaliseFailureMessage(0, null);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function markFirstPeriod(): Promise<void> {
     setError(null);
     setBusy("Opening the first-period gate…");
@@ -884,6 +923,11 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
           <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-soft">
             Outputs
           </h2>
+          {dashboard?.status === "final" ? (
+            <p className="text-sm font-semibold text-ink" data-testid="statutory-outputs-state">
+              {FINALISED_STATE}
+            </p>
+          ) : null}
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
@@ -896,7 +940,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               onClick={() => void downloadPdf()}
               className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Download draft PDF
+              {pdfDownloadLabel(dashboard?.status)}
             </button>
             {pdfReason !== null ? (
               <p className="text-sm text-ink-secondary" data-testid="statutory-download-reason">
@@ -1072,6 +1116,14 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
                 </li>
               ))}
           </ul>
+          <FinaliseDraft
+            role={meQuery.data?.role}
+            status={dashboard.status}
+            canFinalise={dashboard.can_finalise}
+            carriedDisclosures={dashboard.carried_disclosures ?? []}
+            busy={busy !== null}
+            onConfirm={finaliseDraft}
+          />
         </section>
       ) : null}
 

@@ -175,6 +175,16 @@ describe("sectionsForFramework", () => {
     assert.equal(workspace.includes("finaliseStatusLine"), true);
     assert.equal(workspace.includes("statutory-confirm-currency"), true);
     assert.equal(workspace.includes("Ready to finalise."), false);
+    assert.equal(workspace.includes("<FinaliseDraft"), true);
+    const finalise = readFileSync(
+      join(here, "../components/statutory/FinaliseDraft.tsx"),
+      "utf8",
+    );
+    assert.equal(finalise.includes("FINALISE_LOCK_NOTE"), true);
+    assert.equal(finalise.includes("statutory-finalise-lock"), true);
+    assert.equal(workspace.includes("statutory-outputs-state"), true);
+    assert.equal(workspace.includes("pdfDownloadLabel"), true);
+    assert.equal(workspace.includes("canOfferFinalise"), false);
     const form = readFileSync(
       join(here, "../components/statutory/ReportSetupForm.tsx"),
       "utf8",
