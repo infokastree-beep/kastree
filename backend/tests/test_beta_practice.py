@@ -11,7 +11,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import text
 
-from app.db import SyncSessionLocal
+from app.db import SyncSessionLocal, set_rls_org_id
 from app.main import app
 from app.services.beta import BETA_STATEMENT
 from app.services.source_storage import LocalPracticeStorage, get_source_storage
@@ -93,6 +93,7 @@ async def test_beta_position_stays_unsigned_and_acknowledgement_is_once(
     assert after.json()["wording_signed_off"] is False
 
     with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
         rows = session.execute(
             text(
                 "SELECT new_value FROM audit_logs WHERE org_id = :org "
@@ -105,6 +106,18 @@ async def test_beta_position_stays_unsigned_and_acknowledgement_is_once(
     assert stored["wording_signed_off"] is False
     assert stored["filing_included"] is False
     assert stored["pack_id"] == "frs102-1a-ie"
+    assert stored["source"] == "practice"
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
+        columns = session.execute(
+            text(
+                "SELECT product2_acknowledged_at, product2_acknowledged_by_user_id "
+                "FROM organisations WHERE id = :org"
+            ),
+            {"org": str(provisioned_org["org_id"])},
+        ).one()
+    assert columns.product2_acknowledged_at is not None
+    assert columns.product2_acknowledged_by_user_id == provisioned_org["user_id"]
     chain = await api_client.get("/audit-logs", headers=headers)
     assert chain.status_code == 200, chain.text
     assert chain.json()["chain_valid"] is True
@@ -196,6 +209,109 @@ async def test_first_practice_golden_final_keeps_the_engine_figures(
     assert [document["role"] for document in evidence.json()["documents"]] == [
         "trial_balance"
     ]
+
+
+def _backfill_sql() -> str:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "alembic"
+        / "versions"
+        / "k7l8m9n0o1_product2_acknowledgement.py"
+    ).read_text()
+    start = source.index('BACKFILL_SQL = """') + len('BACKFILL_SQL = """')
+    end = source.index('"""', start)
+    return source[start:end]
+
+
+@pytest.mark.asyncio
+async def test_acknowledgement_columns_follow_the_earliest_audit_row(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """A cleared practice is restored from the earliest beta_self_review row.
+
+    A timestamp that is already set is left alone. An audit row with the
+    columns cleared does not count as acknowledged.
+    """
+    headers = auth_headers(provisioned_org["token"])
+    recorded = await api_client.post("/beta/acknowledgement", headers=headers)
+    assert recorded.status_code == 200, recorded.text
+    org_id = provisioned_org["org_id"]
+
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        earliest = session.execute(
+            text(
+                "SELECT created_at, user_id FROM audit_logs "
+                "WHERE org_id = :org AND action = 'beta_self_review' "
+                "ORDER BY created_at ASC, chain_seq ASC LIMIT 1"
+            ),
+            {"org": str(org_id)},
+        ).one()
+        session.execute(
+            text(
+                "UPDATE organisations SET product2_acknowledged_at = NULL, "
+                "product2_acknowledged_by_user_id = NULL WHERE id = :org"
+            ),
+            {"org": str(org_id)},
+        )
+        session.commit()
+
+    cleared = await api_client.get("/beta", headers=headers)
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["acknowledged"] is False
+
+    again = await api_client.post("/beta/acknowledgement", headers=headers)
+    assert again.status_code == 200, again.text
+    assert again.json()["recorded"] is True
+
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        session.execute(
+            text(
+                "UPDATE organisations "
+                "SET product2_acknowledged_at = TIMESTAMPTZ '2000-01-01 00:00:00+00', "
+                "product2_acknowledged_by_user_id = NULL "
+                "WHERE id = :org"
+            ),
+            {"org": str(org_id)},
+        )
+        session.execute(text(_backfill_sql()))
+        kept = session.execute(
+            text(
+                "SELECT product2_acknowledged_at FROM organisations WHERE id = :org"
+            ),
+            {"org": str(org_id)},
+        ).scalar_one()
+        assert kept.isoformat().startswith("2000-01-01")
+        session.execute(
+            text(
+                "UPDATE organisations SET product2_acknowledged_at = NULL, "
+                "product2_acknowledged_by_user_id = NULL WHERE id = :org"
+            ),
+            {"org": str(org_id)},
+        )
+        session.execute(text(_backfill_sql()))
+        restored = session.execute(
+            text(
+                "SELECT product2_acknowledged_at, product2_acknowledged_by_user_id "
+                "FROM organisations WHERE id = :org"
+            ),
+            {"org": str(org_id)},
+        ).one()
+        session.commit()
+    assert restored.product2_acknowledged_at == earliest.created_at
+    assert restored.product2_acknowledged_by_user_id == earliest.user_id
+
+    migration = (
+        Path(__file__).resolve().parents[1]
+        / "alembic"
+        / "versions"
+        / "k7l8m9n0o1_product2_acknowledgement.py"
+    ).read_text()
+    assert "rolsuper OR rolbypassrls" in migration
+    assert "GRANT ALL ON" not in migration
+    assert "GRANT ALL PRIVILEGES" not in migration
 
 
 def test_engine_golden_suite_is_green() -> None:
