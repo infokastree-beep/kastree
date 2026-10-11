@@ -1,6 +1,7 @@
-"""ISO 3166-1 English short names, used only to display a stored code.
+"""ISO 3166-1 English short names.
 
-Saving a country still uses the company-form rule: blank, or two letters.
+A save accepts blank or a code in this list. A stored code that is not in
+the list is still shown as the code itself.
 """
 
 from __future__ import annotations

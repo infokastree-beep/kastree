@@ -403,6 +403,23 @@ async def test_irish_pack_outputs_follow_the_recorded_country(
             assert "No other country's pack is available." not in detail
 
 
+def test_unlisted_country_code_is_refused() -> None:
+    from app.schemas.company import country_of_incorporation_code
+
+    with pytest.raises(
+        ValueError, match="XX is not a recognised country of incorporation."
+    ):
+        country_of_incorporation_code("XX")
+    with pytest.raises(
+        ValueError, match="XX is not a recognised country of incorporation."
+    ):
+        country_of_incorporation_code(" xx ")
+    assert country_of_incorporation_code("ie") == "IE"
+    assert country_of_incorporation_code("US") == "US"
+    assert country_of_incorporation_code("") is None
+    assert country_of_incorporation_code(None) is None
+
+
 def test_frontend_country_list_matches_the_server_list() -> None:
     server = (
         Path(__file__).resolve().parents[1] / "app" / "data" / "countries.json"
@@ -452,6 +469,13 @@ async def test_company_details_saves_a_country_name_as_a_two_letter_code(
         json={"country_of_incorporation": "IRL"},
     )
     assert three.status_code == 422, three.text
+    unknown = await api_client.put(
+        path,
+        headers=headers,
+        json={"country_of_incorporation": "XX"},
+    )
+    assert unknown.status_code == 422, unknown.text
+    assert "XX is not a recognised country of incorporation." in unknown.text
     kept = await api_client.get(path, headers=headers)
     assert kept.json()["country_of_incorporation"] == "US"
 

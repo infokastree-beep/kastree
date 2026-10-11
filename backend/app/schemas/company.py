@@ -9,12 +9,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.services.countries import country_names
 
 CompanyType = Literal["trading", "holding"]
 
 
 def country_of_incorporation_code(value: object) -> str | None:
-    """Two uppercase letters, or none when the field is blank."""
+    """A listed ISO country code, or none when the field is blank."""
     if value is None:
         return None
     if not isinstance(value, str):
@@ -24,6 +25,8 @@ def country_of_incorporation_code(value: object) -> str | None:
         return None
     if len(text) != 2 or not text.isalpha():
         raise ValueError("Country of incorporation must be a two-letter code.")
+    if text not in country_names():
+        raise ValueError(f"{text} is not a recognised country of incorporation.")
     return text
 
 
