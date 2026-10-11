@@ -24,6 +24,10 @@ from app.db import aset_rls_org_id
 from app.models.company import Company
 from app.services.audit import append_audit_log
 from app.services.beta import final_page_presentation
+from app.services.disclosure_groups import (
+    DisclosureQuestion,
+    present_disclosure_questions,
+)
 from app.services.draft_inputs import (
     DraftInputError,
     adjusted_for_draft,
@@ -103,6 +107,7 @@ class Dashboard:
     checks: tuple[ReconciliationCheck, ...]
     unanswered_disclosures: tuple[str, ...]
     carried_disclosures: tuple[str, ...]
+    disclosure_questions: tuple[DisclosureQuestion, ...] = ()
 
 
 def engine_sha() -> str:
@@ -336,6 +341,9 @@ async def dashboard_for_draft(
     draft = await session.get(DraftVersion, draft_id)
     if draft is None or draft.org_id != org_id or draft.year_end_id != year_end.id:
         raise DraftRejected("Draft not found", 404)
+    questions = present_disclosure_questions(
+        await disclosure_flags(session, org_id=org_id, draft_id=draft.id)
+    )
     if draft.status == "final" and isinstance(draft.snapshot, dict):
         stored_checks = draft.snapshot.get("statement")
         checks: list[ReconciliationCheck] = []
@@ -362,6 +370,7 @@ async def dashboard_for_draft(
             checks=tuple(checks),
             unanswered_disclosures=(),
             carried_disclosures=(),
+            disclosure_questions=questions,
         )
     try:
         if draft.tb_version_id is None:
@@ -435,6 +444,7 @@ async def dashboard_for_draft(
         checks=tuple(checks),
         unanswered_disclosures=unanswered,
         carried_disclosures=tuple(sorted(carried)),
+        disclosure_questions=questions,
     )
 
 
@@ -575,6 +585,7 @@ async def set_disclosure_answer(
     session: AsyncSession,
     *,
     org_id: uuid.UUID,
+    user_id: uuid.UUID,
     year_end: YearEnd,
     draft_id: uuid.UUID,
     row_version: int,
@@ -613,6 +624,15 @@ async def set_disclosure_answer(
     else:
         existing.answer = answer == "yes"
         existing.updated_at = datetime.now(UTC)
+    await append_audit_log(
+        session,
+        org_id=org_id,
+        user_id=user_id,
+        action="disclosure_answered",
+        entity_type="draft_version",
+        entity_id=draft.id,
+        new_value={"flag_name": flag_name, "answer": answer},
+    )
     draft.row_version = row_version + 1
     draft.updated_at = datetime.now(UTC)
     await session.flush()
@@ -621,6 +641,62 @@ async def set_disclosure_answer(
         "row_version": draft.row_version,
         "flag_name": flag_name,
         "answer": answer,
+    }
+
+
+async def mark_remaining_disclosures_no(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    user_id: uuid.UUID,
+    year_end: YearEnd,
+    draft_id: uuid.UUID,
+    row_version: int,
+    confirm: bool,
+) -> dict[str, object]:
+    """Write No for flags that are unanswered now. Already answered flags stay as they are."""
+    if confirm is not True:
+        raise DraftRejected("confirmation is required", 422)
+    draft = await _draft_for_update(
+        session, org_id=org_id, year_end=year_end, draft_id=draft_id
+    )
+    _expect_version(draft, row_version)
+    if draft.status != "draft":
+        raise DraftRejected(f"draft is {draft.status}; writes are refused", 409)
+    _refuse_frozen(draft)
+    current = await disclosure_flags(session, org_id=org_id, draft_id=draft.id)
+    pending = sorted(
+        name for name in ANSWER_FLAGS if name not in current and name not in DERIVED
+    )
+    if not pending:
+        raise DraftRejected("no disclosure questions are unanswered", 422)
+    for name in pending:
+        session.add(
+            DisclosureAnswer(
+                org_id=draft.org_id,
+                company_id=draft.company_id,
+                draft_version_id=draft.id,
+                flag_name=name,
+                answer=False,
+            )
+        )
+    await append_audit_log(
+        session,
+        org_id=org_id,
+        user_id=user_id,
+        action="disclosures_marked_remaining_no",
+        entity_type="draft_version",
+        entity_id=draft.id,
+        new_value={"count": len(pending), "flag_ids": pending},
+    )
+    draft.row_version = row_version + 1
+    draft.updated_at = datetime.now(UTC)
+    await session.flush()
+    return {
+        "draft_id": str(draft.id),
+        "row_version": draft.row_version,
+        "count": len(pending),
+        "flag_ids": pending,
     }
 
 
@@ -1318,6 +1394,16 @@ def _dashboard_dict(board: Dashboard) -> dict[str, object]:
         "unanswered_count": len(board.unanswered_disclosures),
         "blocking_count": blocking_failure_count(board.checks),
         "carried_disclosures": list(board.carried_disclosures),
+        "disclosure_questions": [
+            {
+                "flag_name": row.flag_name,
+                "question": row.question,
+                "group": row.group,
+                "note": row.note,
+                "answer": row.answer,
+            }
+            for row in board.disclosure_questions
+        ],
         "checks": checks,
     }
 
@@ -1347,6 +1433,7 @@ def _dashboard_from_response(payload: dict[str, object]) -> Dashboard:
         if isinstance(raw_carried, list)
         else ()
     )
+    questions = _disclosure_questions_from_payload(payload.get("disclosure_questions"))
     return Dashboard(
         draft_id=uuid.UUID(str(payload["draft_id"])),
         status=str(payload["status"]),
@@ -1356,7 +1443,41 @@ def _dashboard_from_response(payload: dict[str, object]) -> Dashboard:
         checks=tuple(checks),
         unanswered_disclosures=names,
         carried_disclosures=carried,
+        disclosure_questions=questions,
     )
+
+
+def _stored_answer(value: object) -> Literal["yes", "no", "unanswered"] | None:
+    if value == "yes":
+        return "yes"
+    if value == "no":
+        return "no"
+    if value == "unanswered":
+        return "unanswered"
+    return None
+
+
+def _disclosure_questions_from_payload(raw: object) -> tuple[DisclosureQuestion, ...]:
+    if not isinstance(raw, list):
+        return ()
+    rows: list[DisclosureQuestion] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        answer = _stored_answer(item.get("answer"))
+        if answer is None:
+            continue
+        note = item.get("note")
+        rows.append(
+            DisclosureQuestion(
+                flag_name=str(item.get("flag_name") or ""),
+                question=str(item.get("question") or ""),
+                group=str(item.get("group") or ""),
+                note=note if isinstance(note, str) else None,
+                answer=answer,
+            )
+        )
+    return tuple(rows)
 
 
 async def frozen_snapshot(

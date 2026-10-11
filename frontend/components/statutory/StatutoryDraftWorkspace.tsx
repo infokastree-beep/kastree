@@ -20,9 +20,11 @@ import {
   type ReportSetup,
   type ReportSetupWrite,
 } from "@/components/statutory/ReportSetupForm";
+import { DisclosureGroups } from "@/components/statutory/DisclosureGroups";
 import { FinaliseDraft } from "@/components/statutory/FinaliseDraft";
 import { ReviewChecks } from "@/components/statutory/ReviewChecks";
 import { blockingFailureCount } from "@/lib/dashboard-groups";
+import type { DisclosureQuestion } from "@/lib/disclosure-groups";
 import {
   currencyCodeFromNotice,
   finalStateLabel,
@@ -96,6 +98,7 @@ type DraftDashboard = {
   unanswered_count?: number;
   blocking_count?: number;
   carried_disclosures: string[];
+  disclosure_questions?: DisclosureQuestion[];
   checks: DashboardCheck[];
 };
 
@@ -502,6 +505,33 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       await refreshDraft();
     } catch (caught) {
       setError(messageFrom(caught));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function markRemainingNo(): Promise<void> {
+    if (!draft || !dashboard) {
+      return;
+    }
+    setError(null);
+    setBusy("Saving disclosure answers…");
+    try {
+      await apiFetch(
+        `/year-ends/${yearEndId}/drafts/${draft.draft_id}/disclosures/mark-remaining-no`,
+        {
+          method: "POST",
+          getToken,
+          body: JSON.stringify({
+            row_version: dashboard.row_version,
+            confirm: true,
+          }),
+        },
+      );
+      await refreshDraft();
+    } catch (caught) {
+      setError(messageFrom(caught));
+      throw caught;
     } finally {
       setBusy(null);
     }
@@ -1158,7 +1188,18 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
         </section>
       ) : null}
 
-      {sectionId === "disclosures" && dashboard && dashboard.unanswered_disclosures.length > 0 ? (
+      {sectionId === "disclosures" && dashboard?.disclosure_questions ? (
+        <DisclosureGroups
+          yearEndId={yearEndId}
+          questions={dashboard.disclosure_questions}
+          canAnswer={Boolean(canEditDetails && writable)}
+          busy={busy !== null}
+          onAnswer={answerDisclosure}
+          onMarkRemaining={markRemainingNo}
+        />
+      ) : sectionId === "disclosures" &&
+        dashboard &&
+        dashboard.unanswered_disclosures.length > 0 ? (
         <section className="space-y-3" data-testid="statutory-disclosures">
           <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-soft">
             Disclosure questions

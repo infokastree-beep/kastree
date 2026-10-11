@@ -91,10 +91,11 @@ from app.schemas.year_end import (
     AdjustmentPostRequest,
     AdjustmentPostResponse,
     DashboardResponse,
-    DashboardCheckOut,
     DisclosureAnswerRequest,
     DisclosureAnswerResponse,
     DraftMutationRequest,
+    MarkRemainingNoRequest,
+    MarkRemainingNoResponse,
     FinaliseRequest,
     DraftStatusResponse,
     WorkingDraftResponse,
@@ -144,10 +145,12 @@ from app.services.draft_workflow import (
     finalise_draft,
     frozen_snapshot,
     lock_draft,
+    mark_remaining_disclosures_no,
     new_version_from_locked,
     post_adjustment,
     recompute_draft,
     set_disclosure_answer,
+    _dashboard_dict,
     start_new_report,
 )
 from app.services.render_jobs import (
@@ -1336,24 +1339,7 @@ def _draft_error(exc: DraftRejected) -> HTTPException:
 
 
 def _dashboard_response(board: Dashboard) -> DashboardResponse:
-    return DashboardResponse(
-        draft_id=board.draft_id,
-        status=board.status,
-        row_version=board.row_version,
-        traffic=board.traffic,
-        can_finalise=board.can_finalise,
-        unanswered_disclosures=list(board.unanswered_disclosures),
-        carried_disclosures=list(board.carried_disclosures),
-        checks=[
-            DashboardCheckOut(
-                code=item.code,
-                severity=item.severity,
-                passed=item.passed,
-                message=item.message,
-            )
-            for item in board.checks
-        ],
-    )
+    return DashboardResponse.model_validate(_dashboard_dict(board))
 
 
 async def _load_statements(
@@ -1890,6 +1876,7 @@ async def post_draft_disclosure(
         saved = await set_disclosure_answer(
             session,
             org_id=auth.org_id,
+            user_id=auth.user_id,
             year_end=year_end,
             draft_id=draft_id,
             row_version=body.row_version,
@@ -1899,6 +1886,36 @@ async def post_draft_disclosure(
     except DraftRejected as exc:
         raise _draft_error(exc) from exc
     return DisclosureAnswerResponse.model_validate(saved)
+
+
+@router.post(
+    "/{year_end_id}/drafts/{draft_id}/disclosures/mark-remaining-no",
+    response_model=MarkRemainingNoResponse,
+)
+async def post_mark_remaining_disclosures_no(
+    year_end_id: uuid.UUID,
+    draft_id: uuid.UUID,
+    body: MarkRemainingNoRequest,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> MarkRemainingNoResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        saved = await mark_remaining_disclosures_no(
+            session,
+            org_id=auth.org_id,
+            user_id=auth.user_id,
+            year_end=year_end,
+            draft_id=draft_id,
+            row_version=body.row_version,
+            confirm=body.confirm,
+        )
+    except DraftRejected as exc:
+        raise _draft_error(exc) from exc
+    return MarkRemainingNoResponse.model_validate(saved)
 
 
 @router.post(
