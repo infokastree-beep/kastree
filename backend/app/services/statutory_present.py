@@ -104,6 +104,8 @@ def statement_response(document: StatutoryStatements) -> StatementResponse:
             for flag in document.rounding_flags
         ],
         company_name=document.company_name,
+        omitted_blocks=list(document.omitted_blocks),
+        added_blocks=list(document.added_blocks),
         pages=[
             StatutoryPageOut(heading=page.heading, paragraphs=list(page.paragraphs))
             for page in document.pages

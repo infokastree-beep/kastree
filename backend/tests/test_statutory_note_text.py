@@ -130,15 +130,31 @@ def test_unanswered_related_party_and_commitment_notes_are_one_line() -> None:
     assert "Companies Act 2014" in related_yes.body
     assert "[related party transactions not recorded]" in related_yes.body
     assert "[directors' aggregate disclosures not recorded]" in related_yes.body
+    assert commitments_yes.body == "[commitments and contingencies not recorded]"
+    answered = _golden(
+        disclosure_flags={
+            "COMMITMENTS_EXIST": False,
+            "GUARANTEES_EXIST": False,
+            "SUBSEQUENT_EVENTS": False,
+            "PENSION_COMMITMENT": False,
+            "CHARGES_EXIST": False,
+            "OFF_BALANCE_ARRANGEMENT": False,
+            "UNCOMMITTED": True,
+        }
+    )
+    assert answered.net_assets == document.net_assets
+    assert answered.profit == document.profit
+    capital = next(note for note in answered.notes if note.code == "N9_COMMITMENTS")
+    assert capital.title
+    assert "1AD.31" in capital.body
+    assert "[capital commitments not recorded]" in capital.body
     for placeholder in (
-        "[capital commitments not recorded]",
         "[retirement benefit commitments not recorded]",
         "[guarantees and security not recorded]",
         "[charges on assets not recorded]",
         "[subsequent events not recorded]",
     ):
-        assert placeholder in commitments_yes.body
-    assert commitments_yes.body != "[commitments and contingencies not recorded]"
+        assert placeholder not in capital.body
 
 
 def test_a_missing_creditors_note_is_not_cited() -> None:

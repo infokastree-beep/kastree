@@ -28,6 +28,14 @@ from app.services.disclosure_groups import (
     DisclosureQuestion,
     present_disclosure_questions,
 )
+from app.services.note_library import (
+    LibraryRejected,
+    LibraryRow,
+    apply_library_action,
+    parse_note_library,
+    present_rows,
+    to_storage,
+)
 from app.services.draft_inputs import (
     DraftInputError,
     adjusted_for_draft,
@@ -644,6 +652,153 @@ async def set_disclosure_answer(
     }
 
 
+_LIBRARY_AUDIT: dict[str, str] = {
+    "omit": "note_block_omitted",
+    "restore": "note_block_restored",
+    "add": "note_block_added",
+    "remove": "note_block_add_removed",
+}
+
+
+def _copied_library(raw: object) -> dict[str, object] | None:
+    if raw is None:
+        return None
+    try:
+        stored = to_storage(parse_note_library(raw))
+    except LibraryRejected as exc:
+        raise DraftRejected("note library is unreadable") from exc
+    if stored is None:
+        return None
+    copied = _json_copy(stored)
+    if not isinstance(copied, dict):
+        raise DraftRejected("note library is unreadable")
+    return {str(key): value for key, value in copied.items()}
+
+
+def _library_row_payload(row: LibraryRow) -> dict[str, object]:
+    return {
+        "block_id": row.block_id,
+        "title": row.title,
+        "reason": row.reason,
+        "sentence": row.sentence,
+        "can_omit": row.can_omit,
+        "can_restore": row.can_restore,
+        "can_add": row.can_add,
+        "can_remove": row.can_remove,
+    }
+
+
+async def _library_context(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+    draft: DraftVersion,
+) -> dict[str, object]:
+    try:
+        loaded = await _loaded_for_check(
+            session, org_id=org_id, year_end=year_end, draft=draft
+        )
+    except ReconciliationRejected as exc:
+        raise DraftRejected(exc.detail, exc.status_code) from exc
+    adjusted = await adjusted_for_draft(
+        session,
+        org_id=org_id,
+        draft=draft,
+        tb_lines=loaded.tb_lines,
+        mappings=loaded.mappings,
+    )
+    directory = pack_dir(year_end.pack_id, year_end.pack_version)
+    context = build_note_context(
+        aggregate(adjusted.tb_lines, adjusted.mappings),
+        _templates(directory),
+        adjusted.flags,
+    )
+    if not isinstance(context, dict):
+        raise DraftRejected("note context is missing")
+    return {str(key): value for key, value in context.items()}
+
+
+async def notes_for_draft(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+    draft_id: uuid.UUID,
+) -> dict[str, object]:
+    """Library rows for this draft. Reading does not create a row."""
+    await aset_rls_org_id(session, org_id)
+    draft = await session.get(DraftVersion, draft_id)
+    if draft is None or draft.org_id != org_id or draft.year_end_id != year_end.id:
+        raise DraftRejected("Draft not found", 404)
+    try:
+        library = parse_note_library(draft.note_library)
+    except LibraryRejected as exc:
+        raise DraftRejected(exc.detail) from exc
+    rows = present_rows(
+        await _library_context(
+            session, org_id=org_id, year_end=year_end, draft=draft
+        ),
+        library,
+    )
+    return {
+        "draft_id": str(draft.id),
+        "row_version": draft.row_version,
+        "rows": [_library_row_payload(row) for row in rows],
+    }
+
+
+async def set_note_block(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    user_id: uuid.UUID,
+    year_end: YearEnd,
+    draft_id: uuid.UUID,
+    row_version: int,
+    block_id: str,
+    action: Literal["omit", "restore", "add", "remove"],
+) -> dict[str, object]:
+    draft = await _draft_for_update(
+        session, org_id=org_id, year_end=year_end, draft_id=draft_id
+    )
+    _expect_version(draft, row_version)
+    if draft.status != "draft":
+        raise DraftRejected(f"draft is {draft.status}; writes are refused", 409)
+    _refuse_frozen(draft)
+    context = await _library_context(
+        session, org_id=org_id, year_end=year_end, draft=draft
+    )
+    try:
+        updated = apply_library_action(
+            parse_note_library(draft.note_library),
+            block_id=block_id,
+            action=action,
+            ctx=context,
+        )
+    except LibraryRejected as exc:
+        raise DraftRejected(exc.detail, 422) from exc
+    draft.note_library = to_storage(updated)
+    await append_audit_log(
+        session,
+        org_id=org_id,
+        user_id=user_id,
+        action=_LIBRARY_AUDIT[action],
+        entity_type="draft_version",
+        entity_id=draft.id,
+        new_value={"block_id": block_id},
+    )
+    draft.row_version = row_version + 1
+    draft.updated_at = datetime.now(UTC)
+    await session.flush()
+    return {
+        "draft_id": str(draft.id),
+        "row_version": draft.row_version,
+        "block_id": block_id,
+        "action": action,
+    }
+
+
 async def mark_remaining_disclosures_no(
     session: AsyncSession,
     *,
@@ -763,6 +918,7 @@ async def new_version_from_locked(
         status="draft",
         tb_version_id=draft.tb_version_id,
         row_version=1,
+        note_library=_copied_library(draft.note_library),
     )
     session.add(created)
     await session.flush()
@@ -1283,6 +1439,7 @@ async def finalise_draft(
         "statement": statement,
         "evidence": evidence,
         "traffic": light,
+        "note_library": _copied_library(draft.note_library),
     }
     if carried:
         await append_audit_log(

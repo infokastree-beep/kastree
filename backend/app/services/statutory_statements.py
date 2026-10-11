@@ -47,6 +47,17 @@ from app.services.adopted_trial_balance import (
     active_adopted_draft,
     inputs_for_adopted_draft,
 )
+from app.services.note_library import (
+    CommitmentPrint,
+    LibraryRejected,
+    NoteLibrary,
+    commitment_print,
+    effective_ids,
+    include_policy,
+    library_notices,
+    parse_note_library,
+    related_party_override,
+)
 from app.services.reconciliation import (
     ReconciliationCheck,
     ReconciliationRejected,
@@ -367,6 +378,8 @@ class StatutoryStatements:
     html: str | None
     pages: tuple[StatutoryPage, ...] = ()
     company_name: str = ""
+    omitted_blocks: tuple[str, ...] = ()
+    added_blocks: tuple[str, ...] = ()
 
 
 class _ExternalFetchRefused(BaseException):
@@ -830,17 +843,19 @@ def _load_policies(directory: Path) -> list[dict[str, object]]:
     return typed
 
 
-def _policy_blocks(policies: list[dict[str, object]], ctx: dict[str, object]) -> str:
+def _policy_blocks(
+    policies: list[dict[str, object]],
+    ctx: dict[str, object],
+    library: NoteLibrary,
+) -> str:
     blocks: list[str] = []
     for policy in policies:
         policy_id = policy.get("id")
         condition = policy.get("appliesWhen")
-        if not isinstance(condition, str) or not condition:
+        if not isinstance(policy_id, str) or not isinstance(condition, str) or not condition:
             raise ValueError(f"policy {policy_id} has no appliesWhen")
         try:
-            applies = condition == "always" or bool(evaluate(condition, ctx))
-        except Unanswered:
-            continue
+            applies = include_policy(policy_id, condition, ctx, library)
         except (ValueError, KeyError) as exc:
             raise ValueError(f"policy {policy_id} could not be evaluated") from exc
         if not applies:
@@ -1038,6 +1053,36 @@ def _line_names(table: dict[str, object]) -> list[str] | None:
     return [name for name in names if isinstance(name, str)]
 
 
+def _chosen_notes(
+    templates: dict[str, dict[str, object]],
+    selected: dict[str, object],
+    disclosure_ctx: dict[str, object],
+    library: NoteLibrary,
+    commitments: CommitmentPrint | None,
+) -> list[str]:
+    chosen = [
+        code
+        for code, template in templates.items()
+        if code in selected
+        and isinstance(template, dict)
+        and not (
+            code in _UNANSWERED_NOTE
+            and _note_inclusion(template, disclosure_ctx) == "no"
+        )
+    ]
+    override = related_party_override(disclosure_ctx, library)
+    if override == "drop":
+        chosen = [code for code in chosen if code != "N7_RPT"]
+    elif override == "force" and "N7_RPT" in templates and "N7_RPT" not in chosen:
+        chosen.append("N7_RPT")
+    if commitments is not None:
+        if commitments.mode == "absent":
+            chosen = [code for code in chosen if code != "N9_COMMITMENTS"]
+        elif "N9_COMMITMENTS" not in chosen and "N9_COMMITMENTS" in templates:
+            chosen.append("N9_COMMITMENTS")
+    return [code for code in templates if code in set(chosen)]
+
+
 def _compose_notes(
     *,
     templates: dict[str, dict[str, object]],
@@ -1051,17 +1096,18 @@ def _compose_notes(
     currency: str,
     first_financial_period: bool = False,
     share_classes: tuple[ShareClassFact, ...] = (),
+    library: NoteLibrary | None = None,
 ) -> tuple[tuple[StatementNote, ...], tuple[RoundingFlag, ...], dict[str, int]]:
-    chosen = [
-        code
-        for code, template in templates.items()
-        if code in selected
-        and isinstance(template, dict)
-        and not (
-            code in _UNANSWERED_NOTE
-            and _note_inclusion(template, disclosure_ctx) == "no"
-        )
-    ]
+    stored = library if library is not None else NoteLibrary((), ())
+    commitment_template = templates.get("N9_COMMITMENTS")
+    commitments = (
+        commitment_print(commitment_template, disclosure_ctx, stored)
+        if isinstance(commitment_template, dict)
+        else None
+    )
+    chosen = _chosen_notes(
+        templates, selected, disclosure_ctx, stored, commitments
+    )
     numbers = {code: index for index, code in enumerate(chosen, start=1)}
     notes: list[StatementNote] = []
     flags: list[RoundingFlag] = []
@@ -1074,6 +1120,11 @@ def _compose_notes(
             code in _UNANSWERED_NOTE
             and _note_inclusion(template, disclosure_ctx) == "unanswered"
         )
+        if code == "N9_COMMITMENTS" and commitments is not None:
+            if commitments.mode == "pending":
+                pending = True
+            elif commitments.mode == "blocks":
+                pending = False
         if pending:
             notes.append(
                 StatementNote(
@@ -1085,9 +1136,26 @@ def _compose_notes(
                 )
             )
             continue
+        if (
+            code == "N9_COMMITMENTS"
+            and commitments is not None
+            and commitments.mode == "blocks"
+        ):
+            parts = [
+                f"{block.heading}\n{_PARTICULARS[block.placeholder_key]}"
+                for block in commitments.blocks
+            ]
+            notes.append(
+                StatementNote(
+                    code=code,
+                    title=f"{numbers[code]}. {_human_title(code, template.get('title'))}",
+                    body="\n\n".join(parts),
+                    lines=(),
+                    fa_rows=(),
+                )
+            )
+            continue
         note_context = dict(context)
-        if code == "N9_COMMITMENTS":
-            note_context = _with_particulars(note_context)
         departure = template.get("departure_clause")
         if isinstance(departure, str):
             note_context["departure_clause"] = departure
@@ -1309,6 +1377,7 @@ def _render_draft(
     approval_date: str = "",
     signing_directors: str = "",
     share_classes: tuple[ShareClassFact, ...] = (),
+    note_library: object | None = None,
 ) -> StatutoryStatements:
     directory = (
         pack_dir(pack_id, pack_version)
@@ -1338,7 +1407,11 @@ def _render_draft(
     selected = select_notes(templates, ctx)
     if not isinstance(selected, dict):
         raise ValueError("selected notes are missing")
-    policies = _policy_blocks(_load_policies(directory), ctx)
+    try:
+        library = parse_note_library(note_library)
+    except LibraryRejected as exc:
+        raise ValueError(exc.detail) from exc
+    policies = _policy_blocks(_load_policies(directory), ctx, library)
     sofp_rows = _statement_rows(sofp)
     income_rows = _statement_rows(income)
     notes, flags, note_numbers = _compose_notes(
@@ -1353,7 +1426,10 @@ def _render_draft(
         currency=entity.currency,
         first_financial_period=first_financial_period,
         share_classes=share_classes,
+        library=library,
     )
+    omitted_blocks, added_blocks = effective_ids(ctx, library)
+    checks = tuple(report.checks) + library_notices(ctx, library)
     pages = build_statutory_pages(
         company_name=entity.name,
         practice_name=practice_name,
@@ -1389,7 +1465,9 @@ def _render_draft(
         renderable=True,
         blocked=False,
         build_error=None,
-        checks=report.checks,
+        checks=checks,
+        omitted_blocks=omitted_blocks,
+        added_blocks=added_blocks,
         net_assets=report.net_assets,
         profit=sofp_profit,
         compliance_statement=compliance,
@@ -1447,6 +1525,7 @@ def build_statutory_statements(
     approval_date: str = "",
     signing_directors: str = "",
     share_classes: tuple[ShareClassFact, ...] = (),
+    note_library: object | None = None,
 ) -> StatutoryStatements:
     """Render a DRAFT only when every critical check has passed.
 
@@ -1490,6 +1569,7 @@ def build_statutory_statements(
             approval_date=approval_date,
             signing_directors=signing_directors,
             share_classes=share_classes,
+            note_library=note_library,
         )
     except (OSError, ValueError, KeyError) as exc:
         return _withheld(report, build_error=str(exc))
@@ -1582,6 +1662,7 @@ async def statements_for_version(
         else year_end.approval_date.isoformat(),
         signing_directors=_signing_phrase(year_end.signing_directors),
         share_classes=share_classes_from_company(company),
+        note_library=None if draft is None else draft.note_library,
     )
 
 
@@ -1674,4 +1755,5 @@ async def statements_for_adopted(
         else year_end.approval_date.isoformat(),
         signing_directors=_signing_phrase(year_end.signing_directors),
         share_classes=share_classes_from_company(company),
+        note_library=None if draft is None else draft.note_library,
     )

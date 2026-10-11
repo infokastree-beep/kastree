@@ -33,7 +33,8 @@ def test_migration_adds_the_column_without_a_read_or_grant_all() -> None:
     assert "country_of_incorporation" not in source
     assert "ALTER TABLE companies" not in source
     assert "SELECT" not in executable
-    assert "note_library" not in _MODEL.read_text()
+    model = _MODEL.read_text()
+    assert "note_library: Mapped[dict[str, object] | None]" in model
 
 
 def test_code_head_is_the_note_library_revision() -> None:

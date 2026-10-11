@@ -93,6 +93,7 @@ class DraftVersion(Base):
         Integer, nullable=False, default=1, server_default="1"
     )
     snapshot: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    note_library: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     inputs_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     engine_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)
     finalised_by_user_id: Mapped[uuid.UUID | None] = mapped_column(

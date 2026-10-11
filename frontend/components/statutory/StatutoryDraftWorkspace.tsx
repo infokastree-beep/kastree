@@ -21,6 +21,8 @@ import {
   type ReportSetupWrite,
 } from "@/components/statutory/ReportSetupForm";
 import { DisclosureGroups } from "@/components/statutory/DisclosureGroups";
+import { NotesLibrary } from "@/components/statutory/NotesLibrary";
+import type { NoteLibraryRow } from "@/lib/note-library";
 import { FinaliseDraft } from "@/components/statutory/FinaliseDraft";
 import { ReviewChecks } from "@/components/statutory/ReviewChecks";
 import { blockingFailureCount } from "@/lib/dashboard-groups";
@@ -309,6 +311,15 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
 
   const forbidden = meQuery.isSuccess && !statutoryWorkspaceOpen(meQuery.data);
   const dashboard = dashboardQuery.data;
+  const notesQuery = useQuery({
+    queryKey: ["draft-notes", yearEndId, draft?.draft_id],
+    queryFn: () =>
+      apiFetch<{ rows: NoteLibraryRow[] }>(
+        `/year-ends/${yearEndId}/drafts/${draft?.draft_id}/notes`,
+        { getToken },
+      ),
+    enabled: openSectionId === "notes" && draft?.draft_id != null,
+  });
   const writable = draft?.status === "draft" && !draft.frozen && busy === null;
   const priorYearBlocked =
     statementsQuery.data?.checks.some(
@@ -481,6 +492,37 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     await queryClient.invalidateQueries({ queryKey: ["statutory-pack"] });
     await queryClient.invalidateQueries({ queryKey: ["statutory-preview", yearEndId] });
     await queryClient.invalidateQueries({ queryKey: ["year-end", yearEndId] });
+    await queryClient.invalidateQueries({ queryKey: ["draft-notes", yearEndId] });
+  }
+
+  async function changeNoteBlock(
+    blockId: string,
+    action: "omit" | "restore" | "add" | "remove",
+  ): Promise<void> {
+    if (!draft || !dashboard) {
+      return;
+    }
+    setError(null);
+    setBusy("Saving the notes library…");
+    try {
+      await apiFetch(
+        `/year-ends/${yearEndId}/drafts/${draft.draft_id}/notes/library`,
+        {
+          method: "POST",
+          getToken,
+          body: JSON.stringify({
+            row_version: dashboard.row_version,
+            block_id: blockId,
+            action,
+          }),
+        },
+      );
+      await refreshDraft();
+    } catch (caught) {
+      setError(messageFrom(caught));
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function answerDisclosure(flagName: string, answer: "yes" | "no"): Promise<void> {
@@ -1035,6 +1077,15 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
             ) : null}
           </div>
         </section>
+      ) : null}
+
+      {sectionId === "notes" && notesQuery.data ? (
+        <NotesLibrary
+          rows={notesQuery.data.rows}
+          canEdit={Boolean(canEditDetails && writable)}
+          busy={busy !== null}
+          onAction={changeNoteBlock}
+        />
       ) : null}
 
       {activeMeta?.lock != null && sectionId !== "income" && sectionId !== "sofp" ? (
