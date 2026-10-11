@@ -16,7 +16,7 @@ from app.main import app
 from app.models.user import User
 from app.services.org_provisioning import provision_first_signup
 from app.services.source_storage import LocalPracticeStorage, get_source_storage
-from tests.conftest import auth_headers, make_access_token
+from tests.conftest import auth_headers, make_access_token, open_owner_session
 from tests.test_organisations_api import _add_org_user
 
 _FORBIDDEN = "You don't have permission to access this resource."
@@ -166,7 +166,13 @@ def _other_practice() -> tuple[uuid.UUID, str, str]:
 
 
 def _delete_practice(org_id: uuid.UUID) -> None:
-    with SyncSessionLocal() as session:
+    """Remove a practice created only for this test.
+
+    The acknowledgement writes an append-only audit row. Disabling that
+    trigger needs the table owner. The parity job logs in as ``findraft``,
+    which is not the owner, so this uses the owner session.
+    """
+    with open_owner_session() as session:
         set_rls_org_id(session, org_id)
         session.execute(
             text(
