@@ -9,6 +9,13 @@ export const ASK_OWNER =
 export const UNREVIEWED_WORDING_BANNER =
   "The statutory wording is unreviewed and this practice reviews every output itself.";
 
+export const STANDING_WORDING_NOTICE =
+  "Statutory wording has not been reviewed by a qualified reviewer. Review every output before it is filed or sent.";
+
+export const STANDING_NOTICE_SESSION_KEY = "kastree-standing-wording-notice";
+
+export const STANDING_NOTICE_EVENT = "kastree-standing-wording-notice";
+
 export type Product2Access = {
   enabled: boolean;
   acknowledged: boolean;
@@ -28,6 +35,54 @@ export type StatutoryUser = {
 An absent product2_access means this frontend is talking to an older API, so the
 previous platform-admin check still applies.
 */
+type NoticeRead = {
+  getItem(key: string): string | null;
+};
+
+type NoticeWrite = {
+  setItem(key: string, value: string): void;
+};
+
+/** Show the standing notice when the server has granted Product 2 and has not signed the wording off. */
+export function showStandingWordingNotice(
+  me:
+    | {
+        is_platform_admin?: boolean;
+        product2_access?: {
+          enabled: boolean;
+          wording_signed_off: boolean;
+        };
+      }
+    | undefined,
+): boolean {
+  if (!me) {
+    return false;
+  }
+  const access = me.product2_access;
+  if (access) {
+    if (access.wording_signed_off === true) {
+      return false;
+    }
+    return access.enabled === true;
+  }
+  return me.is_platform_admin === true;
+}
+
+export function readStandingNoticeCollapsed(
+  storage: NoticeRead | undefined,
+): boolean {
+  if (!storage) {
+    return false;
+  }
+  return storage.getItem(STANDING_NOTICE_SESSION_KEY) === "1";
+}
+
+export function writeStandingNoticeCollapsed(
+  storage: NoticeWrite,
+): void {
+  storage.setItem(STANDING_NOTICE_SESSION_KEY, "1");
+}
+
 export function statutoryWorkspaceOpen(
   me: StatutoryUser | undefined,
 ): boolean {

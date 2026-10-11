@@ -24,6 +24,10 @@ from app.services.retention import RETAINED_ON_ERASURE
 
 router = APIRouter(prefix="/users", tags=["users"])
 
+# A qualified reviewer has not signed this wording off. The response reads
+# this value; the client does not decide it.
+WORDING_SIGNED_OFF = False
+
 
 @router.get("/me", response_model=UserMeResponse)
 async def get_current_user(
@@ -48,7 +52,7 @@ async def get_current_user(
             enabled=acknowledged or platform_admin,
             acknowledged=acknowledged,
             source=source,
-            wording_signed_off=False,
+            wording_signed_off=WORDING_SIGNED_OFF,
         ),
     )
 

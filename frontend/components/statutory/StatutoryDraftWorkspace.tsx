@@ -44,6 +44,7 @@ import {
   type StatutoryPreview,
 } from "@/lib/section-preview";
 import { statutoryWorkspaceOpen, type StatutoryUser } from "@/lib/statutory-gate";
+import { StandingWordingNotice } from "@/components/statutory/StandingWordingNotice";
 import { StatutoryOptIn } from "@/components/statutory/StatutoryOptIn";
 import {
   activeSection,
@@ -798,6 +799,8 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
         }}
       />
       <div className="min-w-0 flex-1 space-y-6">
+      <div className="space-y-3">
+      <StandingWordingNotice place="workspace-header" />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-soft">
@@ -820,6 +823,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
             Back to statements
           </Link>
         ) : null}
+      </div>
       </div>
 
       {error ? (
@@ -922,6 +926,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               {FINALISED_STATE}
             </p>
           ) : null}
+          <StandingWordingNotice place="downloads" />
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
@@ -1055,6 +1060,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
           className={`rounded-md border px-4 py-3 ${trafficClass(dashboard.traffic)}`}
           data-testid="statutory-review-dashboard"
         >
+          <StandingWordingNotice place="review-dashboard" />
           <p className="text-xs font-semibold uppercase tracking-[0.12em]">
             Review dashboard
           </p>

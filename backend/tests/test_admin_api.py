@@ -142,6 +142,8 @@ async def test_users_me_platform_admin_flag(
     body = response.json()
     assert body["role"] == "owner"
     assert body["is_platform_admin"] is True
+    assert body["product2_access"]["enabled"] is True
+    assert body["product2_access"]["wording_signed_off"] is False
 
 
 @pytest.mark.asyncio
