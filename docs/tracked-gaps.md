@@ -8,6 +8,12 @@ see [`product-roadmap.md`](product-roadmap.md).
 
 The GitHub repository was made private on 8 October 2026 and made public again the same day. See [Pre-launch checklist](#pre-launch-checklist).
 
+## Statutory period longer than 18 months — accountant to confirm the limit
+
+A trial-balance upload whose start-to-end span is longer than 18 months is refused. The message is: "This period is longer than 18 months. Statutory accounts will use these dates." This is a block. The file is not stored.
+
+The 18-month number is the limit in that block until an accountant confirms it. Do not change the number, and do not turn the block back into a warning, without that confirmation.
+
 ## Supersede a FINAL draft (next, design only)
 
 Not built. A practice that finalises by mistake, or finds an error after FINAL, has nothing to do in the product today.

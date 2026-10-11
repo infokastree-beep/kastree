@@ -1,6 +1,6 @@
 # Correcting a statutory period — design
 
-Status: **design only**. Do not build until this is approved.
+Status: **approved**, with the four amendments in this revision. The read-only page is merged (`cd2befc`, pull request 112). Do not build the remaining pull requests until asked. The prior-year comparatives page is a separate design.
 
 The statutory period is the Product 1 trial balance's period start and period end. Report setup face dates only relabel the printed face. Today the only way to fix a wrong period is to delete that trial balance and upload it again. This design adds a read-only Inputs page and a confirmed re-adopt. It does not add a date field on the year end.
 
@@ -54,13 +54,15 @@ A row is selectable only when every check below passes. A row that fails is stil
 
 Body: `trial_balance_id`, `row_version` of the active draft, `confirm`.
 
-`confirm: false` returns 422 and writes nothing. The body lists, with counts and no amounts:
+`confirm: false` returns 422 and writes nothing. The body lists, with no amounts:
 
 - the period that will be stored
-- how many of this draft's adjustment journals will be kept, and how many of those journals name an account that is not on the new trial balance
+- each adjustment journal that will be kept: narration, and for each line the nominal code, the account name, and whether that code and name exist on the new trial balance
 - how many disclosure answers will be kept
 - whether a note library is stored
 - the draft id and version number, which will not change
+
+A journal with no line whose account is missing is still listed, with every account marked present. The list is the journals, not only a count.
 
 `confirm: true` with the current `row_version` performs the switch in one transaction. A stale `row_version` is 409 and writes nothing.
 
@@ -72,7 +74,9 @@ The active draft stays the same row, the same `version_number`, and status `draf
 
 Mappings and sub-lines are not deleted and not copied. They stay on `account_mappings`. An account that is on the new file with the same source code and source name keeps its canonical line and statutory sub-line. An account that was only on the old file stays mapped on the company and is not in this draft. The new file must already be `complete`, so every account it contains has a confirmed mapping or is ignored. A file that still needs a sub-line is not selectable; the row says which account needs a statutory sub-line, using the existing refusal text.
 
-Adjustment journals and their lines stay on this draft. A journal whose nominal code is not on the new file still posts, because adjustment lines store their own canonical line and are appended to the trial balance. The confirmation names that count so the preparer can delete the journal on Adjustments afterwards. The switch does not delete journals and does not re-map them.
+Adjustment journals and their lines stay on this draft. A journal whose nominal code is not on the new file still posts, because adjustment lines store their own canonical line and are appended to the trial balance. The switch does not delete journals and does not re-map them.
+
+When the draft has at least one adjustment journal, the switch leaves `findraft_draft_versions.adjustments_basis_trial_balance_id` set to the trial balance that was adopted before the switch. The review dashboard then shows: "This draft's adjustments were made against a different trial balance". The notice stays until a member confirms them. `POST /year-ends/{year_end_id}/trial-balance/adjustments-confirmed` with the current `row_version` sets the column to the trial balance adopted now, writes one audit row `adjustments_reconfirmed` (year end id, draft id, previous trial balance id, current trial balance id; no amounts, no narration), and the notice goes away. A viewer is 403. A stale `row_version` is 409 and writes nothing. A draft with no journals leaves the column null and shows no notice.
 
 Disclosure answers stay on this draft. Stored Yes and No are not rewritten. Applicability is recomputed from the new balances the next time the dashboard is built, by the existing `V-DISC-001` rule.
 
@@ -98,11 +102,15 @@ Under Period start and Period end, on the trial-balance upload (the general-ledg
 
 When the start is before 1 January 2026, an inline warning, and the upload still proceeds, because Product 1 management accounts may use that file:
 
-"This period starts before 1 January 2026. The Irish statutory pack cannot use it. Management accounts can."
+"This period starts before 1 January 2026. The Irish statutory pack cannot use it. Management accounts remain available."
 
-When the span is longer than 18 months, a warning, and the upload still proceeds:
+The date in that sentence is a link to a short explanation on the same form (a disclosure, not a new route): "The Irish statutory pack applies to periods beginning on or after 1 January 2026. A trial balance that starts earlier can still be used for management accounts. It cannot be adopted into a statutory draft."
+
+When the span is longer than 18 months, the upload is refused. This is a block, not a warning:
 
 "This period is longer than 18 months. Statutory accounts will use these dates."
+
+The 18-month figure is the limit until an accountant confirms it. That confirmation is recorded in `docs/tracked-gaps.md`. The block uses 18 months until that confirmation changes the number. The same sentence is the API 422.
 
 Period end before period start stays the existing error and blocks the upload.
 
@@ -113,6 +121,12 @@ The upload API starts requiring `period_start` on new uploads (422, "Enter a per
 All of these are decided before any row is updated. A failure leaves the year end, the draft, journals, disclosures, and the note library untouched.
 
 **Not after FINAL.** If any draft on this year end has status `final` or `locked`, or `is_frozen` is true, the switch is 409: "This statutory draft is final, locked, or frozen. The period cannot be changed." A frozen or final draft still takes its printed period from the year end, so changing the year end would relabel a report whose figures were already captured. Opening another period is `continue_from_trial_balance`, which creates or finds the year end for that period end. It does not rewrite this one.
+
+**Nothing is orphaned.** A switch does not delete, retarget, or detach another year end.
+
+- A FINAL year end is a different row, or it is this row with a final draft. This row is refused by the rule above, so its snapshot, period, and adopted trial balance stay. Another year end that is already FINAL is not updated. Its `period_end` stays the key in `findraft_year_ends_period_key`. The switch cannot leave a FINAL snapshot pointing at a period that no longer exists.
+- Prior-year lines live on `findraft_prior_year_lines` by `year_end_id` and `canonical_line`. They do not store `period_end`. Changing this year end's dates leaves those rows on the same year end. They are not deleted and they are not left pointing at a missing period. The page still says to review them, because the comparative they describe may now be a different previous period.
+- There is no roll-forward foreign key on `period_end`. The comparatives design stores a roll-forward as `comparative_source_year_end_id` and `comparative_source_draft_id` on the later year end, and only when that draft is FINAL. A FINAL draft's year end cannot be switched, so that link still names the same year end and the same snapshot. The switch does not clear the link and does not rewrite it onto another period. If this year end itself holds a roll-forward link, the link stays on this `year_end_id` through the date change, and the comparatives page asks for a review.
 
 The active draft must be status `draft`, not frozen, and the latest version number. `row_version` must match.
 
@@ -143,9 +157,10 @@ The same sentence is the upload warning, with the management-accounts clause onl
 
 | Method | Path | Who | Effect |
 | --- | --- | --- | --- |
-| GET | `/year-ends/{year_end_id}/trial-balance` | viewer and above | Adopted trial balance, or a null adopted id. Includes `can_switch` and the refusal sentence when switching is closed. |
+| GET | `/year-ends/{year_end_id}/trial-balance` | viewer and above | Adopted trial balance, or a null adopted id. The merged page returns the period, upload date, account count, currency, and a null file name. Re-adopt adds `can_switch` and the refusal sentence. |
 | GET | `/year-ends/{year_end_id}/trial-balance/candidates` | viewer and above | Other complete trial balances and, for each, either `ready` or the refusal sentence. |
-| POST | `/year-ends/{year_end_id}/trial-balance/adopt` | member and above | `confirm: false` previews. `confirm: true` switches. |
+| POST | `/year-ends/{year_end_id}/trial-balance/adopt` | member and above | `confirm: false` previews, including each journal. `confirm: true` switches. |
+| POST | `/year-ends/{year_end_id}/trial-balance/adjustments-confirmed` | member and above | Clears the dashboard notice. Audited. |
 
 Existing routes kept unchanged:
 
@@ -155,25 +170,29 @@ Existing routes kept unchanged:
 
 ## Migration
 
-One revision, and only for the file name. The switch itself needs no new column.
+Two revisions. Neither is in the read-only page.
 
-`n0o1p2q3r4`, `down_revision` `m9n0o1p2q3`.
+`n0o1p2q3r4`, `down_revision` `m9n0o1p2q3`. File name only. The switch itself does not use this column.
 
 `trial_balances.original_filename VARCHAR(255) NULL`. No server default. No backfill. No check constraint. Existing rows stay null. Upgrade and downgrade reapply `backend/scripts/findraft_table_privileges.sql`. The executable contains no `GRANT ALL` and no `SELECT` of the column. `trial_balances` already grants `SELECT, INSERT, UPDATE, DELETE` to `findraft`. A new column inherits that table grant. No new table, so no new policy and no new grant.
 
-The migration pull request does not map the column on the SQLAlchemy model. Mapping it would make every trial-balance load select the column and fail production until the migration is applied. The following pull request maps it, and it merges only after production `/health` shows `revision_matches` true for `n0o1p2q3r4`.
+That pull request does not map the column on the SQLAlchemy model. Mapping it would make every trial-balance load select the column and fail production until the migration is applied. The following pull request maps it, and it merges only after production `/health` shows `revision_matches` true for `n0o1p2q3r4`.
 
 Upload writes `safe_filename` of the original name into the column. The page shows that name. A null stays "File name was not recorded."
 
+`o1p2q3r4s5`, `down_revision` `n0o1p2q3r4`. One nullable column, `findraft_draft_versions.adjustments_basis_trial_balance_id UUID NULL`, foreign key to `trial_balances.id` with `ON DELETE SET NULL`. No server default. No backfill. Existing rows stay null, which means no notice. Upgrade and downgrade reapply the same privileges script. The executable contains no `GRANT ALL` and no `SELECT`. The table already grants `SELECT, INSERT, UPDATE, DELETE` to `findraft`. This revision merges only after `/health` shows `revision_matches` true for `n0o1p2q3r4`, and the model maps the column only in the re-adopt pull request.
+
 ## Tests
 
-- Upload helper text contains the accounting-period sentence. A start before 2026-01-01 warns and still uploads. A missing `period_start` on the API is 422. An existing null start is unchanged.
+- Upload helper text contains the accounting-period sentence. A start before 2026-01-01 warns, links to the short explanation, says management accounts remain available, and still uploads. A span longer than 18 months is 422 with that sentence and stores nothing. A missing `period_start` on the API is 422. An existing null start is unchanged.
 - Migration source has no `GRANT ALL` and no `SELECT`. Model mapping is absent in that pull request and present in the reader pull request.
 - Read-only page: period, upload date, account count, statements link, null file name copy. No adopted id shows the empty state. `test_report_setup.py` today expects the Inputs labels to start Mapping, Adjustments, Disclosures, Company details. That assertion gains Trial balance in front of Mapping.
 - `confirm: false` writes no audit row and does not change `adopted_trial_balance_id` or the dates.
 - Same-period replacement (old row soft-deleted, new complete row, same period end) keeps the draft id, version number, disclosure answers, adjustment journals, and note library, and updates `adopted_trial_balance_id`.
 - A different period updates `period_start` and `period_end` and keeps the same draft id. Mappings and sub-lines for a shared code and name are still the ones on `account_mappings`.
-- An adjustment whose nominal code is absent from the new file is counted in the preview and is still stored after confirm.
+- The preview lists each journal's narration and each line's account, and says whether that account exists on the new file. No amounts. An absent account is still stored after confirm.
+- After a switch that keeps journals, the dashboard shows "This draft's adjustments were made against a different trial balance" until a member confirms. The audit row has ids only. A viewer confirmation is 403.
+- A switch does not delete another year end's FINAL snapshot, and does not delete `findraft_prior_year_lines`. A roll-forward link stored as year-end id and draft id is unchanged.
 - Pack start of 2025-12-31 is 422 with the 1 January 2026 sentence, and the year end is unchanged.
 - Overlap, a non-contiguous previous period, a non-contiguous following period, and first-financial-period plus a previous year end are each 409, and the year end is unchanged.
 - A colliding period end names the other draft and does not merge.
@@ -184,16 +203,19 @@ Upload writes `safe_filename` of the original name into the column. The page sho
 
 ## Least privilege
 
-No `GRANT ALL`. No new table. The filename migration reapplies the existing privileges script and does not grant a wider set. Audit inserts go through `append_audit_log`. Application queries filter by `org_id`. Cross-organisation access stays 404.
+No `GRANT ALL`. No new table. Both migrations reapply the existing privileges script and do not grant a wider set. Audit inserts go through `append_audit_log`. Application queries filter by `org_id`. Cross-organisation access stays 404.
 
 ## Build order
 
 Each pull request is merged on its own, with the required checks green, including `npm run build` when the frontend changes. Golden figures stay unchanged. No LLM.
 
-1. **Upload wording and a required period start.** Frontend copy and warnings. API 422 when a new upload omits `period_start`. No migration. No adopt change.
-2. **Migration `n0o1p2q3r4` only.** Nullable `original_filename`. The model does not map it. After merge, the first line of the report is `MIGRATION REQUIRED: n0o1p2q3r4. Production is failing until you apply it.` Do not merge pull request 3 until `/health` shows `revision_matches` true.
-3. **Store and show the file name.** Map the column. Upload writes it. No switch yet.
-4. **Read-only Trial balance page.** Section, GET, empty state, statements link, face-date notice. No POST.
-5. **Re-adopt.** Candidates, preview, confirm, period update, contiguity, pack date, currency, audit, role and status refusals. No migration.
+The read-only page comes before the migration and before re-adopt.
 
-Pull requests 1 and 2 can be reviewed in that order. Pull request 3 waits on the migration. Pull requests 4 and 5 wait on 3 so the page can show the name.
+1. **Read-only Trial balance page.** Done. Merged as `cd2befc`. Section, GET, empty state, statements link, face-date notice, "File name was not recorded." No POST and no migration.
+2. **Upload wording and a required period start.** Frontend copy, the pre-2026 link and the management-accounts sentence, and the 18-month block. API 422 when a new upload omits `period_start`, and 422 when the span is longer than 18 months. No migration. No adopt change.
+3. **Migration `n0o1p2q3r4` only.** Nullable `original_filename`. The model does not map it. After merge, the first line of the report is `MIGRATION REQUIRED: n0o1p2q3r4. Production is failing until you apply it.` Do not merge pull request 4 until `/health` shows `revision_matches` true.
+4. **Store and show the file name.** Map the column. Upload writes it. No switch yet.
+5. **Migration `o1p2q3r4s5` only.** Nullable `adjustments_basis_trial_balance_id`. The model does not map it. Same migration-required line. Do not merge pull request 6 until `/health` matches.
+6. **Re-adopt.** Map the confirmation column. Candidates, journal list, preview, confirm, dashboard notice until a member confirms, period update, contiguity, pack date, currency, the orphan rules above, audit, role and status refusals.
+
+Pull request 2 does not wait on a migration. Pull request 4 waits on `n0o1p2q3r4`. Pull request 6 waits on `o1p2q3r4s5`.
