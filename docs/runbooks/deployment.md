@@ -116,6 +116,19 @@ cd backend && alembic upgrade head
 
 Never rely on the alembic.ini localhost URL in staging/production.
 
+The API does not apply migrations on startup. `GET /health` stays `200` and
+reports `database_revision`, `code_revision`, and `revision_matches`. The Admin
+page shows that comparison. A mismatch does not stop the process.
+
+After a pull request that adds an Alembic revision is merged, the first line
+of the report is:
+
+`MIGRATION REQUIRED: <revision>. Production is failing until you apply it.`
+
+Then report the merge. Apply the revision with
+`cd backend && alembic upgrade <revision>` before any later code reads the
+new column.
+
 ### Application database role (`findraft`) — required before deploy
 
 The running API **must not** use Railway's default `postgres` superuser

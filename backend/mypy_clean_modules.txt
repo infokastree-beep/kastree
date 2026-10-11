@@ -94,6 +94,7 @@ app/services/prior_period.py
 app/services/prior_year.py
 app/services/rate_limit.py
 app/services/reconciliation.py
+app/services/schema_revision.py
 app/services/render_jobs.py
 app/services/report_setup.py
 app/services/retention.py
