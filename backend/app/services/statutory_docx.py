@@ -28,7 +28,19 @@ def build_docx(payload: Mapping[str, object], dest: Path) -> None:
     # The composed file already prints DRAFT or FINAL in the page header.
     # A body copy sits on the cover as a second, and with the header a third.
     if not isinstance(composed, list):
-        document.add_paragraph(escape_export_text(_required_text(payload, "watermark")))
+        explicit = payload.get("page_header")
+        if isinstance(explicit, str) and explicit:
+            _configure_word_section(
+                _word_section(document, 0),
+                page_header=explicit,
+                notes_footer=False,
+                unlink=False,
+            )
+            document.add_paragraph(escape_export_text(explicit))
+        else:
+            document.add_paragraph(
+                escape_export_text(_required_text(payload, "watermark"))
+            )
     document.add_heading(
         escape_export_text(_required_text(payload, "company_name")), level=1
     )

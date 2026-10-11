@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +23,36 @@ from app.services.audit import append_audit_log
 
 PACK_ID: Literal["frs102-1a-ie"] = "frs102-1a-ie"
 BETA_ACTION = "beta_self_review"
+
+# A qualified reviewer has not signed this wording off. Documents and
+# /users/me read this value. The client does not decide it.
+WORDING_SIGNED_OFF: bool = False
+WORDING_BANNER = "Statutory wording not yet reviewed by a qualified reviewer"
+
+
+class FinalPagePresentation(NamedTuple):
+    wording_signed_off: bool
+    page_label: str
+    wording_banner: str
+    printed_header: str
+
+
+def final_page_presentation(status_header: str) -> FinalPagePresentation:
+    """Decide the header a page prints.
+
+    A header that is not FINAL is unchanged. When a qualified reviewer has
+    signed the wording off, FINAL prints as FINAL. Otherwise FINAL prints as
+    DRAFT followed by the wording banner. The document status stays FINAL.
+    """
+    signed = WORDING_SIGNED_OFF
+    header = status_header.strip()
+    if signed or not (header == "FINAL" or header.startswith("FINAL ")):
+        return FinalPagePresentation(signed, header, "", header)
+    rest = header[len("FINAL") :].strip()
+    page_label = "DRAFT" if rest == "" else f"DRAFT {rest}"
+    printed = f"{page_label} {WORDING_BANNER}"
+    return FinalPagePresentation(False, page_label, WORDING_BANNER, printed)
+
 
 BETA_STATEMENT = (
     "This is the first-practice beta of the Irish FRS 102 Section 1A "

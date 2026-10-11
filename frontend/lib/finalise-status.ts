@@ -1,5 +1,8 @@
 /** Review-dashboard sentence. A draft that passed its checks can finalise. */
 
+export const WORDING_BANNER =
+  "Statutory wording not yet reviewed by a qualified reviewer";
+
 const CURRENCY_NOTICE =
   /^Company currency is ([A-Z]{3})\. Confirm this is intended\.$/;
 
@@ -18,6 +21,27 @@ export function finaliseStatusLine(input: {
 }
 
 export const FINALISED_STATE = "FINAL";
+
+/** True only when the server says the wording is signed off. A missing flag stays unsigned. */
+export function wordingSignedOffFromServer(
+  access: { wording_signed_off?: boolean } | undefined,
+): boolean {
+  return access?.wording_signed_off === true;
+}
+
+export function finalStateLabel(wordingSignedOff: boolean): string {
+  if (wordingSignedOff) {
+    return FINALISED_STATE;
+  }
+  return `${FINALISED_STATE} — ${WORDING_BANNER}`;
+}
+
+export function shownStatus(status: string, wordingSignedOff: boolean): string {
+  if (status !== "final" || wordingSignedOff) {
+    return status;
+  }
+  return `final — ${WORDING_BANNER}`;
+}
 
 export const CARRIED_ACK_LABEL =
   "I have reviewed the carried-over disclosure answers.";
@@ -45,8 +69,27 @@ export function carriedAcknowledgementRequired(names: readonly string[]): boolea
   return names.length > 0;
 }
 
-export function pdfDownloadLabel(status: string | undefined): string {
-  return status === "final" ? "Download final PDF" : "Download draft PDF";
+export function pdfDownloadLabel(
+  status: string | undefined,
+  wordingSignedOff = false,
+): string {
+  if (status !== "final") {
+    return "Download draft PDF";
+  }
+  if (wordingSignedOff) {
+    return "Download final PDF";
+  }
+  return `Download final PDF — ${WORDING_BANNER}`;
+}
+
+export function wordDownloadLabel(
+  status: string | undefined,
+  wordingSignedOff = false,
+): string {
+  if (status !== "final" || wordingSignedOff) {
+    return "Download Word (.docx)";
+  }
+  return `Download Word (.docx) — ${WORDING_BANNER}`;
 }
 
 export function finaliseFailureMessage(

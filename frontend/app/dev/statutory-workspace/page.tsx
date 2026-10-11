@@ -8,7 +8,11 @@
 import { useState } from "react";
 import { FinaliseDraft } from "@/components/statutory/FinaliseDraft";
 import { ReportSetupForm, type ReportSetupWrite } from "@/components/statutory/ReportSetupForm";
-import { FINALISED_STATE, pdfDownloadLabel } from "@/lib/finalise-status";
+import {
+  finalStateLabel,
+  pdfDownloadLabel,
+  wordDownloadLabel,
+} from "@/lib/finalise-status";
 import { SectionPreview } from "@/components/statutory/SectionPreview";
 import { SectionsSetup } from "@/components/statutory/SectionsSetup";
 import { StatutoryLoadError } from "@/components/statutory/StatutoryLoadError";
@@ -393,6 +397,7 @@ export default function StatutoryWorkspacePreviewPage() {
               role={previewRole}
               status={draftStatus}
               canFinalise
+              wordingSignedOff={false}
               carriedDisclosures={showCarried ? ["HAS_EMPLOYEES"] : []}
               onConfirm={async () => {
                 if (previewRefusal) {
@@ -411,7 +416,7 @@ export default function StatutoryWorkspacePreviewPage() {
             </h2>
             {draftStatus === "final" ? (
               <p className="text-sm font-semibold text-ink" data-testid="statutory-outputs-state">
-                {FINALISED_STATE}
+                {finalStateLabel(false)}
               </p>
             ) : null}
             <button
@@ -420,7 +425,7 @@ export default function StatutoryWorkspacePreviewPage() {
               disabled
               className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {pdfDownloadLabel(draftStatus)}
+              {pdfDownloadLabel(draftStatus, false)}
             </button>
             <p className="text-sm text-ink-secondary" data-testid="statutory-download-reason">
               This preview does not call the API.
@@ -432,7 +437,7 @@ export default function StatutoryWorkspacePreviewPage() {
                 disabled
                 className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Download Word (.docx)
+                {wordDownloadLabel(draftStatus, false)}
               </button>
             </div>
           </section>

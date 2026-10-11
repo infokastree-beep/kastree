@@ -301,9 +301,7 @@ def _child_count(table: str, draft_id: str, org_id: uuid.UUID) -> int:
     return int(count)
 
 
-def _frozen_mapping(
-    draft_id: str, nominal_code: str, org_id: uuid.UUID
-) -> str | None:
+def _frozen_mapping(draft_id: str, nominal_code: str, org_id: uuid.UUID) -> str | None:
     with SyncSessionLocal() as session:
         set_rls_org_id(session, org_id)
         value = session.execute(
@@ -1272,9 +1270,12 @@ async def test_adopted_draft_adjusts_discloses_notices_and_starts_a_new_report(
         },
     )
     assert posted.status_code == 200, posted.text
-    assert _child_count(
-        "findraft_adjustment_journals", first_id, provisioned_org["org_id"]
-    ) == 1
+    assert (
+        _child_count(
+            "findraft_adjustment_journals", first_id, provisioned_org["org_id"]
+        )
+        == 1
+    )
     moved = await api_client.get(
         f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
         headers=headers,
@@ -1293,9 +1294,10 @@ async def test_adopted_draft_adjusts_discloses_notices_and_starts_a_new_report(
         },
     )
     assert answered.status_code == 200, answered.text
-    assert _child_count(
-        "findraft_disclosure_answers", first_id, provisioned_org["org_id"]
-    ) == 1
+    assert (
+        _child_count("findraft_disclosure_answers", first_id, provisioned_org["org_id"])
+        == 1
+    )
     recomputed = await api_client.post(
         f"/year-ends/{year_end_id}/drafts/{first_id}/recompute",
         headers={**headers, "Idempotency-Key": "adopted-recompute"},
@@ -1340,22 +1342,32 @@ async def test_adopted_draft_adjusts_discloses_notices_and_starts_a_new_report(
     second_id = started.json()["draft_id"]
     assert second_id != first_id
     assert started.json()["version_number"] == 2
-    assert _frozen_mapping(first_id, "2130", provisioned_org["org_id"]) == "OTHER_DEBTORS"
-    assert _child_count(
-        "findraft_adjustment_journals", first_id, provisioned_org["org_id"]
-    ) == 1
-    assert _child_count(
-        "findraft_adjustment_journals", second_id, provisioned_org["org_id"]
-    ) == 0
-    assert _child_count(
-        "findraft_disclosure_answers", first_id, provisioned_org["org_id"]
-    ) == 1
-    assert _child_count(
-        "findraft_disclosure_answers", second_id, provisioned_org["org_id"]
-    ) == 0
-    _remap(
-        provisioned_org["company_id"], "2130", "cash", provisioned_org["org_id"]
+    assert (
+        _frozen_mapping(first_id, "2130", provisioned_org["org_id"]) == "OTHER_DEBTORS"
     )
+    assert (
+        _child_count(
+            "findraft_adjustment_journals", first_id, provisioned_org["org_id"]
+        )
+        == 1
+    )
+    assert (
+        _child_count(
+            "findraft_adjustment_journals", second_id, provisioned_org["org_id"]
+        )
+        == 0
+    )
+    assert (
+        _child_count("findraft_disclosure_answers", first_id, provisioned_org["org_id"])
+        == 1
+    )
+    assert (
+        _child_count(
+            "findraft_disclosure_answers", second_id, provisioned_org["org_id"]
+        )
+        == 0
+    )
+    _remap(provisioned_org["company_id"], "2130", "cash", provisioned_org["org_id"])
     active = await api_client.get(
         f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
         headers=headers,
@@ -1363,7 +1375,9 @@ async def test_adopted_draft_adjusts_discloses_notices_and_starts_a_new_report(
     assert active.status_code == 200, active.text
     assert active.json()["renderable"] is True, active.text
     assert _sofp_amount(active.json(), "Cash at bank and in hand") != cash_when_remapped
-    assert _frozen_mapping(first_id, "2130", provisioned_org["org_id"]) == "OTHER_DEBTORS"
+    assert (
+        _frozen_mapping(first_id, "2130", provisioned_org["org_id"]) == "OTHER_DEBTORS"
+    )
     current = await api_client.get(f"/year-ends/{year_end_id}/draft", headers=headers)
     assert current.status_code == 200, current.text
     assert current.json()["draft_id"] == second_id
@@ -1655,9 +1669,7 @@ def _refuse_draft_change(
         set_rls_org_id(session, org_id)
         with pytest.raises(DBAPIError, match=match):
             session.execute(
-                text(
-                    f"UPDATE findraft_draft_versions SET {assignment} WHERE id = :id"
-                ),
+                text(f"UPDATE findraft_draft_versions SET {assignment} WHERE id = :id"),
                 params,
             )
             session.commit()
@@ -1700,7 +1712,9 @@ async def _ready_golden(
     prior = await api_client.post(
         f"/year-ends/{year_end_id}/prior-year",
         headers=headers,
-        json={"lines": [{"canonical_line": "RETAINED_EARNINGS", "amount": "-322062.00"}]},
+        json={
+            "lines": [{"canonical_line": "RETAINED_EARNINGS", "amount": "-322062.00"}]
+        },
     )
     assert prior.status_code == 200, prior.text
     draft = await api_client.get(f"/year-ends/{year_end_id}/draft", headers=headers)
@@ -1726,6 +1740,7 @@ async def test_finalised_adopted_draft_ignores_a_later_mapping_edit(
     api_client: AsyncClient,
     provisioned_org: dict,
     stored_files: LocalPracticeStorage,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Product 1 edits after FINAL do not change the stored PDF or Word file."""
     year_end_id, draft_id, headers = await _ready_golden(api_client, provisioned_org)
@@ -1743,11 +1758,17 @@ async def test_finalised_adopted_draft_ignores_a_later_mapping_edit(
     )
     assert finalised.status_code == 200, finalised.text
     assert finalised.json()["status"] == "final"
+    from app.services.beta import WORDING_BANNER
+
     stored = _snapshot(draft_id, provisioned_org["org_id"])
     assert stored is not None
     assert stored["html"]
     assert stored["composed_html"]
     assert stored["html"] != stored["composed_html"]
+    assert stored["watermark"] == "FINAL"
+    assert stored["wording_signed_off"] is False
+    assert stored["page_label"] == "DRAFT"
+    assert stored["wording_banner"] == WORDING_BANNER
     sections = stored["composed_sections"]
     assert isinstance(sections, list) and sections
     current = stored["canonical_current"]
@@ -1808,7 +1829,9 @@ async def test_finalised_adopted_draft_ignores_a_later_mapping_edit(
     # that was frozen before the Product 1 remap.
     rendered = _pdf_text(pdf.content)
     assert "284,912" in rendered
-    assert "FINAL" in rendered
+    assert "DRAFT" in rendered
+    assert WORDING_BANNER in rendered
+    assert after.json()["watermark"] == "FINAL"
     created = await api_client.post(
         f"/year-ends/{year_end_id}/drafts/{draft_id}/document.docx",
         headers={**headers, "Idempotency-Key": "adopted-final-word"},
@@ -1846,9 +1869,73 @@ async def test_finalised_adopted_draft_ignores_a_later_mapping_edit(
             for name in archive.namelist()
             if name.startswith("word/header")
         ]
-    assert header_parts
-    assert all("FINAL" in header and "DRAFT" not in header for header in header_parts)
+        cover_header = archive.read("word/header1.xml").decode()
+    assert "DRAFT" in cover_header
+    assert WORDING_BANNER in cover_header
+    assert "FINAL" not in cover_header
+    assert all(
+        "DRAFT" in header and WORDING_BANNER in header and "FINAL" not in header
+        for header in header_parts
+    )
     assert "284,912" in xml
+
+    monkeypatch.setattr("app.services.beta.WORDING_SIGNED_OFF", True)
+    again = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
+        headers=headers,
+    )
+    assert again.status_code == 200, again.text
+    kept = _pdf_text(again.content)
+    assert "284,912" in kept
+    assert "DRAFT" in kept
+    assert WORDING_BANNER in kept
+    still = _snapshot(draft_id, provisioned_org["org_id"])
+    assert still is not None
+    assert still["wording_signed_off"] is False
+    assert still["page_label"] == "DRAFT"
+    assert still["wording_banner"] == WORDING_BANNER
+    second = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/document.docx",
+        headers={**headers, "Idempotency-Key": "adopted-final-word-after-signoff"},
+    )
+    assert second.status_code == 202, second.text
+    second_job = second.json()["job_id"]
+    with SyncSessionLocal() as session:
+        processed_again = process_render_job(
+            session,
+            org_id=provisioned_org["org_id"],
+            job_id=uuid.UUID(second_job),
+            storage=stored_files,
+        )
+    if processed_again is None:
+        with SyncSessionLocal() as session:
+            set_rls_org_id(session, provisioned_org["org_id"])
+            stored_again = session.execute(
+                text(
+                    "SELECT status, storage_key, error_message "
+                    "FROM findraft_render_jobs WHERE id = :id"
+                ),
+                {"id": second_job},
+            ).one()
+        assert stored_again[0] == "ready", stored_again[2]
+        assert stored_again[1] is not None
+        kept_word = stored_files.get(key=stored_again[1])
+    else:
+        assert processed_again.status == "ready", processed_again.error_message
+        assert processed_again.storage_key is not None
+        kept_word = stored_files.get(key=processed_again.storage_key)
+    with zipfile.ZipFile(BytesIO(kept_word)) as archive:
+        kept_headers = [
+            archive.read(name).decode()
+            for name in archive.namelist()
+            if name.startswith("word/header")
+        ]
+        kept_cover = archive.read("word/header1.xml").decode()
+    assert "DRAFT" in kept_cover and WORDING_BANNER in kept_cover
+    assert "FINAL" not in kept_cover
+    assert all(
+        WORDING_BANNER in header and "FINAL" not in header for header in kept_headers
+    )
 
 
 @pytest.mark.asyncio
@@ -2022,7 +2109,7 @@ async def test_frozen_status_guard_refuses_every_other_change(
         ("status = 'draft'", "FINAL draft is immutable", None),
         ("status = 'locked'", "FINAL draft is immutable", None),
         (
-            "snapshot = '{\"watermark\": \"CHANGED\"}'::jsonb",
+            'snapshot = \'{"watermark": "CHANGED"}\'::jsonb',
             "FINAL draft is immutable",
             None,
         ),

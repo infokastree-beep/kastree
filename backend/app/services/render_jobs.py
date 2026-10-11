@@ -412,9 +412,18 @@ def _payload(session: Session, job: RenderJob) -> dict[str, object]:
         statement = snapshot.get("statement")
         if not isinstance(statement, dict):
             raise ValueError("FINAL snapshot is missing")
-        return annotate_page_starts(
+        payload = annotate_page_starts(
             payload_from_statement(statement), _report_setup_for_job(session, job)
         )
+        label = snapshot.get("page_label")
+        banner = snapshot.get("wording_banner")
+        if isinstance(label, str) and label:
+            payload["page_header"] = (
+                label
+                if not isinstance(banner, str) or banner == ""
+                else f"{label} {banner}"
+            )
+        return payload
     if job.tb_version_id is None:
         raise ValueError("Trial balance version is not ready")
     document = _load_live(job.org_id, job.tb_version_id)
