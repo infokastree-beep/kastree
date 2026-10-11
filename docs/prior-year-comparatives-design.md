@@ -1,6 +1,12 @@
 # Prior-year comparatives — design
 
-Status: **design only**. Do not build until this is approved.
+**Status: approved, with three conditions. Not built.**
+
+## Approval conditions
+
+1. Show any account whose mapping differs from the previous period's statements, and require confirmation before that comparative snapshot is stored.
+2. The first-period undo has a test. The test marks the period, undoes it, and checks the 409 when a draft is final, locked, or frozen.
+3. Manual entry is stored only after the member confirms "matches last year's filed accounts".
 
 The comparative column is the previous period. Today a member either posts canonical lines to `POST /year-ends/{id}/prior-year` or marks the first financial period. Both set `prior_year_validated`, which opens `V-GATE-001`. There is no undo, no translation from a prior Product 1 trial balance, and no copy from a previous FINAL snapshot. The lines live on `findraft_prior_year_lines` by `year_end_id` and `canonical_line`. They do not store `period_end`.
 
@@ -41,7 +47,13 @@ Refuse, and do not write, when:
 
 An unmapped or ambiguous file is not replaced by manual entry. The sentence tells the preparer to finish mapping on that trial balance.
 
-**Confirmation snapshots.** `confirm: true` writes the translated totals onto `findraft_prior_year_lines`, sets `prior_year_validated`, and stores the source trial balance id and a sha256 of the translated lines. The printed column is that snapshot. A later change to the Product 1 file, its mappings, or its sub-lines does not move the column. The page then shows: "The prior trial balance has changed since these comparatives were confirmed." A member confirms again to replace the snapshot. The audit row records the replacement. The column is not live.
+**Mapping that differs from the previous statements.** When the previous period has statements, compare each account on this prior trial balance with the canonical line that account was included in on those statements. Match on source code and source name, for the same company. Where the statements store only totals, use the confirmed mapping those statements were built from.
+
+Any account whose confirmed mapping is a different canonical line is listed on the page before confirm. The row shows the account code, the account name, the line on the previous statements, and the line the mapping would use now. It shows no amount.
+
+`confirm: true` without `mapping_differences_confirmed: true` is 422 when that list is not empty: "Confirm the accounts whose mapping differs from the previous period's statements." Nothing is written. The 422 body includes the same list. When the list is empty, or the previous period has no statements, that flag is not required.
+
+**Confirmation snapshots.** `confirm: true` writes the translated totals onto `findraft_prior_year_lines`, sets `prior_year_validated`, and stores the source trial balance id and a sha256 of the translated lines. The printed column is that snapshot. A later change to the Product 1 file, its mappings, or its sub-lines does not move the column. The page then shows: "The prior trial balance has changed since these comparatives were confirmed." A member confirms again to replace the snapshot. A replacement that still has a mapping difference needs `mapping_differences_confirmed: true` again. The audit row records the replacement. The column is not live. The audit JSON does not store the account list.
 
 ### 2. First financial period
 
@@ -53,21 +65,25 @@ Marking it deletes any prior-year lines, sets `first_financial_period` and `prio
 
 If another year end for this company already exists, the mark is 409: "This draft is marked as the company's first financial period, and another period already ends on {previous end}." The flag is not set. The other year end is not changed.
 
-Undo is `POST /year-ends/{year_end_id}/first-financial-period/undo`. It clears both flags. It does not invent comparative amounts, so `V-GATE-001` blocks again until a source is confirmed. It is 409 when any draft on the year end is final, locked, or frozen: "This statutory draft is final, locked, or frozen. The first-period choice cannot be undone." Audit `first_financial_period_cleared`, year end id only.
+Undo is `POST /year-ends/{year_end_id}/first-financial-period/undo`. It clears both flags. It does not invent comparative amounts, so `V-GATE-001` blocks again until a source is confirmed. It is 409 when any draft on the year end is final, locked, or frozen: "This statutory draft is final, locked, or frozen. The first-period choice cannot be undone." The flags stay set, and that refusal writes no audit row. A successful undo writes audit `first_financial_period_cleared`, year end id only.
+
+The undo pull request includes the test in Tests. It is not complete without that test.
 
 ### 3. Manual entry by canonical line
 
 Used when this company has no Product 1 trial balance for the previous period. If source 1 exists, manual confirm is 422: "A prior trial balance is available. Confirm that source."
 
-Reuse `POST /year-ends/{id}/prior-year`. The body stays a list of canonical line and amount string. Amounts are `Decimal` to the cent, as today.
+Reuse `POST /year-ends/{id}/prior-year`. The body stays a list of canonical line and amount string, plus `matches_filed_accounts`. Amounts are `Decimal` to the cent, as today.
 
-Before anything is stored, the entered column must pass three engine checks. A failure is 422, the year end is unchanged, and the response is that check's message:
+The page shows a confirmation the member must set before the lines can be stored. The label is "matches last year's filed accounts". The request sends `matches_filed_accounts: true`. Missing, false, or any other value is 422: "Confirm that these figures match last year's filed accounts." The year end is unchanged. A later replace needs the same confirmation again.
+
+Before anything is stored, the entered column must also pass three engine checks. A failure is 422, the year end is unchanged, and the response is that check's message:
 
 - the prior column balances (`check_bs_balances` on those lines)
 - retained earnings rolls forward (`check_re_rollforward`)
 - the fixed-asset note rolls forward (`check_fa_rollforward`) when any fixed-asset line is present
 
-The page shows the same three results before the member confirms. Confirm stores the lines, sets `prior_year_validated`, and sets the source to `manual`.
+The page shows the same three results, and the filed-accounts confirmation, before the member confirms. Confirm stores the lines only when `matches_filed_accounts` is true and the three checks pass. It sets `prior_year_validated` and sets the source to `manual`.
 
 A second confirm on a draft that is not final replaces the lines. The current "Prior year is already validated" refusal remains for a final, locked, or frozen draft. Replacing lines writes audit `prior_year_replaced` with the year end id and the source kind. No amounts.
 
@@ -101,9 +117,9 @@ A first financial period prints no comparative column. A later year with confirm
 
 | Method | Path | Who | Effect |
 | --- | --- | --- | --- |
-| GET | `/year-ends/{year_end_id}/prior-year` | viewer and above | The four sources, the preferred one, any refusal sentence, the stored lines, and the stale-source notice. |
-| POST | `/year-ends/{year_end_id}/prior-year` | member and above | Manual lines. Existing route, plus the three checks. |
-| POST | `/year-ends/{year_end_id}/prior-year/from-trial-balance` | member and above | `confirm: false` returns the translated lines and writes nothing. `confirm: true` snapshots them. |
+| GET | `/year-ends/{year_end_id}/prior-year` | viewer and above | The four sources, the preferred one, any refusal sentence, the stored lines, the stale-source notice, and any account whose mapping differs from the previous statements. |
+| POST | `/year-ends/{year_end_id}/prior-year` | member and above | Manual lines. Existing route, plus the three checks and `matches_filed_accounts: true`. |
+| POST | `/year-ends/{year_end_id}/prior-year/from-trial-balance` | member and above | `confirm: false` returns the translated lines and the mapping-difference list, and writes nothing. `confirm: true` snapshots them after that list is confirmed. |
 | POST | `/year-ends/{year_end_id}/prior-year/from-final` | member and above | `confirm: false` names the previous FINAL draft and writes nothing. `confirm: true` copies its current column. |
 | POST | `/year-ends/{year_end_id}/first-financial-period` | member and above | Existing mark. |
 | POST | `/year-ends/{year_end_id}/first-financial-period/undo` | member and above | Clears the mark. |
@@ -114,7 +130,12 @@ A viewer POST is 403, "You don't have permission to access this resource." Anoth
 
 One revision, for the source record. The lines table already holds the amounts.
 
-`p2q3r4s5t6`. `down_revision` is the Alembic head on main when the migration pull request opens. That head is `m9n0o1p2q3` until a later revision has been merged and applied. Do not stack this revision on `n0o1p2q3r4` or `o1p2q3r4s5` unless that revision is already the head.
+One chain, in this order, and no other order:
+
+1. `n0o1p2q3r4`. `down_revision` is `m9n0o1p2q3`. This is the trial-balance switch revision that adds nullable `original_filename`. It is not part of this design.
+2. `p2q3r4s5t6`. `down_revision` is `n0o1p2q3r4`. This is the revision below.
+
+`p2q3r4s5t6` does not use `m9n0o1p2q3` as `down_revision`. It does not use `o1p2q3r4s5` as `down_revision`. The trial-balance switch design also names `o1p2q3r4s5` with `down_revision` `n0o1p2q3r4`. That would fork the chain. `o1p2q3r4s5`, when it is written, uses `down_revision` `p2q3r4s5t6`, so the line stays `n0o1p2q3r4`, then `p2q3r4s5t6`, then `o1p2q3r4s5`.
 
 All on `findraft_year_ends`, all nullable, no server default, no backfill:
 
@@ -151,8 +172,10 @@ No `GRANT ALL`. No new table. The migration reapplies the existing privileges sc
 - Golden engine tests still report net assets 455812.00 and profit 157650.00. No test changes the golden current column.
 - A confirmed prior trial balance makes the comparative column appear on the face, in the notes, and in the Word document, and the current column is unchanged.
 - An unmapped account, a missing sub-line, and a non-contiguous period each refuse with the sentence above and leave `prior_year_validated` false.
+- An account whose confirmed mapping differs from the previous period's statements is listed with the account code, the account name, the previous statement line, and the current mapping line, and with no amount. `confirm: true` without `mapping_differences_confirmed: true` is 422 and stores nothing. The same request with that flag true stores the snapshot. An account on the same line does not appear. When the previous period has no statements, the list is empty and the flag is not required.
 - After confirm, editing the prior trial balance does not change the stored lines, and the stale notice appears.
-- First period undo clears the flags and `V-GATE-001` blocks again. Undo of a final draft is 409.
+- First-period undo. Mark the first financial period, then `POST /year-ends/{id}/first-financial-period/undo`. Both `first_financial_period` and `prior_year_validated` are false. No comparative amounts are written. `V-GATE-001` blocks again. The audit action is `first_financial_period_cleared` with the year end id only. The same undo while any draft on the year end is final, locked, or frozen is 409, "This statutory draft is final, locked, or frozen. The first-period choice cannot be undone." Both flags stay set, and that call writes no audit row. This test is part of the undo pull request.
+- Manual entry without `matches_filed_accounts: true` is 422, "Confirm that these figures match last year's filed accounts.", and stores nothing. The same entry with that flag true, and with the three checks passing, stores the lines.
 - Manual entry that fails the balance, the retained-earnings roll-forward, or the fixed-asset roll-forward is 422 and stores nothing.
 - A FINAL copy writes the snapshot's current figures and does not modify the FINAL row.
 - Face dates that were empty take the source period. Face dates that were already set are not overwritten. The engine source does not read `report_setup`.
@@ -164,10 +187,10 @@ No `GRANT ALL`. No new table. The migration reapplies the existing privileges sc
 Each pull request is merged on its own, with the required checks green, including `npm run build` when the frontend changes. Golden figures stay unchanged. No LLM.
 
 1. **Page and the gate link.** Section, GET of today's lines and the first-period flag, the new `V-GATE-001` sentence, Fix link to `?section=prior-year`. No migration. The four sources are listed; only the current manual lines and the first-period control work.
-2. **Undo.** The undo route, the plain-English sentence, and the 409 for a final draft. No migration.
-3. **Manual checks.** Balance, retained-earnings roll-forward, and fixed-asset roll-forward refuse confirm. No migration.
-4. **Migration `p2q3r4s5t6` only.** The five columns. The model does not map them. After merge, the first line of the report is `MIGRATION REQUIRED: p2q3r4s5t6. Production is failing until you apply it.` Do not merge pull request 5 until `/health` matches.
-5. **Prior trial balance.** Map the columns. Translate, preview, snapshot, stale notice.
+2. **Undo.** The undo route, the plain-English sentence, the 409 for a final draft, and the first-period undo test. No migration.
+3. **Manual checks.** Balance, retained-earnings roll-forward, and fixed-asset roll-forward refuse confirm. The "matches last year's filed accounts" confirmation refuses confirm when it is absent. No migration.
+4. **Migration `p2q3r4s5t6` only.** Open it with `down_revision` `n0o1p2q3r4`, after that revision is the head. The five columns. The model does not map them. After merge, the first line of the report is `MIGRATION REQUIRED: p2q3r4s5t6. Production is failing until you apply it.` Do not merge pull request 5 until `/health` matches.
+5. **Prior trial balance.** Map the columns. Translate, preview, list every account whose mapping differs from the previous statements, require that confirmation, snapshot, stale notice.
 6. **FINAL roll-forward.** Copy the previous snapshot. The link is the year end id and the draft id.
 
 Pull requests 1 to 3 do not wait on a migration. Pull request 5 waits on `p2q3r4s5t6`. Pull request 6 waits on 5.
