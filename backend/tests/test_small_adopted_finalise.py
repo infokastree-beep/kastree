@@ -126,6 +126,7 @@ async def _letterhead(
         json={
             "registered_office": "1 Harbour Street, Dublin",
             "company_number": "AB123456",
+            "incorporated_on": "2026-01-01",
             "secretary": "Charles Babbage",
             "directors": [{"name": "Ada Lovelace"}],
         },

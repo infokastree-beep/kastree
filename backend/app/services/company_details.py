@@ -26,7 +26,16 @@ from app.services.reconciliation import ReconciliationCheck
 from findraft.models.year_end import YearEnd
 
 _BLOCKING = frozenset(
-    {"V-CO-001", "V-CO-002", "V-CO-005", "V-CO-006", "V-CO-008", "V-CO-009"}
+    {
+        "V-CO-001",
+        "V-CO-002",
+        "V-CO-005",
+        "V-CO-006",
+        "V-CO-008",
+        "V-CO-009",
+        "V-CO-010",
+        "V-CO-011",
+    }
 )
 MISSING_INCORPORATION = "Country of incorporation not recorded"
 
@@ -577,7 +586,14 @@ def _check(code: str, severity: str, passed: bool, message: str) -> Reconciliati
 
 
 def company_detail_checks(
-    company: Company, year_end: YearEnd
+    company: Company,
+    year_end: YearEnd,
+    *,
+    turnover: Decimal | None = None,
+    profit_before_tax: Decimal | None = None,
+    tax_charge: Decimal | None = None,
+    corporation_tax: Decimal | None = None,
+    subsequent_events_answered: bool | None = None,
 ) -> tuple[ReconciliationCheck, ...]:
     """Dashboard facts. A missing value is not filled in."""
     names = director_names(company.directors)
@@ -684,6 +700,19 @@ def company_detail_checks(
                 foreign_pack_message(company.country_of_incorporation),
             )
         )
+    from app.services.company_data_checks import company_data_checks
+
+    checks.extend(
+        company_data_checks(
+            company,
+            year_end,
+            turnover=turnover,
+            profit_before_tax=profit_before_tax,
+            tax_charge=tax_charge,
+            corporation_tax=corporation_tax,
+            subsequent_events_answered=subsequent_events_answered,
+        )
+    )
     return tuple(checks)
 
 

@@ -15,6 +15,16 @@
     "balance_sheet": "7500000.00",
     "employees": 50
   },
+  "data_checks": {
+    "source_status": "reviewer-to-confirm",
+    "legal_form": "private-company-limited-by-shares",
+    "legal_form_suffixes": ["Limited", "Ltd", "Teoranta", "Teo"],
+    "first_period_max_months": 18,
+    "company_number_min_digits": 5,
+    "company_number_max_digits": 7,
+    "employee_notice_above": 50,
+    "turnover_per_employee_floor": "2000.00"
+  },
   "sections": [
     {"id": "cover", "order": 1, "label": "Cover", "group": "usually-required", "default": "on", "lock": "user", "source_status": "pending-reviewer-signoff", "new_page": "yes"},
     {"id": "contents", "order": 2, "label": "Contents", "group": "usually-required", "default": "on", "lock": "user", "source_status": "pending-reviewer-signoff", "new_page": "yes"},

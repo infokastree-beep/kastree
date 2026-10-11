@@ -78,12 +78,14 @@ describe("review groups", () => {
     const count = blockingFailureCount([
       failed("V-DISC-001", "CRITICAL"),
       failed("V-CO-008", "NOTICE"),
+      failed("V-CO-010", "WARNING"),
+      failed("V-CO-012", "NOTICE"),
       failed("V-CO-007", "NOTICE"),
       failed("V-SEC-007", "NOTICE"),
       failed("V-FA-001", "WARNING"),
       { code: "V-CO-001", severity: "WARNING", passed: true, message: "ok" },
     ]);
-    assert.equal(count, 2);
+    assert.equal(count, 3);
     assert.equal(blockingSentence(2), "2 checks must be fixed");
     assert.equal(blockingSentence(1), "1 check must be fixed");
     assert.equal(blockingSentence(0), null);

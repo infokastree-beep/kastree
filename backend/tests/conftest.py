@@ -203,7 +203,7 @@ def provisioned_org() -> Iterator[dict]:
         session.flush()
         company = Company(
             client_id=client.id,
-            name=f"Company {suffix}",
+            name=f"Company {suffix} Limited",
             functional_currency="GBP",
             # The shared fixture is an Irish company so the Irish pack tests
             # stay on today's path. A company created without this field is NULL.
