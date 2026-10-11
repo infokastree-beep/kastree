@@ -21,6 +21,7 @@ from app.schemas.company_details import (
     ShareClassWrite,
 )
 from app.services.audit import append_audit_log
+from app.services.countries import country_label
 from app.services.reconciliation import ReconciliationCheck
 from findraft.models.year_end import YearEnd
 
@@ -28,10 +29,20 @@ _BLOCKING = frozenset(
     {"V-CO-001", "V-CO-002", "V-CO-005", "V-CO-006", "V-CO-008", "V-CO-009"}
 )
 MISSING_INCORPORATION = "Country of incorporation not recorded"
-FOREIGN_PACK_MESSAGE = (
-    "This pack is for a company incorporated in Ireland. "
-    "No other country's pack is available."
-)
+
+
+def foreign_pack_message(country: str | None) -> str:
+    """Name the stored country. A code with no English name stays as stored."""
+    recorded = country_label(country)
+    if recorded == "":
+        recorded = "not recorded"
+    return (
+        "This pack is for a company incorporated in Ireland. "
+        f"Country of incorporation is recorded as {recorded}. "
+        "No other country's pack is available."
+    )
+
+
 _IRISH_PACK = "frs102-1a-ie"
 
 
@@ -70,7 +81,7 @@ def incorporation_output_message(
     """
     gate = incorporation_gate(country, pack_id)
     if gate == "foreign":
-        return FOREIGN_PACK_MESSAGE
+        return foreign_pack_message(country)
     if gate == "missing" and final:
         return MISSING_INCORPORATION
     return None
@@ -87,9 +98,7 @@ async def incorporation_output_message_for_year_end(
     country = None
     if company is not None and company.org_id == org_id and not company.is_deleted:
         country = company.country_of_incorporation
-    return incorporation_output_message(
-        country, year_end.pack_id, final=final
-    )
+    return incorporation_output_message(country, year_end.pack_id, final=final)
 
 
 def _blank(value: str | None) -> str | None:
@@ -404,6 +413,7 @@ def company_details_response(
     company: Company, year_end: YearEnd
 ) -> CompanyDetailsResponse:
     return CompanyDetailsResponse(
+        country_of_incorporation=company.country_of_incorporation,
         registered_office=company.registered_office,
         business_address=company.business_address,
         company_number=company.company_number,
@@ -421,6 +431,7 @@ def company_details_response(
 
 def _company_snapshot(company: Company) -> dict[str, object]:
     return {
+        "country_of_incorporation": company.country_of_incorporation,
         "registered_office": company.registered_office,
         "business_address": company.business_address,
         "company_number": company.company_number,
@@ -455,6 +466,8 @@ async def save_company_details(
     body: CompanyDetailsWrite,
 ) -> CompanyDetailsResponse:
     previous = _company_snapshot(company)
+    if "country_of_incorporation" in body.model_fields_set:
+        company.country_of_incorporation = body.country_of_incorporation
     company.registered_office = _single_line(
         body.registered_office, label="Registered office", limit=500
     )
@@ -661,11 +674,16 @@ def company_detail_checks(
         checks.append(currency)
     gate = incorporation_gate(company.country_of_incorporation, year_end.pack_id)
     if gate == "missing":
-        checks.append(
-            _check("V-CO-008", "NOTICE", False, MISSING_INCORPORATION)
-        )
+        checks.append(_check("V-CO-008", "NOTICE", False, MISSING_INCORPORATION))
     elif gate == "foreign":
-        checks.append(_check("V-CO-009", "BLOCKED", False, FOREIGN_PACK_MESSAGE))
+        checks.append(
+            _check(
+                "V-CO-009",
+                "BLOCKED",
+                False,
+                foreign_pack_message(company.country_of_incorporation),
+            )
+        )
     return tuple(checks)
 
 

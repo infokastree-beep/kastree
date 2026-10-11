@@ -5,7 +5,9 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.schemas.company import country_of_incorporation_code
 
 
 class DirectorRecord(BaseModel):
@@ -47,6 +49,7 @@ class ShareClassOut(BaseModel):
 class CompanyDetailsWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    country_of_incorporation: str | None = None
     registered_office: str | None = None
     business_address: str | None = None
     company_number: str | None = None
@@ -57,6 +60,11 @@ class CompanyDetailsWrite(BaseModel):
     directors: list[DirectorRecord] = Field(default_factory=list)
     advisers: list[AdviserRecord] = Field(default_factory=list)
     share_classes: list[ShareClassWrite] = Field(default_factory=list)
+
+    @field_validator("country_of_incorporation", mode="before")
+    @classmethod
+    def _country(cls, value: object) -> str | None:
+        return country_of_incorporation_code(value)
 
 
 class ApprovalWrite(BaseModel):
@@ -80,6 +88,7 @@ class CurrencyConfirmationResponse(BaseModel):
 class CompanyDetailsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    country_of_incorporation: str | None
     registered_office: str | None
     business_address: str | None
     company_number: str | None
