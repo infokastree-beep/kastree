@@ -12,6 +12,7 @@ import { FINALISED_STATE, pdfDownloadLabel } from "@/lib/finalise-status";
 import { SectionPreview } from "@/components/statutory/SectionPreview";
 import { SectionsSetup } from "@/components/statutory/SectionsSetup";
 import { StatutoryLoadError } from "@/components/statutory/StatutoryLoadError";
+import { StandingWordingNoticePreview } from "@/components/statutory/StandingWordingNotice";
 import { StatutoryOptInPanel } from "@/components/statutory/StatutoryOptIn";
 import { UnreviewedWordingNotice } from "@/components/statutory/UnreviewedWordingBanner";
 import { WorkspaceSidebar } from "@/components/statutory/WorkspaceSidebar";
@@ -300,6 +301,7 @@ export default function StatutoryWorkspacePreviewPage() {
       </div>
       <div className="min-w-0 flex-1 space-y-6">
         <h1 className="text-xl font-medium text-ink">Statutory workspace preview</h1>
+        <StandingWordingNoticePreview />
         <section className="space-y-4" data-testid="statutory-opt-in-preview">
           <StatutoryOptInPanel
             email="member@example.com"

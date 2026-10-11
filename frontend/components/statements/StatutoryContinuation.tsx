@@ -13,6 +13,7 @@ import {
   statutoryWorkspaceOpen,
   type StatutoryUser,
 } from "@/lib/statutory-gate";
+import { StandingWordingNotice } from "@/components/statutory/StandingWordingNotice";
 import { StatutoryOptIn } from "@/components/statutory/StatutoryOptIn";
 import { formatDate } from "@/lib/utils";
 
@@ -234,6 +235,7 @@ export function StatutoryContinuation({
 
   return (
     <div className="space-y-4" data-testid="statutory-continuation">
+      {forbidden ? null : <StandingWordingNotice place="statutory-tab" />}
       <div>
         <h2 className="font-display text-heading-md text-ink">
           Continue to statutory accounts
@@ -362,6 +364,7 @@ export function StatutoryContinuation({
               {pack.watermark} statutory pack
             </h3>
             <div className="flex flex-wrap items-center gap-3">
+              {forbidden ? null : <StandingWordingNotice place="downloads" />}
               <button
                 type="button"
                 data-testid="statutory-download"

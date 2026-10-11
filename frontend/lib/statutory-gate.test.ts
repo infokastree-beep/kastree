@@ -9,10 +9,15 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   ASK_OWNER,
+  STANDING_NOTICE_SESSION_KEY,
+  STANDING_WORDING_NOTICE,
   STATUTORY_SIGNOFF,
   UNREVIEWED_WORDING_BANNER,
+  readStandingNoticeCollapsed,
+  showStandingWordingNotice,
   statutoryGateDiagnosis,
   statutoryWorkspaceOpen,
+  writeStandingNoticeCollapsed,
 } from "./statutory-gate.ts";
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -77,6 +82,123 @@ describe("statutoryWorkspaceOpen", () => {
       }),
       true,
     );
+  });
+});
+
+describe("standing wording notice", () => {
+  const access = {
+    acknowledged: true,
+    source: "practice" as const,
+    wording_signed_off: false,
+    enabled: true,
+  };
+
+  it("shows for acknowledged, admin-granted, platform-admin and viewer access", () => {
+    assert.equal(
+      STANDING_WORDING_NOTICE,
+      "Statutory wording has not been reviewed by a qualified reviewer. Review every output before it is filed or sent.",
+    );
+    assert.equal(
+      showStandingWordingNotice({
+        role: "owner",
+        is_platform_admin: false,
+        product2_access: access,
+      }),
+      true,
+    );
+    assert.equal(
+      showStandingWordingNotice({
+        role: "viewer",
+        is_platform_admin: false,
+        product2_access: { ...access, source: "practice" },
+      }),
+      true,
+    );
+    assert.equal(
+      showStandingWordingNotice({
+        role: "owner",
+        is_platform_admin: false,
+        product2_access: { ...access, source: "admin" },
+      }),
+      true,
+    );
+    assert.equal(
+      showStandingWordingNotice({
+        role: "owner",
+        is_platform_admin: true,
+        product2_access: {
+          enabled: true,
+          acknowledged: false,
+          source: null,
+          wording_signed_off: false,
+        },
+      }),
+      true,
+    );
+  });
+
+  it("hides only when the server says the wording is signed off", () => {
+    assert.equal(
+      showStandingWordingNotice({
+        is_platform_admin: true,
+        product2_access: { enabled: true, wording_signed_off: true },
+      }),
+      false,
+    );
+    assert.equal(
+      showStandingWordingNotice({
+        role: "viewer",
+        is_platform_admin: false,
+        product2_access: { ...access, wording_signed_off: true },
+      }),
+      false,
+    );
+    assert.equal(
+      showStandingWordingNotice({
+        is_platform_admin: false,
+        product2_access: { enabled: false, wording_signed_off: false },
+      }),
+      false,
+    );
+  });
+
+  it("collapses for this session and not in local storage", () => {
+    const stored = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        stored.set(key, value);
+      },
+    };
+    assert.equal(readStandingNoticeCollapsed(storage), false);
+    writeStandingNoticeCollapsed(storage);
+    assert.equal(stored.get(STANDING_NOTICE_SESSION_KEY), "1");
+    assert.equal(readStandingNoticeCollapsed(storage), true);
+    const notice = readFileSync(
+      join(root, "../components/statutory/StandingWordingNotice.tsx"),
+      "utf8",
+    );
+    assert.match(notice, /sessionStorage/);
+    assert.equal(notice.includes("localStorage"), false);
+    assert.equal(notice.includes("iXBRL"), false);
+    assert.match(notice, /apiFetch<\{ statement: string \}>\("\/beta"/);
+    const continuation = readFileSync(
+      join(root, "../components/statements/StatutoryContinuation.tsx"),
+      "utf8",
+    );
+    const workspace = readFileSync(
+      join(root, "../components/statutory/StatutoryDraftWorkspace.tsx"),
+      "utf8",
+    );
+    assert.match(continuation, /place="statutory-tab"/);
+    assert.match(continuation, /place="downloads"/);
+    assert.match(workspace, /place="workspace-header"/);
+    assert.match(workspace, /place="review-dashboard"/);
+    assert.match(workspace, /place="downloads"/);
+    const downloads = workspace.indexOf('place="downloads"');
+    const pdf = workspace.indexOf('data-testid="statutory-download"');
+    const word = workspace.indexOf('data-testid="statutory-download-word"');
+    assert.ok(downloads > 0 && downloads < pdf && pdf < word);
   });
 });
 

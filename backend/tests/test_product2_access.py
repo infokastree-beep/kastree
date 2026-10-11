@@ -11,6 +11,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select, text
 
+import app.routers.users as users_router
 from app.config import settings
 from app.db import AsyncSessionLocal, SyncSessionLocal, aset_rls_org_id, set_rls_org_id
 from app.main import app
@@ -376,6 +377,23 @@ async def test_users_me_reports_product2_access(
     assert practice["acknowledged"] is True
     assert practice["source"] == "practice"
     assert practice["wording_signed_off"] is False
+
+    _, _, viewer_token = _add_org_user(
+        org_id=provisioned_org["org_id"],
+        clerk_org_id=provisioned_org["clerk_org_id"],
+        role="viewer",
+        email_prefix="wording-viewer",
+    )
+    viewer = await api_client.get("/users/me", headers=auth_headers(viewer_token))
+    assert viewer.status_code == 200, viewer.text
+    assert viewer.json()["role"] == "viewer"
+    assert viewer.json()["product2_access"]["enabled"] is True
+    assert viewer.json()["product2_access"]["wording_signed_off"] is False
+
+    monkeypatch.setattr(users_router, "WORDING_SIGNED_OFF", True)
+    signed = await api_client.get("/users/me", headers=headers)
+    assert signed.json()["product2_access"]["enabled"] is True
+    assert signed.json()["product2_access"]["wording_signed_off"] is True
 
 
 @pytest.mark.asyncio

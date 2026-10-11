@@ -15,7 +15,7 @@ class Product2AccessResponse(BaseModel):
     enabled: bool
     acknowledged: bool
     source: Literal["practice", "admin"] | None
-    wording_signed_off: Literal[False]
+    wording_signed_off: bool
 
 
 class UserMeResponse(BaseModel):
