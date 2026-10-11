@@ -118,12 +118,46 @@ class Dashboard:
     disclosure_questions: tuple[DisclosureQuestion, ...] = ()
 
 
+ENGINE_FILES_MISSING = (
+    "The accounts calculation files are missing from the server. "
+    "Finalise cannot run until the application is updated."
+)
+
+
+def engine_directory(start: Path | None = None) -> Path | None:
+    """Directory that holds the pure engine modules.
+
+    The repository keeps that directory beside ``backend``. The production
+    image copies ``backend`` onto ``/app`` and the engine to
+    ``/app/findraft/engine``. Counting a fixed number of parents from this
+    file then looks above the image and finds nothing, even though the
+    modules were copied and can be imported.
+    """
+    origin = Path(__file__).resolve() if start is None else start
+    for parent in origin.parents:
+        candidate = parent / "findraft" / "engine"
+        if any(candidate.glob("*.py")):
+            return candidate
+    return None
+
+
+def engine_files_missing_message(year_end_id: uuid.UUID) -> str:
+    """Plain sentence. The two links are pages that do not hold the files."""
+    trial = f"/year-ends/{year_end_id}/draft?section=trial-balance"
+    company = f"/year-ends/{year_end_id}/draft?section=company-details"
+    return (
+        f"{ENGINE_FILES_MISSING} "
+        f"Check the [Trial balance page]({trial}) and "
+        f"[Company details]({company}); they do not hold these files."
+    )
+
+
 def engine_sha() -> str:
     """Hash of the pure engine sources. FINAL records this and does not rerun."""
-    engine = Path(__file__).resolve().parents[3] / "findraft" / "engine"
+    engine = engine_directory()
+    if engine is None:
+        raise DraftRejected(ENGINE_FILES_MISSING)
     paths = sorted(engine.glob("*.py"))
-    if not paths:
-        raise DraftRejected("engine sources are missing")
     digest = hashlib.sha256()
     for path in paths:
         digest.update(path.name.encode())
@@ -1421,7 +1455,12 @@ async def finalise_draft(
     copied_docx = _json_copy(composed_docx)
     if not isinstance(copied_sections, list) or not isinstance(copied_docx, dict):
         raise DraftRejected("composed snapshot is unreadable")
-    digest = engine_sha()
+    try:
+        digest = engine_sha()
+    except DraftRejected as exc:
+        if exc.detail == ENGINE_FILES_MISSING:
+            raise DraftRejected(engine_files_missing_message(year_end.id)) from exc
+        raise
     draft.inputs_sha256 = inputs
     draft.engine_sha = digest
     draft.finalised_by_user_id = user_id

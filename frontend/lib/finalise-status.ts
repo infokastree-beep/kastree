@@ -112,6 +112,37 @@ export function requestIdFromBody(body: unknown): string | null {
   return null;
 }
 
+export type FinaliseFailurePart =
+  | { kind: "text"; text: string }
+  | { kind: "link"; text: string; href: string };
+
+const FAILURE_LINK =
+  /\[([^\]]+)\]\((\/year-ends\/[0-9a-fA-F-]{36}\/draft\?section=[a-z0-9-]+)\)/g;
+
+/** Split a finalise refusal into text and draft-page links. Other URLs stay text. */
+export function finaliseFailureParts(message: string): FinaliseFailurePart[] {
+  const parts: FinaliseFailurePart[] = [];
+  const pattern = new RegExp(FAILURE_LINK.source, "g");
+  let last = 0;
+  let match = pattern.exec(message);
+  while (match !== null) {
+    const index = match.index;
+    if (index > last) {
+      parts.push({ kind: "text", text: message.slice(last, index) });
+    }
+    parts.push({ kind: "link", text: match[1] ?? "", href: match[2] ?? "" });
+    last = index + match[0].length;
+    match = pattern.exec(message);
+  }
+  if (last < message.length) {
+    parts.push({ kind: "text", text: message.slice(last) });
+  }
+  if (parts.length === 0) {
+    parts.push({ kind: "text", text: message });
+  }
+  return parts;
+}
+
 export function finaliseFailureMessage(
   status: number,
   detail: string | null,

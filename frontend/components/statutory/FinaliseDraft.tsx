@@ -8,6 +8,7 @@ import {
   canOfferFinalise,
   carriedAcknowledgementRequired,
   finalStateLabel,
+  finaliseFailureParts,
 } from "@/lib/finalise-status";
 
 export function FinaliseDraft({
@@ -111,7 +112,20 @@ export function FinaliseDraft({
       ) : null}
       {error ? (
         <p className="text-sm text-red-800" data-testid="statutory-finalise-error">
-          {error}
+          {finaliseFailureParts(error).map((part, index) =>
+            part.kind === "link" ? (
+              <a
+                key={`${part.href}-${index}`}
+                href={part.href}
+                className="underline"
+                data-testid="statutory-finalise-fix"
+              >
+                {part.text}
+              </a>
+            ) : (
+              <span key={`text-${index}`}>{part.text}</span>
+            ),
+          )}
         </p>
       ) : null}
       <div className="flex flex-wrap gap-2">
