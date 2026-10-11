@@ -12,6 +12,8 @@ import { FINALISED_STATE, pdfDownloadLabel } from "@/lib/finalise-status";
 import { SectionPreview } from "@/components/statutory/SectionPreview";
 import { SectionsSetup } from "@/components/statutory/SectionsSetup";
 import { StatutoryLoadError } from "@/components/statutory/StatutoryLoadError";
+import { StatutoryOptInPanel } from "@/components/statutory/StatutoryOptIn";
+import { UnreviewedWordingNotice } from "@/components/statutory/UnreviewedWordingBanner";
 import { WorkspaceSidebar } from "@/components/statutory/WorkspaceSidebar";
 import { displayAmount, type RoundingMode } from "@/lib/report-display";
 import {
@@ -298,6 +300,27 @@ export default function StatutoryWorkspacePreviewPage() {
       </div>
       <div className="min-w-0 flex-1 space-y-6">
         <h1 className="text-xl font-medium text-ink">Statutory workspace preview</h1>
+        <section className="space-y-4" data-testid="statutory-opt-in-preview">
+          <StatutoryOptInPanel
+            email="member@example.com"
+            role="member"
+            statement={null}
+            pending={false}
+            error={null}
+            onConfirm={async () => undefined}
+            heading={false}
+          />
+          <StatutoryOptInPanel
+            email="owner@example.com"
+            role="owner"
+            statement="Preview only. The live page loads the acknowledgement from the practice position."
+            pending={false}
+            error={null}
+            onConfirm={async () => undefined}
+            heading={false}
+          />
+          <UnreviewedWordingNotice />
+        </section>
         <StatutoryLoadError
           testId="statutory-statements-error"
           message="Product 1 line 'operating_expenses' on 'Operating Expenses' needs a statutory sub-line"

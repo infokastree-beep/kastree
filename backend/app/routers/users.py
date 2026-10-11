@@ -17,7 +17,8 @@ from app.dependencies import (
     require_reader,
 )
 from app.schemas.audit import ErasureResponse
-from app.schemas.user import UserMeResponse
+from app.schemas.user import Product2AccessResponse, UserMeResponse
+from app.services.beta import beta_acknowledged, product2_grant_source
 from app.services.erasure import ErasureRejected, erase_user
 from app.services.retention import RETAINED_ON_ERASURE
 
@@ -27,14 +28,28 @@ router = APIRouter(prefix="/users", tags=["users"])
 @router.get("/me", response_model=UserMeResponse)
 async def get_current_user(
     auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> UserMeResponse:
     """Return the DB-backed role for the signed-in user (not the JWT role claim)."""
+    acknowledged = await beta_acknowledged(session, org_id=auth.org_id)
+    source = (
+        await product2_grant_source(session, org_id=auth.org_id)
+        if acknowledged
+        else None
+    )
+    platform_admin = is_platform_admin(auth)
     return UserMeResponse(
         id=str(auth.user_id),
         org_id=str(auth.org_id),
         email=auth.email,
         role=auth.role,
-        is_platform_admin=is_platform_admin(auth),
+        is_platform_admin=platform_admin,
+        product2_access=Product2AccessResponse(
+            enabled=acknowledged or platform_admin,
+            acknowledged=acknowledged,
+            source=source,
+            wording_signed_off=False,
+        ),
     )
 
 
