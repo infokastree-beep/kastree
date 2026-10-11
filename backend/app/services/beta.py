@@ -23,6 +23,8 @@ from app.services.audit import append_audit_log
 
 PACK_ID: Literal["frs102-1a-ie"] = "frs102-1a-ie"
 BETA_ACTION = "beta_self_review"
+PRODUCT2_ACCESS_GRANTED = "product2_access_granted"
+PRODUCT2_ACCESS_REVOKED = "product2_access_revoked"
 
 # A qualified reviewer has not signed this wording off. Documents and
 # /users/me read this value. The client does not decide it.
@@ -84,7 +86,10 @@ async def product2_grant_source(
     await aset_rls_org_id(session, org_id)
     raw = await session.scalar(
         select(AuditLog.new_value["source"].as_string())
-        .where(AuditLog.org_id == org_id, AuditLog.action == BETA_ACTION)
+        .where(
+            AuditLog.org_id == org_id,
+            AuditLog.action.in_((BETA_ACTION, PRODUCT2_ACCESS_GRANTED)),
+        )
         .order_by(AuditLog.chain_seq.desc())
         .limit(1)
     )
@@ -131,5 +136,91 @@ async def acknowledge_beta_self_review(
             "pack_id": PACK_ID,
             "source": "practice",
         },
+    )
+    return True
+
+
+async def set_product2_access(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    acknowledged: bool,
+) -> bool | None:
+    """Turn Product 2 on or off for one practice.
+
+    ``app.current_org_id`` is set to that practice for this transaction only.
+    The statement writes the two acknowledgement columns and one audit row.
+    It does not write subscription, Stripe, currency, or jurisdiction.
+    A practice acknowledgement cannot clear the columns; only this call can.
+    A second grant or a second revoke records nothing. None means the
+    practice does not exist.
+    """
+    await aset_rls_org_id(session, org_id)
+    practice = await session.get(Organisation, org_id, with_for_update=True)
+    if practice is None:
+        return None
+    already = practice.product2_acknowledged_at is not None
+    if acknowledged == already:
+        return False
+    if acknowledged:
+        await session.execute(
+            text(
+                """
+                UPDATE organisations
+                SET product2_acknowledged_at = :at,
+                    product2_acknowledged_by_user_id = :by
+                WHERE id = :id
+                """
+            ),
+            {
+                "at": datetime.now(UTC),
+                "by": str(actor_user_id),
+                "id": str(org_id),
+            },
+        )
+        session.expire(practice)
+        await append_audit_log(
+            session,
+            org_id=org_id,
+            user_id=actor_user_id,
+            action=PRODUCT2_ACCESS_GRANTED,
+            entity_type="organisation",
+            entity_id=org_id,
+            old_value=None,
+            new_value={"source": "admin"},
+        )
+        return True
+    acknowledged_at = practice.product2_acknowledged_at
+    acknowledged_by = practice.product2_acknowledged_by_user_id
+    old_value: dict[str, object] = {
+        "product2_acknowledged_at": (
+            None if acknowledged_at is None else acknowledged_at.isoformat()
+        ),
+        "product2_acknowledged_by_user_id": (
+            None if acknowledged_by is None else str(acknowledged_by)
+        ),
+    }
+    await session.execute(
+        text(
+            """
+            UPDATE organisations
+            SET product2_acknowledged_at = NULL,
+                product2_acknowledged_by_user_id = NULL
+            WHERE id = :id
+            """
+        ),
+        {"id": str(org_id)},
+    )
+    session.expire(practice)
+    await append_audit_log(
+        session,
+        org_id=org_id,
+        user_id=actor_user_id,
+        action=PRODUCT2_ACCESS_REVOKED,
+        entity_type="organisation",
+        entity_id=org_id,
+        old_value=old_value,
+        new_value=None,
     )
     return True

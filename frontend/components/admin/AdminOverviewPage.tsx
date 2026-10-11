@@ -13,10 +13,14 @@ type WaitlistSignupRow = {
 };
 
 type OrganisationRow = {
+  id: string;
   name: string;
   subscription_tier: string;
   subscription_status: string;
   created_at: string;
+  product2_access: "On" | "Off";
+  product2_acknowledged_by: string | null;
+  product2_acknowledged_at: string | null;
 };
 
 type UserRow = {
@@ -96,6 +100,8 @@ export function AdminOverviewPage() {
   const [data, setData] = useState<AdminOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [busyOrgId, setBusyOrgId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isSignedIn) {
@@ -134,6 +140,28 @@ export function AdminOverviewPage() {
     };
   }, [getToken, isSignedIn]);
 
+  async function setProduct2(orgId: string, acknowledged: boolean): Promise<void> {
+    setBusyOrgId(orgId);
+    setActionError(null);
+    try {
+      await apiFetch(`/admin/organisations/${orgId}/product2-access`, {
+        getToken,
+        method: "POST",
+        body: JSON.stringify({ acknowledged }),
+      });
+      const overview = await apiFetch<AdminOverview>("/admin/overview", { getToken });
+      setData(overview);
+    } catch (err: unknown) {
+      if (err instanceof ApiError) {
+        setActionError(err.message);
+      } else {
+        setActionError("Product 2 access could not be changed.");
+      }
+    } finally {
+      setBusyOrgId(null);
+    }
+  }
+
   if (loading) {
     return <p className="text-sm text-stone-600">Loading admin data…</p>;
   }
@@ -168,17 +196,71 @@ export function AdminOverviewPage() {
         ])}
       />
 
-      <AdminTable
-        title="Organisations"
-        count={data.organisations_count}
-        headers={["Name", "Tier", "Status", "Created"]}
-        rows={data.organisations.map((row) => [
-          row.name,
-          row.subscription_tier,
-          row.subscription_status,
-          formatWhen(row.created_at),
-        ])}
-      />
+      <section className="space-y-3" data-testid="admin-organisations">
+        <h2 className="text-lg font-semibold">
+          Organisations <span className="text-stone-500">({data.organisations_count})</span>
+        </h2>
+        {actionError ? (
+          <p className="text-sm text-red-700" data-testid="admin-product2-error">
+            {actionError}
+          </p>
+        ) : null}
+        {data.organisations.length === 0 ? (
+          <p className="text-sm text-stone-600">No rows yet.</p>
+        ) : (
+          <div className="overflow-x-auto rounded border border-stone-200">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-stone-50 text-stone-700">
+                <tr>
+                  {["Name", "Tier", "Status", "Created", "Product 2", "Who", "When", ""].map(
+                    (header) => (
+                      <th key={header || "action"} className="px-3 py-2 font-medium">
+                        {header}
+                      </th>
+                    ),
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {data.organisations.map((row) => (
+                  <tr key={row.id} className="border-t border-stone-200">
+                    <td className="px-3 py-2">{row.name}</td>
+                    <td className="px-3 py-2">{row.subscription_tier}</td>
+                    <td className="px-3 py-2">{row.subscription_status}</td>
+                    <td className="px-3 py-2">{formatWhen(row.created_at)}</td>
+                    <td className="px-3 py-2" data-testid={`admin-product2-${row.id}`}>
+                      {row.product2_access}
+                    </td>
+                    <td className="px-3 py-2">{row.product2_acknowledged_by ?? "—"}</td>
+                    <td className="px-3 py-2">
+                      {row.product2_acknowledged_at
+                        ? formatWhen(row.product2_acknowledged_at)
+                        : "—"}
+                    </td>
+                    <td className="px-3 py-2">
+                      <button
+                        type="button"
+                        data-testid={
+                          row.product2_access === "On"
+                            ? `admin-revoke-${row.id}`
+                            : `admin-grant-${row.id}`
+                        }
+                        disabled={busyOrgId !== null}
+                        className="rounded-md border border-stone-300 px-3 py-1.5 text-sm font-semibold disabled:opacity-50"
+                        onClick={() =>
+                          void setProduct2(row.id, row.product2_access !== "On")
+                        }
+                      >
+                        {row.product2_access === "On" ? "Revoke" : "Grant"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <AdminTable
         title="Users"
