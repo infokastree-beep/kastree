@@ -84,13 +84,31 @@ app.include_router(archived_records.records_router)
 
 
 @app.get("/health")
-async def health_check() -> dict[str, str]:
-    """Liveness probe. Includes git_sha so the deployed revision is verifiable.
+async def health_check() -> dict[str, object]:
+    """Liveness probe. Includes git_sha and the database revision.
+
+    A missing or different Alembic revision is reported and does not change
+    the status. The process still starts, and this route still returns 200.
 
     Git deploy source: infokastree-beep/kastree (auto-deploy check).
     """
-    # Redeploy stamp: 2026-10-02T11:47Z. No behavior change.
-    return {"status": "ok", "git_sha": settings.resolved_git_sha()}
+    from app.services.schema_revision import SchemaRevision, current_schema_revision
+
+    try:
+        revision = await current_schema_revision()
+    except Exception:
+        revision = SchemaRevision(
+            database_revision=None,
+            code_revision=None,
+            revision_matches=False,
+        )
+    return {
+        "status": "ok",
+        "git_sha": settings.resolved_git_sha(),
+        "database_revision": revision.database_revision,
+        "code_revision": revision.code_revision,
+        "revision_matches": revision.revision_matches,
+    }
 
 
 @app.get("/version")
