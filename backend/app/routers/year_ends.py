@@ -164,6 +164,7 @@ from app.services.company_details import (
     CompanyDetailsRejected,
     confirm_currency,
     company_details_response,
+    incorporation_output_message_for_year_end,
     save_approval_details,
     save_company_details,
 )
@@ -211,6 +212,20 @@ def _idempotency_key(value: str | None) -> str:
     if len(key) > 200 or "\n" in key or "\r" in key:
         raise HTTPException(status_code=400, detail="Idempotency-Key is invalid")
     return key
+
+
+async def _refuse_incorporation(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+    final: bool,
+) -> None:
+    message = await incorporation_output_message_for_year_end(
+        session, org_id=org_id, year_end=year_end, final=final
+    )
+    if message is not None:
+        raise HTTPException(status_code=409, detail=message)
 
 
 async def _owned_year_end(
@@ -719,6 +734,12 @@ async def get_adopted_statements(
     frozen = await final_adopted_snapshot(
         session, org_id=auth.org_id, year_end=year_end
     )
+    await _refuse_incorporation(
+        session,
+        org_id=auth.org_id,
+        year_end=year_end,
+        final=frozen is not None,
+    )
     if frozen is not None:
         statement = frozen.get("statement")
         if not isinstance(statement, dict):
@@ -905,6 +926,12 @@ async def get_adopted_statement_pdf(
     )
     frozen = await final_adopted_snapshot(
         session, org_id=auth.org_id, year_end=year_end
+    )
+    await _refuse_incorporation(
+        session,
+        org_id=auth.org_id,
+        year_end=year_end,
+        final=frozen is not None,
     )
     if frozen is not None:
         html = frozen.get("composed_html")
@@ -1340,6 +1367,9 @@ async def _load_statements(
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
+    await _refuse_incorporation(
+        session, org_id=auth.org_id, year_end=year_end, final=False
+    )
     version = await _owned_tb_version(
         session, year_end=year_end, version_id=version_id, org_id=auth.org_id
     )
@@ -1361,6 +1391,13 @@ async def get_statements(
     auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> StatementResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    await _refuse_incorporation(
+        session, org_id=auth.org_id, year_end=year_end, final=False
+    )
     frozen = await _frozen_for_version(
         year_end_id=year_end_id,
         version_id=version_id,
@@ -1368,6 +1405,12 @@ async def get_statements(
         session=session,
     )
     if frozen is not None:
+        year_end = await _owned_year_end(
+            session, year_end_id=year_end_id, org_id=auth.org_id
+        )
+        await _refuse_incorporation(
+            session, org_id=auth.org_id, year_end=year_end, final=True
+        )
         statement = frozen.get("statement")
         if not isinstance(statement, dict):
             raise HTTPException(status_code=500, detail="FINAL snapshot is missing")
@@ -1390,6 +1433,13 @@ async def get_statement_pdf(
     auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Response:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    await _refuse_incorporation(
+        session, org_id=auth.org_id, year_end=year_end, final=False
+    )
     frozen = await _frozen_for_version(
         year_end_id=year_end_id,
         version_id=version_id,
@@ -1397,6 +1447,12 @@ async def get_statement_pdf(
         session=session,
     )
     if frozen is not None:
+        year_end = await _owned_year_end(
+            session, year_end_id=year_end_id, org_id=auth.org_id
+        )
+        await _refuse_incorporation(
+            session, org_id=auth.org_id, year_end=year_end, final=True
+        )
         html = frozen.get("html")
         if not isinstance(html, str) or not html:
             raise HTTPException(
@@ -1921,6 +1977,9 @@ async def post_draft_finalise(
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
+    await _refuse_incorporation(
+        session, org_id=auth.org_id, year_end=year_end, final=True
+    )
     try:
         stored = await finalise_draft(
             session,
@@ -2142,9 +2201,16 @@ async def post_draft_docx(
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
+    await _refuse_incorporation(
+        session, org_id=auth.org_id, year_end=year_end, final=False
+    )
     draft = await _owned_draft(
         session, year_end=year_end, draft_id=draft_id, org_id=auth.org_id
     )
+    if draft.status == "final":
+        await _refuse_incorporation(
+            session, org_id=auth.org_id, year_end=year_end, final=True
+        )
     existing = await find_docx_job(session, org_id=auth.org_id, idempotency_key=key)
     if existing is not None:
         if existing.draft_id != draft.id:

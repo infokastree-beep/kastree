@@ -803,6 +803,25 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       <div className="min-w-0 flex-1 space-y-6">
       <div className="space-y-3">
       <StandingWordingNotice place="workspace-header" />
+      {dashboard?.checks
+        .filter(
+          (check) =>
+            !check.passed &&
+            (check.code === "V-CO-008" || check.code === "V-CO-009"),
+        )
+        .map((check) => (
+          <p
+            key={check.code}
+            className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+            data-testid={
+              check.code === "V-CO-008"
+                ? "country-incorporation-notice"
+                : "country-incorporation-block"
+            }
+          >
+            {check.message}
+          </p>
+        ))}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-soft">

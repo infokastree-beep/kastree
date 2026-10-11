@@ -18,10 +18,12 @@ export async function createCompanyEntity(
   values: CompanyEntityFormValues,
   getToken: TokenGetter,
 ): Promise<ICompany> {
+  const country = values.countryOfIncorporation.trim().toUpperCase();
   const body: CompanyCreateRequest = {
     name: values.name,
     functional_currency: values.functionalCurrency,
     company_type: values.companyType,
+    country_of_incorporation: country === "" ? null : country,
   };
   const trimmedCompany = values.companyNumber.trim();
   const trimmedIndustry = values.industry.trim();
@@ -65,10 +67,12 @@ export async function updateCompanyEntity(
   values: CompanyEntityFormValues,
   getToken: TokenGetter,
 ): Promise<ICompany> {
+  const country = values.countryOfIncorporation.trim().toUpperCase();
   const update: CompanyUpdateRequest = {
     name: values.name,
     functional_currency: values.functionalCurrency,
     company_type: values.companyType,
+    country_of_incorporation: country === "" ? null : country,
     company_number: values.companyNumber.trim() ? values.companyNumber.trim() : null,
     industry: values.industry.trim() ? values.industry.trim() : null,
   };

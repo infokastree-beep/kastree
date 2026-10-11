@@ -3,11 +3,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
-import { defaultCompanyCurrency } from "@/lib/company-form";
+import {
+  defaultCompanyCurrency,
+  defaultCountryOfIncorporation,
+} from "@/lib/company-form";
 import type { IOrganisation } from "@/types";
 
 export function useDefaultCompanyCurrency(): {
   currency: string;
+  countryOfIncorporation: string;
   ready: boolean;
 } {
   const { getToken, isLoaded } = useAuth();
@@ -20,6 +24,9 @@ export function useDefaultCompanyCurrency(): {
   const ready = isLoaded && (query.isSuccess || query.isError);
   return {
     currency: defaultCompanyCurrency(query.data?.jurisdiction),
+    countryOfIncorporation: defaultCountryOfIncorporation(
+      query.data?.jurisdiction,
+    ),
     ready,
   };
 }

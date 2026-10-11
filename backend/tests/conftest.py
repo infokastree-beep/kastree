@@ -205,6 +205,9 @@ def provisioned_org() -> Iterator[dict]:
             client_id=client.id,
             name=f"Company {suffix}",
             functional_currency="GBP",
+            # The shared fixture is an Irish company so the Irish pack tests
+            # stay on today's path. A company created without this field is NULL.
+            country_of_incorporation="IE",
         )
         session.add(company)
         session.commit()

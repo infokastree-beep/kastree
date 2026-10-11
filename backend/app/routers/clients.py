@@ -222,6 +222,7 @@ async def create_company_for_client(
         org_id=client.org_id,
         name=body.name.strip(),
         company_number=body.company_number,
+        country_of_incorporation=body.country_of_incorporation,
         industry=body.industry,
         company_type=body.company_type or "trading",
         functional_currency=currency,

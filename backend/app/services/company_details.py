@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
+from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,7 +24,15 @@ from app.services.audit import append_audit_log
 from app.services.reconciliation import ReconciliationCheck
 from findraft.models.year_end import YearEnd
 
-_BLOCKING = frozenset({"V-CO-001", "V-CO-002", "V-CO-005", "V-CO-006"})
+_BLOCKING = frozenset(
+    {"V-CO-001", "V-CO-002", "V-CO-005", "V-CO-006", "V-CO-008", "V-CO-009"}
+)
+MISSING_INCORPORATION = "Country of incorporation not recorded"
+FOREIGN_PACK_MESSAGE = (
+    "This pack is for a company incorporated in Ireland. "
+    "No other country's pack is available."
+)
+_IRISH_PACK = "frs102-1a-ie"
 
 
 class CompanyDetailsRejected(Exception):
@@ -35,6 +44,52 @@ class CompanyDetailsRejected(Exception):
 
 def blocks_final(checks: tuple[ReconciliationCheck, ...]) -> bool:
     return any(not item.passed and item.code in _BLOCKING for item in checks)
+
+
+def incorporation_gate(
+    country: str | None, pack_id: str
+) -> Literal["open", "missing", "foreign"]:
+    """Irish pack only. IE is unchanged. NULL is missing. Any other code is foreign."""
+    if pack_id != _IRISH_PACK:
+        return "open"
+    code = "" if country is None else country.strip().upper()
+    if code == "":
+        return "missing"
+    if code == "IE":
+        return "open"
+    return "foreign"
+
+
+def incorporation_output_message(
+    country: str | None, pack_id: str, *, final: bool
+) -> str | None:
+    """Message that blocks this output, or none when the output may proceed.
+
+    A missing country blocks FINAL only. A country other than Ireland blocks
+    the draft as well as FINAL, PDF, and Word.
+    """
+    gate = incorporation_gate(country, pack_id)
+    if gate == "foreign":
+        return FOREIGN_PACK_MESSAGE
+    if gate == "missing" and final:
+        return MISSING_INCORPORATION
+    return None
+
+
+async def incorporation_output_message_for_year_end(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+    final: bool,
+) -> str | None:
+    company = await session.get(Company, year_end.company_id)
+    country = None
+    if company is not None and company.org_id == org_id and not company.is_deleted:
+        country = company.country_of_incorporation
+    return incorporation_output_message(
+        country, year_end.pack_id, final=final
+    )
 
 
 def _blank(value: str | None) -> str | None:
@@ -604,6 +659,13 @@ def company_detail_checks(
     ]
     if currency is not None:
         checks.append(currency)
+    gate = incorporation_gate(company.country_of_incorporation, year_end.pack_id)
+    if gate == "missing":
+        checks.append(
+            _check("V-CO-008", "NOTICE", False, MISSING_INCORPORATION)
+        )
+    elif gate == "foreign":
+        checks.append(_check("V-CO-009", "BLOCKED", False, FOREIGN_PACK_MESSAGE))
     return tuple(checks)
 
 

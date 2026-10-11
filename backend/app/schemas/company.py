@@ -7,10 +7,24 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 CompanyType = Literal["trading", "holding"]
+
+
+def country_of_incorporation_code(value: object) -> str | None:
+    """Two uppercase letters, or none when the field is blank."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("Country of incorporation must be a two-letter code.")
+    text = value.strip().upper()
+    if text == "":
+        return None
+    if len(text) != 2 or not text.isalpha():
+        raise ValueError("Country of incorporation must be a two-letter code.")
+    return text
 
 
 class CompanyCreateRequest(BaseModel):
@@ -21,6 +35,12 @@ class CompanyCreateRequest(BaseModel):
     industry: str | None = None
     company_type: CompanyType | None = None
     functional_currency: str | None = Field(default=None, min_length=3, max_length=3)
+    country_of_incorporation: str | None = None
+
+    @field_validator("country_of_incorporation", mode="before")
+    @classmethod
+    def _country(cls, value: object) -> str | None:
+        return country_of_incorporation_code(value)
 
 
 class CompanyUpdateRequest(BaseModel):
@@ -31,11 +51,17 @@ class CompanyUpdateRequest(BaseModel):
     industry: str | None = None
     company_type: CompanyType | None = None
     functional_currency: str | None = Field(default=None, min_length=3, max_length=3)
+    country_of_incorporation: str | None = None
     # Required only when functional_currency changes and trial balances exist.
     # Amounts are never converted.
     acknowledge_currency_change: bool = False
     materiality_threshold_pct: Decimal | None = None
     materiality_threshold_abs: Decimal | None = None
+
+    @field_validator("country_of_incorporation", mode="before")
+    @classmethod
+    def _country(cls, value: object) -> str | None:
+        return country_of_incorporation_code(value)
 
 
 class CompanyResponse(BaseModel):
@@ -45,6 +71,7 @@ class CompanyResponse(BaseModel):
     client_id: uuid.UUID
     name: str
     company_number: str | None
+    country_of_incorporation: str | None
     industry: str | None
     company_type: CompanyType
     functional_currency: str

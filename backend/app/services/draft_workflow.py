@@ -1009,6 +1009,15 @@ async def finalise_draft(
     _expect_version(draft, row_version)
     if draft.status == "final":
         raise DraftRejected("FINAL output is never recomputed", 409)
+    from app.services.company_details import (
+        incorporation_output_message_for_year_end,
+    )
+
+    incorporation = await incorporation_output_message_for_year_end(
+        session, org_id=org_id, year_end=year_end, final=True
+    )
+    if incorporation is not None:
+        raise DraftRejected(incorporation, 409)
     adopted = draft.tb_version_id is None
     if adopted and year_end.adopted_trial_balance_id is None:
         raise DraftRejected("Draft has no trial balance")
