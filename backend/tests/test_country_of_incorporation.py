@@ -19,8 +19,8 @@ from sqlalchemy.exc import IntegrityError
 from app.db import SyncSessionLocal, set_rls_org_id
 from app.models.company import Company
 from app.services.company_details import (
-    FOREIGN_PACK_MESSAGE,
     MISSING_INCORPORATION,
+    foreign_pack_message,
     blocks_final,
     company_detail_checks,
     incorporation_gate,
@@ -169,24 +169,28 @@ def test_ireland_adds_no_incorporation_check() -> None:
 
 
 def test_another_country_blocks_every_irish_output() -> None:
-    assert FOREIGN_PACK_MESSAGE == (
+    recorded = (
         "This pack is for a company incorporated in Ireland. "
+        "Country of incorporation is recorded as United States of America. "
+        "No other country's pack is available."
+    )
+    assert foreign_pack_message("US") == recorded
+    assert foreign_pack_message("us") == recorded
+    assert foreign_pack_message("XX") == (
+        "This pack is for a company incorporated in Ireland. "
+        "Country of incorporation is recorded as XX. "
         "No other country's pack is available."
     )
     assert incorporation_gate("US", _IRISH) == "foreign"
-    assert (
-        incorporation_output_message("US", _IRISH, final=False) == FOREIGN_PACK_MESSAGE
-    )
-    assert (
-        incorporation_output_message("US", _IRISH, final=True) == FOREIGN_PACK_MESSAGE
-    )
+    assert incorporation_output_message("US", _IRISH, final=False) == recorded
+    assert incorporation_output_message("US", _IRISH, final=True) == recorded
     company, year_end = _year_end("US")
     blocked = _incorporation(company, year_end)
     assert len(blocked) == 1
     assert blocked[0].code == "V-CO-009"
     assert blocked[0].severity == "BLOCKED"
     assert blocked[0].passed is False
-    assert blocked[0].message == FOREIGN_PACK_MESSAGE
+    assert blocked[0].message == recorded
     assert blocks_final(tuple(blocked)) is True
 
 
@@ -263,9 +267,7 @@ async def test_create_stores_null_unless_a_country_is_sent(
     assert practice.status_code == 200, practice.text
     assert practice.json()["jurisdiction"] == "IE"
 
-    omitted = await _create_company(
-        api_client, provisioned_org, name="No country sent"
-    )
+    omitted = await _create_company(api_client, provisioned_org, name="No country sent")
     assert omitted["country_of_incorporation"] is None
     assert omitted["functional_currency"] == "EUR"
 
@@ -378,7 +380,7 @@ async def test_irish_pack_outputs_follow_the_recorded_country(
             detail = response.json()["detail"]
             if label == "US":
                 assert response.status_code == 409, (label, name, response.text)
-                assert detail == FOREIGN_PACK_MESSAGE
+                assert detail == foreign_pack_message("US")
                 continue
             if name == "finalise" and label == "null":
                 assert response.status_code == 409, response.text
@@ -397,4 +399,99 @@ async def test_irish_pack_outputs_follow_the_recorded_country(
                 name,
                 response.text,
             )
-            assert detail not in {MISSING_INCORPORATION, FOREIGN_PACK_MESSAGE}
+            assert detail != MISSING_INCORPORATION
+            assert "No other country's pack is available." not in detail
+
+
+def test_unlisted_country_code_is_refused() -> None:
+    from app.schemas.company import country_of_incorporation_code
+
+    with pytest.raises(
+        ValueError, match="XX is not a recognised country of incorporation."
+    ):
+        country_of_incorporation_code("XX")
+    with pytest.raises(
+        ValueError, match="XX is not a recognised country of incorporation."
+    ):
+        country_of_incorporation_code(" xx ")
+    assert country_of_incorporation_code("ie") == "IE"
+    assert country_of_incorporation_code("US") == "US"
+    assert country_of_incorporation_code("") is None
+    assert country_of_incorporation_code(None) is None
+
+
+def test_frontend_country_list_matches_the_server_list() -> None:
+    server = (
+        Path(__file__).resolve().parents[1] / "app" / "data" / "countries.json"
+    ).read_text(encoding="utf-8")
+    browser = (
+        Path(__file__).resolve().parents[2] / "frontend" / "lib" / "countries.json"
+    ).read_text(encoding="utf-8")
+    assert server == browser
+    from app.services.countries import country_label, country_names
+
+    assert country_names()["IE"] == "Ireland"
+    assert country_label("US") == "United States of America"
+    assert country_label("xx") == "XX"
+
+
+@pytest.mark.asyncio
+async def test_company_details_saves_a_country_name_as_a_two_letter_code(
+    api_client: AsyncClient,
+    provisioned_org: dict[str, str],
+) -> None:
+    from tests.test_tb_ingestion import _year_end
+
+    year_end_id = await _year_end(api_client, provisioned_org)
+    headers = auth_headers(provisioned_org["token"])
+    path = f"/year-ends/{year_end_id}/company-details"
+    current = await api_client.get(path, headers=headers)
+    assert current.status_code == 200, current.text
+    assert current.json()["country_of_incorporation"] == "IE"
+
+    saved = await api_client.put(
+        path,
+        headers=headers,
+        json={"country_of_incorporation": " us "},
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["country_of_incorporation"] == "US"
+
+    refused = await api_client.put(
+        path,
+        headers=headers,
+        json={"country_of_incorporation": "Ireland"},
+    )
+    assert refused.status_code == 422, refused.text
+    three = await api_client.put(
+        path,
+        headers=headers,
+        json={"country_of_incorporation": "IRL"},
+    )
+    assert three.status_code == 422, three.text
+    unknown = await api_client.put(
+        path,
+        headers=headers,
+        json={"country_of_incorporation": "XX"},
+    )
+    assert unknown.status_code == 422, unknown.text
+    assert "XX is not a recognised country of incorporation." in unknown.text
+    kept = await api_client.get(path, headers=headers)
+    assert kept.json()["country_of_incorporation"] == "US"
+
+    office_only = await api_client.put(
+        path,
+        headers=headers,
+        json={"registered_office": "1 Harbour Street"},
+    )
+    assert office_only.status_code == 200, office_only.text
+    assert office_only.json()["country_of_incorporation"] == "US"
+    assert office_only.json()["registered_office"] == "1 Harbour Street"
+
+    cleared = await api_client.put(
+        path,
+        headers=headers,
+        json={"country_of_incorporation": ""},
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["country_of_incorporation"] is None

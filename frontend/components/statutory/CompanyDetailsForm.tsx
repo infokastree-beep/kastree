@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { StatutoryLoadError } from "@/components/statutory/StatutoryLoadError";
+import { countryChoices } from "@/lib/countries";
 
 export type DirectorInput = {
   name: string;
@@ -33,6 +34,7 @@ export const DIRECTORS_RESPONSIBILITIES_WORDING =
   "The directors are responsible for preparing the company's financial statements and for being satisfied that they give a true and fair view. The directors are responsible for keeping adequate accounting records and for safeguarding the assets of the company and for taking reasonable steps for the prevention and detection of fraud and other irregularities.";
 
 export type CompanyDetails = {
+  country_of_incorporation: string | null;
   registered_office: string | null;
   business_address: string | null;
   company_number: string | null;
@@ -48,6 +50,7 @@ export type CompanyDetails = {
 };
 
 export type CompanyDetailsWrite = {
+  country_of_incorporation: string | null;
   registered_office: string | null;
   business_address: string | null;
   company_number: string | null;
@@ -102,6 +105,9 @@ export function CompanyDetailsForm({
   onSaveCompany: (next: CompanyDetailsWrite) => void;
   onSaveApproval: (next: ApprovalWrite) => void;
 }) {
+  const [country, setCountry] = useState(
+    textValue(details.country_of_incorporation).trim().toUpperCase(),
+  );
   const [office, setOffice] = useState(textValue(details.registered_office));
   const [business, setBusiness] = useState(textValue(details.business_address));
   const [number, setNumber] = useState(textValue(details.company_number));
@@ -216,6 +222,7 @@ export function CompanyDetailsForm({
         onSubmit={(event) => {
           event.preventDefault();
           onSaveCompany({
+            country_of_incorporation: country.trim() === "" ? null : country.trim(),
             registered_office: office.trim() === "" ? null : office,
             business_address: business.trim() === "" ? null : business,
             company_number: number.trim() === "" ? null : number,
@@ -303,6 +310,25 @@ export function CompanyDetailsForm({
             className={FIELD}
             data-testid="company-number"
           />
+        </label>
+        <label className="flex max-w-xl flex-col gap-1.5 text-sm">
+          <span className="text-xs font-semibold uppercase tracking-[0.12em] text-soft">
+            Country of incorporation
+          </span>
+          <select
+            value={country}
+            disabled={locked}
+            onChange={(event) => setCountry(event.target.value)}
+            className={FIELD}
+            data-testid="company-country-of-incorporation"
+          >
+            <option value="">Not recorded</option>
+            {countryChoices(country).map((row) => (
+              <option key={row.code} value={row.code}>
+                {row.name}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="flex max-w-xl flex-col gap-1.5 text-sm">
           <span className="text-xs font-semibold uppercase tracking-[0.12em] text-soft">
