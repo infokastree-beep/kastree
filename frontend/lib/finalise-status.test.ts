@@ -15,6 +15,7 @@ import {
   currencyCodeFromNotice,
   finalStateLabel,
   finaliseFailureMessage,
+  finaliseFailureParts,
   requestIdFromBody,
   finaliseStatusLine,
   pdfDownloadLabel,
@@ -160,5 +161,33 @@ describe("finalise offer", () => {
       "ref-9",
     );
     assert.equal(requestIdFromBody({ detail: "Directors have not been recorded." }), null);
+    const missing =
+      "The accounts calculation files are missing from the server. " +
+      "Finalise cannot run until the application is updated. " +
+      "Check the [Trial balance page](/year-ends/11111111-1111-4111-8111-111111111111/draft?section=trial-balance) " +
+      "and [Company details](/year-ends/11111111-1111-4111-8111-111111111111/draft?section=company-details); " +
+      "they do not hold these files.";
+    assert.equal(finaliseFailureMessage(400, missing), missing);
+    assert.notEqual(finaliseFailureMessage(400, missing), "This draft could not be finalised.");
+    assert.deepEqual(finaliseFailureParts(missing), [
+      {
+        kind: "text",
+        text:
+          "The accounts calculation files are missing from the server. " +
+          "Finalise cannot run until the application is updated. Check the ",
+      },
+      {
+        kind: "link",
+        text: "Trial balance page",
+        href: "/year-ends/11111111-1111-4111-8111-111111111111/draft?section=trial-balance",
+      },
+      { kind: "text", text: " and " },
+      {
+        kind: "link",
+        text: "Company details",
+        href: "/year-ends/11111111-1111-4111-8111-111111111111/draft?section=company-details",
+      },
+      { kind: "text", text: "; they do not hold these files." },
+    ]);
   });
 });
