@@ -38,7 +38,7 @@ describe("outputs row", () => {
     assert.equal(workspace.includes("statutory-word-row"), true);
     assert.equal(workspace.includes("statutory-download-word"), true);
     assert.equal(workspace.includes("statutory-word-progress"), true);
-    assert.equal(workspace.includes("WORD_DOWNLOAD_LABEL"), true);
+    assert.equal(workspace.includes("wordDownloadLabel"), true);
     assert.equal(workspace.includes("WORD_PROGRESS_LABEL"), true);
     assert.equal(workspace.includes("downloadDraftWord"), true);
     assert.equal(workspace.includes("/document.docx"), false);
