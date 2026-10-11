@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
+import {
+  revisionBanner,
+  type SchemaRevisionStatus,
+} from "@/lib/schema-revision";
 
 type WaitlistSignupRow = {
   name: string;
@@ -103,6 +107,7 @@ export function AdminOverviewPage() {
   const [loading, setLoading] = useState(true);
   const [busyOrgId, setBusyOrgId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [revision, setRevision] = useState<SchemaRevisionStatus | null>(null);
 
   useEffect(() => {
     if (!isSignedIn) {
@@ -112,6 +117,17 @@ export function AdminOverviewPage() {
     }
     let cancelled = false;
     setLoading(true);
+    apiFetch<SchemaRevisionStatus>("/health", { getToken })
+      .then((status) => {
+        if (!cancelled) {
+          setRevision(status);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRevision(null);
+        }
+      });
     apiFetch<AdminOverview>("/admin/overview", { getToken })
       .then((overview) => {
         if (!cancelled) {
@@ -175,12 +191,31 @@ export function AdminOverviewPage() {
     return null;
   }
 
+  const banner = revisionBanner(
+    revision ?? {
+      database_revision: null,
+      code_revision: null,
+      revision_matches: false,
+    },
+  );
+
   return (
     <div className="space-y-10">
       <div>
         <h1 className="text-xl font-semibold">Admin</h1>
         <p className="mt-1 text-sm text-stone-600">
           Waitlist signups, organisations, and users across the platform.
+        </p>
+        <p
+          className={
+            banner.tone === "ok"
+              ? "mt-3 text-sm text-stone-700"
+              : "mt-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+          }
+          data-testid="admin-revision-status"
+          data-tone={banner.tone}
+        >
+          {banner.text}
         </p>
         <p className="mt-3 text-sm">
           <Link
