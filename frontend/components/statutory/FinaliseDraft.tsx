@@ -3,10 +3,10 @@
 import { useState } from "react";
 import {
   CARRIED_ACK_LABEL,
-  FINALISED_STATE,
   FINALISE_LOCK_NOTE,
   canOfferFinalise,
   carriedAcknowledgementRequired,
+  finalStateLabel,
 } from "@/lib/finalise-status";
 
 export function FinaliseDraft({
@@ -14,6 +14,7 @@ export function FinaliseDraft({
   status,
   canFinalise,
   carriedDisclosures,
+  wordingSignedOff = false,
   busy,
   onConfirm,
 }: {
@@ -21,6 +22,7 @@ export function FinaliseDraft({
   status: string | undefined;
   canFinalise: boolean;
   carriedDisclosures: readonly string[];
+  wordingSignedOff?: boolean;
   busy?: boolean;
   onConfirm: (reviewedCarriedDisclosures: boolean) => Promise<string | null>;
 }) {
@@ -32,7 +34,7 @@ export function FinaliseDraft({
   if (status === "final") {
     return (
       <p className="mt-2 text-sm font-semibold" data-testid="statutory-final-state">
-        {FINALISED_STATE}
+        {finalStateLabel(wordingSignedOff)}
       </p>
     );
   }

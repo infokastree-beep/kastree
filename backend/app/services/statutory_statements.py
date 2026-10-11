@@ -1267,11 +1267,16 @@ def render_statutory_html(
 
     ``page_header`` is the watermark, with an optional second label beside
     it. A compilation draft stays ``DRAFT Compilation``. It does not become
-    ``COMPILATION``. ``composed`` selects the PDF furniture. The engine
-    render leaves it false.
+    ``COMPILATION``. An unsigned FINAL prints DRAFT and the wording banner
+    in the margin boxes, including the cover's first page. ``composed``
+    selects the PDF furniture. The engine render leaves it false. Figures
+    are unchanged.
     """
+    from app.services.beta import final_page_presentation
+
     label = statement_label.strip()
-    page_header = f"{watermark} {label}" if label else watermark
+    raw_header = f"{watermark} {label}" if label else watermark
+    page_header = final_page_presentation(raw_header).printed_header
     cover_first = composed and bool(sections) and sections[0].get("cover_page") is True
     return _HTML.from_string(_DOCUMENT).render(
         company_name=company_name,

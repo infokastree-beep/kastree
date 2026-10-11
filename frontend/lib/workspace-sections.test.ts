@@ -184,6 +184,10 @@ describe("sectionsForFramework", () => {
     assert.equal(finalise.includes("statutory-finalise-lock"), true);
     assert.equal(workspace.includes("statutory-outputs-state"), true);
     assert.equal(workspace.includes("pdfDownloadLabel"), true);
+    assert.equal(workspace.includes("finalStateLabel"), true);
+    assert.equal(workspace.includes("wordDownloadLabel"), true);
+    assert.equal(workspace.includes("wordingSignedOffFromServer"), true);
+    assert.equal(workspace.includes("shownStatus"), true);
     assert.equal(workspace.includes("canOfferFinalise"), false);
     const form = readFileSync(
       join(here, "../components/statutory/ReportSetupForm.tsx"),

@@ -9,12 +9,17 @@ import {
   FINALISED_409,
   FINALISE_LOCK_NOTE,
   FINALISED_STATE,
+  WORDING_BANNER,
   canOfferFinalise,
   carriedAcknowledgementRequired,
   currencyCodeFromNotice,
+  finalStateLabel,
   finaliseFailureMessage,
   finaliseStatusLine,
   pdfDownloadLabel,
+  shownStatus,
+  wordDownloadLabel,
+  wordingSignedOffFromServer,
 } from "./finalise-status.ts";
 
 describe("finaliseStatusLine", () => {
@@ -80,9 +85,27 @@ describe("finalise offer", () => {
 
   it("names the FINAL state and the PDF that belongs to it", () => {
     assert.equal(FINALISED_STATE, "FINAL");
-    assert.equal(pdfDownloadLabel("final"), "Download final PDF");
+    assert.equal(WORDING_BANNER, "Statutory wording not yet reviewed by a qualified reviewer");
+    assert.equal(wordingSignedOffFromServer(undefined), false);
+    assert.equal(wordingSignedOffFromServer({}), false);
+    assert.equal(wordingSignedOffFromServer({ wording_signed_off: false }), false);
+    assert.equal(wordingSignedOffFromServer({ wording_signed_off: true }), true);
+    assert.equal(finalStateLabel(false), `FINAL — ${WORDING_BANNER}`);
+    assert.equal(finalStateLabel(true), "FINAL");
+    assert.equal(shownStatus("final", false), `final — ${WORDING_BANNER}`);
+    assert.equal(shownStatus("final", true), "final");
+    assert.equal(shownStatus("draft", false), "draft");
+    assert.equal(pdfDownloadLabel("final"), `Download final PDF — ${WORDING_BANNER}`);
+    assert.equal(pdfDownloadLabel("final", false), `Download final PDF — ${WORDING_BANNER}`);
+    assert.equal(pdfDownloadLabel("final", true), "Download final PDF");
     assert.equal(pdfDownloadLabel("draft"), "Download draft PDF");
     assert.equal(pdfDownloadLabel(undefined), "Download draft PDF");
+    assert.equal(
+      wordDownloadLabel("final", false),
+      `Download Word (.docx) — ${WORDING_BANNER}`,
+    );
+    assert.equal(wordDownloadLabel("final", true), "Download Word (.docx)");
+    assert.equal(wordDownloadLabel("draft", false), "Download Word (.docx)");
   });
 
   it("shows each finalise refusal in the server's own words", () => {

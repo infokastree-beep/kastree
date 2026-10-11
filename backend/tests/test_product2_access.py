@@ -11,7 +11,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select, text
 
-import app.routers.users as users_router
+import app.services.beta as beta_position
 from app.config import settings
 from app.db import AsyncSessionLocal, SyncSessionLocal, aset_rls_org_id, set_rls_org_id
 from app.main import app
@@ -390,7 +390,7 @@ async def test_users_me_reports_product2_access(
     assert viewer.json()["product2_access"]["enabled"] is True
     assert viewer.json()["product2_access"]["wording_signed_off"] is False
 
-    monkeypatch.setattr(users_router, "WORDING_SIGNED_OFF", True)
+    monkeypatch.setattr(beta_position, "WORDING_SIGNED_OFF", True)
     signed = await api_client.get("/users/me", headers=headers)
     assert signed.json()["product2_access"]["enabled"] is True
     assert signed.json()["product2_access"]["wording_signed_off"] is True

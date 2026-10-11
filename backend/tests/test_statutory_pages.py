@@ -725,7 +725,9 @@ def test_composed_docx_matches_the_pdf_furniture_and_figures(tmp_path: Path) -> 
         approval_date=None,
         signing_directors=[],
     )
-    assert final_header == "FINAL"
+    from app.services.beta import WORDING_BANNER
+
+    assert final_header == f"DRAFT {WORDING_BANNER}"
     dest = tmp_path / "golden.docx"
     build_docx(
         {

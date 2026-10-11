@@ -13,7 +13,7 @@ from sqlalchemy import text
 
 from app.db import SyncSessionLocal, set_rls_org_id
 from app.main import app
-from app.services.beta import BETA_STATEMENT
+from app.services.beta import BETA_STATEMENT, WORDING_BANNER
 from app.services.source_storage import LocalPracticeStorage, get_source_storage
 from tests.conftest import auth_headers, make_access_token
 from tests.test_draft_locking import _answer_disclosures, _draft_path
@@ -24,6 +24,25 @@ from tests.test_tb_ingestion import _year_end
 
 _FORBIDDEN = "You don't have permission to access this resource."
 _ACCEPTED = {"accepted": True}
+
+
+def _pdf_text(payload: bytes) -> str:
+    import shutil
+    import tempfile
+
+    exe = shutil.which("pdftotext")
+    assert exe is not None, "pdftotext is not installed"
+    with tempfile.NamedTemporaryFile(suffix=".pdf") as handle:
+        handle.write(payload)
+        handle.flush()
+        completed = subprocess.run(
+            [exe, "-layout", handle.name, "-"],
+            check=True,
+            capture_output=True,
+        )
+    return completed.stdout.decode("utf-8")
+
+
 _ENGINE_ROOT = Path(__file__).resolve().parents[2] / "findraft"
 
 
@@ -222,6 +241,24 @@ async def test_first_practice_golden_final_keeps_the_engine_figures(
         'filename="statutory-statements-final.pdf"'
         in pdf.headers["content-disposition"]
     )
+    extracted = _pdf_text(pdf.content)
+    assert "DRAFT" in extracted
+    assert WORDING_BANNER in extracted
+    assert "455,812" in extracted
+    assert "157,650" in extracted
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
+        snapshot = session.execute(
+            text("SELECT snapshot FROM findraft_draft_versions WHERE id = :id"),
+            {"id": draft_id},
+        ).scalar_one()
+    assert isinstance(snapshot, dict)
+    assert snapshot["wording_signed_off"] is False
+    assert snapshot["page_label"] == "DRAFT"
+    assert snapshot["wording_banner"] == WORDING_BANNER
+    stored_html = snapshot["html"]
+    assert isinstance(stored_html, str)
+    assert f'content: "DRAFT {WORDING_BANNER}"' in stored_html
     evidence = await api_client.get(
         f"{_statements_path(year_end_id, version_id)}/evidence",
         headers=headers,
@@ -303,9 +340,7 @@ async def test_acknowledgement_columns_follow_the_earliest_audit_row(
         )
         session.execute(text(_backfill_sql()))
         kept = session.execute(
-            text(
-                "SELECT product2_acknowledged_at FROM organisations WHERE id = :org"
-            ),
+            text("SELECT product2_acknowledged_at FROM organisations WHERE id = :org"),
             {"org": str(org_id)},
         ).scalar_one()
         assert kept.isoformat().startswith("2000-01-01")

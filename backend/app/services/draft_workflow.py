@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import aset_rls_org_id
 from app.models.company import Company
 from app.services.audit import append_audit_log
+from app.services.beta import final_page_presentation
 from app.services.draft_inputs import (
     DraftInputError,
     adjusted_for_draft,
@@ -1181,8 +1182,12 @@ async def finalise_draft(
     draft.engine_sha = digest
     draft.finalised_by_user_id = user_id
     draft.status = "final"
+    presentation = final_page_presentation(document.watermark)
     draft.snapshot = {
         "watermark": "FINAL",
+        "wording_signed_off": presentation.wording_signed_off,
+        "page_label": presentation.page_label,
+        "wording_banner": presentation.wording_banner,
         "html": document.html or "",
         "composed_html": composed_html,
         "composed_sections": copied_sections,
@@ -1316,7 +1321,9 @@ def _dashboard_from_response(payload: dict[str, object]) -> Dashboard:
     )
     raw_carried = payload.get("carried_disclosures")
     carried = (
-        tuple(str(item) for item in raw_carried) if isinstance(raw_carried, list) else ()
+        tuple(str(item) for item in raw_carried)
+        if isinstance(raw_carried, list)
+        else ()
     )
     return Dashboard(
         draft_id=uuid.UUID(str(payload["draft_id"])),

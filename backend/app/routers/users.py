@@ -18,15 +18,12 @@ from app.dependencies import (
 )
 from app.schemas.audit import ErasureResponse
 from app.schemas.user import Product2AccessResponse, UserMeResponse
+from app.services import beta as beta_position
 from app.services.beta import beta_acknowledged, product2_grant_source
 from app.services.erasure import ErasureRejected, erase_user
 from app.services.retention import RETAINED_ON_ERASURE
 
 router = APIRouter(prefix="/users", tags=["users"])
-
-# A qualified reviewer has not signed this wording off. The response reads
-# this value; the client does not decide it.
-WORDING_SIGNED_OFF = False
 
 
 @router.get("/me", response_model=UserMeResponse)
@@ -52,7 +49,7 @@ async def get_current_user(
             enabled=acknowledged or platform_admin,
             acknowledged=acknowledged,
             source=source,
-            wording_signed_off=WORDING_SIGNED_OFF,
+            wording_signed_off=beta_position.WORDING_SIGNED_OFF,
         ),
     )
 

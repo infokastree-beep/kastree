@@ -535,7 +535,9 @@ def test_an_unsigned_draft_keeps_draft_on_every_page(statement_type: str) -> Non
             assert "DRAFT Compilation" not in page
 
 
-def test_a_finalised_document_keeps_final_and_does_not_say_compilation() -> None:
+def test_a_finalised_document_keeps_final_and_does_not_say_compilation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     document = _golden()
     final = StatutoryStatements(
         watermark="FINAL",
@@ -554,15 +556,40 @@ def test_a_finalised_document_keeps_final_and_does_not_say_compilation() -> None
         pages=document.pages,
         company_name=document.company_name,
     )
+    from app.services.beta import WORDING_BANNER, final_page_presentation
+
     html = _compose(final, _setup(statement_type="compilation"))
-    assert '<p class="watermark">FINAL</p>' in html
-    assert 'content: "FINAL"' in html
-    assert "DRAFT" not in html
+    printed = f"DRAFT {WORDING_BANNER}"
+    assert f'<p class="watermark">{printed}</p>' in html
+    assert html.count(f'content: "{printed}"') >= 2
+    assert "@page :first" in html
     assert "COMPILATION" not in html
-    assert '<p class="watermark">FINAL Compilation</p>' not in html
+    assert "FINAL" not in html
     assert final.watermark == "FINAL"
     assert document.net_assets == Decimal("455812.00")
     assert document.profit == Decimal("157650.00")
+    pages = [page for page in _pdf_pages(write_statement_pdf(html)) if page.strip()]
+    assert len(pages) > 1
+    joined = "\n".join(pages)
+    assert "455,812" in joined
+    assert "157,650" in joined
+    for page in pages:
+        assert "DRAFT" in page
+        assert WORDING_BANNER in page
+        assert "FINAL" not in page
+    assert "455,812" in html
+    assert "157,650" in html
+    monkeypatch.setattr("app.services.beta.WORDING_SIGNED_OFF", True)
+    signed = final_page_presentation("FINAL")
+    assert signed.wording_signed_off is True
+    assert signed.page_label == "FINAL"
+    assert signed.wording_banner == ""
+    assert signed.printed_header == "FINAL"
+    signed_html = _compose(final, _setup(statement_type="compilation"))
+    assert '<p class="watermark">FINAL</p>' in signed_html
+    assert 'content: "FINAL"' in signed_html
+    assert "DRAFT" not in signed_html
+    assert WORDING_BANNER not in signed_html
 
 
 def test_thousands_prints_a_rounding_difference_when_lines_do_not_foot() -> None:

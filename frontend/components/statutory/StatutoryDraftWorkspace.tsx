@@ -7,11 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
 import { downloadDraftPdf, pdfBlockReason } from "@/lib/draft-pdf";
-import {
-  WORD_DOWNLOAD_LABEL,
-  WORD_PROGRESS_LABEL,
-  downloadDraftWord,
-} from "@/lib/draft-word";
+import { WORD_PROGRESS_LABEL, downloadDraftWord } from "@/lib/draft-word";
 import { messageFromPdfBody } from "@/lib/workspace-load-error";
 import {
   CompanyDetailsForm,
@@ -26,11 +22,14 @@ import {
 } from "@/components/statutory/ReportSetupForm";
 import { FinaliseDraft } from "@/components/statutory/FinaliseDraft";
 import {
-  FINALISED_STATE,
   currencyCodeFromNotice,
+  finalStateLabel,
   finaliseFailureMessage,
   finaliseStatusLine,
   pdfDownloadLabel,
+  shownStatus,
+  wordDownloadLabel,
+  wordingSignedOffFromServer,
 } from "@/lib/finalise-status";
 import { SectionPreview } from "@/components/statutory/SectionPreview";
 import { SectionsSetup } from "@/components/statutory/SectionsSetup";
@@ -227,6 +226,9 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       apiFetch<{ lines: string[] }>("/year-ends/canonical-lines", { getToken }),
     enabled: draft !== null && draft.status === "draft",
   });
+  const wordingSignedOff = wordingSignedOffFromServer(
+    meQuery.data?.product2_access,
+  );
   const yearEnd = yearEndQuery.data;
   const statementsPath =
     yearEnd?.adopted_trial_balance_id != null
@@ -923,7 +925,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
           </h2>
           {dashboard?.status === "final" ? (
             <p className="text-sm font-semibold text-ink" data-testid="statutory-outputs-state">
-              {FINALISED_STATE}
+              {finalStateLabel(wordingSignedOff)}
             </p>
           ) : null}
           <StandingWordingNotice place="downloads" />
@@ -939,7 +941,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               onClick={() => void downloadPdf()}
               className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {pdfDownloadLabel(dashboard?.status)}
+              {pdfDownloadLabel(dashboard?.status, wordingSignedOff)}
             </button>
             {pdfReason !== null ? (
               <p className="text-sm text-ink-secondary" data-testid="statutory-download-reason">
@@ -964,7 +966,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               onClick={() => void downloadWord()}
               className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {WORD_DOWNLOAD_LABEL}
+              {wordDownloadLabel(dashboard?.status, wordingSignedOff)}
             </button>
             {wordPreparing ? (
               <p className="text-sm text-ink-secondary" data-testid="statutory-word-progress">
@@ -1068,7 +1070,8 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
             {dashboard.traffic}
           </p>
           <p className="mt-1 text-sm">
-            Draft version {draft?.version_number}. Status {dashboard.status}.
+            Draft version {draft?.version_number}. Status{" "}
+            {shownStatus(dashboard.status, wordingSignedOff)}.
             {finaliseStatusLine({
               canFinalise: dashboard.can_finalise,
               tbVersionId: draft?.tb_version_id ?? null,
@@ -1121,6 +1124,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
             status={dashboard.status}
             canFinalise={dashboard.can_finalise}
             carriedDisclosures={dashboard.carried_disclosures ?? []}
+            wordingSignedOff={wordingSignedOff}
             busy={busy !== null}
             onConfirm={finaliseDraft}
           />

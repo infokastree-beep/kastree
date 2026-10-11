@@ -112,15 +112,19 @@ def docx_presentation(
     """Header and signature the PDF template already prints.
 
     The Word file reads these beside the same composed sections. A compilation
-    draft is ``DRAFT Compilation``. A final file stays ``FINAL``.
+    draft is ``DRAFT Compilation``. An unsigned final file prints DRAFT and
+    the wording banner. The document watermark stays FINAL.
     """
+    from app.services.beta import final_page_presentation
+
     statement_type = "draft"
     if isinstance(report_setup, dict):
         raw = report_setup.get("statement_type")
         if isinstance(raw, str) and raw:
             statement_type = raw
     label = _statement_label(document, statement_type)
-    page_header = f"{document.watermark} {label}" if label else document.watermark
+    raw_header = f"{document.watermark} {label}" if label else document.watermark
+    page_header = final_page_presentation(raw_header).printed_header
     approved = "" if approval_date is None else approval_date.isoformat()
     signature = _signature_view(approved, _signing_phrase(signing_directors))
     return page_header, signature
