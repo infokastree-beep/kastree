@@ -1,0 +1,13 @@
+{
+  "FIXED_ASSETS_NBV": "Tangible fixed assets",
+  "DEBTORS": "Debtors",
+  "CREDITORS": "Creditors",
+  "LOANS": "Borrowings",
+  "STOCKS": "Stocks",
+  "INTANGIBLE_ASSETS": "Intangible assets",
+  "HAS_BORROWINGS": "Borrowings",
+  "HAS_LEASES": "Leases",
+  "REVENUE": "Revenue",
+  "DIRECTOR_LOANS": "Director loans",
+  "DIVIDENDS_PAID": "Dividends"
+}

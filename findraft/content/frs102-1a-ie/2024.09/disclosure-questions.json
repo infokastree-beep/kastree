@@ -1,0 +1,18 @@
+{
+  "pack": "frs102-1a-ie",
+  "version": "2024.09",
+  "questions": [
+    {
+      "flag": "COMMITMENTS_EXIST",
+      "question": "Are there other commitments the notes should pick up?",
+      "note": "N9_COMMITMENTS",
+      "group": "Commitments"
+    },
+    {
+      "flag": "HAS_FOREIGN",
+      "question": "Did the company have foreign-currency items?",
+      "note": null,
+      "group": "Other"
+    }
+  ]
+}

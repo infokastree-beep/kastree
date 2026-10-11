@@ -9,6 +9,8 @@
     {
       "id": "1AD.1",
       "topic": "Minimum Appendix D disclosures when relevant",
+      "question": "Are the minimum Appendix D disclosures relevant to this company?",
+      "flag": null,
       "note": null,
       "statuteRefStatus": "verified-vs-sept2024-pdf (no explicit statute cite in text)",
       "statuteRef": "See requirement text in FRS 102 Appendix D (no standalone statutory citation)",
@@ -20,6 +22,8 @@
     {
       "id": "1AD.2",
       "topic": "Note ordering (SoFP then income statement order)",
+      "question": "Are the notes ordered as they appear on the statement of financial position, then the income statement?",
+      "flag": null,
       "note": "_engine",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
       "statuteRef": "Sch 3A paras 43(2)",
@@ -31,6 +35,8 @@
     {
       "id": "1AD.3",
       "topic": "Basis of preparation statement incl. Section 1A compliance and any material departures",
+      "question": "Does the basis of preparation state Section 1A compliance and any material departures?",
+      "flag": null,
       "note": "N1_POLICIES",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
       "statuteRef": "CA 2014 s.291(7)",
@@ -43,6 +49,8 @@
     {
       "id": "1AD.4",
       "topic": "Accounting policies for SoFP and income statement items",
+      "question": "Are the accounting policies for the statement of financial position and the income statement disclosed?",
+      "flag": null,
       "note": "N1_POLICIES",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
       "statuteRef": "CA 2014 s.321(1)",
@@ -55,6 +63,8 @@
     {
       "id": "1AD.5",
       "topic": "Development costs capitalised: write-off period and reasons",
+      "question": "Are development costs capitalised?",
+      "flag": "DEV_COSTS",
       "note": "N2_FA",
       "includeWhen": "INTANGIBLE_ASSETS > 0 AND DEV_COSTS > 0",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
@@ -67,6 +77,8 @@
     {
       "id": "1AD.6",
       "topic": "Development costs treated as asset but not realised loss: circumstances",
+      "question": "Are capitalised development costs not treated as a realised loss?",
+      "flag": "DEV_COSTS_UNREALISED",
       "note": "N2_FA",
       "includeWhen": "DEV_COSTS_UNREALISED > 0",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
@@ -80,6 +92,8 @@
     {
       "id": "1AD.7",
       "topic": "Goodwill: write-off period chosen and reasons",
+      "question": "Is goodwill recognised?",
+      "flag": "GOODWILL",
       "note": "N2_FA",
       "includeWhen": "GOODWILL > 0",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
@@ -92,6 +106,8 @@
     {
       "id": "1AD.8",
       "topic": "Change in SoFP/income statement format: reasons and particulars",
+      "question": "Did the SoFP or income statement format change?",
+      "flag": "FORMAT_CHANGE",
       "note": "N1_POLICIES",
       "includeWhen": "FORMAT_CHANGE == true",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
@@ -104,6 +120,8 @@
     {
       "id": "1AD.9",
       "topic": "Accounting policy change: reason and practicable impact",
+      "question": "Did an accounting policy change?",
+      "flag": "POLICY_CHANGE",
       "note": "N1_POLICIES",
       "includeWhen": "POLICY_CHANGE == true",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
@@ -116,6 +134,8 @@
     {
       "id": "1AD.10",
       "topic": "Non-comparable prior-year amounts: particulars of adjustment",
+      "question": "Are any prior-year amounts not comparable?",
+      "flag": "PRIOR_RECLASS",
       "note": "N1_POLICIES",
       "includeWhen": "PRIOR_RECLASS == true",
       "statuteRef": "Sch 3A paras 5(1)",
@@ -128,6 +148,8 @@
     {
       "id": "1AD.11",
       "topic": "Going-concern departure: reasons, method, effect",
+      "question": "Have the accounts departed from the going-concern basis?",
+      "flag": "GOING_CONCERN_DEPARTURE",
       "note": "N1_POLICIES",
       "includeWhen": "GOING_CONCERN_DEPARTURE == true",
       "critical": true,
@@ -141,6 +163,8 @@
     {
       "id": "1AD.12",
       "topic": "Asset/liability relating to more than one SoFP item: breakdown of amounts",
+      "question": "Does one asset or liability relate to more than one SoFP line?",
+      "flag": "MULTI_ITEM_ASSET",
       "note": "_line_level",
       "includeWhen": "MULTI_ITEM_ASSET == true",
       "statuteRef": "Sch 3A paras 4(7)",
@@ -153,6 +177,8 @@
     {
       "id": "1AD.13",
       "topic": "Fixed assets: movements (acquisitions, disposals, depreciation/impairment) in the period for each FA item",
+      "question": "Are fixed-asset movements disclosed for the period?",
+      "flag": null,
       "note": "N2_FA",
       "includeWhen": "FIXED_ASSETS_NBV != 0",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
@@ -165,6 +191,8 @@
     {
       "id": "1AD.14",
       "topic": "Fixed assets: opening NBV, depreciation method/rate/life or useful life, NBV vs cost/revaluation basis",
+      "question": "Are the opening carrying amount, depreciation method, and useful life disclosed for fixed assets?",
+      "flag": null,
       "note": "N2_FA",
       "includeWhen": "FIXED_ASSETS_NBV != 0",
       "statuteRef": "Sch 3A 45(3) (opening/closing accum dep, charge, dep on disposals, other adjustments)",
@@ -177,6 +205,8 @@
     {
       "id": "1AD.15",
       "topic": "Revalued assets: items affected and basis of valuation",
+      "question": "Is there a revaluation reserve?",
+      "flag": "REVALUATION_RESERVE",
       "note": "N2_FA",
       "includeWhen": "REVALUATION_RESERVE != 0",
       "statuteRef": "Sch 3A paras 35(2)",
@@ -189,6 +219,8 @@
     {
       "id": "1AD.16",
       "topic": "Revalued asset historical cost equivalent: cost and accumulated depreciation",
+      "question": "For a revalued asset, what are the historical cost and accumulated depreciation?",
+      "flag": "REVALUATION_RESERVE",
       "note": "N2_FA",
       "includeWhen": "REVALUATION_RESERVE != 0",
       "statuteRef": "Sch 3A paras 35(3)",
@@ -201,6 +233,8 @@
     {
       "id": "1AD.17",
       "topic": "Transfers to/from revaluation reserve",
+      "question": "Was there a transfer to or from the revaluation reserve?",
+      "flag": "REVAL_TRANSFER",
       "note": "N6_CAPITAL",
       "includeWhen": "REVAL_TRANSFER != 0",
       "statuteRef": "Sch 3A paras 49",
@@ -213,6 +247,8 @@
     {
       "id": "1AD.18",
       "topic": "Taxation treatment of revaluation reserve movements",
+      "question": "How are movements on the revaluation reserve treated for tax?",
+      "flag": "REVALUATION_RESERVE",
       "note": "N6_CAPITAL",
       "includeWhen": "REVALUATION_RESERVE != 0",
       "statuteRef": "Sch 3A paras 36(6)",
@@ -225,6 +261,8 @@
     {
       "id": "1AD.19",
       "topic": "Capitalised borrowing costs included in asset cost",
+      "question": "Were borrowing costs capitalised into an asset?",
+      "flag": "CAPITALISED_BORROWING",
       "note": "N2_FA",
       "includeWhen": "CAPITALISED_BORROWING > 0",
       "statuteRef": "Sch 3A paras 29(3)",
@@ -237,6 +275,8 @@
     {
       "id": "1AD.20",
       "topic": "Impairment value adjustments on fixed assets",
+      "question": "Was a fixed asset impaired?",
+      "flag": "IMPAIRMENT",
       "note": "N2_FA",
       "includeWhen": "IMPAIRMENT != 0",
       "statuteRef": "Sch 3A paras 23(1)–(2)",
@@ -249,6 +289,8 @@
     {
       "id": "1AD.21",
       "topic": "Reversal of impairment adjustments: reasons",
+      "question": "Was an impairment reversed?",
+      "flag": "IMPAIRMENT_REVERSAL",
       "note": "N2_FA",
       "includeWhen": "IMPAIRMENT_REVERSAL != 0",
       "statuteRef": "Sch 3A paras 23(3)",
@@ -261,6 +303,8 @@
     {
       "id": "1AD.22",
       "topic": "Financial instruments at fair value through P&L: basis of valuation",
+      "question": "Are financial instruments carried at fair value through profit or loss?",
+      "flag": "FI_FVPL",
       "note": "N3_DEBTORS",
       "includeWhen": "FI_FVPL != 0",
       "statuteRef": "Sch 3A paras 46(2)(a)–(b)",
@@ -273,6 +317,8 @@
     {
       "id": "1AD.23",
       "topic": "Non-FI assets at fair value: particulars and valuation basis",
+      "question": "Are any non-financial assets at fair value?",
+      "flag": "NONFI_FV",
       "note": "N3_DEBTORS",
       "includeWhen": "NONFI_FV != 0",
       "statuteRef": "Sch 3A para 46(2)(c)",
@@ -285,6 +331,8 @@
     {
       "id": "1AD.24",
       "topic": "Difference between FV carrying amount and historical cost: particulars",
+      "question": "Does fair value differ from historical cost for a carried item?",
+      "flag": "FV_VS_HC_DIFFERS",
       "note": "N3_DEBTORS",
       "includeWhen": "FV_VS_HC_DIFFERS == true",
       "statuteRef": "Sch 3A para 46(2)(d)",
@@ -297,6 +345,8 @@
     {
       "id": "1AD.25",
       "topic": "Instruments designated FVPL under IFRS-consistent treatment: particulars",
+      "question": "Were instruments designated at fair value under an IFRS-consistent treatment?",
+      "flag": "FV_DESIGNATION",
       "note": null,
       "includeWhen": "FV_DESIGNATION != 0",
       "phase2": true,
@@ -310,6 +360,8 @@
     {
       "id": "1AD.26",
       "topic": "Creditors: aggregate amounts of loans repayable >5 years and >1yr<=5yrs, per creditor item",
+      "question": "Are creditors analysed by the date they fall due?",
+      "flag": null,
       "note": "N4_CREDITORS",
       "includeWhen": "CREDITORS != 0",
       "statuteRef": "Sch 3A paras 50(1)",
@@ -322,6 +374,8 @@
     {
       "id": "1AD.27",
       "topic": "Creditors: aggregate amounts secured, per creditor item",
+      "question": "Are any creditors secured?",
+      "flag": "SECURED_CREDITORS",
       "note": "N4_CREDITORS",
       "includeWhen": "SECURED_CREDITORS != 0",
       "statuteRef": "Sch 3A paras 50(2)",
@@ -334,6 +388,8 @@
     {
       "id": "1AD.28",
       "topic": "Charges on assets: particulars",
+      "question": "Are there charges on assets?",
+      "flag": "CHARGES_EXIST",
       "note": "N9_COMMITMENTS",
       "includeWhen": "CHARGES_EXIST == true",
       "statuteRef": "Sch 3A paras 51(1)",
@@ -346,6 +402,8 @@
     {
       "id": "1AD.29",
       "topic": "Guarantees/security given: particulars incl. estimated liability",
+      "question": "Has the company given guarantees or security?",
+      "flag": "GUARANTEES_EXIST",
       "note": "N9_COMMITMENTS",
       "includeWhen": "GUARANTEES_EXIST == true",
       "statuteRef": "Sch 3A paras 51(2)",
@@ -358,6 +416,8 @@
     {
       "id": "1AD.30",
       "topic": "Nature/form of valuable security given by entity",
+      "question": "What is the nature and form of the security the company has given?",
+      "flag": "GUARANTEES_EXIST",
       "note": "N9_COMMITMENTS",
       "includeWhen": "GUARANTEES_EXIST == true",
       "statuteRef": "Sch 3A paras 51(3)",
@@ -370,6 +430,8 @@
     {
       "id": "1AD.31",
       "topic": "Commitments not provided for: total amount/estimate, nature, timing",
+      "question": "Are there commitments not provided for?",
+      "flag": "UNCOMMITTED",
       "note": "N9_COMMITMENTS",
       "includeWhen": "UNCOMMITTED != 0",
       "statuteRef": "Sch 3A paras 51(4)",
@@ -382,6 +444,8 @@
     {
       "id": "1AD.32",
       "topic": "Retirement benefit commitments: particulars incl. valuation assumptions",
+      "question": "Are there retirement-benefit commitments?",
+      "flag": "PENSION_COMMITMENT",
       "note": "N9_COMMITMENTS",
       "includeWhen": "PENSION_COMMITMENT == true",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
@@ -394,6 +458,8 @@
     {
       "id": "1AD.33",
       "topic": "Retirement-benefit commitments to past directors: separate particulars",
+      "question": "Are there retirement-benefit commitments to past directors?",
+      "flag": "PAST_DIRECTOR_PENSION_COMMITMENTS",
       "note": "N7_RPT",
       "includeWhen": "PAST_DIRECTOR_PENSION_COMMITMENTS == true",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
@@ -406,6 +472,8 @@
     {
       "id": "1AD.34",
       "topic": "Off-SoFP arrangements: nature, business purpose, risks, financial impact",
+      "question": "Are there off-balance-sheet arrangements?",
+      "flag": "OFF_BALANCE_ARRANGEMENT",
       "note": "N9_COMMITMENTS",
       "includeWhen": "OFF_BALANCE_ARRANGEMENT == true",
       "phase2": true,
@@ -419,6 +487,8 @@
     {
       "id": "1AD.35",
       "topic": "Dividends: aggregate amounts to be shown",
+      "question": "Are dividends disclosed in aggregate?",
+      "flag": null,
       "note": "_line_level",
       "includeWhen": "DIVIDENDS_PAID != 0",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
@@ -431,6 +501,8 @@
     {
       "id": "1AD.36",
       "topic": "Income statement items: disclosure of amounts where required by Sch3A in notes",
+      "question": "Do Schedule 3A format rules require an income-statement amount in the notes?",
+      "flag": "REQUIRED_BY_FORMAT",
       "note": "_line_level",
       "includeWhen": "REQUIRED_BY_FORMAT == true",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
@@ -443,6 +515,8 @@
     {
       "id": "1AD.37",
       "topic": "Average number of employees in the period",
+      "question": "Did the company have employees in the period?",
+      "flag": "HAS_EMPLOYEES",
       "note": "N8_EMPLOYEES",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
       "statuteRef": "Sections 317(1)(a) and 317(7A) of the Companies Act 2014; Sections 305 and 306 of the Companies Act 2014",
@@ -454,6 +528,8 @@
     {
       "id": "1AD.38",
       "topic": "Directors' remuneration - aggregate",
+      "question": "Is directors' remuneration disclosed in aggregate?",
+      "flag": null,
       "note": "N7_RPT",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
       "statuteRef": "Sections 305(1) and 305(12)(b) of the Companies Act 2014; Section 305(13)(b) of the Companies Act 2014",
@@ -465,6 +541,8 @@
     {
       "id": "1AD.39",
       "topic": "Past directors: retirement benefits and related amounts",
+      "question": "Were retirement benefits paid or committed to past directors?",
+      "flag": "PAST_DIRECTOR_BENEFITS",
       "note": "N7_RPT",
       "includeWhen": "PAST_DIRECTOR_BENEFITS == true",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
@@ -477,6 +555,8 @@
     {
       "id": "1AD.40",
       "topic": "Consideration paid to third parties for making directors' services available",
+      "question": "Was a third party paid to provide a director's services?",
+      "flag": "THIRD_PARTY_DIRECTOR_SERVICES",
       "note": "N5_LOANS",
       "includeWhen": "THIRD_PARTY_DIRECTOR_SERVICES == true",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
@@ -489,6 +569,8 @@
     {
       "id": "1AD.41",
       "topic": "Directors' loans, quasi-loans, credit transactions, guarantees and security (lead-in to 1AD.42–1AD.45)",
+      "question": "Are directors' loans, credits, guarantees, and security disclosed?",
+      "flag": null,
       "note": "N5_LOANS",
       "includeWhen": "DIRECTOR_LOANS != 0 OR DIRECTOR_LOAN_AGREEMENTS == true OR DIRECTOR_GUARANTEES == true OR DIRECTOR_GUARANTEE_AGREEMENTS == true",
       "statuteRefStatus": "verified-vs-sept2024-pdf (no explicit statute cite in text)",
@@ -501,6 +583,8 @@
     {
       "id": "1AD.42",
       "topic": "Loans, quasi-loans and credit transactions with directors and connected persons: particulars",
+      "question": "Are there loans or credits with persons connected to directors?",
+      "flag": "CONNECTED_LOANS",
       "note": "N5_LOANS",
       "includeWhen": "DIRECTOR_LOANS != 0 OR CONNECTED_LOANS != 0",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
@@ -513,6 +597,8 @@
     {
       "id": "1AD.43",
       "topic": "Agreements to enter into loans, quasi-loans or credit transactions with directors: particulars",
+      "question": "Are there agreements to enter into director loans or credits?",
+      "flag": "DIRECTOR_LOAN_AGREEMENTS",
       "note": "N5_LOANS",
       "includeWhen": "DIRECTOR_LOAN_AGREEMENTS == true",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
@@ -525,6 +611,8 @@
     {
       "id": "1AD.44",
       "topic": "Guarantees and security provided for directors and connected persons: particulars",
+      "question": "Has the company guaranteed or secured a director or connected person?",
+      "flag": "DIRECTOR_GUARANTEES",
       "note": "N5_LOANS",
       "includeWhen": "DIRECTOR_GUARANTEES == true",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
@@ -537,6 +625,8 @@
     {
       "id": "1AD.45",
       "topic": "Agreements to provide guarantees or security for directors and connected persons: particulars",
+      "question": "Are there agreements to give those guarantees?",
+      "flag": "DIRECTOR_GUARANTEE_AGREEMENTS",
       "note": "N5_LOANS",
       "includeWhen": "DIRECTOR_GUARANTEE_AGREEMENTS == true",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
@@ -549,6 +639,8 @@
     {
       "id": "1AD.46",
       "topic": "Directors' arrangements above the aggregate threshold: disclosure",
+      "question": "Are directors' arrangements above the aggregate threshold disclosed?",
+      "flag": null,
       "note": "N5_LOANS",
       "includeWhen": "DIRECTOR_LOANS != 0 OR DIRECTOR_LOAN_AGREEMENTS == true OR DIRECTOR_GUARANTEES == true OR DIRECTOR_GUARANTEE_AGREEMENTS == true",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
@@ -561,6 +653,8 @@
     {
       "id": "1AD.47",
       "topic": "Parent taking advantage of small-group exemption: state parent and exemption relied on",
+      "question": "Is a parent taking the small-group exemption?",
+      "flag": "SMALL_GROUP_EXEMPTION",
       "note": "N6_CAPITAL",
       "includeWhen": "SMALL_GROUP_EXEMPTION == true",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
@@ -573,6 +667,8 @@
     {
       "id": "1AD.48",
       "topic": "Other arrangements or transactions in which a director has a material interest",
+      "question": "Does a director have a material interest in another arrangement?",
+      "flag": "DIRECTOR_MATERIAL_INTEREST",
       "note": "N7_RPT",
       "includeWhen": "DIRECTOR_MATERIAL_INTEREST == true",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
@@ -585,6 +681,8 @@
     {
       "id": "1AD.49",
       "topic": "Company's own shares held by the entity or its nominee: particulars",
+      "question": "Does the company or a nominee hold the company's own shares?",
+      "flag": "OWN_SHARES_HELD",
       "note": "N6_CAPITAL",
       "includeWhen": "OWN_SHARES_HELD == true",
       "statuteRef": "Section 275(3) of the Companies Act 2014; Section 320 of the Companies Act 2014",
@@ -597,6 +695,8 @@
     {
       "id": "1AD.50",
       "topic": "Parent + subsidiary: state parent undertaking and ultimate parent",
+      "question": "Is the company a subsidiary?",
+      "flag": "IS_SUBSIDIARY",
       "note": "N6_CAPITAL",
       "includeWhen": "IS_SUBSIDIARY == true",
       "statuteRef": "Sch 3A para 57 and 58",
@@ -609,6 +709,8 @@
     {
       "id": "1AD.51",
       "topic": "Transactions with related parties: particulars",
+      "question": "Were there related-party transactions?",
+      "flag": "RPT_EXISTS",
       "note": "N7_RPT",
       "includeWhen": "RPT_EXISTS == true",
       "statuteRef": "Schedule 3A, paragraph 55",
@@ -621,6 +723,8 @@
     {
       "id": "1AD.52",
       "topic": "Entity details: registered office, registration number, directors in office",
+      "question": "Did any directors serve during the period?",
+      "flag": "DIRECTORS_EXIST",
       "note": "N0_ENTITY",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
       "statuteRef": "CA 2014 s.291(3A)",
@@ -632,6 +736,8 @@
     {
       "id": "1AD.53",
       "topic": "Format-line Arabic numbering: particulars of items combined where Sch3A format permits",
+      "question": "Were format lines combined?",
+      "flag": "FORMAT_COMBINED",
       "note": "_line_level",
       "includeWhen": "FORMAT_COMBINED == true",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
@@ -644,6 +750,8 @@
     {
       "id": "1AD.54",
       "topic": "Post balance sheet events: particulars and financial impact of material events",
+      "question": "Are there material events after the balance sheet date?",
+      "flag": "SUBSEQUENT_EVENTS",
       "note": "N9_COMMITMENTS",
       "includeWhen": "SUBSEQUENT_EVENTS == true",
       "needsInput": true,
@@ -657,6 +765,8 @@
     {
       "id": "1AD.55",
       "topic": "Set-off within asset/income items: particulars",
+      "question": "Were amounts set off within an asset or income item?",
+      "flag": "SET_OFF_USED",
       "note": "_line_level",
       "includeWhen": "SET_OFF_USED == true",
       "statuteRefStatus": "verified-vs-sept2024-pdf",
