@@ -377,6 +377,14 @@ class SizeEligibilityResponse(BaseModel):
     message: str
 
 
+class DashboardFixOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    section: str
+    note: str | None = None
+    anchor: str | None = None
+
+
 class DashboardCheckOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -384,6 +392,8 @@ class DashboardCheckOut(BaseModel):
     severity: str
     passed: bool
     message: str
+    area: str = "Other"
+    fix: DashboardFixOut | None = None
 
 
 class DashboardResponse(BaseModel):
@@ -395,6 +405,8 @@ class DashboardResponse(BaseModel):
     traffic: Literal["red", "amber", "green"]
     can_finalise: bool
     unanswered_disclosures: list[str]
+    unanswered_count: int = 0
+    blocking_count: int = 0
     carried_disclosures: list[str] = Field(default_factory=list)
     checks: list[DashboardCheckOut]
 

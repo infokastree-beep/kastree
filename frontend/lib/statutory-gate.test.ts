@@ -193,7 +193,7 @@ describe("standing wording notice", () => {
     assert.match(continuation, /place="statutory-tab"/);
     assert.match(continuation, /place="downloads"/);
     assert.match(workspace, /place="workspace-header"/);
-    assert.match(workspace, /place="review-dashboard"/);
+    assert.equal(workspace.includes('place="review-dashboard"'), false);
     assert.match(workspace, /place="downloads"/);
     const downloads = workspace.indexOf('place="downloads"');
     const pdf = workspace.indexOf('data-testid="statutory-download"');
