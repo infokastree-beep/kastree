@@ -21,6 +21,8 @@ import {
   type ReportSetupWrite,
 } from "@/components/statutory/ReportSetupForm";
 import { FinaliseDraft } from "@/components/statutory/FinaliseDraft";
+import { ReviewChecks } from "@/components/statutory/ReviewChecks";
+import { blockingFailureCount } from "@/lib/dashboard-groups";
 import {
   currencyCodeFromNotice,
   finalStateLabel,
@@ -80,6 +82,8 @@ type DashboardCheck = {
   severity: string;
   passed: boolean;
   message: string;
+  area?: string;
+  fix?: { section: string; note?: string | null; anchor?: string | null } | null;
 };
 
 type DraftDashboard = {
@@ -89,6 +93,8 @@ type DraftDashboard = {
   traffic: "red" | "amber" | "green";
   can_finalise: boolean;
   unanswered_disclosures: string[];
+  unanswered_count?: number;
+  blocking_count?: number;
   carried_disclosures: string[];
   checks: DashboardCheck[];
 };
@@ -1081,7 +1087,6 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
           className={`rounded-md border px-4 py-3 ${trafficClass(dashboard.traffic)}`}
           data-testid="statutory-review-dashboard"
         >
-          <StandingWordingNotice place="review-dashboard" />
           <p className="text-xs font-semibold uppercase tracking-[0.12em]">
             Review dashboard
           </p>
@@ -1110,38 +1115,41 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               </span>
             ) : null}
           </p>
-          <ul className="mt-3 space-y-1 text-sm">
-            {dashboard.checks
-              .filter((check) => !check.passed)
-              .map((check) => (
-                <li key={check.code}>
-                  {check.severity} {check.code}: {check.message}
-                  {check.code === "V-CO-007" &&
-                  canEditDetails &&
-                  currencyCodeFromNotice(check.message) ? (
-                    <span className="mt-2 block">
-                      <span>
-                        Confirm the company reports in{" "}
-                        <code>{currencyCodeFromNotice(check.message)}</code>.
-                      </span>{" "}
-                      <button
-                        type="button"
-                        data-testid="statutory-confirm-currency"
-                        disabled={busy !== null}
-                        className="rounded-md border border-line px-3 py-1.5 text-sm font-semibold text-ink disabled:opacity-50"
-                        onClick={() => void confirmCurrency()}
-                      >
-                        Confirm currency
-                      </button>
-                    </span>
-                  ) : null}
-                </li>
-              ))}
-          </ul>
+          <ReviewChecks
+            yearEndId={yearEndId}
+            checks={dashboard.checks}
+            unansweredCount={
+              dashboard.unanswered_count ?? dashboard.unanswered_disclosures.length
+            }
+            renderExtra={(check) =>
+              check.code === "V-CO-007" &&
+              canEditDetails &&
+              currencyCodeFromNotice(check.message) ? (
+                <span className="mt-2 block">
+                  <span>
+                    Confirm the company reports in{" "}
+                    <code>{currencyCodeFromNotice(check.message)}</code>.
+                  </span>{" "}
+                  <button
+                    type="button"
+                    data-testid="statutory-confirm-currency"
+                    disabled={busy !== null}
+                    className="rounded-md border border-line px-3 py-1.5 text-sm font-semibold text-ink disabled:opacity-50"
+                    onClick={() => void confirmCurrency()}
+                  >
+                    Confirm currency
+                  </button>
+                </span>
+              ) : null
+            }
+          />
           <FinaliseDraft
             role={meQuery.data?.role}
             status={dashboard.status}
             canFinalise={dashboard.can_finalise}
+            blockingCount={
+              dashboard.blocking_count ?? blockingFailureCount(dashboard.checks)
+            }
             carriedDisclosures={dashboard.carried_disclosures ?? []}
             wordingSignedOff={wordingSignedOff}
             busy={busy !== null}

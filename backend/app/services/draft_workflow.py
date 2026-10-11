@@ -1289,6 +1289,25 @@ async def _inputs_sha(
 
 
 def _dashboard_dict(board: Dashboard) -> dict[str, object]:
+    from app.services.dashboard_groups import blocking_failure_count, present_check
+
+    checks: list[dict[str, object]] = []
+    for item in board.checks:
+        shown = present_check(item.code)
+        checks.append(
+            {
+                "code": item.code,
+                "severity": item.severity,
+                "passed": item.passed,
+                "message": item.message,
+                "area": shown.area,
+                "fix": {
+                    "section": shown.fix.section,
+                    "note": shown.fix.note,
+                    "anchor": shown.fix.anchor,
+                },
+            }
+        )
     return {
         "draft_id": str(board.draft_id),
         "status": board.status,
@@ -1296,16 +1315,10 @@ def _dashboard_dict(board: Dashboard) -> dict[str, object]:
         "traffic": board.traffic,
         "can_finalise": board.can_finalise,
         "unanswered_disclosures": list(board.unanswered_disclosures),
+        "unanswered_count": len(board.unanswered_disclosures),
+        "blocking_count": blocking_failure_count(board.checks),
         "carried_disclosures": list(board.carried_disclosures),
-        "checks": [
-            {
-                "code": item.code,
-                "severity": item.severity,
-                "passed": item.passed,
-                "message": item.message,
-            }
-            for item in board.checks
-        ],
+        "checks": checks,
     }
 
 
