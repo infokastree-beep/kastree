@@ -396,6 +396,16 @@ class DashboardCheckOut(BaseModel):
     fix: DashboardFixOut | None = None
 
 
+class DisclosureQuestionOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    flag_name: str
+    question: str
+    group: str
+    note: str | None = None
+    answer: Literal["yes", "no", "unanswered"]
+
+
 class DashboardResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -408,6 +418,7 @@ class DashboardResponse(BaseModel):
     unanswered_count: int = 0
     blocking_count: int = 0
     carried_disclosures: list[str] = Field(default_factory=list)
+    disclosure_questions: list[DisclosureQuestionOut] = Field(default_factory=list)
     checks: list[DashboardCheckOut]
 
 
@@ -453,6 +464,22 @@ class DisclosureAnswerResponse(BaseModel):
     row_version: int
     flag_name: str
     answer: Literal["yes", "no", "unanswered"]
+
+
+class MarkRemainingNoRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    row_version: int = Field(ge=1)
+    confirm: bool
+
+
+class MarkRemainingNoResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    draft_id: uuid.UUID
+    row_version: int
+    count: int
+    flag_ids: list[str]
 
 
 class DraftMutationRequest(BaseModel):
