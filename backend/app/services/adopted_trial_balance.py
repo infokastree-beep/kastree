@@ -19,7 +19,7 @@ import json
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import cast
 
@@ -82,6 +82,7 @@ _DIRECT: dict[str, str] = {
     "dividends": "DIVIDENDS",
     "investments": "FA_INVESTMENTS",
 }
+
 
 @dataclass(frozen=True)
 class SourceAccount:
@@ -191,9 +192,7 @@ def source_accounts_from_parsed(parsed: object) -> list[SourceAccount]:
         code = str(row.get("account_code") or "").strip()
         name = str(row.get("account_name") or "").strip()
         if not code or not name:
-            raise ReconciliationRejected(
-                "Trial balance row is missing a code or name"
-            )
+            raise ReconciliationRejected("Trial balance row is missing a code or name")
         try:
             debit = Decimal(str(row["debit"]))
             credit = Decimal(str(row["credit"]))
@@ -250,9 +249,7 @@ def carry_confirmed_accounts(
     engine_by_code: dict[str, str] = {}
     carried: list[CarriedMapping] = []
     seen: set[str] = set()
-    ordered = sorted(
-        accounts, key=lambda item: (item.row_index, item.nominal_code)
-    )
+    ordered = sorted(accounts, key=lambda item: (item.row_index, item.nominal_code))
     for account in ordered:
         key = (account.nominal_code, account.account_name)
         mapping = mappings.get(key)
@@ -375,6 +372,64 @@ async def list_adoptable_trial_balances(
     return adoptable
 
 
+@dataclass(frozen=True)
+class TrialBalancePageFacts:
+    """Read-only adopted trial balance. Amounts stay off this page."""
+
+    trial_balance_id: uuid.UUID | None
+    period_start: date | None
+    period_end: date | None
+    uploaded_at: datetime | None
+    account_count: int | None
+    currency: str | None
+
+
+def _blank_trial_balance_page() -> TrialBalancePageFacts:
+    return TrialBalancePageFacts(
+        trial_balance_id=None,
+        period_start=None,
+        period_end=None,
+        uploaded_at=None,
+        account_count=None,
+        currency=None,
+    )
+
+
+async def read_trial_balance_page(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    year_end: YearEnd,
+) -> TrialBalancePageFacts:
+    """The adopted trial balance, or a blank page when none is selected.
+
+    ``account_count`` is the carried-row count
+    ``list_adoptable_trial_balances`` already uses. The original upload name
+    is not a column on ``trial_balances``.
+    """
+    await aset_rls_org_id(session, org_id)
+    trial_balance_id = year_end.adopted_trial_balance_id
+    if trial_balance_id is None:
+        return _blank_trial_balance_page()
+    tb = await session.get(TrialBalance, trial_balance_id)
+    if tb is None or tb.is_deleted or tb.company_id != year_end.company_id:
+        return _blank_trial_balance_page()
+    mappings = await _mappings_for_company(session, year_end.company_id)
+    _lines, _engine, carried = carry_confirmed_accounts(
+        source_accounts_from_parsed(tb.parsed_data),
+        mappings,
+        require_sublines=False,
+    )
+    return TrialBalancePageFacts(
+        trial_balance_id=tb.id,
+        period_start=tb.period_start,
+        period_end=tb.period_end,
+        uploaded_at=tb.created_at,
+        account_count=len(carried),
+        currency=tb.currency,
+    )
+
+
 async def _owned_complete_tb(
     session: AsyncSession, *, year_end: YearEnd, trial_balance_id: uuid.UUID
 ) -> TrialBalance:
@@ -439,11 +494,7 @@ async def continue_from_trial_balance(
     if trial_balance.period_end < trial_balance.period_start:
         raise ReconciliationRejected("period_end is before period_start")
     company = await session.get(Company, trial_balance.company_id)
-    if (
-        company is None
-        or company.is_deleted
-        or company.org_id != org_id
-    ):
+    if company is None or company.is_deleted or company.org_id != org_id:
         raise ReconciliationRejected("Trial balance not found", 404)
     try:
         manifest = load_manifest(pack_dir(pack_id, pack_version) / "pack.json")
@@ -595,9 +646,7 @@ async def _adopted_bundle(
         tb_lines=tb_lines,
         mappings=engine_by_code,
         prior_canonical=prior_canonical,
-        prior_retained_earnings=prior_canonical.get(
-            "RETAINED_EARNINGS", Decimal("0")
-        ),
+        prior_retained_earnings=prior_canonical.get("RETAINED_EARNINGS", Decimal("0")),
         fa_register=fa_register,
         pack_rules_path=pack_dir(year_end.pack_id, year_end.pack_version)
         / "review-rules.json",
@@ -612,9 +661,7 @@ async def load_adopted_inputs(
     year_end: YearEnd,
 ) -> ConfirmedInputs:
     """Confirmed Product 1 rows and mappings, plus this year end's supplements."""
-    loaded, _carried = await _adopted_bundle(
-        session, org_id=org_id, year_end=year_end
-    )
+    loaded, _carried = await _adopted_bundle(session, org_id=org_id, year_end=year_end)
     return loaded
 
 
@@ -681,8 +728,7 @@ def freeze_payload(loaded: ConfirmedInputs) -> dict[str, object]:
         "tb_lines": lines,
         "mappings": dict(sorted(loaded.mappings.items())),
         "prior_canonical": {
-            key: str(amount)
-            for key, amount in sorted(loaded.prior_canonical.items())
+            key: str(amount) for key, amount in sorted(loaded.prior_canonical.items())
         },
         "prior_retained_earnings": str(loaded.prior_retained_earnings),
         "fa_register": fa_register,
@@ -825,9 +871,7 @@ async def ensure_adopted_draft(
 ) -> DraftVersion:
     """Insert one null-version draft. A later continuation does not add another."""
     await aset_rls_org_id(session, org_id)
-    existing = await _latest_draft(
-        session, org_id=org_id, year_end_id=year_end.id
-    )
+    existing = await _latest_draft(session, org_id=org_id, year_end_id=year_end.id)
     if existing is not None:
         return existing
     fingerprint = await current_mapping_fingerprint(
@@ -851,9 +895,7 @@ async def ensure_adopted_draft(
             session.add(created)
             await session.flush()
     except IntegrityError:
-        found = await _latest_draft(
-            session, org_id=org_id, year_end_id=year_end.id
-        )
+        found = await _latest_draft(session, org_id=org_id, year_end_id=year_end.id)
         if found is None:
             raise
         return found
@@ -874,9 +916,7 @@ async def mapping_notice_for(
         or draft.mappings_sha256 is None
     ):
         return None
-    live = await current_mapping_fingerprint(
-        session, org_id=org_id, year_end=year_end
-    )
+    live = await current_mapping_fingerprint(session, org_id=org_id, year_end=year_end)
     if live == draft.mappings_sha256:
         return None
     return MAPPING_NOTICE
@@ -1040,11 +1080,7 @@ async def confirm_statutory_sublines(
         )
     await session.flush()
     draft = await _latest_draft(session, org_id=org_id, year_end_id=year_end.id)
-    if (
-        draft is not None
-        and not draft.is_frozen
-        and draft.tb_version_id is None
-    ):
+    if draft is not None and not draft.is_frozen and draft.tb_version_id is None:
         draft.mappings_sha256 = await current_mapping_fingerprint(
             session, org_id=org_id, year_end=year_end
         )
@@ -1057,6 +1093,4 @@ async def confirm_statutory_sublines(
         entity_id=year_end.id,
         new_value={"lines": changes},
     )
-    return await review_statutory_sublines(
-        session, org_id=org_id, year_end=year_end
-    )
+    return await review_statutory_sublines(session, org_id=org_id, year_end=year_end)
