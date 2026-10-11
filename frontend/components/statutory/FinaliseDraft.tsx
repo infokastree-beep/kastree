@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { blockingSentence } from "@/lib/dashboard-groups";
 import {
   CARRIED_ACK_LABEL,
   FINALISE_LOCK_NOTE,
@@ -13,6 +14,7 @@ export function FinaliseDraft({
   role,
   status,
   canFinalise,
+  blockingCount = 0,
   carriedDisclosures,
   wordingSignedOff = false,
   busy,
@@ -21,6 +23,7 @@ export function FinaliseDraft({
   role: string | undefined;
   status: string | undefined;
   canFinalise: boolean;
+  blockingCount?: number;
   carriedDisclosures: readonly string[];
   wordingSignedOff?: boolean;
   busy?: boolean;
@@ -58,17 +61,26 @@ export function FinaliseDraft({
     close();
   }
 
+  const reason = !canFinalise ? blockingSentence(blockingCount) : null;
+
   if (!open) {
     return (
-      <button
-        type="button"
-        data-testid="statutory-finalise"
-        disabled={busy || !canFinalise}
-        className="mt-3 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-50"
-        onClick={() => setOpen(true)}
-      >
-        Finalise
-      </button>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          data-testid="statutory-finalise"
+          disabled={busy || !canFinalise}
+          className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+          onClick={() => setOpen(true)}
+        >
+          Finalise
+        </button>
+        {reason ? (
+          <p className="text-sm" data-testid="statutory-finalise-reason">
+            {reason}
+          </p>
+        ) : null}
+      </div>
     );
   }
 

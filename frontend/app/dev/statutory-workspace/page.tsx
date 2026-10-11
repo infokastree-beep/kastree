@@ -396,7 +396,8 @@ export default function StatutoryWorkspacePreviewPage() {
             <FinaliseDraft
               role={previewRole}
               status={draftStatus}
-              canFinalise
+              canFinalise={!previewRefusal}
+              blockingCount={previewRefusal ? 3 : 0}
               wordingSignedOff={false}
               carriedDisclosures={showCarried ? ["HAS_EMPLOYEES"] : []}
               onConfirm={async () => {
