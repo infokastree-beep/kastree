@@ -21,6 +21,12 @@ def _check(code: str, severity: str, passed: bool = False) -> ReconciliationChec
 def test_fix_targets_match_the_review_pages() -> None:
     assert present_check("V-CO-008").area == "Company details"
     assert present_check("V-CO-008").fix.section == "company-details"
+    assert present_check("V-CO-010").fix.section == "company-details"
+    assert present_check("V-CO-011").fix.section == "company-details"
+    assert present_check("V-CO-018").area == "Figures"
+    assert present_check("V-CO-018").fix.section == "income"
+    assert present_check("V-CO-019").area == "Disclosures"
+    assert present_check("V-CO-019").fix.section == "disclosures"
     assert present_check("V-DISC-001").fix.section == "disclosures"
     assert present_check("V-GATE-001").fix.anchor == "statutory-first-period-gate"
     assert present_check("V-CMP-001").fix.section == "sofp"
@@ -36,12 +42,14 @@ def test_blocking_count_skips_notices_that_do_not_stop_finalise() -> None:
     checks = (
         _check("V-DISC-001", "CRITICAL"),
         _check("V-CO-008", "NOTICE"),
+        _check("V-CO-010", "WARNING"),
+        _check("V-CO-012", "NOTICE"),
         _check("V-CO-007", "NOTICE"),
         _check("V-SEC-007", "NOTICE"),
         _check("V-FA-001", "WARNING"),
         _check("V-CO-001", "WARNING", passed=True),
     )
-    assert blocking_failure_count(checks) == 2
+    assert blocking_failure_count(checks) == 3
 
 
 def test_dashboard_payload_keeps_the_engine_disclosure_message() -> None:

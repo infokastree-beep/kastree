@@ -8,6 +8,46 @@ see [`product-roadmap.md`](product-roadmap.md).
 
 The GitHub repository was made private on 8 October 2026 and made public again the same day. See [Pre-launch checklist](#pre-launch-checklist).
 
+## QA review findings
+
+External review of a draft statutory PDF and Word file for one fictional first-period Irish company. The regression fixture is: name "charlie mungar buffett", company number 1111, registered office "New York, Ireland", incorporated 7 May 2025, secretary "Warren Buffet", director "warren buffett" appointed 3 July 2025, average employees 677, period 1 January 2026 to 31 December 2026 marked first financial period, no audit exemption recorded, practice name "kastree's Organization", turnover 100,000, cost of sales 40,250, administrative expenses 34,750, no tax.
+
+No new table. The checks read columns that already exist. The secretary has no appointment date, so that date is not checked. Legal form is not stored separately from the company name. The suffix rule therefore applies to every company on the Irish pack, which is the private-company-limited-by-shares pack. Company name is edited on the company record. The Fix link opens company details, which is the draft page that can hold the other letterhead facts.
+
+| Id | Finding | Status |
+| --- | --- | --- |
+| F1 | Audit position unresolved | Open. Design D1. |
+| F2 | Period does not match incorporation | Partial. V-CO-011 blocks FINAL when a first financial period does not start on the incorporation date, the date is missing, or the period is longer than the pack cap. Comparatives and the pre-2026 gate stay in design D2. |
+| F3 | Wrong accounting edition for a period starting before 2026 | Open. Design D2. |
+| F4 | Registered office invalid | Shipped as notice V-CO-012. It does not block FINAL. |
+| F5 | Company name has no legal-form suffix | Shipped as V-CO-010. It blocks FINAL. |
+| F6 | Employees implausible and above 50 | Shipped as notices V-CO-016 and V-CO-017. They do not block FINAL. |
+| F7 | Responsibilities statement incomplete | Open. Design D3. |
+| F8 | Directors' report thin | Open. Design D3. |
+| F9 | Compilation report uses the platform default practice name and has no address, date, or signatory | Open. Design D4. |
+| F10 | Share capital analysis not recorded | Open. Design D5. |
+| F11 | Related-party, directors' remuneration, and director-loan disclosures not recorded | Open. Design D5. |
+| F12 | Post-balance-sheet events not addressed | Partial. An unanswered question is notice V-CO-019 and does not block FINAL. Particulars for a Yes answer stay in design D5. |
+| F13 | Director appointed after incorporation | Shipped as notice V-CO-014. Directors only. |
+| F14 | Name spelling inconsistent | Shipped as notice V-CO-015. |
+| F15 | Company number implausible | Shipped as notice V-CO-013. |
+| F16 | No tax charge or liability | Shipped as notice V-CO-018. It does not block FINAL. |
+| F17 | Internal checklist reference printed (1AD.28) | Open. Polish PR. |
+| F18 | Dividend sentence is draft hygiene | Open. Polish PR. |
+| F19 | Signature blocks blank | Open. Design D3. |
+| F20 | Cover shows the wording banner twice | Open. Polish PR. |
+| F21 | Page breaks split paragraphs | Open. Polish PR. |
+| F22 | Advisers not recorded | Open. |
+
+Rules marked reviewer-to-confirm, stored on the Irish pack under `data_checks`:
+
+- Legal-form suffixes for a private company limited by shares: Limited, Ltd, Teoranta, Teo. Matched as a whole word at the end of the name, case-insensitive. `Ltd` may have a trailing full stop. `Teo` does not match inside `Potato`.
+- A first financial period longer than 18 calendar months blocks FINAL. A period that ends the day before the start date plus 18 months is not longer. 1 May 2025 through 31 October 2026 does not block. Ending 1 November 2026 does.
+- A company number that is not 5 to 7 digits is a notice. This does not change the save rule, which still accepts letters and numbers up to 20 characters.
+- Average employees above 50 is a notice. 50 itself does not fire. This uses `employee_notice_above`, which matches the pack size threshold `thresholds.employees` but is a separate notice, not the size test.
+- Turnover per employee below 2,000.00 is a notice when both turnover and average employees are above zero. The floor is in the pack currency (EUR). The check does not convert a company that reports in another currency. Turnover of exactly 2,000 per employee does not fire. The rule is turnover divided by average employees, compared with `turnover_per_employee_floor`.
+- The registered-office notice is a data check, not a statutory rule. It fires when the address has neither an Eircode nor a whole-word Republic of Ireland county (including `Co.` and `County`). The word Ireland is not a county. `Corkscrew` does not match Cork. `Dublin, Ohio` passes because Dublin is a county word. A Dublin district written only as `D4`, with no Eircode and without the word Dublin, does not pass.
+
 ## Supersede a FINAL draft (next, design only)
 
 Not built. A practice that finalises by mistake, or finds an error after FINAL, has nothing to do in the product today.

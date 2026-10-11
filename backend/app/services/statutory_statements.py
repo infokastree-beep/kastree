@@ -380,6 +380,10 @@ class StatutoryStatements:
     company_name: str = ""
     omitted_blocks: tuple[str, ...] = ()
     added_blocks: tuple[str, ...] = ()
+    turnover: Decimal | None = None
+    profit_before_tax: Decimal | None = None
+    tax_charge: Decimal | None = None
+    corporation_tax: Decimal | None = None
 
 
 class _ExternalFetchRefused(BaseException):
@@ -852,7 +856,11 @@ def _policy_blocks(
     for policy in policies:
         policy_id = policy.get("id")
         condition = policy.get("appliesWhen")
-        if not isinstance(policy_id, str) or not isinstance(condition, str) or not condition:
+        if (
+            not isinstance(policy_id, str)
+            or not isinstance(condition, str)
+            or not condition
+        ):
             raise ValueError(f"policy {policy_id} has no appliesWhen")
         try:
             applies = include_policy(policy_id, condition, ctx, library)
@@ -1105,9 +1113,7 @@ def _compose_notes(
         if isinstance(commitment_template, dict)
         else None
     )
-    chosen = _chosen_notes(
-        templates, selected, disclosure_ctx, stored, commitments
-    )
+    chosen = _chosen_notes(templates, selected, disclosure_ctx, stored, commitments)
     numbers = {code: index for index, code in enumerate(chosen, start=1)}
     notes: list[StatementNote] = []
     flags: list[RoundingFlag] = []
@@ -1357,6 +1363,40 @@ def render_statutory_html(
     )
 
 
+def _income_figures(
+    income: dict[str, object], aggregated: dict[str, Decimal]
+) -> tuple[Decimal | None, Decimal | None, Decimal | None, Decimal | None]:
+    """Turnover, profit before tax, tax charge, and the corporation-tax balance.
+
+    The tax face line is the charge with its sign flipped. Corporation tax
+    stays debit-positive, so a creditor is a negative balance.
+    """
+    from findraft.engine.money import money
+
+    turnover = _face_amount(income, "Turnover")
+    profit_before_tax = _face_amount(income, "Profit before tax")
+    displayed_tax = _face_amount(income, "Tax on profit")
+    tax_charge = None if displayed_tax is None else money(-displayed_tax)
+    raw_creditor = aggregated.get("CORP_TAX", Decimal("0"))
+    creditor = money(raw_creditor) if isinstance(raw_creditor, Decimal) else None
+    return turnover, profit_before_tax, tax_charge, creditor
+
+
+def _face_amount(statement: dict[str, object], label: str) -> Decimal | None:
+    rows = statement.get("rows")
+    if not isinstance(rows, list):
+        return None
+    for row in rows:
+        if (
+            isinstance(row, tuple)
+            and len(row) >= 2
+            and row[0] == label
+            and isinstance(row[1], Decimal)
+        ):
+            return row[1]
+    return None
+
+
 def _render_draft(
     *,
     report: ReconciliationReport,
@@ -1444,6 +1484,7 @@ def _render_draft(
         approval_date=approval_date,
         signing_directors=signing_directors,
     )
+    figures = _income_figures(income, aggregated)
     html = _render_html(
         entity=entity,
         compliance=compliance,
@@ -1478,6 +1519,10 @@ def _render_draft(
         html=html,
         pages=pages,
         company_name=entity.name,
+        turnover=figures[0],
+        profit_before_tax=figures[1],
+        tax_charge=figures[2],
+        corporation_tax=figures[3],
     )
 
 

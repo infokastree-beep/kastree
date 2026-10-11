@@ -372,6 +372,25 @@ async def _disclosure_check(
     )
 
 
+def _company_detail_checks(
+    company: Company,
+    year_end: YearEnd,
+    document: StatutoryStatements,
+    flags: dict[str, bool],
+) -> tuple[ReconciliationCheck, ...]:
+    from app.services.company_details import company_detail_checks
+
+    return company_detail_checks(
+        company,
+        year_end,
+        turnover=document.turnover,
+        profit_before_tax=document.profit_before_tax,
+        tax_charge=document.tax_charge,
+        corporation_tax=document.corporation_tax,
+        subsequent_events_answered="SUBSEQUENT_EVENTS" in flags,
+    )
+
+
 async def dashboard_for_draft(
     session: AsyncSession,
     *,
@@ -383,9 +402,8 @@ async def dashboard_for_draft(
     draft = await session.get(DraftVersion, draft_id)
     if draft is None or draft.org_id != org_id or draft.year_end_id != year_end.id:
         raise DraftRejected("Draft not found", 404)
-    questions = present_disclosure_questions(
-        await disclosure_flags(session, org_id=org_id, draft_id=draft.id)
-    )
+    flags = await disclosure_flags(session, org_id=org_id, draft_id=draft.id)
+    questions = present_disclosure_questions(flags)
     if draft.status == "final" and isinstance(draft.snapshot, dict):
         stored_checks = draft.snapshot.get("statement")
         checks: list[ReconciliationCheck] = []
@@ -462,9 +480,7 @@ async def dashboard_for_draft(
     )
     currency = "GBP"
     if company is not None and not company.is_deleted:
-        from app.services.company_details import company_detail_checks
-
-        checks.extend(company_detail_checks(company, year_end))
+        checks.extend(_company_detail_checks(company, year_end, document, flags))
         currency = company.functional_currency or "GBP"
     checks.extend(unbuilt_section_notices(year_end))
     checks.extend(pack_display_notices(year_end, currency))
@@ -770,9 +786,7 @@ async def notes_for_draft(
     except LibraryRejected as exc:
         raise DraftRejected(exc.detail) from exc
     rows = present_rows(
-        await _library_context(
-            session, org_id=org_id, year_end=year_end, draft=draft
-        ),
+        await _library_context(session, org_id=org_id, year_end=year_end, draft=draft),
         library,
     )
     return {
@@ -1331,9 +1345,8 @@ async def finalise_draft(
         )
     company = await session.get(Company, year_end.company_id)
     if company is not None and company.org_id == org_id and not company.is_deleted:
-        from app.services.company_details import company_detail_checks
-
-        checks.extend(company_detail_checks(company, year_end))
+        flags = await disclosure_flags(session, org_id=org_id, draft_id=draft.id)
+        checks.extend(_company_detail_checks(company, year_end, document, flags))
     light = _traffic(
         tuple(checks), blocked=document.blocked, renderable=document.renderable
     )

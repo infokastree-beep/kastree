@@ -40,6 +40,16 @@ const FIXES: Record<string, { area: string; fix: CheckFix }> = {
   "V-CO-007": { area: "Company details", fix: { section: "company-details" } },
   "V-CO-008": { area: "Company details", fix: { section: "company-details" } },
   "V-CO-009": { area: "Company details", fix: { section: "company-details" } },
+  "V-CO-010": { area: "Company details", fix: { section: "company-details" } },
+  "V-CO-011": { area: "Company details", fix: { section: "company-details" } },
+  "V-CO-012": { area: "Company details", fix: { section: "company-details" } },
+  "V-CO-013": { area: "Company details", fix: { section: "company-details" } },
+  "V-CO-014": { area: "Company details", fix: { section: "company-details" } },
+  "V-CO-015": { area: "Company details", fix: { section: "company-details" } },
+  "V-CO-016": { area: "Company details", fix: { section: "company-details" } },
+  "V-CO-017": { area: "Company details", fix: { section: "company-details" } },
+  "V-CO-018": { area: "Figures", fix: { section: "income" } },
+  "V-CO-019": { area: "Disclosures", fix: { section: "disclosures" } },
   "V-DISC-001": { area: "Disclosures", fix: { section: "disclosures" } },
   "V-NOTE-001": { area: "Disclosures", fix: { section: "notes" } },
   "V-NOTE-002": { area: "Disclosures", fix: { section: "notes" } },
@@ -68,6 +78,8 @@ const COMPANY_BLOCKING = new Set([
   "V-CO-006",
   "V-CO-008",
   "V-CO-009",
+  "V-CO-010",
+  "V-CO-011",
 ]);
 
 export function presentCheck(check: ReviewCheck): { area: string; fix: CheckFix } {

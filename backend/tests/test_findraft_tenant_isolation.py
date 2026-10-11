@@ -228,7 +228,7 @@ def _provision(suffix: str) -> dict:
         session.flush()
         company = Company(
             client_id=client.id,
-            name=f"Company {suffix}",
+            name=f"Company {suffix} Limited",
             functional_currency="EUR",
         )
         session.add(company)
