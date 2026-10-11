@@ -478,6 +478,205 @@ async def test_background_import_leaves_the_response_pending_then_lists_lines(
     assert lines.status_code == 200, lines.text
     assert [row["nominal_code"] for row in lines.json()["lines"]] == ["1000", "4000"]
 
+
+def _print_non_superuser_role() -> None:
+    """The parity job logs in as findraft. Print that role and refuse a superuser."""
+    with SyncSessionLocal() as session:
+        row = session.execute(
+            text(
+                """
+                SELECT current_user AS executing_role, r.rolsuper, r.rolbypassrls
+                FROM pg_roles AS r
+                WHERE r.rolname = current_user
+                """
+            )
+        ).one()
+    print(
+        f"executing_role={row.executing_role} rolsuper={row.rolsuper} "
+        f"rolbypassrls={row.rolbypassrls}",
+        flush=True,
+    )
+    assert row.rolsuper is False
+    assert row.rolbypassrls is False
+
+
+def _org_columns(org_id: uuid.UUID) -> tuple[object, ...]:
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        return session.execute(
+            text(
+                """
+                SELECT subscription_tier, subscription_status, stripe_customer_id,
+                       stripe_subscription_id, functional_currency, jurisdiction,
+                       updated_at
+                FROM organisations WHERE id = :id
+                """
+            ),
+            {"id": str(org_id)},
+        ).one()
+
+
+def _audit_rows(org_id: uuid.UUID) -> list[tuple[object, ...]]:
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        return list(
+            session.execute(
+                text(
+                    """
+                    SELECT action, old_value, new_value
+                    FROM audit_logs
+                    WHERE org_id = :id
+                    ORDER BY chain_seq
+                    """
+                ),
+                {"id": str(org_id)},
+            ).all()
+        )
+
+
+@pytest.mark.asyncio
+async def test_platform_admin_grants_and_revokes_one_practice(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Grant and revoke stay on the target practice. An ordinary owner is refused."""
+    _print_non_superuser_role()
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "platform_admin_emails", "founder-only@example.com")
+    headers = auth_headers(provisioned_org["token"])
+    org_id = provisioned_org["org_id"]
+    refused = await api_client.post(
+        f"/admin/organisations/{org_id}/product2-access",
+        headers=headers,
+        json={"acknowledged": True},
+    )
+    assert refused.status_code == 403, refused.text
+    assert refused.json()["detail"] == _FORBIDDEN
+
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        email = session.scalar(
+            select(User.email).where(User.id == provisioned_org["user_id"])
+        )
+    assert isinstance(email, str)
+    monkeypatch.setattr(settings, "platform_admin_emails", email)
+    untouched = _org_columns(org_id)
+
+    other_org_id, _clerk_org, other_token = _other_practice()
+    try:
+        other_headers = auth_headers(other_token)
+        other_refused = await api_client.post(
+            f"/admin/organisations/{other_org_id}/product2-access",
+            headers=other_headers,
+            json={"acknowledged": False},
+        )
+        assert other_refused.status_code == 403, other_refused.text
+
+        granted = await api_client.post(
+            f"/admin/organisations/{org_id}/product2-access",
+            headers=headers,
+            json={"acknowledged": True},
+        )
+        assert granted.status_code == 200, granted.text
+        assert granted.json()["acknowledged"] is True
+        assert granted.json()["recorded"] is True
+        assert _org_columns(org_id) == untouched
+
+        opened = await api_client.post(
+            "/year-ends",
+            headers=headers,
+            json=_year_end_body(provisioned_org),
+        )
+        assert opened.status_code == 201, opened.text
+        other_closed = await api_client.post(
+            "/year-ends",
+            headers=other_headers,
+            json={
+                "company_id": str(uuid.uuid4()),
+                "period_start": "2026-01-01",
+                "period_end": "2026-12-31",
+            },
+        )
+        assert other_closed.status_code == 403, other_closed.text
+
+        me = await api_client.get("/users/me", headers=headers)
+        assert me.json()["product2_access"]["source"] == "admin"
+        assert me.json()["product2_access"]["acknowledged"] is True
+        overview = await api_client.get("/admin/overview", headers=headers)
+        assert overview.status_code == 200, overview.text
+        row = next(
+            item
+            for item in overview.json()["organisations"]
+            if item["id"] == str(org_id)
+        )
+        assert row["product2_access"] == "On"
+        assert row["product2_acknowledged_by"] == email
+        assert row["product2_acknowledged_at"]
+
+        again = await api_client.post(
+            "/beta/acknowledgement",
+            headers=headers,
+            json=_ACCEPTED,
+        )
+        assert again.status_code == 200, again.text
+        assert again.json()["recorded"] is False
+        still = await api_client.get("/users/me", headers=headers)
+        assert still.json()["product2_access"]["acknowledged"] is True
+
+        revoked = await api_client.post(
+            f"/admin/organisations/{org_id}/product2-access",
+            headers=headers,
+            json={"acknowledged": False},
+        )
+        assert revoked.status_code == 200, revoked.text
+        assert revoked.json()["acknowledged"] is False
+        assert revoked.json()["recorded"] is True
+        assert _org_columns(org_id) == untouched
+        monkeypatch.setattr(
+            settings, "platform_admin_emails", "founder-only@example.com"
+        )
+        closed = await api_client.post(
+            "/year-ends",
+            headers=headers,
+            json={
+                "company_id": str(provisioned_org["company_id"]),
+                "period_start": "2025-01-01",
+                "period_end": "2025-12-31",
+            },
+        )
+        assert closed.status_code == 403, closed.text
+        assert closed.json()["detail"] == _FORBIDDEN
+
+        audits = _audit_rows(org_id)
+        granted_rows = [item for item in audits if item[0] == "product2_access_granted"]
+        revoked_rows = [item for item in audits if item[0] == "product2_access_revoked"]
+        assert len(granted_rows) == 1
+        assert granted_rows[0][2]["source"] == "admin"
+        assert len(revoked_rows) == 1
+        assert revoked_rows[0][1]["product2_acknowledged_by_user_id"] == str(
+            provisioned_org["user_id"]
+        )
+        assert revoked_rows[0][1]["product2_acknowledged_at"]
+
+        recorded = await api_client.post(
+            "/beta/acknowledgement",
+            headers=headers,
+            json=_ACCEPTED,
+        )
+        assert recorded.status_code == 200, recorded.text
+        assert recorded.json()["recorded"] is True
+        practice_rows = [
+            item for item in _audit_rows(org_id) if item[0] == "beta_self_review"
+        ]
+        assert len(practice_rows) == 1
+        assert practice_rows[0][2]["source"] == "practice"
+        reopened = await api_client.get("/users/me", headers=headers)
+        assert reopened.json()["product2_access"]["source"] == "practice"
+        assert reopened.json()["product2_access"]["enabled"] is True
+    finally:
+        _delete_practice(other_org_id)
+
     catalogue = await api_client.get("/year-ends/canonical-lines", headers=headers)
     assert catalogue.status_code == 200, catalogue.text
     assert "CASH" in catalogue.json()["lines"]

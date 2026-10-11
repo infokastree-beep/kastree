@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
-from typing import Sequence
+from typing import Literal, Sequence
 
 from pydantic import BaseModel, ConfigDict
 
@@ -25,10 +26,28 @@ class WaitlistSignupAdminItem(BaseModel):
 class OrganisationAdminItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    id: uuid.UUID
     name: str
     subscription_tier: str
     subscription_status: str
     created_at: datetime
+    product2_access: Literal["On", "Off"]
+    product2_acknowledged_by: str | None
+    product2_acknowledged_at: datetime | None
+
+
+class Product2AccessAdminRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    acknowledged: bool
+
+
+class Product2AccessAdminResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    org_id: uuid.UUID
+    acknowledged: bool
+    recorded: bool
 
 
 class UserAdminItem(BaseModel):
@@ -57,6 +76,7 @@ class AdminOverviewResponse(BaseModel):
         waitlist_rows: Sequence[WaitlistSignup],
         organisation_rows: Sequence[Organisation],
         user_rows: Sequence[tuple[User, str]],
+        acknowledger_emails: dict[uuid.UUID, str],
     ) -> AdminOverviewResponse:
         waitlist_items = [
             WaitlistSignupAdminItem(
@@ -70,10 +90,20 @@ class AdminOverviewResponse(BaseModel):
         ]
         organisation_items = [
             OrganisationAdminItem(
+                id=row.id,
                 name=row.name,
                 subscription_tier=row.subscription_tier,
                 subscription_status=row.subscription_status,
                 created_at=row.created_at,
+                product2_access="On"
+                if row.product2_acknowledged_at is not None
+                else "Off",
+                product2_acknowledged_by=(
+                    None
+                    if row.product2_acknowledged_by_user_id is None
+                    else acknowledger_emails.get(row.product2_acknowledged_by_user_id)
+                ),
+                product2_acknowledged_at=row.product2_acknowledged_at,
             )
             for row in organisation_rows
         ]
