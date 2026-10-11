@@ -1,6 +1,6 @@
-import { StatutoryWorkbench } from "@/components/statutory/StatutoryWorkbench";
+import { StatutoryPointer } from "@/components/statutory/StatutoryPointer";
 
-/** Statutory year-end. The workbench hides itself unless the caller is a platform admin. */
+/** Statutory drafts start on a company's Statements page. */
 export default function StatutoryPage() {
-  return <StatutoryWorkbench />;
+  return <StatutoryPointer />;
 }
