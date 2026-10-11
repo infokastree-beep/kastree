@@ -9,9 +9,11 @@ import { ApiError, apiFetch } from "@/lib/api";
 import { downloadDraftPdf, pdfBlockReason } from "@/lib/draft-pdf";
 import { formatCurrency } from "@/lib/currency";
 import {
-  STATUTORY_SIGNOFF,
   statutoryGateDiagnosis,
+  statutoryWorkspaceOpen,
+  type StatutoryUser,
 } from "@/lib/statutory-gate";
+import { StatutoryOptIn } from "@/components/statutory/StatutoryOptIn";
 import { formatDate } from "@/lib/utils";
 
 const FRAMEWORKS = [
@@ -21,11 +23,6 @@ const FRAMEWORKS = [
     label: "FRS 102 Section 1A (Ireland)",
   },
 ] as const;
-
-type UserMe = {
-  email: string;
-  is_platform_admin: boolean;
-};
 
 type CarriedMapping = {
   nominal_code: string;
@@ -99,7 +96,7 @@ export function StatutoryContinuation({
   const router = useRouter();
   const meQuery = useQuery({
     queryKey: ["users", "me"],
-    queryFn: () => apiFetch<UserMe>("/users/me", { getToken }),
+    queryFn: () => apiFetch<StatutoryUser>("/users/me", { getToken }),
     enabled: isSignedIn,
   });
   const [framework, setFramework] = useState(
@@ -118,7 +115,7 @@ export function StatutoryContinuation({
   const priorYearBlocked =
     pack?.checks.some((check) => check.code === "V-GATE-001" && !check.passed) ??
     false;
-  const forbidden = meQuery.data?.is_platform_admin === false;
+  const forbidden = meQuery.isSuccess && !statutoryWorkspaceOpen(meQuery.data);
   const existingYearEnd = useQuery({
     queryKey: ["statutory-year-end-link", tbId],
     queryFn: async () => {
@@ -134,7 +131,7 @@ export function StatutoryContinuation({
         throw caught;
       }
     },
-    enabled: isSignedIn && meQuery.data?.is_platform_admin === true,
+    enabled: isSignedIn && statutoryWorkspaceOpen(meQuery.data),
   });
 
   async function loadPack(nextYearEndId: string): Promise<void> {
@@ -164,13 +161,11 @@ export function StatutoryContinuation({
       setCarried(continued.lines);
       router.push(`/year-ends/${continued.year_end_id}/draft`);
     } catch (caught) {
-      if (caught instanceof ApiError && caught.status === 403) {
-        setError(
-          `${STATUTORY_SIGNOFF} ${statutoryGateDiagnosis(meQuery.data?.email)}`,
-        );
-      } else {
-        setError(messageFrom(caught));
-      }
+      setError(
+        caught instanceof ApiError && caught.status === 403
+          ? `${messageFrom(caught)} ${statutoryGateDiagnosis(meQuery.data?.email)}`
+          : messageFrom(caught),
+      );
     } finally {
       setBusy(null);
     }
@@ -263,15 +258,11 @@ export function StatutoryContinuation({
       {busy ? <p className="text-sm text-soft">{busy}</p> : null}
 
       {forbidden ? (
-        <div className="space-y-2" data-testid="statutory-signoff">
-          <p className="text-sm text-ink-secondary">{STATUTORY_SIGNOFF}</p>
-          <p
-            className="text-sm text-ink-secondary"
-            data-testid="statutory-signoff-diagnosis"
-          >
-            {statutoryGateDiagnosis(meQuery.data?.email)}
-          </p>
-        </div>
+        <StatutoryOptIn
+          email={meQuery.data?.email}
+          role={meQuery.data?.role}
+          heading={false}
+        />
       ) : (
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex min-w-[16rem] flex-col gap-1.5 text-sm">

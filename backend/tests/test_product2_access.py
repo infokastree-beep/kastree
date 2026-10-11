@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -11,9 +12,12 @@ from httpx import AsyncClient
 from sqlalchemy import select, text
 
 from app.config import settings
-from app.db import SyncSessionLocal, set_rls_org_id
+from app.db import AsyncSessionLocal, SyncSessionLocal, aset_rls_org_id, set_rls_org_id
 from app.main import app
+from app.models.organisation import Organisation
 from app.models.user import User
+from app.services.audit import append_audit_log
+from app.services.beta import BETA_STATEMENT
 from app.services.org_provisioning import provision_first_signup
 from app.services.source_storage import LocalPracticeStorage, get_source_storage
 from tests.conftest import auth_headers, make_access_token, open_owner_session
@@ -313,6 +317,94 @@ async def test_production_acknowledgement_opens_only_that_practice(
         assert stolen.status_code == 404, stolen.text
     finally:
         _delete_practice(other_org_id)
+
+
+async def _grant_from_admin(org_id: uuid.UUID, user_id: uuid.UUID) -> None:
+    async with AsyncSessionLocal() as session:
+        await aset_rls_org_id(session, org_id)
+        practice = await session.get(Organisation, org_id)
+        assert practice is not None
+        practice.product2_acknowledged_at = datetime.now(UTC)
+        practice.product2_acknowledged_by_user_id = user_id
+        await append_audit_log(
+            session,
+            org_id=org_id,
+            user_id=user_id,
+            action="beta_self_review",
+            entity_type="organisation",
+            entity_id=org_id,
+            new_value={
+                "wording_signed_off": False,
+                "self_review_required": True,
+                "filing_included": False,
+                "pack_id": "frs102-1a-ie",
+                "source": "admin",
+            },
+        )
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_users_me_reports_product2_access(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "platform_admin_emails", "founder-only@example.com")
+    headers = auth_headers(provisioned_org["token"])
+
+    closed = await api_client.get("/users/me", headers=headers)
+    assert closed.status_code == 200, closed.text
+    access = closed.json()["product2_access"]
+    assert access["enabled"] is False
+    assert access["acknowledged"] is False
+    assert access["source"] is None
+    assert access["wording_signed_off"] is False
+
+    position = await api_client.get("/beta", headers=headers)
+    assert position.status_code == 200, position.text
+    assert position.json()["statement"] == BETA_STATEMENT
+
+    recorded = await api_client.post(
+        "/beta/acknowledgement", headers=headers, json=_ACCEPTED
+    )
+    assert recorded.status_code == 200, recorded.text
+    opened = await api_client.get("/users/me", headers=headers)
+    practice = opened.json()["product2_access"]
+    assert practice["enabled"] is True
+    assert practice["acknowledged"] is True
+    assert practice["source"] == "practice"
+    assert practice["wording_signed_off"] is False
+
+
+@pytest.mark.asyncio
+async def test_users_me_marks_an_admin_grant_and_keeps_development_on_the_api(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "app_env", "development")
+    monkeypatch.setattr(settings, "platform_admin_emails", "founder-only@example.com")
+    headers = auth_headers(provisioned_org["token"])
+    closed = await api_client.get("/users/me", headers=headers)
+    assert closed.json()["product2_access"]["enabled"] is False
+    year_end = await api_client.post(
+        "/year-ends",
+        headers=headers,
+        json=_year_end_body(provisioned_org),
+    )
+    assert year_end.status_code == 201, year_end.text
+
+    await _grant_from_admin(provisioned_org["org_id"], provisioned_org["user_id"])
+    monkeypatch.setattr(settings, "app_env", "production")
+    granted = await api_client.get("/users/me", headers=headers)
+    assert granted.status_code == 200, granted.text
+    access = granted.json()["product2_access"]
+    assert access["enabled"] is True
+    assert access["acknowledged"] is True
+    assert access["source"] == "admin"
+    assert access["wording_signed_off"] is False
 
 
 @pytest.mark.asyncio

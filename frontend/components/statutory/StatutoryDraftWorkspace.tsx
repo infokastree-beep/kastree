@@ -43,10 +43,8 @@ import {
   type SectionOutline,
   type StatutoryPreview,
 } from "@/lib/section-preview";
-import {
-  STATUTORY_SIGNOFF,
-  statutoryGateDiagnosis,
-} from "@/lib/statutory-gate";
+import { statutoryWorkspaceOpen, type StatutoryUser } from "@/lib/statutory-gate";
+import { StatutoryOptIn } from "@/components/statutory/StatutoryOptIn";
 import {
   activeSection,
   navigatorSections,
@@ -54,12 +52,6 @@ import {
   sectionsForFramework,
   type ReportingFramework,
 } from "@/lib/workspace-sections";
-
-type UserMe = {
-  email: string;
-  role: "owner" | "admin" | "member" | "viewer";
-  is_platform_admin: boolean;
-};
 
 type YearEnd = {
   id: string;
@@ -204,13 +196,13 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
 
   const meQuery = useQuery({
     queryKey: ["users", "me"],
-    queryFn: () => apiFetch<UserMe>("/users/me", { getToken }),
+    queryFn: () => apiFetch<StatutoryUser>("/users/me", { getToken }),
     enabled: isSignedIn,
   });
   const yearEndQuery = useQuery({
     queryKey: ["year-end", yearEndId],
     queryFn: () => apiFetch<YearEnd>(`/year-ends/${yearEndId}`, { getToken }),
-    enabled: isSignedIn && meQuery.data?.is_platform_admin === true,
+    enabled: isSignedIn && statutoryWorkspaceOpen(meQuery.data),
   });
   const draftQuery = useQuery({
     queryKey: ["working-draft", yearEndId],
@@ -252,7 +244,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       apiFetch<{ frameworks: ReportingFramework[] }>("/year-ends/frameworks", {
         getToken,
       }),
-    enabled: isSignedIn && meQuery.data?.is_platform_admin === true,
+    enabled: isSignedIn && statutoryWorkspaceOpen(meQuery.data),
   });
   const setupQuery = useQuery({
     queryKey: ["report-setup", yearEndId],
@@ -303,7 +295,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     enabled: statementsQuery.data?.renderable === true,
   });
 
-  const forbidden = meQuery.data?.is_platform_admin === false;
+  const forbidden = meQuery.isSuccess && !statutoryWorkspaceOpen(meQuery.data);
   const dashboard = dashboardQuery.data;
   const writable = draft?.status === "draft" && !draft.frozen && busy === null;
   const priorYearBlocked =
@@ -740,11 +732,8 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
   }
   if (forbidden) {
     return (
-      <div className="space-y-2" data-testid="statutory-draft-signoff">
-        <p className="text-sm text-ink-secondary">{STATUTORY_SIGNOFF}</p>
-        <p className="text-sm text-ink-secondary">
-          {statutoryGateDiagnosis(meQuery.data?.email)}
-        </p>
+      <div data-testid="statutory-draft-signoff">
+        <StatutoryOptIn email={meQuery.data?.email} role={meQuery.data?.role} />
       </div>
     );
   }

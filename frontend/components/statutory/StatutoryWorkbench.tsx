@@ -7,17 +7,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
 import { downloadDraftPdf, pdfBlockReason } from "@/lib/draft-pdf";
 import { formatCurrency } from "@/lib/currency";
-import {
-  STATUTORY_SIGNOFF,
-  statutoryGateDiagnosis,
-} from "@/lib/statutory-gate";
+import { statutoryWorkspaceOpen, type StatutoryUser } from "@/lib/statutory-gate";
+import { StatutoryOptIn } from "@/components/statutory/StatutoryOptIn";
 import { confidenceBadgeClass, formatConfidence } from "@/lib/utils";
 import type { ClientListResponse, CompanyListResponse, ICompany } from "@/types";
-
-type UserMe = {
-  email: string;
-  is_platform_admin: boolean;
-};
 
 type YearEnd = {
   id: string;
@@ -117,7 +110,7 @@ export function StatutoryWorkbench() {
   const { getToken, isSignedIn } = useAuth();
   const meQuery = useQuery({
     queryKey: ["users", "me"],
-    queryFn: () => apiFetch<UserMe>("/users/me", { getToken }),
+    queryFn: () => apiFetch<StatutoryUser>("/users/me", { getToken }),
     enabled: isSignedIn,
   });
 
@@ -125,7 +118,7 @@ export function StatutoryWorkbench() {
     queryKey: ["clients"],
     queryFn: () =>
       apiFetch<ClientListResponse>("/clients?limit=100", { getToken }),
-    enabled: meQuery.data?.is_platform_admin === true,
+    enabled: statutoryWorkspaceOpen(meQuery.data),
   });
 
   const [clientId, setClientId] = useState("");
@@ -191,15 +184,12 @@ export function StatutoryWorkbench() {
       </p>
     );
   }
-  if (!meQuery.data?.is_platform_admin) {
+  if (!statutoryWorkspaceOpen(meQuery.data)) {
     return (
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Statutory accounts</h1>
-        <p className="text-sm text-stone-600">{STATUTORY_SIGNOFF}</p>
-        <p className="text-sm text-stone-600">
-          {statutoryGateDiagnosis(meQuery.data?.email)}
-        </p>
-      </div>
+      <StatutoryOptIn
+        email={meQuery.data?.email}
+        role={meQuery.data?.role}
+      />
     );
   }
 

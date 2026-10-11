@@ -17,6 +17,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
+from app.models.audit_log import AuditLog
 from app.models.organisation import Organisation
 from app.services.audit import append_audit_log
 
@@ -44,6 +45,24 @@ async def beta_acknowledged(session: AsyncSession, *, org_id: uuid.UUID) -> bool
         select(Organisation.product2_acknowledged_at).where(Organisation.id == org_id)
     )
     return acknowledged_at is not None
+
+
+async def product2_grant_source(
+    session: AsyncSession, *, org_id: uuid.UUID
+) -> Literal["practice", "admin"] | None:
+    """Latest acknowledgement audit source, or none when it is not practice or admin."""
+    await aset_rls_org_id(session, org_id)
+    raw = await session.scalar(
+        select(AuditLog.new_value["source"].as_string())
+        .where(AuditLog.org_id == org_id, AuditLog.action == BETA_ACTION)
+        .order_by(AuditLog.chain_seq.desc())
+        .limit(1)
+    )
+    if raw == "practice":
+        return "practice"
+    if raw == "admin":
+        return "admin"
+    return None
 
 
 async def acknowledge_beta_self_review(
