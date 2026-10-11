@@ -1402,22 +1402,25 @@ async def finalise_draft(
         if company is not None and company.org_id == org_id and not company.is_deleted
         else None
     )
-    composed_html, sections = compose_year_end_parts(
-        document, year_end, company=letterhead
-    )
-    page_header, signature = docx_presentation_for_year_end(document, year_end)
-    composed_docx = payload_from_composed(
-        watermark=document.watermark,
-        company_name=document.company_name,
-        sections=sections,
-        page_header=page_header,
-        signature=signature,
-    )
+    try:
+        composed_html, sections = compose_year_end_parts(
+            document, year_end, company=letterhead
+        )
+        page_header, signature = docx_presentation_for_year_end(document, year_end)
+        composed_docx = payload_from_composed(
+            watermark=document.watermark,
+            company_name=document.company_name,
+            sections=sections,
+            page_header=page_header,
+            signature=signature,
+        )
+        current = canonical_current(adjusted.tb_lines, adjusted.mappings)
+    except ValueError as exc:
+        raise DraftRejected(str(exc), 409) from exc
     copied_sections = _json_copy(sections)
     copied_docx = _json_copy(composed_docx)
     if not isinstance(copied_sections, list) or not isinstance(copied_docx, dict):
         raise DraftRejected("composed snapshot is unreadable")
-    current = canonical_current(adjusted.tb_lines, adjusted.mappings)
     digest = engine_sha()
     draft.inputs_sha256 = inputs
     draft.engine_sha = digest

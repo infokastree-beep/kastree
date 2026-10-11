@@ -2185,3 +2185,188 @@ async def test_carried_disclosure_answers_need_an_acknowledgement(
     assert isinstance(recorded, dict)
     assert recorded["reviewed"] is True
     assert "HAS_EMPLOYEES" in recorded["flag_names"]
+
+
+def _login_role() -> tuple[str, bool, bool]:
+    with SyncSessionLocal() as session:
+        row = session.execute(
+            text(
+                """
+                SELECT current_user, r.rolsuper, r.rolbypassrls
+                FROM pg_roles AS r
+                WHERE r.rolname = current_user
+                """
+            )
+        ).one()
+    print(
+        f"executing_role={row[0]} rolsuper={row[1]} rolbypassrls={row[2]}",
+        flush=True,
+    )
+    return str(row[0]), bool(row[1]), bool(row[2])
+
+
+@pytest.mark.asyncio
+async def test_parity_finalises_the_golden_adopted_draft(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Finalise the golden adopted draft over HTTP as the login role.
+
+    The backend job's login is a superuser, so this test skips there.
+    The parity job logs in as non-superuser findraft and runs it.
+    """
+    role, superuser, bypass = _login_role()
+    if superuser or bypass:
+        pytest.skip(
+            f"{role} bypasses row security. The parity job runs this test."
+        )
+    from app.config import settings
+    from app.services.beta import WORDING_BANNER
+
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "platform_admin_emails", "")
+    headers = auth_headers(provisioned_org["token"])
+    acknowledged = await api_client.post(
+        "/beta/acknowledgement",
+        headers=headers,
+        json={"accepted": True},
+    )
+    assert acknowledged.status_code == 200, acknowledged.text
+    year_end_id, draft_id, headers = await _ready_golden(api_client, provisioned_org)
+    board = await api_client.get(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/dashboard",
+        headers=headers,
+    )
+    assert board.status_code == 200, board.text
+    assert board.json()["can_finalise"] is True
+    finalised = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/finalise",
+        headers={**headers, "Idempotency-Key": "parity-golden-finalise"},
+        json={"row_version": board.json()["row_version"]},
+    )
+    assert finalised.status_code == 200, finalised.text
+    assert finalised.json()["status"] == "final"
+    stored = _snapshot(draft_id, provisioned_org["org_id"])
+    assert stored is not None
+    statement = stored["statement"]
+    assert isinstance(statement, dict)
+    assert statement["net_assets"] == "455812.00"
+    assert statement["profit"] == "157650.00"
+    assert stored["wording_signed_off"] is False
+    assert stored["wording_banner"] == WORDING_BANNER
+    assert "note_library" in stored
+    evidence = stored["evidence"]
+    assert isinstance(evidence, dict)
+    documents = evidence["documents"]
+    assert isinstance(documents, list) and documents[0]["file_hash"] == _FILE_HASH
+
+
+@pytest.mark.asyncio
+async def test_live_draft_may_freeze_and_finalise_in_one_update(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """The status guard allows a live draft to set is_frozen and final together."""
+    _year_end_id, draft_id, _headers = await _open_adopted(
+        api_client, provisioned_org, rows=_CASH_PAIR
+    )
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
+        updated = session.execute(
+            text(
+                """
+                UPDATE findraft_draft_versions
+                SET is_frozen = true,
+                    status = 'final',
+                    snapshot = '{"watermark": "FINAL"}'::jsonb,
+                    inputs_sha256 = :inputs,
+                    engine_sha = :engine
+                WHERE id = :id
+                  AND is_frozen = false
+                  AND status = 'draft'
+                """
+            ),
+            {"id": draft_id, "inputs": "a" * 64, "engine": "b" * 64},
+        )
+        assert updated.rowcount == 1
+        session.commit()
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
+        row = session.execute(
+            text(
+                "SELECT status, is_frozen FROM findraft_draft_versions WHERE id = :id"
+            ),
+            {"id": draft_id},
+        ).one()
+    assert row[0] == "final"
+    assert row[1] is True
+
+
+@pytest.mark.asyncio
+async def test_unexpected_finalise_error_returns_a_reference(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A database failure is quoted with the Postgres sentence and a reference."""
+    from psycopg2.errors import InsufficientPrivilege
+    from sqlalchemy.exc import ProgrammingError
+
+    year_end_id, draft_id, headers = await _open_adopted(
+        api_client, provisioned_org, rows=_CASH_PAIR
+    )
+
+    async def _denied(*_args: object, **_kwargs: object) -> None:
+        raise ProgrammingError(
+            "UPDATE findraft_draft_versions",
+            {},
+            InsufficientPrivilege("permission denied for table audit_logs"),
+        )
+
+    monkeypatch.setattr("app.routers.year_ends.finalise_draft", _denied)
+    failed = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/finalise",
+        headers={**headers, "Idempotency-Key": "finalise-reference"},
+        json={"row_version": _draft_version(draft_id, provisioned_org["org_id"])},
+    )
+    assert failed.status_code == 500, failed.text
+    detail = failed.json()["detail"]
+    assert isinstance(detail, dict)
+    assert detail["message"] == "permission denied for table audit_logs"
+    assert isinstance(detail["request_id"], str) and detail["request_id"]
+
+
+@pytest.mark.asyncio
+async def test_malformed_report_setup_is_a_finalise_message(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """Compose errors stay a 409 the dialog can show. The dashboard stays ready."""
+    year_end_id, draft_id, headers = await _ready_golden(api_client, provisioned_org)
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
+        session.execute(
+            text(
+                """
+                UPDATE findraft_year_ends
+                SET report_setup = '{"sections": {"cover": "yes"}}'::jsonb
+                WHERE id = :id
+                """
+            ),
+            {"id": year_end_id},
+        )
+        session.commit()
+    board = await api_client.get(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/dashboard",
+        headers=headers,
+    )
+    assert board.status_code == 200, board.text
+    assert board.json()["can_finalise"] is True
+    failed = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/finalise",
+        headers={**headers, "Idempotency-Key": "malformed-setup"},
+        json={"row_version": board.json()["row_version"]},
+    )
+    assert failed.status_code == 409, failed.text
+    assert failed.json()["detail"] == "report setup sections are malformed"

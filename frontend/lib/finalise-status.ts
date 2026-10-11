@@ -92,15 +92,51 @@ export function wordDownloadLabel(
   return `Download Word (.docx) — ${WORDING_BANNER}`;
 }
 
+const GENERIC_SERVER = new Set(["Internal Server Error", "Something went wrong."]);
+
+export function requestIdFromBody(body: unknown): string | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+  const top = (body as { request_id?: unknown }).request_id;
+  if (typeof top === "string" && top.trim().length > 0) {
+    return top.trim();
+  }
+  const detail = (body as { detail?: unknown }).detail;
+  if (typeof detail === "object" && detail !== null && "request_id" in detail) {
+    const nested = (detail as { request_id?: unknown }).request_id;
+    if (typeof nested === "string" && nested.trim().length > 0) {
+      return nested.trim();
+    }
+  }
+  return null;
+}
+
 export function finaliseFailureMessage(
   status: number,
   detail: string | null,
+  requestId: string | null = null,
 ): string {
   if (status === 403) {
     return "You don't have permission to access this resource.";
   }
   const text = detail?.trim() ?? "";
-  if (status === 409 && text.length > 0) {
+  const useful =
+    text.length > 0 && !GENERIC_SERVER.has(text) && !/^API \d+$/.test(text);
+  const reference = requestId?.trim() ?? "";
+  if (status >= 500) {
+    if (useful && reference.length > 0) {
+      return `${text} Quote reference ${reference}.`;
+    }
+    if (useful) {
+      return text;
+    }
+    if (reference.length > 0) {
+      return `Something went wrong while finalising this draft. Quote reference ${reference}.`;
+    }
+    return "Something went wrong while finalising this draft.";
+  }
+  if (useful) {
     return text;
   }
   return "This draft could not be finalised.";

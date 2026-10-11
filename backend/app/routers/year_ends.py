@@ -10,6 +10,7 @@ import uuid
 from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
+import structlog
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -207,6 +208,8 @@ from findraft.engine.pack import load_manifest, pack_dir, pin_pack_version
 from findraft.models.draft_version import DraftVersion
 from findraft.models.render_job import RenderJob
 from findraft.models.year_end import YearEnd
+
+logger = structlog.get_logger()
 
 router = APIRouter(
     prefix="/year-ends",
@@ -1376,6 +1379,28 @@ def _draft_error(exc: DraftRejected) -> HTTPException:
     return HTTPException(status_code=exc.status_code, detail=exc.detail)
 
 
+def _finalise_error_message(exc: Exception) -> str:
+    """The database sentence, when Postgres raised one. Otherwise a plain line."""
+    if isinstance(exc, DBAPIError):
+        orig = getattr(exc, "orig", None)
+        text_value = "" if orig is None else str(orig).split("\n", 1)[0].strip()
+        if text_value and len(text_value) <= 300:
+            return text_value
+    return "Something went wrong."
+
+
+def _unexpected_finalise_error(exc: Exception) -> HTTPException:
+    reference = str(uuid.uuid4())
+    logger.exception("draft_finalise_failed", request_id=reference)
+    return HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail={
+            "message": _finalise_error_message(exc),
+            "request_id": reference,
+        },
+    )
+
+
 def _dashboard_response(board: Dashboard) -> DashboardResponse:
     return DashboardResponse.model_validate(_dashboard_dict(board))
 
@@ -2102,6 +2127,8 @@ async def post_draft_finalise(
         )
     except DraftRejected as exc:
         raise _draft_error(exc) from exc
+    except Exception as exc:
+        raise _unexpected_finalise_error(exc) from exc
     return FinaliseResponse.model_validate(stored)
 
 
