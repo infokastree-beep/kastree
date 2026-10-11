@@ -248,16 +248,49 @@ describe("Statutory opt-in", () => {
     assert.equal(continuation.includes("is_platform_admin === false"), false);
   });
 
-  it("shows Statutory to every signed-in user and Admin only to a platform admin", () => {
-    const statutory = nav.indexOf('href="/statutory"');
-    const admin = nav.indexOf('href="/admin"');
-    assert.ok(statutory > 0);
-    assert.ok(admin > statutory);
-    assert.match(nav, /isSignedIn \?/);
-    assert.match(nav, /show \?/);
-    assert.equal(nav.includes("me.is_platform_admin") && nav.includes("Statutory"), true);
-    const statutoryBlock = nav.slice(statutory - 80, statutory);
-    assert.equal(statutoryBlock.includes("is_platform_admin"), false);
+  it("keeps Statutory out of the header and shows Admin only to a platform admin", () => {
+    assert.equal(nav.includes('href="/statutory"'), false);
+    assert.equal(nav.includes("Statutory"), false);
+    assert.equal(layout.includes('href="/statutory"'), false);
+    assert.match(nav, /href="\/admin"/);
+    assert.match(nav, /me\.is_platform_admin/);
+    assert.match(nav, /if \(!show\)/);
+    assert.match(layout, />\s*Clients\s*</);
+    assert.match(layout, />\s*Upload\s*</);
+    assert.match(layout, />\s*Settings\s*</);
+    const pointer = readFileSync(
+      join(root, "../app/(dashboard)/statutory/page.tsx"),
+      "utf8",
+    );
+    const pointerView = readFileSync(
+      join(root, "../components/statutory/StatutoryPointer.tsx"),
+      "utf8",
+    );
+    const workbenchPage = readFileSync(
+      join(root, "../app/(dashboard)/statutory/workbench/page.tsx"),
+      "utf8",
+    );
+    const gate = readFileSync(
+      join(root, "../components/statutory/StatutoryWorkbenchGate.tsx"),
+      "utf8",
+    );
+    const adminPage = readFileSync(
+      join(root, "../components/admin/AdminOverviewPage.tsx"),
+      "utf8",
+    );
+    assert.match(pointer, /StatutoryPointer/);
+    assert.ok(
+      pointerView.includes(
+        "Statutory drafts start from a company's Statements page",
+      ),
+    );
+    assert.match(pointerView, /href="\/clients"/);
+    assert.match(workbenchPage, /StatutoryWorkbenchGate/);
+    assert.match(gate, /Internal testing only/);
+    assert.match(gate, /is_platform_admin !== true/);
+    assert.match(gate, /StatutoryPointer/);
+    assert.match(adminPage, /href="\/statutory\/workbench"/);
+    assert.match(continuation, /StatutoryOptIn/);
   });
 
   it("keeps the unreviewed-wording banner as one sentence for an admin grant", () => {

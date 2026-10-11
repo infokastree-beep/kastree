@@ -36,18 +36,13 @@ export function AdminNavLink() {
     };
   }, [getToken, isSignedIn]);
 
+  if (!show) {
+    return null;
+  }
+
   return (
-    <>
-      {isSignedIn ? (
-        <Link href="/statutory" className="transition-colors hover:text-accent">
-          Statutory
-        </Link>
-      ) : null}
-      {show ? (
-        <Link href="/admin" className="transition-colors hover:text-accent">
-          Admin
-        </Link>
-      ) : null}
-    </>
+    <Link href="/admin" className="transition-colors hover:text-accent">
+      Admin
+    </Link>
   );
 }
