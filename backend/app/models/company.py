@@ -61,6 +61,10 @@ class Company(Base):
         String(3), nullable=False, server_default=text("'GBP'")
     )
     company_number: Mapped[str | None] = mapped_column(String, nullable=True)
+    # No server default. Existing rows stay NULL until a person records a country.
+    country_of_incorporation: Mapped[str | None] = mapped_column(
+        String(2), nullable=True
+    )
     industry: Mapped[str | None] = mapped_column(String, nullable=True)
     # Letterhead. industry stays the Product 1 field and is not reused here.
     business_address: Mapped[str | None] = mapped_column(String, nullable=True)

@@ -948,8 +948,9 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
         <div className="rounded border border-stone-200 bg-white p-4">
           {practiceCurrency.ready ? (
           <CompanyEntityForm
-            key={practiceCurrency.currency}
+            key={`${practiceCurrency.currency}-${practiceCurrency.countryOfIncorporation}`}
             defaultCurrency={practiceCurrency.currency}
+            defaultCountryOfIncorporation={practiceCurrency.countryOfIncorporation}
             intro={
               <p className="text-sm text-stone-600">
                 Add a company to this client group. It will be selected automatically

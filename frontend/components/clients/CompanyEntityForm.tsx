@@ -14,6 +14,8 @@ export { DEFAULT_MATERIALITY_PCT, DEFAULT_MATERIALITY_ABS } from "@/lib/company-
 type CompanyEntityFormProps = {
   /** Create-mode preselect. Edit mode uses initialValues instead. */
   defaultCurrency?: string;
+  /** Create-mode preselect. Ireland when the practice jurisdiction is IE. */
+  defaultCountryOfIncorporation?: string;
   initialValues?: CompanyEntityInitialValues;
   initialName?: string;
   namePlaceholder?: string;
@@ -33,6 +35,7 @@ type CompanyEntityFormProps = {
 export function CompanyEntityForm({
   initialValues,
   defaultCurrency = "GBP",
+  defaultCountryOfIncorporation = "",
   initialName = "",
   namePlaceholder = "Acme Ltd",
   title,
@@ -49,6 +52,9 @@ export function CompanyEntityForm({
   const [name, setName] = useState(initialValues?.name ?? initialName);
   const [functionalCurrency, setFunctionalCurrency] = useState(
     initialValues?.functionalCurrency ?? defaultCurrency,
+  );
+  const [countryOfIncorporation, setCountryOfIncorporation] = useState(
+    initialValues?.countryOfIncorporation ?? defaultCountryOfIncorporation,
   );
   const [companyNumber, setCompanyNumber] = useState(
     initialValues?.companyNumber ?? "",
@@ -79,6 +85,7 @@ export function CompanyEntityForm({
         onSubmit({
           name: name.trim(),
           functionalCurrency,
+          countryOfIncorporation,
           companyNumber,
           industry,
           companyType,
@@ -143,6 +150,21 @@ export function CompanyEntityForm({
           </label>
         </div>
       ) : null}
+
+      <label className="block text-sm">
+        <span className="mb-1 block text-stone-600">Country of incorporation</span>
+        <input
+          type="text"
+          maxLength={2}
+          className="w-full rounded border border-stone-300 px-3 py-2 uppercase"
+          value={countryOfIncorporation}
+          onChange={(event) =>
+            setCountryOfIncorporation(event.target.value.toUpperCase())
+          }
+          placeholder="IE"
+          data-testid="company-form-country"
+        />
+      </label>
 
       <label className="block text-sm">
         <span className="mb-1 block text-stone-600">

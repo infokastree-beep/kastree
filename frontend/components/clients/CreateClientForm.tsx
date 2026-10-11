@@ -102,8 +102,9 @@ export function CreateClientForm({
     }
     return (
       <CompanyEntityForm
-        key={practiceCurrency.currency}
+        key={`${practiceCurrency.currency}-${practiceCurrency.countryOfIncorporation}`}
         defaultCurrency={practiceCurrency.currency}
+        defaultCountryOfIncorporation={practiceCurrency.countryOfIncorporation}
         title={`Now add the first company under ${createdClient.name}`}
         intro={
           <p className="text-sm text-stone-600">

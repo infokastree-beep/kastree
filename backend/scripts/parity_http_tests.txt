@@ -10,6 +10,7 @@ tests/test_client_limits.py
 tests/test_clients_api.py
 tests/test_company_details.py
 tests/test_contact_api.py
+tests/test_country_of_incorporation.py
 tests/test_draft_locking.py
 tests/test_export_api.py
 tests/test_fa_ingestion.py

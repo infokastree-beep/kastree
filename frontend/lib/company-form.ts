@@ -5,6 +5,7 @@ export const DEFAULT_MATERIALITY_ABS = "1000.00";
 export type CompanyEntityFormValues = {
   name: string;
   functionalCurrency: string;
+  countryOfIncorporation: string;
   companyNumber: string;
   industry: string;
   companyType: "trading" | "holding";
@@ -15,6 +16,7 @@ export type CompanyEntityFormValues = {
 export type CompanyEntityInitialValues = {
   name: string;
   functionalCurrency: string;
+  countryOfIncorporation: string;
   companyNumber: string;
   industry: string;
   companyType: CompanyEntityFormValues["companyType"];
@@ -23,6 +25,7 @@ export type CompanyEntityInitialValues = {
 export function editCompanyInitialValues(company: {
   name: string;
   functional_currency: string;
+  country_of_incorporation?: string | null;
   company_number?: string | null;
   industry?: string | null;
   company_type: CompanyEntityInitialValues["companyType"];
@@ -30,6 +33,7 @@ export function editCompanyInitialValues(company: {
   return {
     name: company.name,
     functionalCurrency: company.functional_currency,
+    countryOfIncorporation: company.country_of_incorporation ?? "",
     companyNumber: company.company_number ?? "",
     industry: company.industry ?? "",
     companyType: company.company_type,
@@ -40,6 +44,13 @@ export function defaultCompanyCurrency(
   jurisdiction: string | null | undefined,
 ): string {
   return jurisdiction === "IE" ? "EUR" : "GBP";
+}
+
+/** Ireland only when the practice jurisdiction is Ireland. Otherwise blank. */
+export function defaultCountryOfIncorporation(
+  jurisdiction: string | null | undefined,
+): string {
+  return jurisdiction === "IE" ? "IE" : "";
 }
 
 /** Whether a currency edit may be sent once trial balances exist. */

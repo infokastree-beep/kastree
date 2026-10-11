@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import {
   currencyChangeAllowed,
   defaultCompanyCurrency,
+  defaultCountryOfIncorporation,
   editCompanyInitialValues,
 } from "./company-form.ts";
 
@@ -72,12 +73,23 @@ describe("defaultCompanyCurrency", () => {
   });
 });
 
+describe("defaultCountryOfIncorporation", () => {
+  it("preselects Ireland only when the practice jurisdiction is Ireland", () => {
+    assert.equal(defaultCountryOfIncorporation("IE"), "IE");
+    assert.equal(defaultCountryOfIncorporation("GB"), "");
+    assert.equal(defaultCountryOfIncorporation("US"), "");
+    assert.equal(defaultCountryOfIncorporation(null), "");
+    assert.equal(defaultCountryOfIncorporation(undefined), "");
+  });
+});
+
 describe("editCompanyInitialValues", () => {
-  it("fills the edit form from the saved company, including blank optional fields", () => {
+  it("fills the edit form from the saved company, including a blank country", () => {
     assert.deepEqual(
       editCompanyInitialValues({
         name: "Acme Ltd",
         functional_currency: "EUR",
+        country_of_incorporation: null,
         company_number: null,
         industry: null,
         company_type: "holding",
@@ -85,10 +97,32 @@ describe("editCompanyInitialValues", () => {
       {
         name: "Acme Ltd",
         functionalCurrency: "EUR",
+        countryOfIncorporation: "",
         companyNumber: "",
         industry: "",
         companyType: "holding",
       },
+    );
+  });
+
+  it("shows the stored country on the edit form", () => {
+    assert.equal(
+      editCompanyInitialValues({
+        name: "Acme Ltd",
+        functional_currency: "EUR",
+        country_of_incorporation: "IE",
+        company_type: "trading",
+      }).countryOfIncorporation,
+      "IE",
+    );
+    assert.equal(
+      editCompanyInitialValues({
+        name: "Acme Ltd",
+        functional_currency: "USD",
+        country_of_incorporation: "US",
+        company_type: "trading",
+      }).countryOfIncorporation,
+      "US",
     );
   });
 });
@@ -107,11 +141,53 @@ describe("edit company form props", () => {
       join(here, "../components/clients/CreateClientForm.tsx"),
       "utf8",
     );
+    const upload = readFileSync(
+      join(here, "../components/upload/UploadForm.tsx"),
+      "utf8",
+    );
+    const workspace = readFileSync(
+      join(here, "../components/statutory/StatutoryDraftWorkspace.tsx"),
+      "utf8",
+    );
     assert.equal(form.includes("initialValues?: CompanyEntityInitialValues"), true);
     assert.equal(form.includes("currencyChangeWarning"), true);
     assert.equal(form.includes('data-testid="company-currency-change-ack"'), true);
+    assert.equal(form.includes('data-testid="company-form-country"'), true);
+    assert.equal(form.includes("Country of incorporation"), true);
+    assert.equal(
+      form.includes(
+        "initialValues?.countryOfIncorporation ?? defaultCountryOfIncorporation",
+      ),
+      true,
+    );
     assert.equal(detail.includes("editCompanyInitialValues(company)"), true);
     assert.equal(detail.includes("currencyChangeWarning="), true);
+    assert.equal(
+      detail.includes(
+        "defaultCountryOfIncorporation={practiceCurrency.countryOfIncorporation}",
+      ),
+      true,
+    );
     assert.equal(create.includes("defaultCurrency={practiceCurrency.currency}"), true);
+    assert.equal(
+      create.includes(
+        "defaultCountryOfIncorporation={practiceCurrency.countryOfIncorporation}",
+      ),
+      true,
+    );
+    assert.equal(
+      upload.includes(
+        "defaultCountryOfIncorporation={practiceCurrency.countryOfIncorporation}",
+      ),
+      true,
+    );
+    assert.equal(workspace.includes('check.code === "V-CO-008"'), true);
+    assert.equal(workspace.includes('check.code === "V-CO-009"'), true);
+    assert.equal(
+      workspace.includes('data-testid="country-incorporation-notice"') ||
+        workspace.includes('"country-incorporation-notice"'),
+      true,
+    );
+    assert.equal(workspace.includes("{check.message}"), true);
   });
 });

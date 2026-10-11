@@ -36,6 +36,7 @@ export interface ICompany {
   client_id: string;
   name: string;
   company_number: string | null;
+  country_of_incorporation: string | null;
   industry: string | null;
   company_type: "trading" | "holding";
   functional_currency: string;
@@ -51,6 +52,7 @@ export interface ICompany {
 export interface CompanyCreateRequest {
   name: string;
   company_number?: string | null;
+  country_of_incorporation?: string | null;
   industry?: string | null;
   company_type?: "trading" | "holding";
   functional_currency?: string;
@@ -59,6 +61,7 @@ export interface CompanyCreateRequest {
 export interface CompanyUpdateRequest {
   name?: string;
   company_number?: string | null;
+  country_of_incorporation?: string | null;
   industry?: string | null;
   company_type?: "trading" | "holding";
   functional_currency?: string;
