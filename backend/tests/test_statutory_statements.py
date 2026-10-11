@@ -77,6 +77,7 @@ def _golden(
     disclosure_flags: dict[str, bool] | None = None,
     practice_name: str = "",
     share_classes: tuple[ShareClassFact, ...] = (),
+    note_library: object | None = None,
 ) -> StatutoryStatements:
     return build_statutory_statements(
         prior_year_validated=True,
@@ -94,6 +95,7 @@ def _golden(
         disclosure_flags=disclosure_flags,
         practice_name=practice_name,
         share_classes=share_classes,
+        note_library=note_library,
     )
 
 

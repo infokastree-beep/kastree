@@ -365,6 +365,8 @@ class StatementResponse(BaseModel):
     rounding_flags: list[RoundingFlagOut]
     company_name: str = ""
     pages: list[StatutoryPageOut] = Field(default_factory=list)
+    omitted_blocks: list[str] = Field(default_factory=list)
+    added_blocks: list[str] = Field(default_factory=list)
 
 
 class SizeEligibilityResponse(BaseModel):
@@ -480,6 +482,52 @@ class MarkRemainingNoResponse(BaseModel):
     row_version: int
     count: int
     flag_ids: list[str]
+
+
+class NoteLibraryRowOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    block_id: str
+    title: str
+    reason: Literal[
+        "always",
+        "trial_balance",
+        "disclosure_yes",
+        "unanswered",
+        "disclosure_no",
+        "omitted",
+        "added",
+    ]
+    sentence: str
+    can_omit: bool
+    can_restore: bool
+    can_add: bool
+    can_remove: bool
+
+
+class NoteLibraryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    draft_id: uuid.UUID
+    row_version: int
+    rows: list[NoteLibraryRowOut]
+
+
+class NoteLibraryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    row_version: int = Field(ge=1)
+    block_id: str = Field(min_length=1, max_length=64)
+    action: Literal["omit", "restore", "add", "remove"]
+
+
+class NoteLibraryMutationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    draft_id: uuid.UUID
+    row_version: int
+    block_id: str
+    action: Literal["omit", "restore", "add", "remove"]
 
 
 class DraftMutationRequest(BaseModel):

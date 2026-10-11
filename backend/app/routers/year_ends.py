@@ -96,6 +96,9 @@ from app.schemas.year_end import (
     DraftMutationRequest,
     MarkRemainingNoRequest,
     MarkRemainingNoResponse,
+    NoteLibraryRequest,
+    NoteLibraryResponse,
+    NoteLibraryMutationResponse,
     FinaliseRequest,
     DraftStatusResponse,
     WorkingDraftResponse,
@@ -146,10 +149,12 @@ from app.services.draft_workflow import (
     frozen_snapshot,
     lock_draft,
     mark_remaining_disclosures_no,
+    notes_for_draft,
     new_version_from_locked,
     post_adjustment,
     recompute_draft,
     set_disclosure_answer,
+    set_note_block,
     _dashboard_dict,
     start_new_report,
 )
@@ -1916,6 +1921,60 @@ async def post_mark_remaining_disclosures_no(
     except DraftRejected as exc:
         raise _draft_error(exc) from exc
     return MarkRemainingNoResponse.model_validate(saved)
+
+
+@router.get(
+    "/{year_end_id}/drafts/{draft_id}/notes",
+    response_model=NoteLibraryResponse,
+)
+async def get_draft_notes(
+    year_end_id: uuid.UUID,
+    draft_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> NoteLibraryResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        listed = await notes_for_draft(
+            session, org_id=auth.org_id, year_end=year_end, draft_id=draft_id
+        )
+    except DraftRejected as exc:
+        raise _draft_error(exc) from exc
+    return NoteLibraryResponse.model_validate(listed)
+
+
+@router.post(
+    "/{year_end_id}/drafts/{draft_id}/notes/library",
+    response_model=NoteLibraryMutationResponse,
+)
+async def post_draft_note_library(
+    year_end_id: uuid.UUID,
+    draft_id: uuid.UUID,
+    body: NoteLibraryRequest,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> NoteLibraryMutationResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        saved = await set_note_block(
+            session,
+            org_id=auth.org_id,
+            user_id=auth.user_id,
+            year_end=year_end,
+            draft_id=draft_id,
+            row_version=body.row_version,
+            block_id=body.block_id,
+            action=body.action,
+        )
+    except DraftRejected as exc:
+        raise _draft_error(exc) from exc
+    return NoteLibraryMutationResponse.model_validate(saved)
 
 
 @router.post(
