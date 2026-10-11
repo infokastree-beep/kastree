@@ -1,8 +1,14 @@
 # Notes library, review dashboard, and disclosures
 
-**Status: design only. Not built.**
+**Status: approved, with three conditions. Not built.**
 
 This note does not add a migration, a column, or a reader. It does not read `companies.country_of_incorporation`. The JSONB column below is a later revision, after `l8m9n0o1p2` is confirmed on the production database. Golden net assets and profit stay `455812.00` and `157650.00`. No model call.
+
+## Approval conditions
+
+1. A force-included block whose particulars are still blank prints the pack placeholder under the pack note title. For pensions that placeholder is "[retirement benefit commitments not recorded]". The same case raises `V-NOTE-003`, severity NOTICE. The notice does not block FINAL. The composed note never has an empty heading. The library build includes a test for this.
+2. Mark all remaining as No opens a confirmation that lists each group and the count of questions in that group it will set to No, and the total count. The audit action `disclosures_marked_remaining_no` stores that count and the flag ids. It stores no amounts.
+3. A pull request that reads `note_library` merges only after revision `m9n0o1p2q3` is confirmed applied. The migration pull request itself does not select the column.
 
 The Irish pack already decides which notes print. `select_notes` in `findraft/engine/notes.py` keeps a template when `includeWhen` is `always`, when the predicate is true, or when the predicate still needs an unanswered disclosure. An unanswered fact is never stored as No, and `V-DISC-001` still blocks FINAL. Policy paragraphs in `findraft/content/frs102-1a-ie/2024.09/policies.py` use the same idea through `appliesWhen`. The statement engine fills every amount. The composer prints the notes the engine returned. The Notes sidebar entry is the locked pack section `notes`.
 
@@ -83,7 +89,7 @@ A block the engine did not select is not printed merely because an old omission 
 
 PDF, Word, and the section preview use the composed document. They do not grow a second renderer.
 
-`V-NOTE-001`, severity NOTICE, passed false, when `omitted` is non-empty. The message names the titles. `V-NOTE-002`, severity NOTICE, passed false, when `added` is non-empty. The message names the titles and says they were added by the preparer. Neither code blocks FINAL. `blocks_final` does not gain either code. `V-DISC-001` is unchanged: the engine message stays `Unanswered disclosure questions: ` plus the sorted flag list, because `_unanswered` reads that prefix. The review screen does not print that message.
+`V-NOTE-001`, severity NOTICE, passed false, when `omitted` is non-empty. The message names the titles. `V-NOTE-002`, severity NOTICE, passed false, when `added` is non-empty. The message names the titles and says they were added by the preparer. `V-NOTE-003`, severity NOTICE, passed false, when an added block still prints a pack placeholder because its particulars are blank. The message names the title and says the particulars are not recorded. None of these three codes blocks FINAL. `blocks_final` does not gain them. `V-DISC-001` is unchanged: the engine message stays `Unanswered disclosure questions: ` plus the sorted flag list, because `_unanswered` reads that prefix. The review screen does not print that message.
 
 ## Review dashboard
 
@@ -93,7 +99,7 @@ The review dashboard stays `?section=review` and `statutory-review-dashboard`. F
 | --- | --- | --- |
 | Company details | `V-CO-001` directors, `V-CO-002` office and number, `V-CO-003` secretary, `V-CO-004` principal activity, `V-CO-005` approval date, `V-CO-006` signing director, `V-CO-007` currency, `V-CO-008` country missing, `V-CO-009` country other than Ireland | `/year-ends/{id}/draft?section=company-details`. The `V-CO-007` row keeps the existing Confirm currency button. |
 | Disclosures | `V-DISC-001` | `/year-ends/{id}/draft?section=disclosures`. The row reads "40 disclosure questions are unanswered." using `unanswered_count`. It does not print the flag list. |
-| Disclosures | `V-NOTE-001`, `V-NOTE-002` | `/year-ends/{id}/draft?section=notes&note={code}` when one note is named. `/year-ends/{id}/draft?section=notes` when several are named. |
+| Disclosures | `V-NOTE-001`, `V-NOTE-002`, `V-NOTE-003` | `/year-ends/{id}/draft?section=notes&note={code}` when one note is named. `/year-ends/{id}/draft?section=notes` when several are named. |
 | Comparatives | `V-GATE-001` | `/year-ends/{id}/draft?section=review#statutory-first-period-gate`. That control already exists on the draft page. There is no comparatives section. |
 | Comparatives | `V-CMP-001`, `V-CMP-002` | `/year-ends/{id}/draft?section=sofp`. Comparatives are on the face. |
 | Sections | `V-SEC-005`, `V-SEC-006` | `/year-ends/{id}/draft?section=sections-setup`. |
@@ -107,7 +113,7 @@ Figures is a sixth group so a red engine failure still has a Fix link. Those row
 
 The standing wording notice is shown once on this view, from `StandingWordingNotice` `place="workspace-header"`. The copy inside the review card (`place="review-dashboard"`) comes out. The copy on the outputs block (`place="downloads"`) stays; it sits with the downloads, not in the review card. The dev preview at `frontend/app/dev/statutory-workspace/page.tsx` drops the same card copy.
 
-Finalise stays a control for owner and admin. When the button is disabled, the sentence beside it is "3 checks must be fixed" (or "1 check must be fixed"). The count is the number of failed checks that stop finalise: severity `CRITICAL` or `BLOCKED`, plus any failed code in `blocks_final` (`V-CO-001`, `V-CO-002`, `V-CO-005`, `V-CO-006`, `V-CO-008`, `V-CO-009`). Notices that do not stop finalise are outside the count: `V-CO-003`, `V-CO-004`, `V-CO-007`, `V-SEC-005`, `V-SEC-006`, `V-SEC-007`, `V-NOTE-001`, `V-NOTE-002`. When the button is disabled and that count is zero, the existing "Not ready to finalise." line remains. When finalise is allowed, the button stays enabled and the count sentence is absent.
+Finalise stays a control for owner and admin. When the button is disabled, the sentence beside it is "3 checks must be fixed" (or "1 check must be fixed"). The count is the number of failed checks that stop finalise: severity `CRITICAL` or `BLOCKED`, plus any failed code in `blocks_final` (`V-CO-001`, `V-CO-002`, `V-CO-005`, `V-CO-006`, `V-CO-008`, `V-CO-009`). Notices that do not stop finalise are outside the count: `V-CO-003`, `V-CO-004`, `V-CO-007`, `V-SEC-005`, `V-SEC-006`, `V-SEC-007`, `V-NOTE-001`, `V-NOTE-002`, `V-NOTE-003`. When the button is disabled and that count is zero, the existing "Not ready to finalise." line remains. When finalise is allowed, the button stays enabled and the count sentence is absent.
 
 ## Disclosure questions
 
@@ -117,7 +123,7 @@ Questions are grouped by the checklist `note` field (`N9_COMMITMENTS`, `N1_POLIC
 
 Each group header shows how many questions in the group are answered and how many are unanswered, and a link to the note when the group has a note code: `/year-ends/{id}/draft?section=notes&note={code}`. Answered rows show Yes or No and still use the existing single-answer buttons. Unanswered rows show the question and Yes / No. The screen does not title-case the flag id.
 
-**Mark all remaining as No.** One button on this panel. The dialog names the unanswered questions in the pack wording and asks for confirmation. Until the POST succeeds, those questions stay unanswered and still block FINAL. The server writes No for the flags that are unanswered at the start of the transaction, and for no others. Derived flags are rejected. A flag that is already Yes or No is left as it is. An empty unanswered set returns 422 and writes nothing. One audit row. Viewer receives 403.
+**Mark all remaining as No.** One button on this panel. The confirmation lists each group that still has unanswered questions, the count in that group, and the total count it will set to No. Until the POST succeeds, those questions stay unanswered and still block FINAL. The server writes No for the flags that are unanswered at the start of the transaction, and for no others. Derived flags are rejected. A flag that is already Yes or No is left as it is. An empty unanswered set returns 422 and writes nothing. One audit row stores that count and the flag ids. Viewer receives 403.
 
 ## Routes
 
@@ -180,7 +186,7 @@ No monetary amount in `old_value` or `new_value`.
 | `note_block_restored` | Restore | Block id |
 | `note_block_added` | Force-include | Block id |
 | `note_block_add_removed` | Remove an addition | Block id |
-| `disclosures_marked_remaining_no` | Mark all remaining as No | The flag names written in that transaction, and no others |
+| `disclosures_marked_remaining_no` | Mark all remaining as No | `count` and the flag ids written in that transaction |
 | `disclosure_answered` | The existing single-answer POST | Flag name and `yes`, `no`, or `unanswered` |
 
 `disclosure_answered` is new. The single-answer route writes no audit row today. This design adds that one row on the same route. It does not change the stored answer.
@@ -200,8 +206,9 @@ Revision `m9n0o1p2q3` reapplies `backend/scripts/findraft_table_privileges.sql` 
 - Force-include when the answer is No does not reopen `V-DISC-001` for that flag.
 - Answering Yes after an addition leaves one copy of the block, and the stored addition is unused.
 - POST of `N0_ENTITY`, of a non-zero fixed-asset note, of an unknown id, of an unanswered omit, and of an add on a block the engine already included returns 422 and writes nothing.
-- `V-NOTE-001` and `V-NOTE-002` do not change `can_finalise` on their own.
-- Mark-remaining-no writes No only for flags that were unanswered, writes one `disclosures_marked_remaining_no` row, leaves derived flags untouched, and leaves an already answered flag untouched. Before the POST returns, the client still treats those flags as unanswered.
+- `V-NOTE-001`, `V-NOTE-002`, and `V-NOTE-003` do not change `can_finalise` on their own.
+- Force-including `pension_commitments` with blank particulars prints "[retirement benefit commitments not recorded]" under the pack title, raises `V-NOTE-003`, and does not produce an empty heading.
+- Mark-remaining-no writes No only for flags that were unanswered, writes one `disclosures_marked_remaining_no` row whose payload is the count and those flag ids, leaves derived flags untouched, and leaves an already answered flag untouched. The confirmation lists the groups and that count. Before the POST returns, the client still treats those flags as unanswered.
 - The review dashboard does not render the raw `V-DISC-001` flag list. The disclosures group shows the count and a Fix link to `?section=disclosures`.
 - The review card does not render `place="review-dashboard"`. The page header notice remains.
 - A disabled Finalise shows the blocking-check count. Notices that do not stop finalise are outside that count.
@@ -217,7 +224,7 @@ Five small PRs, in this order. This document does not open them.
 2. Dashboard presentation. Group the checks, add Fix links, show the wording notice once on the review view, and show the blocking count beside a disabled Finalise. No migration.
 3. Disclosure panel. Groups, pack questions, answered and unanswered counts, the note link, mark-remaining-no, and the two disclosure audit actions. Uses `findraft_disclosure_answers`. No new column.
 4. Migration `m9n0o1p2q3` only, after `l8m9n0o1p2` is confirmed applied. Nullable `note_library`, privilege script, no `GRANT ALL`, no read of `companies.country_of_incorporation`. The running application does not select the column in this PR.
-5. Library behaviour. Omit, force-include, the plain-English sentences, "added by preparer", `V-NOTE-001`, `V-NOTE-002`, the composer, and the snapshot copy. This is the PR that reads `note_library`.
+5. Library behaviour. Omit, force-include, the plain-English sentences, "added by preparer", the pack placeholder and `V-NOTE-003` when particulars are blank, `V-NOTE-001`, `V-NOTE-002`, the composer, and the snapshot copy. This is the pull request that reads `note_library`. It merges only after `m9n0o1p2q3` is confirmed applied.
 
 ## Cuts
 
