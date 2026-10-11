@@ -15,7 +15,7 @@
     "test:practice-jurisdiction": "node --experimental-strip-types --test lib/practice-jurisdiction.test.ts",
     "test:draft-word": "node --experimental-strip-types --test lib/draft-word.test.ts",
     "test:company-form": "node --experimental-strip-types --test lib/company-form.test.ts",
-    "test:statutory-gate": "node --experimental-strip-types --test lib/statutory-gate.test.ts"
+    "test:statutory-gate": "node --experimental-strip-types --test lib/statutory-gate.test.ts lib/admin-product2.test.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^5.7.6",
