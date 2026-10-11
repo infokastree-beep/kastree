@@ -31,6 +31,7 @@ import {
   currencyCodeFromNotice,
   finalStateLabel,
   finaliseFailureMessage,
+  requestIdFromBody,
   finaliseStatusLine,
   pdfDownloadLabel,
   shownStatus,
@@ -734,7 +735,11 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       return null;
     } catch (caught) {
       if (caught instanceof ApiError) {
-        return finaliseFailureMessage(caught.status, messageFromPdfBody(caught.body));
+        return finaliseFailureMessage(
+          caught.status,
+          messageFromPdfBody(caught.body),
+          requestIdFromBody(caught.body),
+        );
       }
       return finaliseFailureMessage(0, null);
     } finally {

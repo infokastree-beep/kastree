@@ -15,6 +15,7 @@ import {
   currencyCodeFromNotice,
   finalStateLabel,
   finaliseFailureMessage,
+  requestIdFromBody,
   finaliseStatusLine,
   pdfDownloadLabel,
   shownStatus,
@@ -121,8 +122,43 @@ describe("finalise offer", () => {
       "This draft could not be finalised.",
     );
     assert.equal(
-      finaliseFailureMessage(500, "FINAL output is never recomputed"),
-      "This draft could not be finalised.",
+      finaliseFailureMessage(400, "report setup is malformed"),
+      "report setup is malformed",
     );
+    assert.equal(
+      finaliseFailureMessage(422, "Idempotency-Key is required"),
+      "Idempotency-Key is required",
+    );
+    assert.equal(
+      finaliseFailureMessage(500, "permission denied for table audit_logs"),
+      "permission denied for table audit_logs",
+    );
+    assert.equal(
+      finaliseFailureMessage(
+        500,
+        "permission denied for table audit_logs",
+        "4f2a9c10-1111-4222-8333-abcdef012345",
+      ),
+      "permission denied for table audit_logs Quote reference 4f2a9c10-1111-4222-8333-abcdef012345.",
+    );
+    assert.equal(
+      finaliseFailureMessage(500, "Something went wrong.", "ref-1"),
+      "Something went wrong while finalising this draft. Quote reference ref-1.",
+    );
+    assert.equal(
+      finaliseFailureMessage(500, "Internal Server Error", null),
+      "Something went wrong while finalising this draft.",
+    );
+    assert.equal(
+      finaliseFailureMessage(500, "FINAL output is never recomputed"),
+      "FINAL output is never recomputed",
+    );
+    assert.equal(
+      requestIdFromBody({
+        detail: { message: "Something went wrong.", request_id: "ref-9" },
+      }),
+      "ref-9",
+    );
+    assert.equal(requestIdFromBody({ detail: "Directors have not been recorded." }), null);
   });
 });
