@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -610,6 +610,20 @@ class AdoptableTrialBalanceList(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[AdoptableTrialBalanceOut]
+
+
+class TrialBalancePageResponse(BaseModel):
+    """Read-only Inputs page. ``file_name`` stays null until a name is stored."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    trial_balance_id: uuid.UUID | None
+    period_start: date | None
+    period_end: date | None
+    uploaded_at: datetime | None
+    account_count: int | None
+    currency: str | None
+    file_name: str | None
 
 
 class AdoptTrialBalanceRequest(BaseModel):

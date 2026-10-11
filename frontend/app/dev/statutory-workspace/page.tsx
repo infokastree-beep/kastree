@@ -7,6 +7,7 @@
 
 import { useState } from "react";
 import { FinaliseDraft } from "@/components/statutory/FinaliseDraft";
+import { TrialBalancePanel } from "@/components/statutory/TrialBalancePanel";
 import { ReportSetupForm, type ReportSetupWrite } from "@/components/statutory/ReportSetupForm";
 import {
   finalStateLabel,
@@ -55,17 +56,18 @@ const FRAMEWORKS: ReportingFramework[] = [
     sections: [
       section("review", "Review dashboard", "overview", "Overview", 1),
       section("report-setup", "Report setup", "report-options", "Report options", 2),
-      section("sub-lines", "Mapping", "inputs", "Inputs", 3),
-      section("adjustments", "Adjustments", "inputs", "Inputs", 4),
-      section("disclosures", "Disclosures", "inputs", "Inputs", 5),
-      section("company-details", "Company details", "inputs", "Inputs", 6),
-      section("sections-setup", "Sections setup", "sections", "Sections", 7),
+      section("trial-balance", "Trial balance", "inputs", "Inputs", 3),
+      section("sub-lines", "Mapping", "inputs", "Inputs", 4),
+      section("adjustments", "Adjustments", "inputs", "Inputs", 5),
+      section("disclosures", "Disclosures", "inputs", "Inputs", 6),
+      section("company-details", "Company details", "inputs", "Inputs", 7),
+      section("sections-setup", "Sections setup", "sections", "Sections", 8),
       {
         id: "income",
         label: "Income statement",
         group: "sections",
         group_label: "Sections",
-        order: 8,
+        order: 9,
         lock: "locked",
         default: "on",
         built: true,
@@ -76,7 +78,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Statement of financial position",
         group: "sections",
         group_label: "Sections",
-        order: 9,
+        order: 10,
         lock: "locked",
         default: "on",
         built: true,
@@ -87,7 +89,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Contents",
         group: "sections",
         group_label: "Sections",
-        order: 10,
+        order: 11,
         lock: "user",
         default: "on",
         built: true,
@@ -98,7 +100,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Notes",
         group: "sections",
         group_label: "Sections",
-        order: 11,
+        order: 12,
         lock: "locked",
         default: "on",
         built: true,
@@ -109,7 +111,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Compilation report",
         group: "sections",
         group_label: "Sections",
-        order: 12,
+        order: 13,
         lock: "user",
         default: "on",
         built: true,
@@ -120,7 +122,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Cover",
         group: "sections",
         group_label: "Sections",
-        order: 13,
+        order: 14,
         lock: "user",
         default: "on",
         built: true,
@@ -131,7 +133,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Statement of comprehensive income",
         group: "sections",
         group_label: "Sections",
-        order: 14,
+        order: 15,
         lock: "user",
         default: "engine",
         built: false,
@@ -141,7 +143,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Statement of changes in equity",
         group: "sections",
         group_label: "Sections",
-        order: 15,
+        order: 16,
         lock: "user",
         default: "engine",
         built: false,
@@ -151,7 +153,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Supplementary trading statement",
         group: "sections",
         group_label: "Sections",
-        order: 16,
+        order: 17,
         lock: "user",
         default: "off",
         built: false,
@@ -161,7 +163,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Cash flow statement",
         group: "sections",
         group_label: "Sections",
-        order: 17,
+        order: 18,
         lock: "user",
         default: "off",
         built: false,
@@ -171,7 +173,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Draft PDF",
         group: "outputs",
         group_label: "Outputs",
-        order: 18,
+        order: 19,
       },
     ],
   },
@@ -352,6 +354,32 @@ export default function StatutoryWorkspacePreviewPage() {
               setSaved("Sections reset");
             }}
           />
+        ) : null}
+        {sectionId === "trial-balance" ? (
+          <div className="space-y-8">
+            <TrialBalancePanel
+              page={{
+                trial_balance_id: null,
+                period_start: null,
+                period_end: null,
+                uploaded_at: null,
+                account_count: null,
+                currency: null,
+                file_name: null,
+              }}
+            />
+            <TrialBalancePanel
+              page={{
+                trial_balance_id: "11111111-1111-1111-1111-111111111111",
+                period_start: "2026-01-01",
+                period_end: "2026-12-31",
+                uploaded_at: "2026-03-02T10:15:00Z",
+                account_count: 24,
+                currency: "EUR",
+                file_name: null,
+              }}
+            />
+          </div>
         ) : null}
         {sectionId === "review" ? (
           <section

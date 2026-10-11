@@ -40,6 +40,8 @@ import {
 import { SectionPreview } from "@/components/statutory/SectionPreview";
 import { SectionsSetup } from "@/components/statutory/SectionsSetup";
 import { StatutoryLoadError } from "@/components/statutory/StatutoryLoadError";
+import { TrialBalancePanel } from "@/components/statutory/TrialBalancePanel";
+import type { TrialBalancePage } from "@/lib/trial-balance-page";
 import { StatutorySublineReview } from "@/components/statutory/StatutorySublineReview";
 import { WorkspaceSidebar } from "@/components/statutory/WorkspaceSidebar";
 import {
@@ -311,6 +313,14 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
 
   const forbidden = meQuery.isSuccess && !statutoryWorkspaceOpen(meQuery.data);
   const dashboard = dashboardQuery.data;
+  const trialBalanceQuery = useQuery({
+    queryKey: ["trial-balance-page", yearEndId],
+    queryFn: () =>
+      apiFetch<TrialBalancePage>(`/year-ends/${yearEndId}/trial-balance`, {
+        getToken,
+      }),
+    enabled: openSectionId === "trial-balance" && yearEndQuery.isSuccess,
+  });
   const notesQuery = useQuery({
     queryKey: ["draft-notes", yearEndId, draft?.draft_id],
     queryFn: () =>
@@ -1135,6 +1145,25 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
           yearEndId={yearEndId}
           onConfirmed={refreshDraft}
         />
+      ) : null}
+
+      {sectionId === "trial-balance" && trialBalanceQuery.isLoading ? (
+        <p className="text-sm text-soft">Loading the trial balance…</p>
+      ) : null}
+
+      {sectionId === "trial-balance" && trialBalanceQuery.error ? (
+        <StatutoryLoadError
+          testId="statutory-trial-balance-error"
+          message={saveMessage(
+            trialBalanceQuery.error,
+            "The trial balance could not be loaded.",
+          )}
+          onReview={() => undefined}
+        />
+      ) : null}
+
+      {sectionId === "trial-balance" && trialBalanceQuery.data ? (
+        <TrialBalancePanel page={trialBalanceQuery.data} />
       ) : null}
 
       {sectionId === "company-details" && detailsQuery.error ? (

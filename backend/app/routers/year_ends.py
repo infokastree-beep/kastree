@@ -76,6 +76,7 @@ from app.schemas.year_end import (
     AdoptedTrialBalanceResponse,
     AdoptableTrialBalanceList,
     AdoptableTrialBalanceOut,
+    TrialBalancePageResponse,
     AdoptTrialBalanceRequest,
     CanonicalLinesResponse,
     CarriedMappingOut,
@@ -128,6 +129,7 @@ from app.services.adopted_trial_balance import (
     confirm_statutory_sublines,
     final_adopted_snapshot,
     list_adoptable_trial_balances,
+    read_trial_balance_page,
     mapping_notice_for,
     reconcile_adopted,
     review_statutory_sublines,
@@ -622,6 +624,37 @@ def _subline_response(
 
 def _adoption_error(exc: ReconciliationRejected) -> HTTPException:
     return HTTPException(status_code=exc.status_code, detail=exc.detail)
+
+
+@router.get(
+    "/{year_end_id}/trial-balance",
+    response_model=TrialBalancePageResponse,
+)
+async def get_trial_balance_page(
+    year_end_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> TrialBalancePageResponse:
+    """Read-only adopted trial balance. This route does not adopt or delete."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        facts = await read_trial_balance_page(
+            session, org_id=auth.org_id, year_end=year_end
+        )
+    except ReconciliationRejected as exc:
+        raise _adoption_error(exc) from exc
+    return TrialBalancePageResponse(
+        trial_balance_id=facts.trial_balance_id,
+        period_start=facts.period_start,
+        period_end=facts.period_end,
+        uploaded_at=facts.uploaded_at,
+        account_count=facts.account_count,
+        currency=facts.currency,
+        file_name=None,
+    )
 
 
 @router.get(

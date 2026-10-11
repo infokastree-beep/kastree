@@ -57,10 +57,11 @@ _WORKSPACE_BEFORE: tuple[WorkspaceSection, ...] = (
     WorkspaceSection(
         "report-setup", "Report setup", "report-options", "Report options", 2
     ),
-    WorkspaceSection("sub-lines", "Mapping", "inputs", "Inputs", 3),
-    WorkspaceSection("adjustments", "Adjustments", "inputs", "Inputs", 4),
-    WorkspaceSection("disclosures", "Disclosures", "inputs", "Inputs", 5),
-    WorkspaceSection("company-details", "Company details", "inputs", "Inputs", 6),
+    WorkspaceSection("trial-balance", "Trial balance", "inputs", "Inputs", 3),
+    WorkspaceSection("sub-lines", "Mapping", "inputs", "Inputs", 4),
+    WorkspaceSection("adjustments", "Adjustments", "inputs", "Inputs", 5),
+    WorkspaceSection("disclosures", "Disclosures", "inputs", "Inputs", 6),
+    WorkspaceSection("company-details", "Company details", "inputs", "Inputs", 7),
 )
 
 
