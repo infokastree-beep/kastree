@@ -1,9 +1,11 @@
 "use client";
 
 import {
+  AUDIT_EXEMPTION_NOTE,
+  AUDIT_EXEMPTION_PARAGRAPHS,
+  AUDIT_EXEMPTION_PROVISION,
+  AUDIT_EXEMPTION_SOURCE,
   AUDIT_EXEMPTION_SOURCE_LABEL,
-  AUDIT_EXEMPTION_STATEMENT,
-  MEMBERS_AUDIT_STATEMENT,
 } from "@/lib/audit-exemption";
 
 export function AuditExemptionClaim({
@@ -42,11 +44,18 @@ export function AuditExemptionClaim({
       <p className="text-sm font-semibold text-ink" data-testid="audit-exemption-source">
         {AUDIT_EXEMPTION_SOURCE_LABEL}
       </p>
-      <p className="text-sm text-ink-secondary" data-testid="audit-exemption-statement">
-        {AUDIT_EXEMPTION_STATEMENT}
+      <p className="text-sm text-ink-secondary" data-testid="audit-exemption-provision">
+        {AUDIT_EXEMPTION_SOURCE}. {AUDIT_EXEMPTION_PROVISION}
       </p>
-      <p className="text-sm text-ink-secondary" data-testid="members-audit-statement">
-        {MEMBERS_AUDIT_STATEMENT}
+      <div data-testid="audit-exemption-statement">
+        {AUDIT_EXEMPTION_PARAGRAPHS.map((paragraph) => (
+          <p key={paragraph} className="text-sm text-ink-secondary">
+            {paragraph}
+          </p>
+        ))}
+      </div>
+      <p className="text-sm text-ink-secondary" data-testid="audit-exemption-note">
+        {AUDIT_EXEMPTION_NOTE}
       </p>
       <p className="text-sm text-ink" data-testid="audit-exemption-position">
         {position}

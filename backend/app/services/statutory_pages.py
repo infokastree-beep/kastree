@@ -2,8 +2,9 @@
 
 Python fills these from the entity record and from the profit figure the
 statement engine already produced. A missing fact stays missing. This module
-does not declare a section 335 audit exemption, invent an approval date, or
-attach an auditor's report.
+does not invent an approval date or attach an auditor's report. When the
+audit exemption is claimed, the audit-exemption page is an explanatory note.
+The statement itself is pack text printed on the balance sheet.
 """
 
 from __future__ import annotations
@@ -32,32 +33,58 @@ class StatutoryPage:
     paragraphs: tuple[str, ...]
 
 
-def audit_exemption_statements(manifest: object) -> tuple[str, str]:
-    """Pack sentences. They stay pending reviewer sign-off until that changes."""
+_AUDIT_EXEMPTION_KEYS = frozenset(
+    {"source", "provision", "source_status", "paragraphs", "explanatory_note"}
+)
+_RESEARCHED = "researched (public source)"
+
+
+def audit_exemption_pack(manifest: object) -> tuple[tuple[str, ...], str]:
+    """CRO statement paragraphs and the explanatory note.
+
+    ``source_status`` is researched from a public source. It is not a
+    reviewer sign-off.
+    """
     if not isinstance(manifest, Mapping):
         raise ValueError("Pinned pack has no audit-exemption statements")
     block = manifest.get("audit_exemption_statements")
-    if not isinstance(block, Mapping) or set(block) != {
-        "source_status",
-        "exemption",
-        "members",
-    }:
+    if not isinstance(block, Mapping) or set(block) != _AUDIT_EXEMPTION_KEYS:
         raise ValueError("Pinned pack has no audit-exemption statements")
-    exemption = block.get("exemption")
-    members = block.get("members")
+    provision = block.get("provision")
+    paragraphs = block.get("paragraphs")
+    note = block.get("explanatory_note")
     if (
-        block.get("source_status") != "pending-reviewer-signoff"
-        or not isinstance(exemption, str)
-        or not isinstance(members, str)
+        block.get("source") != "CRO"
+        or block.get("source_status") != _RESEARCHED
+        or not isinstance(provision, str)
+        or "335" not in provision
+        or not isinstance(paragraphs, list)
+        or not paragraphs
+        or not isinstance(note, str)
     ):
         raise ValueError(
-            "Pinned pack audit-exemption statements are not pending reviewer sign-off"
+            "Pinned pack audit-exemption statements are not researched (public source)"
         )
-    cleaned_exemption = exemption.strip()
-    cleaned_members = members.strip()
-    if not cleaned_exemption or not cleaned_members:
-        raise ValueError("Pinned pack audit-exemption statements are unusable")
-    return (cleaned_exemption, cleaned_members)
+    cleaned: list[str] = []
+    for item in paragraphs:
+        if not isinstance(item, str) or not item or item != item.strip():
+            raise ValueError("Pinned pack audit-exemption statements are unusable")
+        cleaned.append(item)
+    if not note or note != note.strip():
+        raise ValueError("Pinned pack audit-exemption explanatory note is unusable")
+    return (tuple(cleaned), note)
+
+
+def audit_exemption_statements(manifest: object) -> tuple[str, ...]:
+    """Statement printed on the balance sheet when the claim is true."""
+    paragraphs, _note = audit_exemption_pack(manifest)
+    return paragraphs
+
+
+def audit_exemption_note(manifest: object) -> str:
+    """Explanatory note. It is not the statement on the balance sheet."""
+    _paragraphs, note = audit_exemption_pack(manifest)
+    return note
 
 
 def build_statutory_pages(
@@ -76,7 +103,7 @@ def build_statutory_pages(
     signing_directors: str = "",
     dividends: Decimal | None = None,
     audit_exemption_claimed: bool | None = None,
-    audit_statements: tuple[str, ...] = (),
+    audit_note: str = "",
 ) -> tuple[StatutoryPage, ...]:
     """Compilation, directors' report, approval, then audit exemption."""
     return (
@@ -99,7 +126,7 @@ def build_statutory_pages(
         _audit_exemption(
             size_eligible=size_eligible,
             claimed=audit_exemption_claimed,
-            statements=audit_statements,
+            explanatory_note=audit_note,
         ),
     )
 
@@ -245,12 +272,13 @@ def _audit_exemption(
     *,
     size_eligible: bool | None,
     claimed: bool | None = None,
-    statements: tuple[str, ...] = (),
+    explanatory_note: str = "",
 ) -> StatutoryPage:
     if claimed is True:
-        if len(statements) != 2:
-            raise ValueError("Audit exemption statements are missing")
-        return StatutoryPage(heading="Audit exemption", paragraphs=statements)
+        note = explanatory_note.strip()
+        if not note:
+            raise ValueError("Audit exemption explanatory note is missing")
+        return StatutoryPage(heading="Audit exemption", paragraphs=(note,))
     if size_eligible is True:
         body = (
             "The recorded size test meets the pack's small-company conditions. "
