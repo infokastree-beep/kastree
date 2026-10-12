@@ -6,38 +6,100 @@
 # the GRANT/REVOKE statements in those revisions apply.
 # The parity job migrates as the postgres superuser, provisions the
 # NOSUPERUSER findraft login, and runs the HTTP tests through that login.
+#
+# Postgres is not a service container. Those pulls happen before any step, so
+# they cannot log in, retry, or use the Actions cache. postgres-image pulls
+# once. backend and parity restore that tarball. There is no Postgres smoke
+# job in this repository; a later one should restore the same cache key
+# instead of pulling again.
+#
+# Registry: Docker Hub (docker.io), image library/postgres:15.
+# Secrets: DOCKERHUB_USERNAME and DOCKERHUB_TOKEN.
+# Token scope: a Docker Hub personal access token with Public Repo Read-only.
+# It can pull public images. It cannot push, delete, or read private repos.
+# An ECR Public token is not stored because it expires after 12 hours.
+#
+# Fork pull requests do not receive those secrets, and their Actions cache is
+# isolated from this repository. They skip login and pull anonymously, with
+# the same retry. A same-repository run with the secrets unset does the same.
 name: Pull request tests
 
 on:
   pull_request:
 
 jobs:
+  postgres-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Retry behaviour
+        run: bash .github/actions/pull-postgres/pull_test.sh
+
+      - uses: actions/cache/restore@v4
+        id: postgres-cache
+        with:
+          path: /tmp/postgres-15.tar.gz
+          key: postgres-15-${{ runner.os }}-v1
+
+      - uses: ./.github/actions/pull-postgres
+        id: image
+        with:
+          start: "false"
+          cache-hit: ${{ steps.postgres-cache.outputs.cache-hit }}
+
+      - uses: actions/cache/save@v4
+        if: steps.image.outputs.pulled == 'true'
+        continue-on-error: true
+        with:
+          path: /tmp/postgres-15.tar.gz
+          key: postgres-15-${{ runner.os }}-v1
+
   backend:
+    needs: postgres-image
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    services:
-      postgres:
-        # ECR Public mirrors the official image. Anonymous Docker Hub pulls of
-        # postgres:15 hit the rate limit and fail the job before the suite starts.
-        image: public.ecr.aws/docker/library/postgres:15
-        env:
-          POSTGRES_USER: findraft
-          POSTGRES_PASSWORD: local
-          POSTGRES_DB: findraft_ci
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U findraft -d findraft_ci"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
+    permissions:
+      contents: read
+      actions: write
     env:
       DATABASE_URL: postgresql+asyncpg://findraft:local@localhost:5432/findraft_ci
       DATABASE_URL_SYNC: postgresql://findraft:local@localhost:5432/findraft_ci
       APP_ENV: development
       PYTHONPATH: ${{ github.workspace }}/backend:${{ github.workspace }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/cache/restore@v4
+        id: postgres-cache
+        with:
+          path: /tmp/postgres-15.tar.gz
+          key: postgres-15-${{ runner.os }}-v1
+
+      - uses: ./.github/actions/pull-postgres
+        id: image
+        with:
+          start: "true"
+          cache-hit: ${{ steps.postgres-cache.outputs.cache-hit }}
+          postgres-user: findraft
+          postgres-password: local
+          postgres-db: findraft_ci
+
+      - uses: actions/cache/save@v4
+        if: steps.image.outputs.pulled == 'true'
+        continue-on-error: true
+        with:
+          path: /tmp/postgres-15.tar.gz
+          key: postgres-15-${{ runner.os }}-v1
 
       - uses: actions/setup-python@v5
         with:
@@ -155,31 +217,44 @@ jobs:
         run: xargs -a mypy_clean_modules.txt mypy --strict --follow-imports=silent
 
   parity:
+    needs: postgres-image
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    services:
-      postgres:
-        # Same mirror as the backend job. Docker Hub anonymous pulls are rate limited.
-        image: public.ecr.aws/docker/library/postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: local
-          POSTGRES_DB: findraft_ci
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d findraft_ci"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
+    permissions:
+      contents: read
+      actions: write
     env:
       DATABASE_URL: postgresql+asyncpg://findraft:local@localhost:5432/findraft_ci
       DATABASE_URL_SYNC: postgresql://findraft:local@localhost:5432/findraft_ci
       DATABASE_OWNER_URL: postgresql://postgres:local@localhost:5432/findraft_ci
       APP_ENV: development
       PYTHONPATH: ${{ github.workspace }}/backend:${{ github.workspace }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/cache/restore@v4
+        id: postgres-cache
+        with:
+          path: /tmp/postgres-15.tar.gz
+          key: postgres-15-${{ runner.os }}-v1
+
+      - uses: ./.github/actions/pull-postgres
+        id: image
+        with:
+          start: "true"
+          cache-hit: ${{ steps.postgres-cache.outputs.cache-hit }}
+          postgres-user: postgres
+          postgres-password: local
+          postgres-db: findraft_ci
+
+      - uses: actions/cache/save@v4
+        if: steps.image.outputs.pulled == 'true'
+        continue-on-error: true
+        with:
+          path: /tmp/postgres-15.tar.gz
+          key: postgres-15-${{ runner.os }}-v1
 
       - uses: actions/setup-python@v5
         with:
