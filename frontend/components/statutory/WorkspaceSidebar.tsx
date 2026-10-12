@@ -162,11 +162,10 @@ export function WorkspaceSidebar({
               <ul className="space-y-1">
                 {group.sections.map((section) => {
                   const active = section.id === activeId;
-                  const off = section.enabled === false;
                   const children = childrenBySection[section.id] ?? [];
                   const childrenOpen = collapsedChildren[section.id] !== true;
                   return (
-                    <li key={section.id} className={off ? "opacity-60" : undefined}>
+                    <li key={section.id}>
                       <div className="flex items-start gap-1">
                         {children.length > 0 ? (
                           <button
