@@ -6,7 +6,7 @@ Status of the current build queue. Wording that is drawn from a public source st
 | --- | --- |
 | 1. Housekeeping: merge the Postgres image cache, close docs PRs already on main | done |
 | 2. Navigator restructure: note classes, report options, outputs, hide unbuilt, notes library | done |
-| 3. Legal form dropdown and suffix rules | waiting |
+| 3. Legal form dropdown and suffix rules | done |
 | 4. Two signatories | waiting |
 | 5. Directors' report required items | waiting |
 | 6. Remuneration citation | waiting |

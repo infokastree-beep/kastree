@@ -16,6 +16,14 @@ from decimal import Decimal, InvalidOperation
 
 from app.models.company import Company
 from app.schemas.company_details import DirectorRecord
+from app.services.legal_forms import (
+    dac_director_notice,
+    dac_suffix_notice,
+    missing_suffix_message,
+    name_has_suffix,
+    passing_suffix_message,
+    rule_for,
+)
 from app.services.reconciliation import ReconciliationCheck
 from findraft.engine.pack import pack_dir
 from findraft.models.year_end import YearEnd
@@ -91,7 +99,18 @@ def company_data_checks(
     if year_end.pack_id != _IRISH_PACK:
         return ()
     rules = _rules(year_end)
-    checks: list[ReconciliationCheck] = [_name_suffix(company.name, rules)]
+    checks: list[ReconciliationCheck] = []
+    suffix = _name_suffix(company, rules)
+    if suffix is not None:
+        checks.append(suffix)
+    form = rule_for(company.legal_form)
+    if form is not None:
+        suffix_notice = dac_suffix_notice(company.name, form)
+        if suffix_notice is not None:
+            checks.append(_check("V-CO-025", "NOTICE", False, suffix_notice))
+        director_notice = dac_director_notice(_current_directors(company), form)
+        if director_notice is not None:
+            checks.append(_check("V-CO-026", "NOTICE", False, director_notice))
     period = _first_period(company, year_end, rules)
     if period is not None:
         checks.append(period)
@@ -163,22 +182,26 @@ def _rules(year_end: YearEnd) -> DataCheckRules:
     )
 
 
-def _name_suffix(name: str, rules: DataCheckRules) -> ReconciliationCheck:
-    pattern = "|".join(re.escape(item) for item in rules.suffixes)
-    matched = re.search(rf"(?:^|\s)(?:{pattern})\.?\s*$", name.strip(), re.IGNORECASE)
-    if matched is not None:
-        return _check(
-            "V-CO-010",
-            "WARNING",
-            True,
-            "The company name ends with a legal-form suffix.",
-        )
+def _name_suffix(company: Company, rules: DataCheckRules) -> ReconciliationCheck | None:
+    """NULL and every form except a DAC use V-CO-010. A DAC uses a notice."""
+    form = rule_for(company.legal_form)
+    if form is not None and form.missing_suffix == "notice":
+        if name_has_suffix(company.name, form.suffixes):
+            return _check("V-CO-010", "WARNING", True, passing_suffix_message())
+        return None
+    suffixes = rules.suffixes if form is None else form.suffixes
+    if name_has_suffix(company.name, suffixes):
+        return _check("V-CO-010", "WARNING", True, passing_suffix_message())
     return _check(
         "V-CO-010",
         "WARNING",
         False,
-        "The company name does not end with " f"{_or_list(list(rules.suffixes))}.",
+        missing_suffix_message(suffixes),
     )
+
+
+def _current_directors(company: Company) -> int:
+    return sum(1 for row in _directors(company) if row.resigned_on is None)
 
 
 def _first_period(
@@ -441,14 +464,6 @@ def _all_lowercase(name: str) -> bool:
 
 def _spoken(value: date) -> str:
     return f"{value.day} {value.strftime('%B')} {value.year}"
-
-
-def _or_list(items: list[str]) -> str:
-    if len(items) == 1:
-        return items[0]
-    if not items:
-        return ""
-    return f"{', '.join(items[:-1])}, or {items[-1]}"
 
 
 def _and_list(items: list[str]) -> str:

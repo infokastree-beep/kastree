@@ -96,6 +96,7 @@ app/services/prior_year.py
 app/services/rate_limit.py
 app/services/reconciliation.py
 app/services/dashboard_groups.py
+app/services/legal_forms.py
 app/services/disclosure_groups.py
 app/services/note_library.py
 app/services/schema_revision.py

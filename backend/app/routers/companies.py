@@ -29,6 +29,7 @@ from app.schemas.company import (
     MappingListItem,
 )
 from app.services.archival import archive_company_user_deleted
+from app.services.legal_forms import record_legal_form_change
 from app.services.ownership import get_owned_company
 from app.schemas.materiality import MaterialitySuggestionDismissResponse
 
@@ -100,6 +101,7 @@ async def update_company(
     company = await get_owned_company(
         session, company_id=company_id, org_id=auth.org_id
     )
+    previous_form = company.legal_form
     updates = body.model_dump(exclude_unset=True)
     updates.pop("acknowledge_currency_change", None)
     if "functional_currency" in updates and updates["functional_currency"] is not None:
@@ -121,6 +123,14 @@ async def update_company(
     for field, value in updates.items():
         setattr(company, field, value)
     await session.flush()
+    await record_legal_form_change(
+        session,
+        org_id=auth.org_id,
+        user_id=auth.user_id,
+        company_id=company.id,
+        previous=previous_form,
+        current=company.legal_form,
+    )
     await session.refresh(company)
     return company
 

@@ -22,6 +22,8 @@ def test_fix_targets_match_the_review_pages() -> None:
     assert present_check("V-CO-008").area == "Company details"
     assert present_check("V-CO-008").fix.section == "company-details"
     assert present_check("V-CO-010").fix.section == "company-details"
+    assert present_check("V-CO-025").fix.section == "company-details"
+    assert present_check("V-CO-026").fix.section == "company-details"
     assert present_check("V-CO-011").fix.section == "company-details"
     assert present_check("V-CO-018").area == "Figures"
     assert present_check("V-CO-018").fix.section == "income"

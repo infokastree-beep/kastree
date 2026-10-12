@@ -46,6 +46,106 @@
     "employee_notice_above": 50,
     "turnover_per_employee_floor": "2000.00"
   },
+  "company_legal_forms": {
+    "source_status": "researched (public source)",
+    "source": "Companies Act 2014",
+    "forms": [
+      {
+        "code": "ltd",
+        "name": "Private company limited by shares",
+        "provision": "Companies Act 2014, section 26",
+        "suffixes": ["Limited", "Ltd", "Teoranta", "Teo"],
+        "missing_suffix": "blocker"
+      },
+      {
+        "code": "dac",
+        "name": "Designated activity company",
+        "provision": "Companies Act 2014, section 969",
+        "suffixes": [
+          "Designated Activity Company",
+          "Cuideachta Ghníomhaíochta Ainmnithe",
+          "d.a.c.",
+          "DAC",
+          "c.g.a.",
+          "CGA"
+        ],
+        "missing_suffix": "notice",
+        "notice_provision": "Companies Act 2014, section 971",
+        "directors_provision": "Companies Act 2014, section 985",
+        "minimum_directors": 2
+      },
+      {
+        "code": "plc",
+        "name": "Public limited company",
+        "provision": "Companies Act 2014, section 1008",
+        "suffixes": [
+          "public limited company",
+          "cuideachta phoiblí theoranta",
+          "p.l.c.",
+          "plc",
+          "c.p.t.",
+          "cpt"
+        ],
+        "missing_suffix": "blocker"
+      },
+      {
+        "code": "clg",
+        "name": "Company limited by guarantee",
+        "provision": "Companies Act 2014, section 1178",
+        "suffixes": [
+          "company limited by guarantee",
+          "cuideachta faoi theorainn ráthaíochta",
+          "c.l.g.",
+          "clg",
+          "c.t.r.",
+          "ctr"
+        ],
+        "missing_suffix": "blocker"
+      },
+      {
+        "code": "ulc",
+        "name": "Private unlimited company",
+        "provision": "Companies Act 2014, sections 1228 and 1237",
+        "suffixes": [
+          "unlimited company",
+          "cuideachta neamhtheoranta",
+          "u.c.",
+          "uc",
+          "c.n.",
+          "cn"
+        ],
+        "missing_suffix": "blocker"
+      },
+      {
+        "code": "puc",
+        "name": "Public unlimited company",
+        "provision": "Companies Act 2014, sections 1228 and 1237",
+        "suffixes": [
+          "unlimited company",
+          "cuideachta neamhtheoranta",
+          "u.c.",
+          "uc",
+          "c.n.",
+          "cn"
+        ],
+        "missing_suffix": "blocker"
+      },
+      {
+        "code": "pulc",
+        "name": "Public unlimited company with no share capital",
+        "provision": "Companies Act 2014, sections 1228 and 1237",
+        "suffixes": [
+          "unlimited company",
+          "cuideachta neamhtheoranta",
+          "u.c.",
+          "uc",
+          "c.n.",
+          "cn"
+        ],
+        "missing_suffix": "blocker"
+      }
+    ]
+  },
   "note_classes": [
     "policies",
     "fixed assets",

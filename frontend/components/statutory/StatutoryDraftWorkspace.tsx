@@ -1334,6 +1334,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
           key={JSON.stringify(detailsQuery.data)}
           details={detailsQuery.data}
           canEdit={canEditDetails}
+          canRecordLegalForm={canRecordClaim}
           busy={busy !== null}
           companyError={companyError}
           companySaved={companySaved}

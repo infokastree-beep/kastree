@@ -98,6 +98,7 @@ describe("editCompanyInitialValues", () => {
         name: "Acme Ltd",
         functionalCurrency: "EUR",
         countryOfIncorporation: "",
+        legalForm: "",
         companyNumber: "",
         industry: "",
         companyType: "holding",
