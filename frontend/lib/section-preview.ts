@@ -48,7 +48,7 @@ export function groupByNoteClass<
       buckets.delete(id);
     }
   }
-  for (const group of buckets.values()) {
+  for (const group of Array.from(buckets.values())) {
     ordered.push(group);
   }
   return ordered;
