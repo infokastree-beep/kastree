@@ -19,6 +19,12 @@ from app.services.statutory_display import (
 )
 
 
+_DIVIDEND_UNANSWERED = "[dividend not recorded]"
+_DIVIDEND_NONE = "No dividend has been recorded for the financial year."
+_DIVIDEND_RECORDED = "A dividend has been recorded for the financial year."
+_DIVIDEND_TOLERANCE = Decimal("0.01")
+
+
 @dataclass(frozen=True)
 class StatutoryPage:
     heading: str
@@ -39,6 +45,7 @@ def build_statutory_pages(
     period_start: str = "",
     approval_date: str = "",
     signing_directors: str = "",
+    dividends: Decimal | None = None,
 ) -> tuple[StatutoryPage, ...]:
     """Compilation, directors' report, approval, then audit exemption."""
     return (
@@ -51,6 +58,7 @@ def build_statutory_pages(
             principal_activity=principal_activity,
             currency=currency,
             profit=profit,
+            dividends=dividends,
         ),
         _approval(
             directors=directors,
@@ -98,6 +106,7 @@ def _directors_report(
     principal_activity: str,
     currency: str,
     profit: Decimal,
+    dividends: Decimal | None = None,
 ) -> StatutoryPage:
     end = parse_iso_date(period_end)
     start = parse_iso_date(period_start)
@@ -151,9 +160,23 @@ def _directors_report(
             profit_line,
             "This is a small-company directors' report. "
             "It does not include a business review.",
-            "A dividend has not been recorded on this draft.",
+            _dividend_line(dividends),
         ),
     )
+
+
+def _dividend_line(dividends: Decimal | None) -> str:
+    """Placeholder until the trial balance answers the dividend question.
+
+    ``None`` means the question is unanswered. Zero means no dividend was
+    recorded. Any other amount means one was. The sentence does not repeat
+    the amount.
+    """
+    if dividends is None:
+        return _DIVIDEND_UNANSWERED
+    if abs(dividends) <= _DIVIDEND_TOLERANCE:
+        return _DIVIDEND_NONE
+    return _DIVIDEND_RECORDED
 
 
 def _approval(
@@ -162,8 +185,7 @@ def _approval(
     approved = _present(approval_date)
     if approved:
         date_line = (
-            "The financial statements were approved on "
-            f"{format_iso_date(approved)}."
+            "The financial statements were approved on " f"{format_iso_date(approved)}."
         )
     else:
         date_line = "Approval date has not been recorded."

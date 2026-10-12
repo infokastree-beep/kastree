@@ -135,7 +135,7 @@ _DOCUMENT = """<!DOCTYPE html>
   {% if cover_first %}
   @page :first {
     @top-left {
-      content: "{{ page_header }}";
+      content: "{{ first_header }}";
       font-family: sans-serif;
       font-size: 9pt;
       font-weight: 700;
@@ -143,6 +143,16 @@ _DOCUMENT = """<!DOCTYPE html>
     }
     @bottom-left { content: none; }
     @bottom-right { content: none; }
+  }
+  {% elif first_header != page_header %}
+  @page :first {
+    @top-left {
+      content: "{{ first_header }}";
+      font-family: sans-serif;
+      font-size: 9pt;
+      font-weight: 700;
+      color: #9a3412;
+    }
   }
   {% endif %}
   h2 { string-set: notes_line ""; }
@@ -173,6 +183,17 @@ _DOCUMENT = """<!DOCTYPE html>
       color: #333;
     }
   }
+  {% if first_header != page_header %}
+  @page :first {
+    @top-left {
+      content: "{{ first_header }}";
+      font-family: sans-serif;
+      font-size: 9pt;
+      font-weight: 700;
+      color: #9a3412;
+    }
+  }
+  {% endif %}
   section[data-section="sofp"],
   section[data-section="income"] {
     break-before: page;
@@ -186,6 +207,15 @@ _DOCUMENT = """<!DOCTYPE html>
   .note-title, .note-intro {
     break-after: avoid;
     page-break-after: avoid;
+  }
+  .note-paragraph, .policy-paragraph {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    white-space: pre-wrap;
+  }
+  .note-block.short-note {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
   table.note-table {
     break-inside: avoid;
@@ -258,10 +288,14 @@ _DOCUMENT = """<!DOCTYPE html>
 {% elif section.kind == "notes" %}
 <h2{% if composed %} id="{{ section.anchor }}"{% endif %}>{{ section.heading }}</h2>
 {% for note in section.notes %}
-<section class="note-block">
+<section class="note-block{% if note.short %} short-note{% endif %}">
 <a id="note-{{ note.code }}"></a>
 <h3 class="note-title">{{ note.title }}</h3>
-<div class="note-body note-intro">{{ note.body }}</div>
+{% for paragraph in note.paragraphs %}
+<p class="note-paragraph{% if loop.first %} note-intro{% endif %}{% if note.policy %} policy-paragraph{% endif %}">{{ paragraph }}</p>
+{% else %}
+<p class="note-paragraph note-intro">{{ note.body }}</p>
+{% endfor %}
 {% if note.lines %}
 <table{% if note.lines_compact %} class="note-table"{% endif %}>
 <thead><tr><th>Line</th>{% for column in section.columns %}<th class="amount">{{ column }}</th>{% endfor %}</tr></thead>
@@ -434,6 +468,10 @@ def write_statement_pdf(html: str) -> bytes:
 
 
 _TITLE_NUMBER = re.compile(r"^\d+\.\s*")
+_CHECKLIST_PREFIX = re.compile(
+    r"^(?:1AD\.\d+(?:/1AD\.\d+)*)\s*[—–-]\s*",
+    re.IGNORECASE,
+)
 _CREDITORS_CROSS_REF = "Amounts due after more than one year are analysed in Note 4."
 _ABSENT_STATEMENTS = (
     "statement of changes in retained earnings",
@@ -512,11 +550,37 @@ _PARTICULARS = {
 
 
 def _human_title(code: str, raw: object) -> str:
+    """Plain heading. A leading note number or checklist id is not printed."""
     if isinstance(raw, str):
-        stripped = _TITLE_NUMBER.sub("", raw.strip())
+        text = _CHECKLIST_PREFIX.sub("", raw.strip())
+        stripped = _TITLE_NUMBER.sub("", text).strip()
         if stripped:
             return stripped
     return _FALLBACK_TITLES.get(code, "Note")
+
+
+def note_keep_together(
+    code: str,
+    body: str,
+    *,
+    line_count: int,
+    fa_count: int,
+) -> dict[str, object]:
+    """Paragraphs that should stay on one page, and whether the note is short.
+
+    Accounting-policy paragraphs stay together one at a time. A short note
+    stays together as a whole. A long policy note may still break between
+    paragraphs.
+    """
+    paragraphs = [part.strip() for part in body.split("\n\n") if part.strip()]
+    policy = code == "N1_POLICIES"
+    short = (
+        not policy
+        and len(paragraphs) <= 4
+        and line_count <= _SHORT_NOTE_TABLE_ROWS
+        and fa_count <= _SHORT_NOTE_TABLE_ROWS
+    )
+    return {"paragraphs": paragraphs, "policy": policy, "short": short}
 
 
 def _line_label(name: str) -> str:
@@ -1230,10 +1294,19 @@ def _note_view(note: StatementNote, *, comparative: bool) -> dict[str, object]:
         {"asset_class": row.asset_class, "nbv_close": format_whole(row.nbv_close)}
         for row in note.fa_rows
     ]
+    kept = note_keep_together(
+        note.code,
+        note.body,
+        line_count=len(lines),
+        fa_count=len(fa_rows),
+    )
     return {
         "code": note.code,
         "title": note.title or "",
         "body": note.body,
+        "paragraphs": kept["paragraphs"],
+        "policy": kept["policy"],
+        "short": kept["short"],
         "lines": lines,
         "lines_compact": 0 < len(lines) <= _SHORT_NOTE_TABLE_ROWS,
         "fa_rows": fa_rows,
@@ -1339,18 +1412,20 @@ def render_statutory_html(
 ) -> str:
     """Fill the document template. Callers supply the section list.
 
-    ``page_header`` is the watermark, with an optional second label beside
-    it. A compilation draft stays ``DRAFT Compilation``. It does not become
-    ``COMPILATION``. An unsigned FINAL prints DRAFT and the wording banner
-    in the margin boxes, including the cover's first page. ``composed``
-    selects the PDF furniture. The engine render leaves it false. Figures
-    are unchanged.
+    ``page_header`` is the short label in the body and on later pages.
+    ``first_header`` is that label plus the wording banner, and it is
+    printed once, in the first-page margin. A compilation draft stays
+    ``DRAFT Compilation``. It does not become ``COMPILATION``. An unsigned
+    FINAL prints DRAFT on later pages. ``composed`` selects the PDF
+    furniture. The engine render leaves it false. Figures are unchanged.
     """
     from app.services.beta import final_page_presentation
 
     label = statement_label.strip()
     raw_header = f"{watermark} {label}" if label else watermark
-    page_header = final_page_presentation(raw_header).printed_header
+    presentation = final_page_presentation(raw_header)
+    page_header = presentation.page_label
+    first_header = presentation.printed_header
     cover_first = composed and bool(sections) and sections[0].get("cover_page") is True
     return _HTML.from_string(_DOCUMENT).render(
         company_name=company_name,
@@ -1358,6 +1433,7 @@ def render_statutory_html(
         signature=_signature_view(approval_date, signing_directors),
         watermark=watermark,
         page_header=page_header,
+        first_header=first_header,
         composed=composed,
         cover_first=cover_first,
     )
@@ -1470,6 +1546,9 @@ def _render_draft(
     )
     omitted_blocks, added_blocks = effective_ids(ctx, library)
     checks = tuple(report.checks) + library_notices(ctx, library)
+    from findraft.engine.money import money
+
+    dividend_amount = aggregated.get("DIVIDENDS", Decimal("0"))
     pages = build_statutory_pages(
         company_name=entity.name,
         practice_name=practice_name,
@@ -1483,6 +1562,9 @@ def _render_draft(
         size_eligible=size_eligible,
         approval_date=approval_date,
         signing_directors=signing_directors,
+        dividends=money(dividend_amount)
+        if isinstance(dividend_amount, Decimal)
+        else None,
     )
     figures = _income_figures(income, aggregated)
     html = _render_html(

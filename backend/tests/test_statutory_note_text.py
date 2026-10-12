@@ -146,7 +146,9 @@ def test_unanswered_related_party_and_commitment_notes_are_one_line() -> None:
     assert answered.profit == document.profit
     capital = next(note for note in answered.notes if note.code == "N9_COMMITMENTS")
     assert capital.title
-    assert "1AD.31" in capital.body
+    assert "Capital commitments" in capital.body
+    assert "1AD.31" not in capital.body
+    assert "1AD." not in capital.body
     assert "[capital commitments not recorded]" in capital.body
     for placeholder in (
         "[retirement benefit commitments not recorded]",

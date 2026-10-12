@@ -1873,10 +1873,8 @@ async def test_finalised_adopted_draft_ignores_a_later_mapping_edit(
     assert "DRAFT" in cover_header
     assert WORDING_BANNER in cover_header
     assert "FINAL" not in cover_header
-    assert all(
-        "DRAFT" in header and WORDING_BANNER in header and "FINAL" not in header
-        for header in header_parts
-    )
+    assert sum(WORDING_BANNER in header for header in header_parts) == 1
+    assert all("DRAFT" in header and "FINAL" not in header for header in header_parts)
     assert "284,912" in xml
 
     monkeypatch.setattr("app.services.beta.WORDING_SIGNED_OFF", True)
@@ -1933,9 +1931,8 @@ async def test_finalised_adopted_draft_ignores_a_later_mapping_edit(
         kept_cover = archive.read("word/header1.xml").decode()
     assert "DRAFT" in kept_cover and WORDING_BANNER in kept_cover
     assert "FINAL" not in kept_cover
-    assert all(
-        WORDING_BANNER in header and "FINAL" not in header for header in kept_headers
-    )
+    assert sum(WORDING_BANNER in header for header in kept_headers) == 1
+    assert all("FINAL" not in header for header in kept_headers)
 
 
 @pytest.mark.asyncio
@@ -2218,9 +2215,7 @@ async def test_parity_finalises_the_golden_adopted_draft(
     """
     role, superuser, bypass = _login_role()
     if superuser or bypass:
-        pytest.skip(
-            f"{role} bypasses row security. The parity job runs this test."
-        )
+        pytest.skip(f"{role} bypasses row security. The parity job runs this test.")
     from app.config import settings
     from app.services.beta import WORDING_BANNER
 
