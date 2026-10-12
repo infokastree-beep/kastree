@@ -270,6 +270,17 @@ def _refuse_frozen(draft: DraftVersion) -> None:
         raise DraftRejected("draft is frozen; writes are refused", 409)
 
 
+def closed_draft_message(draft: DraftVersion) -> str | None:
+    """Final, locked, and frozen drafts do not take a further change."""
+    if draft.status == "final":
+        return "This draft is final. It cannot be changed."
+    if draft.status == "locked":
+        return "This draft is locked. It cannot be changed."
+    if draft.is_frozen:
+        return "This draft is frozen. It cannot be changed."
+    return None
+
+
 def audit_position_write_refusal(draft: DraftVersion) -> str | None:
     """Size inputs, the claim, and the confirmations stay as finalised.
 
@@ -811,8 +822,12 @@ async def notes_for_draft(
     draft = await session.get(DraftVersion, draft_id)
     if draft is None or draft.org_id != org_id or draft.year_end_id != year_end.id:
         raise DraftRejected("Draft not found", 404)
+    library_source: object = draft.note_library
+    if draft.status == "final" and isinstance(draft.snapshot, dict):
+        if "note_library" in draft.snapshot:
+            library_source = draft.snapshot.get("note_library")
     try:
-        library = parse_note_library(draft.note_library)
+        library = parse_note_library(library_source)
     except LibraryRejected as exc:
         raise DraftRejected(exc.detail) from exc
     rows = present_rows(
@@ -1076,7 +1091,9 @@ async def acknowledge_mappings(
         raise DraftRejected("This draft does not read Product 1 mappings", 409)
     if draft.status == "final":
         raise DraftRejected("FINAL output is never recomputed", 409)
-    _refuse_frozen(draft)
+    refusal = closed_draft_message(draft)
+    if refusal is not None:
+        raise DraftRejected(refusal, 409)
     try:
         fingerprint = await current_mapping_fingerprint(
             session, org_id=org_id, year_end=year_end
@@ -1121,6 +1138,8 @@ async def start_new_report(
         raise DraftRejected("A new statutory report starts from the adopted draft", 409)
     if draft.status == "final":
         raise DraftRejected("FINAL output is never recomputed", 409)
+    if draft.status == "locked":
+        raise DraftRejected("This draft is locked. It cannot be changed.", 409)
     current = (
         await session.scalar(
             select(func.max(DraftVersion.version_number)).where(
@@ -1194,6 +1213,9 @@ async def recompute_draft(
     _expect_version(draft, row_version)
     if draft.status == "final":
         raise DraftRejected("FINAL output is never recomputed", 409)
+    refusal = closed_draft_message(draft)
+    if refusal is not None:
+        raise DraftRejected(refusal, 409)
     draft.row_version = row_version + 1
     draft.updated_at = datetime.now(UTC)
     await session.flush()
@@ -1509,6 +1531,8 @@ async def finalise_draft(
     draft.finalised_by_user_id = user_id
     draft.status = "final"
     presentation = final_page_presentation(document.watermark)
+    from app.services.final_workspace import workspace_snapshot
+
     draft.snapshot = {
         "watermark": "FINAL",
         "wording_signed_off": presentation.wording_signed_off,
@@ -1525,6 +1549,7 @@ async def finalise_draft(
         "evidence": evidence,
         "traffic": light,
         "note_library": _copied_library(draft.note_library),
+        "workspace": workspace_snapshot(year_end, letterhead),
     }
     if carried:
         await append_audit_log(

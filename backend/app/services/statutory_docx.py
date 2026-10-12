@@ -6,10 +6,44 @@ formula-leading character. The builder does not calculate figures.
 
 from __future__ import annotations
 
+import io
+import zipfile
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from pathlib import Path
 
 _FORMULA_LEAD = ("=", "+", "-", "@")
+_ZIP_STAMP = (2026, 1, 1, 0, 0, 0)
+_DOC_STAMP = datetime(2026, 1, 1)
+
+
+def _save_docx(document: object, dest: Path) -> None:
+    """Write one DOCX whose bytes do not change between renders.
+
+    python-docx stamps the zip clock. Two renders of the same payload then
+    differ by that clock. The filed Word file pins the stamp so a later
+    download matches the first.
+    """
+    props = getattr(document, "core_properties", None)
+    if props is not None:
+        props.created = _DOC_STAMP
+        props.modified = _DOC_STAMP
+    save = getattr(document, "save", None)
+    if not callable(save):
+        raise TypeError("document is missing")
+    save(str(dest))
+    raw = dest.read_bytes()
+    source = zipfile.ZipFile(io.BytesIO(raw))
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for info in source.infolist():
+            body = source.read(info.filename)
+            pinned = zipfile.ZipInfo(filename=info.filename, date_time=_ZIP_STAMP)
+            pinned.compress_type = zipfile.ZIP_DEFLATED
+            pinned.external_attr = info.external_attr
+            archive.writestr(pinned, body)
+    source.close()
+    dest.write_bytes(buffer.getvalue())
 
 
 def escape_export_text(value: str) -> str:
@@ -47,7 +81,7 @@ def build_docx(payload: Mapping[str, object], dest: Path) -> None:
     )
     if isinstance(composed, list):
         _write_composed(document, payload, composed)
-        document.save(str(dest))
+        _save_docx(document, dest)
         return
     for page in _mappings(payload.get("pages"), "pages"):
         _start_new_page(document, page.get("new_page"))
@@ -76,7 +110,7 @@ def build_docx(payload: Mapping[str, object], dest: Path) -> None:
         lines = note.get("lines")
         if lines:
             _amount_table(document, _mappings(lines, "lines"), label_key="line")
-    document.save(str(dest))
+    _save_docx(document, dest)
 
 
 def _start_new_page(document: object, enabled: object) -> None:
