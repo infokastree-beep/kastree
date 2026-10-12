@@ -8,7 +8,7 @@ Status of the current build queue. Wording that is drawn from a public source st
 | 2. Navigator restructure: note classes, report options, outputs, hide unbuilt, notes library | done |
 | 3. Legal form dropdown and suffix rules | done |
 | 4. Two signatories | done |
-| 5. Directors' report required items | waiting |
+| 5. Directors' report required items | migration u7v8w9x0y1, not mapped |
 | 6. Remuneration citation | waiting |
 | 7. Compilation report letterhead | waiting |
 | 8. Particulars slots | waiting |
