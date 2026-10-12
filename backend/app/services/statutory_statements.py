@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import re
 import uuid
 from dataclasses import dataclass
@@ -464,10 +465,19 @@ def _abort_on_fetch(
         raise _ExternalFetchRefused(url) from exc
 
 
+_PDF_SOURCE_DATE_EPOCH = "1767225600"
+
+
 def write_statement_pdf(html: str) -> bytes:
-    """Render HTML that must not pull in a remote or file resource."""
+    """Render HTML that must not pull in a remote or file resource.
+
+    Embedded fonts take a clock unless SOURCE_DATE_EPOCH is set. The same
+    HTML then renders to the same bytes, so a final download does not change
+    between requests.
+    """
     from weasyprint import HTML  # type: ignore[import-untyped]
 
+    os.environ.setdefault("SOURCE_DATE_EPOCH", _PDF_SOURCE_DATE_EPOCH)
     try:
         document = HTML(string=html, url_fetcher=_abort_on_fetch).write_pdf()
     except _ExternalFetchRefused as exc:

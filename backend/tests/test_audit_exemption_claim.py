@@ -414,12 +414,12 @@ def test_cro_statement_prints_on_the_balance_sheet_above_the_signatures(
     assert "use sections (a)" not in pdf
     assert "455,812" in pdf
     assert "157,650" in pdf
-    assert pdf.index("I/We, as director(s) of Northwind Limited, state that:") < pdf.index(
-        "Approved by the board"
-    )
-    assert xml.index("I/We, as director(s) of Northwind Limited, state that:") < xml.index(
-        "Approved by the board"
-    )
+    assert pdf.index(
+        "I/We, as director(s) of Northwind Limited, state that:"
+    ) < pdf.index("Approved by the board")
+    assert xml.index(
+        "I/We, as director(s) of Northwind Limited, state that:"
+    ) < xml.index("Approved by the board")
 
 
 def _pdf_text(payload: bytes) -> str:
@@ -1087,5 +1087,120 @@ async def test_closed_draft_refuses_the_audit_position(
         assert refused.status_code == 409, refused.text
         assert refused.json()["detail"] == detail
 
+    plain = {
+        "final": "This draft is final. It cannot be changed.",
+        "locked": "This draft is locked. It cannot be changed.",
+        "frozen": "This draft is frozen. It cannot be changed.",
+    }[kind]
+    setup = await api_client.put(
+        f"/year-ends/{year_end_id}/report-setup",
+        headers=owner,
+        json={
+            "rounding": "unit",
+            "statement_type": "draft",
+            "face_dates": {},
+            "column_headers": {
+                "as_at_current": "2026",
+                "as_at_prior": "2025",
+                "ended_current": "2026",
+                "ended_prior": "2025",
+            },
+        },
+    )
+    assert setup.status_code == 409, setup.text
+    assert setup.json()["detail"] == plain
+    letterhead = await api_client.put(
+        f"/year-ends/{year_end_id}/company-details",
+        headers=owner,
+        json={"registered_office": "A later office"},
+    )
+    assert letterhead.status_code == 409, letterhead.text
+    assert letterhead.json()["detail"] == plain
+    prior = await api_client.post(
+        f"/year-ends/{year_end_id}/prior-year",
+        headers=owner,
+        json={"lines": [{"canonical_line": "RETAINED_EARNINGS", "amount": "1.00"}]},
+    )
+    assert prior.status_code == 409, prior.text
+    assert prior.json()["detail"] == plain
+    working = await api_client.get(f"/year-ends/{year_end_id}/draft", headers=owner)
+    assert working.status_code == 200, working.text
+    recomputed = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/recompute",
+        headers={**owner, "Idempotency-Key": f"closed-recompute-{kind}"},
+        json={"row_version": working.json()["row_version"]},
+    )
+    assert recomputed.status_code == 409, recomputed.text
+    if kind == "final":
+        assert recomputed.json()["detail"] == "FINAL output is never recomputed"
+    else:
+        assert recomputed.json()["detail"] == plain
+
     assert _year_end_position(org_id, year_end_id) == before_position
     assert _draft_state(org_id, draft_id) == closed
+
+
+_SIZE_MISSING = (
+    "The size test has not been recorded. "
+    "Record it before the audit exemption can be evidenced."
+)
+
+
+@pytest.mark.asyncio
+async def test_claim_without_a_size_test_blocks_a_draft(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """A true claim with no size test is a blocker while the draft is open."""
+    assert _login_name() == "findraft"
+    year_end_id, draft_id, headers = await _open_fixture(api_client, provisioned_org)
+    claimed = await api_client.post(
+        f"/year-ends/{year_end_id}/audit-exemption",
+        headers=headers,
+        json={"claimed": True},
+    )
+    assert claimed.status_code == 200, claimed.text
+    board = await _dashboard(api_client, headers, year_end_id, draft_id)
+    check = _check(board, "V-CO-020")
+    assert check["passed"] is False
+    assert check["message"] == _SIZE_MISSING
+    assert board["can_finalise"] is False
+    status_view = board["status_view"]
+    assert isinstance(status_view, dict)
+    assert status_view["lifecycle"] == "Draft"
+    readiness = status_view["readiness"]
+    assert isinstance(readiness, str)
+    assert "blocker" in readiness
+
+
+@pytest.mark.asyncio
+async def test_final_workspace_ignores_a_claim_written_after_finalise(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """A later live claim does not change the filed snapshot or what it shows.
+
+    The live column is left in place. The workspace reads the snapshot.
+    """
+    assert _login_name() == "findraft"
+    year_end_id, draft_id, headers = await _open_fixture(api_client, provisioned_org)
+    org_id = provisioned_org["org_id"]
+    _close_draft(org_id, draft_id, "final")
+    before = _draft_state(org_id, draft_id)
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        session.execute(
+            text(
+                "UPDATE findraft_year_ends SET audit_exemption_claimed = TRUE "
+                "WHERE id = :id"
+            ),
+            {"id": year_end_id},
+        )
+        session.commit()
+    shown = await api_client.get(f"/year-ends/{year_end_id}", headers=headers)
+    assert shown.status_code == 200, shown.text
+    assert shown.json()["audit_exemption_claimed"] is None
+    assert shown.json()["audit_exemption_not_excluded"] is None
+    assert shown.json()["size_message"] is None
+    assert _year_end_position(org_id, year_end_id)[0] is True
+    assert _draft_state(org_id, draft_id) == before

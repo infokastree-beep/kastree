@@ -315,6 +315,13 @@ def section_id_for_label(label: str) -> str | None:
     return None
 
 
+class _LiveSetup:
+    """Sentinel: read the year-end row, not a snapshot copy."""
+
+
+_LIVE_SETUP = _LiveSetup()
+
+
 def _stored_setup(year_end: YearEnd, currency: str) -> ReportSetupWrite:
     raw = year_end.report_setup
     if raw is None:
@@ -322,9 +329,19 @@ def _stored_setup(year_end: YearEnd, currency: str) -> ReportSetupWrite:
     return ReportSetupWrite.model_validate(raw)
 
 
-def report_setup_response(year_end: YearEnd, currency: str) -> ReportSetupResponse:
+def report_setup_response(
+    year_end: YearEnd,
+    currency: str,
+    *,
+    stored: object = _LIVE_SETUP,
+) -> ReportSetupResponse:
     cleaned = currency.strip().upper() or "GBP"
-    setup = _stored_setup(year_end, cleaned)
+    if stored is _LIVE_SETUP:
+        setup = _stored_setup(year_end, cleaned)
+    elif stored is None:
+        setup = default_report_setup(year_end, cleaned)
+    else:
+        setup = ReportSetupWrite.model_validate(stored)
     unit_label, thousands_label = rounding_labels(cleaned)
     return ReportSetupResponse(
         basis_id=year_end.pack_id,

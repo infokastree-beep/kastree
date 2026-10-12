@@ -6,6 +6,8 @@ created, and account_mappings are not copied into findraft_confirmed_mappings.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import shutil
 import subprocess
 import tempfile
@@ -2373,3 +2375,367 @@ async def test_malformed_report_setup_is_a_finalise_message(
     )
     assert failed.status_code == 409, failed.text
     assert failed.json()["detail"] == "report setup sections are malformed"
+
+
+def _sha256(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _word_bytes(
+    *,
+    org_id: uuid.UUID,
+    job_id: str,
+    storage: object,
+) -> bytes:
+    with SyncSessionLocal() as session:
+        processed = process_render_job(
+            session,
+            org_id=org_id,
+            job_id=uuid.UUID(job_id),
+            storage=storage,  # type: ignore[arg-type]
+        )
+    if processed is None:
+        with SyncSessionLocal() as session:
+            set_rls_org_id(session, org_id)
+            stored_job = session.execute(
+                text(
+                    "SELECT status, storage_key, error_message "
+                    "FROM findraft_render_jobs WHERE id = :id"
+                ),
+                {"id": job_id},
+            ).one()
+        assert stored_job[0] == "ready", stored_job[2]
+        assert stored_job[1] is not None
+        getter = getattr(storage, "get")
+        content = getter(key=stored_job[1])
+    else:
+        assert processed.status == "ready", processed.error_message
+        assert processed.storage_key is not None
+        getter = getattr(storage, "get")
+        content = getter(key=processed.storage_key)
+    assert isinstance(content, bytes)
+    return content
+
+
+_FINAL_PLAIN = "This draft is final. It cannot be changed."
+_AUDIT_PLAIN = "This draft is final. The audit position cannot be changed."
+_DRAFT_PLAIN = "draft is final; writes are refused"
+_NEVER = "FINAL output is never recomputed"
+
+
+@pytest.mark.asyncio
+async def test_final_pdf_and_word_stay_byte_stable(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+    stored_files: object,
+) -> None:
+    """Finalise the golden draft, refuse every write, and download again.
+
+    The login is findraft on both jobs. This file is on the parity list.
+    """
+    with SyncSessionLocal() as session:
+        role = session.execute(text("SELECT current_user")).scalar_one()
+    print(f"executing_role={role}", flush=True)
+    assert role == "findraft"
+    year_end_id, draft_id, headers = await _ready_golden(api_client, provisioned_org)
+    org_id = provisioned_org["org_id"]
+    finalised = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/finalise",
+        headers={**headers, "Idempotency-Key": "byte-stable-finalise"},
+        json={"row_version": _draft_version(draft_id, org_id)},
+    )
+    assert finalised.status_code == 200, finalised.text
+    stored = _snapshot(draft_id, org_id)
+    assert stored is not None
+    workspace = stored.get("workspace")
+    assert isinstance(workspace, dict)
+    recorded = workspace.get("year_end")
+    assert isinstance(recorded, dict)
+    assert recorded["audit_exemption_claimed"] is True
+    snapshot_hash = _sha256(json.dumps(stored, sort_keys=True, default=str).encode())
+    pdf = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
+        headers=headers,
+    )
+    assert pdf.status_code == 200, pdf.text
+    pdf_hash = _sha256(pdf.content)
+    queued = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/document.docx",
+        headers={**headers, "Idempotency-Key": "byte-stable-word"},
+    )
+    assert queued.status_code == 202, queued.text
+    word_hash = _sha256(
+        _word_bytes(org_id=org_id, job_id=queued.json()["job_id"], storage=stored_files)
+    )
+    print(f"pdf_sha256={pdf_hash}", flush=True)
+    print(f"word_sha256={word_hash}", flush=True)
+    print(f"snapshot_sha256={snapshot_hash}", flush=True)
+    row_version = _draft_version(draft_id, org_id)
+    fake = str(uuid.uuid4())
+    journal = {
+        "row_version": row_version,
+        "narration": "A later journal",
+        "lines": [
+            {
+                "nominal_code": "1000",
+                "account_name": "Cash",
+                "canonical_line": "CASH",
+                "debit": "1.00",
+                "credit": "0.00",
+            },
+            {
+                "nominal_code": "4000",
+                "account_name": "Sales",
+                "canonical_line": "REVENUE",
+                "debit": "0.00",
+                "credit": "1.00",
+            },
+        ],
+    }
+    setup = {
+        "rounding": "thousands",
+        "statement_type": "compilation",
+        "face_dates": {},
+        "column_headers": {
+            "as_at_current": "2026",
+            "as_at_prior": "2025",
+            "ended_current": "2026",
+            "ended_prior": "2025",
+        },
+    }
+    attempts: tuple[tuple[str, str, object, str], ...] = (
+        ("PUT", f"/year-ends/{year_end_id}/report-setup", setup, _FINAL_PLAIN),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/report-setup/reset",
+            {"scope": "display"},
+            _FINAL_PLAIN,
+        ),
+        (
+            "PUT",
+            f"/year-ends/{year_end_id}/company-details",
+            {"registered_office": "A later office"},
+            _FINAL_PLAIN,
+        ),
+        ("POST", f"/year-ends/{year_end_id}/currency-confirmation", None, _FINAL_PLAIN),
+        (
+            "PUT",
+            f"/year-ends/{year_end_id}/approval",
+            {"approval_date": "2027-04-01", "signing_directors": ["Ada Lovelace"]},
+            _FINAL_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/adopt-trial-balance",
+            {"trial_balance_id": fake},
+            _FINAL_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/adopted-trial-balance/sub-lines",
+            {"lines": []},
+            _FINAL_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/trial-balance-versions",
+            {"source_document_id": fake},
+            _FINAL_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/prior-year",
+            {"lines": [{"canonical_line": "RETAINED_EARNINGS", "amount": "1.00"}]},
+            _FINAL_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/first-financial-period",
+            None,
+            _FINAL_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/trial-balance-versions/{fake}/mappings",
+            {"lines": []},
+            _FINAL_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/fixed-asset-versions",
+            {"source_document_id": fake},
+            _FINAL_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/size-eligibility",
+            {
+                "current": {
+                    "turnover": "1.00",
+                    "balance_sheet_total": "1.00",
+                    "employees": 1,
+                }
+            },
+            _AUDIT_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/audit-exemption",
+            {"claimed": False},
+            _AUDIT_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/audit-exemption-conditions",
+            {
+                "not_excluded": False,
+                "no_member_notice": False,
+                "returns_not_late": False,
+            },
+            _AUDIT_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/drafts/{draft_id}/adjustments",
+            journal,
+            _DRAFT_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/drafts/{draft_id}/disclosures",
+            {"row_version": row_version, "flag_name": "HAS_EMPLOYEES", "answer": "yes"},
+            _DRAFT_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/drafts/{draft_id}/disclosures/mark-remaining-no",
+            {"row_version": row_version, "confirm": True},
+            _DRAFT_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/drafts/{draft_id}/notes/library",
+            {"row_version": row_version, "block_id": "N1_POLICIES", "action": "omit"},
+            _DRAFT_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/drafts/{draft_id}/lock",
+            {"row_version": row_version},
+            _DRAFT_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/drafts/{draft_id}/recompute",
+            {"row_version": row_version},
+            _NEVER,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/drafts/{draft_id}/finalise",
+            {"row_version": row_version},
+            _NEVER,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/drafts/{draft_id}/new-version",
+            {"row_version": row_version},
+            "a new version starts from a locked draft",
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/drafts/{draft_id}/acknowledge-mappings",
+            {"row_version": row_version},
+            _NEVER,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/drafts/{draft_id}/new-report",
+            {"row_version": row_version},
+            _NEVER,
+        ),
+    )
+    for index, (method, path, body, expected) in enumerate(attempts):
+        extra = {**headers, "Idempotency-Key": f"byte-stable-{index}"}
+        if method == "PUT":
+            refused = await api_client.put(path, headers=extra, json=body)
+        else:
+            refused = await api_client.post(path, headers=extra, json=body)
+        assert refused.status_code == 409, f"{method} {path} {refused.text}"
+        assert refused.json()["detail"] == expected, f"{method} {path} {refused.text}"
+    again_pdf = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
+        headers=headers,
+    )
+    assert again_pdf.status_code == 200, again_pdf.text
+    assert _sha256(again_pdf.content) == pdf_hash
+    again_word = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/document.docx",
+        headers={**headers, "Idempotency-Key": "byte-stable-word-again"},
+    )
+    assert again_word.status_code == 202, again_word.text
+    assert (
+        _sha256(
+            _word_bytes(
+                org_id=org_id,
+                job_id=again_word.json()["job_id"],
+                storage=stored_files,
+            )
+        )
+        == word_hash
+    )
+    assert _snapshot(draft_id, org_id) == stored
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        session.execute(
+            text(
+                """
+                UPDATE findraft_year_ends
+                SET audit_exemption_claimed = FALSE
+                WHERE id = :id
+                """
+            ),
+            {"id": year_end_id},
+        )
+        session.execute(
+            text(
+                "UPDATE companies SET registered_office = 'A drifted office' "
+                "WHERE id = :id"
+            ),
+            {"id": str(provisioned_org["company_id"])},
+        )
+        session.execute(
+            text(
+                """
+                UPDATE findraft_year_ends
+                SET report_setup = '{"rounding": "thousands"}'::jsonb
+                WHERE id = :id
+                """
+            ),
+            {"id": year_end_id},
+        )
+        session.commit()
+    shown = await api_client.get(f"/year-ends/{year_end_id}", headers=headers)
+    assert shown.status_code == 200, shown.text
+    assert shown.json()["audit_exemption_claimed"] is True
+    letterhead = await api_client.get(
+        f"/year-ends/{year_end_id}/company-details", headers=headers
+    )
+    assert letterhead.status_code == 200, letterhead.text
+    assert letterhead.json()["registered_office"] == "1 Harbour Street, Dublin"
+    display = await api_client.get(
+        f"/year-ends/{year_end_id}/report-setup", headers=headers
+    )
+    assert display.status_code == 200, display.text
+    assert display.json()["rounding"] == "unit"
+    kept_pdf = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
+        headers=headers,
+    )
+    assert kept_pdf.status_code == 200, kept_pdf.text
+    assert _sha256(kept_pdf.content) == pdf_hash
+    kept = _snapshot(draft_id, org_id)
+    assert kept == stored
+    assert (
+        _sha256(json.dumps(kept, sort_keys=True, default=str).encode()) == snapshot_hash
+    )
