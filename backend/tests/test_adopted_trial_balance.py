@@ -2739,3 +2739,92 @@ async def test_final_pdf_and_word_stay_byte_stable(
     assert (
         _sha256(json.dumps(kept, sort_keys=True, default=str).encode()) == snapshot_hash
     )
+
+
+@pytest.mark.asyncio
+async def test_product1_mapping_confirm_after_final_leaves_the_pdf(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """POST /trial-balances/{id}/mapping/confirm after FINAL does not change the file.
+
+    This file is already on the parity list. The login is findraft on both jobs.
+    """
+    with SyncSessionLocal() as session:
+        role = session.execute(text("SELECT current_user")).scalar_one()
+    print(f"executing_role={role}", flush=True)
+    assert role == "findraft"
+    org_id = provisioned_org["org_id"]
+    year_end_id, draft_id, headers = await _ready_golden(api_client, provisioned_org)
+    finalised = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/finalise",
+        headers={**headers, "Idempotency-Key": "mapping-confirm-after-final"},
+        json={"row_version": _draft_version(draft_id, org_id)},
+    )
+    assert finalised.status_code == 200, finalised.text
+    stored = _snapshot(draft_id, org_id)
+    assert stored is not None
+    pdf = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
+        headers=headers,
+    )
+    assert pdf.status_code == 200, pdf.text
+    pdf_hash = _sha256(pdf.content)
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        tb_id = session.execute(
+            text(
+                "SELECT adopted_trial_balance_id FROM findraft_year_ends WHERE id = :id"
+            ),
+            {"id": year_end_id},
+        ).scalar_one()
+        rows = session.execute(
+            text(
+                """
+                SELECT id::text, source_code, canonical_line
+                FROM account_mappings
+                WHERE company_id = :company
+                ORDER BY source_code
+                """
+            ),
+            {"company": str(provisioned_org["company_id"])},
+        ).all()
+    assert tb_id is not None
+    assert rows
+    mappings = [
+        {
+            "id": row.id,
+            "canonical_line": (
+                "other_receivables" if row.source_code == "2130" else row.canonical_line
+            ),
+            "is_confirmed": True,
+            "is_ignored": False,
+        }
+        for row in rows
+    ]
+    confirm = await api_client.post(
+        f"/trial-balances/{tb_id}/mapping/confirm",
+        headers=headers,
+        json={"mappings": mappings},
+    )
+    assert confirm.status_code == 200, confirm.text
+    assert confirm.json()["confirmed_count"] == len(mappings)
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        moved = session.execute(
+            text(
+                """
+                SELECT canonical_line FROM account_mappings
+                WHERE company_id = :company AND source_code = '2130'
+                """
+            ),
+            {"company": str(provisioned_org["company_id"])},
+        ).scalar_one()
+    assert moved == "other_receivables"
+    again = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
+        headers=headers,
+    )
+    assert again.status_code == 200, again.text
+    assert _sha256(again.content) == pdf_hash
+    assert _snapshot(draft_id, org_id) == stored
