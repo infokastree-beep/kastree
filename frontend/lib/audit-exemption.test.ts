@@ -9,6 +9,7 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  AUDIT_EXEMPTION_ABRIDGEMENT_NOTE,
   AUDIT_EXEMPTION_NOTE,
   AUDIT_EXEMPTION_PARAGRAPHS,
   AUDIT_EXEMPTION_PROVISION,
@@ -33,6 +34,7 @@ describe("audit exemption claim", () => {
         source_status: string;
         paragraphs: string[];
         explanatory_note: string;
+        abridgement_note: string;
       };
       thresholds: Record<string, unknown>;
     };
@@ -54,6 +56,9 @@ describe("audit exemption claim", () => {
     assert.equal(block.source_status.includes("signed off"), false);
     assert.deepEqual(block.paragraphs, [...AUDIT_EXEMPTION_PARAGRAPHS]);
     assert.equal(block.explanatory_note, AUDIT_EXEMPTION_NOTE);
+    assert.equal(block.abridgement_note, AUDIT_EXEMPTION_ABRIDGEMENT_NOTE);
+    assert.equal(block.abridgement_note.includes("separate recorded claim"), true);
+    assert.equal(block.abridgement_note.toLowerCase().includes("confirmed"), false);
     assert.equal(AUDIT_EXEMPTION_SOURCE_LABEL, "source not confirmed");
     assert.equal(AUDIT_EXEMPTION_PARAGRAPHS[4].includes("\u2019"), true);
     assert.equal(AUDIT_EXEMPTION_PARAGRAPHS[7].includes("\u2013"), true);

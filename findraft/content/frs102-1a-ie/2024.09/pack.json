@@ -33,7 +33,8 @@
       "has done so on the grounds that the company is entitled to the benefit of that exemption as a small company and the abridged Financial Statements have been properly prepared in accordance with s.353 Companies Act 2014.",
       "(*In the above statement, use sections (a) – (d) if claiming audit exemption and add section (e) if claiming the small company/abridgement exemption. A small company can claim either or both exemptions in their Financial Statements if they qualify.)"
     ],
-    "explanatory_note": "This page is an explanatory note. The audit exemption statement is printed on the balance sheet, immediately above the directors' signatures, as section 335 of the Companies Act 2014 requires."
+    "explanatory_note": "This page is an explanatory note. The audit exemption statement is printed on the balance sheet, immediately above the directors' signatures, as section 335 of the Companies Act 2014 requires.",
+    "abridgement_note": "Item (e), and the sentence that follows it, is the small-company abridgement exemption in sections 352 and 353 of the Companies Act 2014. The CRO sample adds it only when the company also claims that exemption. It needs a separate recorded claim. It is not printed."
   },
   "data_checks": {
     "source_status": "reviewer-to-confirm",
