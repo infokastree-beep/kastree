@@ -18,7 +18,11 @@ from sqlalchemy import text
 
 from app.db import SyncSessionLocal, set_rls_org_id
 from app.services.company_details import audit_position_checks, blocks_final
-from app.services.statutory_compose import compose_pdf_html, compose_pdf_parts
+from app.services.statutory_compose import (
+    compose_pdf_html,
+    compose_pdf_parts,
+    extract_section_html,
+)
 from app.services.statutory_docx import build_docx
 from app.services.statutory_pages import (
     audit_exemption_abridgement_note,
@@ -336,8 +340,9 @@ def test_cro_statement_prints_on_the_balance_sheet_above_the_signatures(
     assert claimed.html is not None
     audit = claimed.html.split('data-section="audit-exemption"', 1)[1]
     audit_body = audit.split('data-section="', 1)[0]
-    sofp = claimed.html.split('data-section="sofp"', 1)[1]
-    before_signature, _signature = sofp.split('<section class="signature">', 1)
+    sofp_section = extract_section_html(claimed.html, "sofp")
+    assert sofp_section is not None
+    before_signature, _signature = sofp_section.split('<section class="signature">', 1)
     assert _NOTE_HTML in audit_body
     assert _STATEMENT_MARK not in audit_body
     assert _OLD_SENTENCE not in claimed.html
@@ -360,7 +365,8 @@ def test_cro_statement_prints_on_the_balance_sheet_above_the_signatures(
         first_financial_period=False,
     )
     composed_audit = composed.split('data-section="audit-exemption"', 1)[1]
-    composed_sofp = composed.split('data-section="sofp"', 1)[1]
+    composed_sofp = extract_section_html(composed, "sofp")
+    assert composed_sofp is not None
     composed_before, _composed_signature = composed_sofp.split(
         '<section class="signature">', 1
     )
@@ -414,12 +420,10 @@ def test_cro_statement_prints_on_the_balance_sheet_above_the_signatures(
     assert "use sections (a)" not in pdf
     assert "455,812" in pdf
     assert "157,650" in pdf
-    assert pdf.index(
-        "I/We, as director(s) of Northwind Limited, state that:"
-    ) < pdf.index("Approved by the board")
-    assert xml.index(
-        "I/We, as director(s) of Northwind Limited, state that:"
-    ) < xml.index("Approved by the board")
+    statement_at = pdf.index("I/We, as director(s) of Northwind Limited, state that:")
+    assert statement_at < pdf.index("Approved by the board", statement_at)
+    xml_statement = xml.index("I/We, as director(s) of Northwind Limited, state that:")
+    assert xml_statement < xml.index("Approved by the board", xml_statement)
 
 
 def _pdf_text(payload: bytes) -> str:

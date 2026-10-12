@@ -257,6 +257,8 @@ def _write_composed(
             if shown.strip() in banner:
                 continue
             add_paragraph(shown)
+        if anchor in {"directors-report", "directors'-report"}:
+            _write_signature(document, signature)
 
 
 def _split_page_header(page_header: str) -> tuple[str, str]:

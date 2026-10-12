@@ -14,7 +14,7 @@
     "test:report-setup": "node --experimental-strip-types --test lib/report-display.test.ts lib/workspace-sections.test.ts lib/workspace-load-error.test.ts lib/draft-pdf.test.ts lib/section-preview.test.ts lib/finalise-status.test.ts lib/reset-confirm.test.ts lib/dashboard-groups.test.ts lib/disclosure-groups.test.ts lib/note-library.test.ts lib/trial-balance-page.test.ts lib/size-inputs.test.ts lib/audit-exemption.test.ts",
     "test:practice-jurisdiction": "node --experimental-strip-types --test lib/practice-jurisdiction.test.ts",
     "test:draft-word": "node --experimental-strip-types --test lib/draft-word.test.ts",
-    "test:company-form": "node --experimental-strip-types --test lib/company-form.test.ts lib/countries.test.ts lib/legal-form.test.ts",
+    "test:company-form": "node --experimental-strip-types --test lib/company-form.test.ts lib/countries.test.ts lib/legal-form.test.ts lib/two-signatories.test.ts",
     "test:statutory-gate": "node --experimental-strip-types --test lib/statutory-gate.test.ts lib/admin-product2.test.ts lib/schema-revision.test.ts"
   },
   "dependencies": {

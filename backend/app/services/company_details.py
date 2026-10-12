@@ -322,6 +322,37 @@ def _issued_amount(nominal_value: str, issued_number: int) -> str:
     return format(amount, "f")
 
 
+_ONE_SIGNATORY = "A signing director is recorded."
+_TWO_SIGNATORIES = "Two signing directors are recorded."
+_NO_SIGNATORY = "A signing director has not been recorded."
+_TWO_REQUIRED = (
+    "Two directors must sign the balance sheet and the directors' report. "
+    "Companies Act 2014, sections 324 and 332."
+)
+_RESIGNED_SIGNATORY = "The signing director has to be a director still in office."
+
+
+def current_director_names(value: object) -> tuple[str, ...]:
+    """Directors still in office. A resigned director does not sign."""
+    if not isinstance(value, list):
+        return ()
+    names: list[str] = []
+    for item in value:
+        if isinstance(item, str) and item.strip():
+            names.append(item.strip())
+            continue
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        if not isinstance(name, str) or not name.strip():
+            continue
+        resigned = item.get("resigned_on")
+        if isinstance(resigned, str) and resigned.strip():
+            continue
+        names.append(name.strip())
+    return tuple(names)
+
+
 def director_names(value: object) -> tuple[str, ...]:
     if not isinstance(value, list):
         return ()
@@ -652,6 +683,35 @@ async def confirm_currency(
     )
 
 
+def _signature_check(directors: object, signing_value: object) -> ReconciliationCheck:
+    """One signature for a sole director. Two when two or more are in office.
+
+    Sections 324 and 332 of the Companies Act 2014. The citation is researched
+    from the public Act and is not a reviewer sign-off.
+    """
+    signing = _read_signing(signing_value)
+    allowed = set(director_names(directors))
+    stranger = next((name for name in signing if name not in allowed), None)
+    if stranger is not None:
+        return _check(
+            "V-CO-006",
+            "WARNING",
+            False,
+            f"Signing director '{stranger}' is not one of the directors on the company.",
+        )
+    current = set(current_director_names(directors))
+    qualifying = [name for name in signing if name in current]
+    required = 2 if len(current) >= 2 else 1
+    if len(qualifying) >= required:
+        recorded = _TWO_SIGNATORIES if required == 2 else _ONE_SIGNATORY
+        return _check("V-CO-006", "WARNING", True, recorded)
+    if required == 2:
+        return _check("V-CO-006", "WARNING", False, _TWO_REQUIRED)
+    if signing:
+        return _check("V-CO-006", "WARNING", False, _RESIGNED_SIGNATORY)
+    return _check("V-CO-006", "WARNING", False, _NO_SIGNATORY)
+
+
 def _check(code: str, severity: str, passed: bool, message: str) -> ReconciliationCheck:
     return ReconciliationCheck(
         code=code, severity=severity, passed=passed, message=message
@@ -700,30 +760,7 @@ def company_detail_checks(
             False,
             "Company number has not been recorded.",
         )
-    signing = _read_signing(year_end.signing_directors)
-    allowed = set(names)
-    stranger = next((name for name in signing if name not in allowed), None)
-    if stranger is not None:
-        signature = _check(
-            "V-CO-006",
-            "WARNING",
-            False,
-            f"Signing director '{stranger}' is not one of the directors on the company.",
-        )
-    elif signing:
-        signature = _check(
-            "V-CO-006",
-            "WARNING",
-            True,
-            "A signing director is recorded.",
-        )
-    else:
-        signature = _check(
-            "V-CO-006",
-            "WARNING",
-            False,
-            "A signing director has not been recorded.",
-        )
+    signature = _signature_check(company.directors, year_end.signing_directors)
     currency = _currency_notice(company, year_end)
     checks = [
         _check(

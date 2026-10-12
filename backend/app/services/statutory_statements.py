@@ -256,6 +256,20 @@ _DOCUMENT = """<!DOCTYPE html>
 {% for paragraph in section.paragraphs %}
 <p>{{ paragraph }}</p>
 {% endfor %}
+{% if section.anchor == "directors-report" or section.anchor == "directors'-report" %}
+<section class="signature">
+<p>Approved by the board and signed on its behalf by</p>
+<p>{{ signature.date_line }}</p>
+{% for name in signature.names %}
+<p class="sign-rule">______________________________</p>
+<p>{{ name }}<br>Director</p>
+{% else %}
+<p>A signatory has not been recorded.</p>
+<p class="sign-rule">______________________________</p>
+<p>Director</p>
+{% endfor %}
+</section>
+{% endif %}
 {% elif section.kind == "contents" %}
 <h2{% if composed %} id="{{ section.anchor }}"{% endif %}>{{ section.heading }}</h2>
 <ul>
