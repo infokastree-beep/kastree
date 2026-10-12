@@ -669,6 +669,10 @@ export function CompanyDetailsForm({
           <legend className="text-xs font-semibold uppercase tracking-[0.12em] text-soft">
             Signing directors
           </legend>
+          <p className="text-sm text-ink-secondary" data-testid="company-signing-rule">
+            A sole director signs alone. Where there are two or more directors,
+            two must sign the balance sheet and the directors&apos; report.
+          </p>
           {savedNames.length === 0 ? (
             <p className="text-sm text-ink-secondary">
               Save the directors first. A signing director has to be one of them.

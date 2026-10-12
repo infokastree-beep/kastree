@@ -132,6 +132,14 @@ def test_pack_data_checks_are_reviewer_to_confirm() -> None:
     ]
     assert forms["forms"][0]["suffixes"] == rules["legal_form_suffixes"]
     assert forms["forms"][1]["missing_suffix"] == "notice"
+    signatures = payload["board_signatures"]
+    assert signatures["source_status"] == "researched (public source)"
+    assert signatures["directors_report_provision"] == (
+        "Companies Act 2014, section 324"
+    )
+    assert signatures["balance_sheet_provision"] == "Companies Act 2014, section 332"
+    assert signatures["sole_director"] == 1
+    assert signatures["two_or_more_directors"] == 2
     assert rules["first_period_max_months"] == 18
     assert rules["company_number_min_digits"] == 5
     assert rules["company_number_max_digits"] == 7

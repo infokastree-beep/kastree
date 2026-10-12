@@ -146,6 +146,14 @@
       }
     ]
   },
+  "board_signatures": {
+    "source_status": "researched (public source)",
+    "source": "Companies Act 2014",
+    "directors_report_provision": "Companies Act 2014, section 324",
+    "balance_sheet_provision": "Companies Act 2014, section 332",
+    "sole_director": 1,
+    "two_or_more_directors": 2
+  },
   "note_classes": [
     "policies",
     "fixed assets",
