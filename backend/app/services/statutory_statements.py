@@ -43,6 +43,7 @@ from app.services.statutory_display import (
 )
 from app.services.statutory_pages import (
     StatutoryPage,
+    audit_exemption_note,
     audit_exemption_statements,
     build_statutory_pages,
 )
@@ -1562,6 +1563,9 @@ def _render_draft(
     exemption = (
         audit_exemption_statements(manifest) if audit_exemption_claimed is True else ()
     )
+    exemption_note = (
+        audit_exemption_note(manifest) if audit_exemption_claimed is True else ""
+    )
     dividend_amount = aggregated.get("DIVIDENDS", Decimal("0"))
     pages = build_statutory_pages(
         company_name=entity.name,
@@ -1580,7 +1584,7 @@ def _render_draft(
         if isinstance(dividend_amount, Decimal)
         else None,
         audit_exemption_claimed=audit_exemption_claimed,
-        audit_statements=exemption,
+        audit_note=exemption_note,
     )
     figures = _income_figures(income, aggregated)
     html = _render_html(

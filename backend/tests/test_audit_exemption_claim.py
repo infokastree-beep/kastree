@@ -18,7 +18,10 @@ from app.db import SyncSessionLocal, set_rls_org_id
 from app.services.company_details import audit_position_checks, blocks_final
 from app.services.statutory_compose import compose_pdf_html, compose_pdf_parts
 from app.services.statutory_docx import build_docx
-from app.services.statutory_pages import audit_exemption_statements
+from app.services.statutory_pages import (
+    audit_exemption_note,
+    audit_exemption_statements,
+)
 from findraft.engine.pack import load_manifest, pack_dir
 from findraft.models.year_end import YearEnd
 from tests.conftest import auth_headers, make_access_token
@@ -29,11 +32,17 @@ from tests.test_small_adopted_finalise import _ADMIN, _SMALL, _set_statutory
 from tests.test_statutory_statements import _golden
 
 _FORBIDDEN = "You don't have permission to access this resource."
-_EXEMPTION = "The directors are availing of the exemption from audit."
-_MEMBERS = (
-    "The members have not required the company to obtain an audit "
-    "of these financial statements."
+_STATEMENT_MARK = (
+    "(a) the company is availing itself of the exemption provided for by "
+    "Chapter 15 of Part 6 of the Companies Act 2014,"
 )
+_NOTE = (
+    "This page is an explanatory note. The audit exemption statement is "
+    "printed on the balance sheet, immediately above the directors' "
+    "signatures, as section 335 of the Companies Act 2014 requires."
+)
+_NOTE_HTML = _NOTE.replace("'", "&#39;")
+_OLD_SENTENCE = "The directors are availing of the exemption from audit."
 _NOT_RECORDED = (
     "The audit position has not been recorded. "
     "Record whether the audit exemption is claimed."
@@ -83,7 +92,7 @@ def _messages(year_end: YearEnd) -> dict[str, str]:
     return {item.code: item.message for item in audit_position_checks(year_end)}
 
 
-def test_pack_sentences_are_pending_reviewer_sign_off() -> None:
+def test_pack_statement_is_researched_from_the_cro_page() -> None:
     manifest = load_manifest(pack_dir("frs102-1a-ie", "2024.09") / "pack.json")
     assert set(manifest["thresholds"]) == {
         "regime",
@@ -96,10 +105,19 @@ def test_pack_sentences_are_pending_reviewer_sign_off() -> None:
     }
     block = manifest["audit_exemption_statements"]
     assert isinstance(block, dict)
-    assert block["source_status"] == "pending-reviewer-signoff"
-    assert audit_exemption_statements(manifest) == (_EXEMPTION, _MEMBERS)
-    assert "eligible" not in _EXEMPTION.casefold()
-    assert "eligible" not in _MEMBERS.casefold()
+    assert block["source"] == "CRO"
+    assert block["provision"] == "Companies Act 2014, section 335"
+    assert block["source_status"] == "researched (public source)"
+    assert "confirmed" not in str(block["source_status"])
+    assert "signed off" not in str(block["source_status"])
+    paragraphs = audit_exemption_statements(manifest)
+    assert paragraphs[1] == _STATEMENT_MARK
+    assert "company\u2019s obligations" in paragraphs[4]
+    assert "sections (a) \u2013 (d)" in paragraphs[7]
+    assert audit_exemption_note(manifest) == _NOTE
+    assert "eligible" not in " ".join(paragraphs).casefold()
+    assert "confirmed" not in _NOTE.casefold()
+    assert "signed off" not in _NOTE.casefold()
 
 
 def test_each_claim_state_on_the_fictional_company() -> None:
@@ -154,32 +172,41 @@ def test_each_claim_state_on_the_fictional_company() -> None:
     assert blocks_final(audit_position_checks(met)) is False
 
 
-def test_claim_sentences_print_on_the_audit_page_and_the_balance_sheet(
+def test_cro_statement_prints_on_the_balance_sheet_above_the_signatures(
     tmp_path: Path,
 ) -> None:
     plain = _golden()
     assert plain.html is not None
     assert plain.net_assets == Decimal("455812.00")
     assert plain.profit == Decimal("157650.00")
-    assert _EXEMPTION not in plain.html
+    assert _STATEMENT_MARK not in plain.html
+    assert _NOTE not in plain.html
     assert "source not confirmed" not in plain.html
 
     claimed = _golden(audit_exemption_claimed=True)
     assert claimed.net_assets == plain.net_assets
     assert claimed.profit == plain.profit
-    assert claimed.audit_exemption_statements == (_EXEMPTION, _MEMBERS)
+    statements = audit_exemption_statements(
+        load_manifest(pack_dir("frs102-1a-ie", "2024.09") / "pack.json")
+    )
+    assert claimed.audit_exemption_statements == statements
     assert claimed.html is not None
     audit = claimed.html.split('data-section="audit-exemption"', 1)[1]
+    audit_body = audit.split('data-section="', 1)[0]
     sofp = claimed.html.split('data-section="sofp"', 1)[1]
-    assert _EXEMPTION in audit.split('data-section="', 1)[0]
-    assert _MEMBERS in audit.split('data-section="', 1)[0]
-    assert _EXEMPTION in sofp
-    assert _MEMBERS in sofp
+    before_signature, _signature = sofp.split('<section class="signature">', 1)
+    assert _NOTE_HTML in audit_body
+    assert _STATEMENT_MARK not in audit_body
+    assert _OLD_SENTENCE not in claimed.html
+    assert _STATEMENT_MARK in before_signature
+    assert "company\u2019s obligations" in before_signature
+    assert _STATEMENT_MARK not in _signature
     assert "source not confirmed" not in claimed.html
 
     refused = _golden(audit_exemption_claimed=False)
     assert refused.html is not None
-    assert _EXEMPTION not in refused.html
+    assert _STATEMENT_MARK not in refused.html
+    assert _NOTE not in refused.html
     assert "does not claim the audit exemption" in refused.html
 
     composed = compose_pdf_html(
@@ -191,8 +218,12 @@ def test_claim_sentences_print_on_the_audit_page_and_the_balance_sheet(
     )
     composed_audit = composed.split('data-section="audit-exemption"', 1)[1]
     composed_sofp = composed.split('data-section="sofp"', 1)[1]
-    assert _EXEMPTION in composed_audit.split("</section>", 1)[0]
-    assert _MEMBERS in composed_sofp.split("</section>", 1)[0]
+    composed_before, _composed_signature = composed_sofp.split(
+        '<section class="signature">', 1
+    )
+    assert _NOTE_HTML in composed_audit.split("</section>", 1)[0]
+    assert _STATEMENT_MARK not in composed_audit.split("</section>", 1)[0]
+    assert _STATEMENT_MARK in composed_before
     assert "source not confirmed" not in composed
     _html, sections = compose_pdf_parts(
         claimed,
@@ -202,7 +233,7 @@ def test_claim_sentences_print_on_the_audit_page_and_the_balance_sheet(
         first_financial_period=False,
     )
     balance = next(section for section in sections if section.get("anchor") == "sofp")
-    assert balance["exemption_statements"] == [_EXEMPTION, _MEMBERS]
+    assert balance["exemption_statements"] == list(statements)
     dest = tmp_path / "claimed.docx"
     build_docx(
         {
@@ -214,8 +245,8 @@ def test_claim_sentences_print_on_the_audit_page_and_the_balance_sheet(
         dest,
     )
     xml = zipfile.ZipFile(BytesIO(dest.read_bytes())).read("word/document.xml").decode()
-    assert xml.count(_EXEMPTION) >= 2
-    assert xml.count(_MEMBERS) >= 2
+    assert xml.count(_STATEMENT_MARK) == 1
+    assert xml.count(_NOTE) == 1
 
 
 def _headers(
@@ -360,8 +391,9 @@ async def test_fictional_company_claim_is_owner_admin_only_and_prints_when_true(
     assert "V-CO-021" not in [item["code"] for item in board["checks"]]
     before = await _preview(api_client, owner, year_end_id, "audit-exemption")
     balance = await _preview(api_client, owner, year_end_id, "sofp")
-    assert _EXEMPTION not in before
-    assert _EXEMPTION not in balance
+    assert _STATEMENT_MARK not in before
+    assert _STATEMENT_MARK not in balance
+    assert _NOTE not in before
     assert "The size test has not been recorded." in before
     assert "source not confirmed" not in before
 
@@ -387,8 +419,9 @@ async def test_fictional_company_claim_is_owner_admin_only_and_prints_when_true(
     assert _check(waiting, "V-CO-020")["passed"] is False
     early_audit = await _preview(api_client, owner, year_end_id, "audit-exemption")
     early_balance = await _preview(api_client, owner, year_end_id, "sofp")
-    assert _EXEMPTION in early_audit
-    assert _MEMBERS in early_balance
+    assert _NOTE_HTML in early_audit
+    assert _STATEMENT_MARK not in early_audit
+    assert _STATEMENT_MARK in early_balance
 
     recorded = await api_client.post(
         f"/year-ends/{year_end_id}/size-eligibility",
@@ -409,10 +442,9 @@ async def test_fictional_company_claim_is_owner_admin_only_and_prints_when_true(
     assert fix["section"] == "review"
     audit_page = await _preview(api_client, owner, year_end_id, "audit-exemption")
     balance = await _preview(api_client, owner, year_end_id, "sofp")
-    assert _EXEMPTION in audit_page
-    assert _MEMBERS in audit_page
-    assert _EXEMPTION in balance
-    assert _MEMBERS in balance
+    assert _NOTE_HTML in audit_page
+    assert _STATEMENT_MARK not in audit_page
+    assert _STATEMENT_MARK in balance
     assert "source not confirmed" not in audit_page
     assert "source not confirmed" not in balance
     statements = await api_client.get(
@@ -427,7 +459,7 @@ async def test_fictional_company_claim_is_owner_admin_only_and_prints_when_true(
         for item in statements.json()["pages"]
         if item["heading"] == "Audit exemption"
     )
-    assert page["paragraphs"] == [_EXEMPTION, _MEMBERS]
+    assert page["paragraphs"] == [_NOTE]
 
     not_claimed = await api_client.post(
         f"/year-ends/{year_end_id}/audit-exemption",
@@ -442,8 +474,9 @@ async def test_fictional_company_claim_is_owner_admin_only_and_prints_when_true(
     assert _check(required, "V-CO-020")["passed"] is False
     hidden = await _preview(api_client, owner, year_end_id, "sofp")
     audit_page = await _preview(api_client, owner, year_end_id, "audit-exemption")
-    assert _EXEMPTION not in hidden
-    assert _EXEMPTION not in audit_page
+    assert _STATEMENT_MARK not in hidden
+    assert _STATEMENT_MARK not in audit_page
+    assert _NOTE not in audit_page
     assert "does not make the statement required by section 335" in audit_page
     assert "have not recorded that they are availing" in audit_page
 

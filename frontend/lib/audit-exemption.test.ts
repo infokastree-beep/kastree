@@ -1,5 +1,5 @@
 /**
- * The workspace shows the pack sentences and labels them source not confirmed.
+ * The workspace shows the CRO statement and labels it source not confirmed.
  * Run: node --experimental-strip-types --test lib/audit-exemption.test.ts
  */
 import assert from "node:assert/strict";
@@ -9,15 +9,18 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  AUDIT_EXEMPTION_NOTE,
+  AUDIT_EXEMPTION_PARAGRAPHS,
+  AUDIT_EXEMPTION_PROVISION,
+  AUDIT_EXEMPTION_SOURCE,
   AUDIT_EXEMPTION_SOURCE_LABEL,
-  AUDIT_EXEMPTION_STATEMENT,
-  MEMBERS_AUDIT_STATEMENT,
+  AUDIT_EXEMPTION_SOURCE_STATUS,
 } from "./audit-exemption.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
 describe("audit exemption claim", () => {
-  it("uses the pending-sign-off pack sentences", () => {
+  it("uses the CRO statement researched from a public source", () => {
     const pack = JSON.parse(
       readFileSync(
         join(here, "../../findraft/content/frs102-1a-ie/2024.09/pack.json"),
@@ -25,12 +28,15 @@ describe("audit exemption claim", () => {
       ),
     ) as {
       audit_exemption_statements: {
+        source: string;
+        provision: string;
         source_status: string;
-        exemption: string;
-        members: string;
+        paragraphs: string[];
+        explanatory_note: string;
       };
       thresholds: Record<string, unknown>;
     };
+    const block = pack.audit_exemption_statements;
     assert.deepEqual(Object.keys(pack.thresholds).sort(), [
       "balance_sheet",
       "currency",
@@ -40,12 +46,20 @@ describe("audit exemption claim", () => {
       "turnover",
       "years",
     ]);
-    assert.equal(pack.audit_exemption_statements.source_status, "pending-reviewer-signoff");
-    assert.equal(pack.audit_exemption_statements.exemption, AUDIT_EXEMPTION_STATEMENT);
-    assert.equal(pack.audit_exemption_statements.members, MEMBERS_AUDIT_STATEMENT);
+    assert.equal(block.source, AUDIT_EXEMPTION_SOURCE);
+    assert.equal(block.provision, AUDIT_EXEMPTION_PROVISION);
+    assert.equal(block.source_status, AUDIT_EXEMPTION_SOURCE_STATUS);
+    assert.equal(block.source_status, "researched (public source)");
+    assert.equal(block.source_status.includes("confirmed"), false);
+    assert.equal(block.source_status.includes("signed off"), false);
+    assert.deepEqual(block.paragraphs, [...AUDIT_EXEMPTION_PARAGRAPHS]);
+    assert.equal(block.explanatory_note, AUDIT_EXEMPTION_NOTE);
     assert.equal(AUDIT_EXEMPTION_SOURCE_LABEL, "source not confirmed");
-    assert.equal(AUDIT_EXEMPTION_STATEMENT.toLowerCase().includes("eligible"), false);
-    assert.equal(MEMBERS_AUDIT_STATEMENT.toLowerCase().includes("eligible"), false);
+    assert.equal(AUDIT_EXEMPTION_PARAGRAPHS[4].includes("\u2019"), true);
+    assert.equal(AUDIT_EXEMPTION_PARAGRAPHS[7].includes("\u2013"), true);
+    for (const paragraph of AUDIT_EXEMPTION_PARAGRAPHS) {
+      assert.equal(paragraph.toLowerCase().includes("eligible"), false);
+    }
   });
 
   it("shows the label and keeps recording to an owner or admin", () => {
@@ -57,6 +71,7 @@ describe("audit exemption claim", () => {
       join(here, "../components/statutory/StatutoryDraftWorkspace.tsx"),
       "utf8",
     );
+    const banner = readFileSync(join(here, "finalise-status.ts"), "utf8");
     assert.match(component, /data-testid="audit-exemption-source"/);
     assert.match(component, /AUDIT_EXEMPTION_SOURCE_LABEL/);
     assert.match(component, /data-testid="audit-exemption-claimed"/);
@@ -66,5 +81,9 @@ describe("audit exemption claim", () => {
     assert.match(workspace, /canRecord=\{canRecordClaim\}/);
     assert.match(workspace, /role === "owner" \|\| meQuery\.data\?\.role === "admin"/);
     assert.match(workspace, /\/audit-exemption/);
+    assert.match(
+      banner,
+      /Statutory wording not yet reviewed by a qualified reviewer/,
+    );
   });
 });
