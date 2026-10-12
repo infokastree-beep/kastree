@@ -74,6 +74,8 @@ from app.schemas.year_end import (
     StatementResponse,
     SizeEligibilityRequest,
     SizeEligibilityResponse,
+    amount_text,
+    size_amount_text,
     AdoptedTrialBalanceResponse,
     AdoptableTrialBalanceList,
     AdoptableTrialBalanceOut,
@@ -107,7 +109,6 @@ from app.schemas.year_end import (
     FinaliseResponse,
     NewDraftVersionResponse,
     RenderJobResponse,
-    amount_text,
 )
 from app.services.ownership import get_owned_company
 from app.services.size_eligibility import (
@@ -1784,6 +1785,16 @@ def _size_response(year_end: YearEnd) -> SizeEligibilityResponse:
         current_conditions_met=year_end.size_current_met,
         preceding_conditions_met=year_end.size_preceding_met,
         message=year_end.size_message,
+        size_current_turnover=size_amount_text(year_end.size_current_turnover),
+        size_current_balance_sheet=size_amount_text(
+            year_end.size_current_balance_sheet
+        ),
+        size_current_employees=year_end.size_current_employees,
+        size_preceding_turnover=size_amount_text(year_end.size_preceding_turnover),
+        size_preceding_balance_sheet=size_amount_text(
+            year_end.size_preceding_balance_sheet
+        ),
+        size_preceding_employees=year_end.size_preceding_employees,
     )
 
 
@@ -1808,29 +1819,35 @@ async def check_size_eligibility(
         manifest = load_manifest(
             pack_dir(year_end.pack_id, year_end.pack_version) / "pack.json"
         )
+        current = YearSize(
+            turnover=exact_amount(body.current.turnover),
+            balance_sheet_total=exact_amount(body.current.balance_sheet_total),
+            employees=body.current.employees,
+        )
+        preceding = (
+            None
+            if body.preceding is None
+            else YearSize(
+                turnover=exact_amount(body.preceding.turnover),
+                balance_sheet_total=exact_amount(body.preceding.balance_sheet_total),
+                employees=body.preceding.employees,
+            )
+        )
         assessment = assess_size(
             manifest,
             company_currency=company.functional_currency,
-            current=YearSize(
-                turnover=exact_amount(body.current.turnover),
-                balance_sheet_total=exact_amount(body.current.balance_sheet_total),
-                employees=body.current.employees,
-            ),
-            preceding=(
-                None
-                if body.preceding is None
-                else YearSize(
-                    turnover=exact_amount(body.preceding.turnover),
-                    balance_sheet_total=exact_amount(
-                        body.preceding.balance_sheet_total
-                    ),
-                    employees=body.preceding.employees,
-                )
-            ),
+            current=current,
+            preceding=preceding,
             first_financial_period=year_end.first_financial_period,
         )
         await record_size_assessment(
-            session, org_id=auth.org_id, year_end=year_end, assessment=assessment
+            session,
+            org_id=auth.org_id,
+            user_id=auth.user_id,
+            year_end=year_end,
+            assessment=assessment,
+            current=current,
+            preceding=preceding,
         )
     except SizeEligibilityRejected as exc:
         raise HTTPException(status_code=400, detail=exc.detail) from exc

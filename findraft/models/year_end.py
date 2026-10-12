@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
@@ -13,6 +14,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -80,6 +82,23 @@ class YearEnd(Base):
     size_preceding_met: Mapped[int | None] = mapped_column(Integer, nullable=True)
     size_checked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    # Figures accepted by the size check. NULL until that check is stored.
+    size_current_turnover: Mapped[Decimal | None] = mapped_column(
+        Numeric(19, 2), nullable=True
+    )
+    size_current_balance_sheet: Mapped[Decimal | None] = mapped_column(
+        Numeric(19, 2), nullable=True
+    )
+    size_current_employees: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    size_preceding_turnover: Mapped[Decimal | None] = mapped_column(
+        Numeric(19, 2), nullable=True
+    )
+    size_preceding_balance_sheet: Mapped[Decimal | None] = mapped_column(
+        Numeric(19, 2), nullable=True
+    )
+    size_preceding_employees: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
     )
     pack_id: Mapped[str] = mapped_column(String(64), nullable=False)
     pack_version: Mapped[str] = mapped_column(String(16), nullable=False)

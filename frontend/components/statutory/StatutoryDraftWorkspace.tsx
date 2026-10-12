@@ -41,6 +41,7 @@ import {
 import { SectionPreview } from "@/components/statutory/SectionPreview";
 import { SectionsSetup } from "@/components/statutory/SectionsSetup";
 import { StatutoryLoadError } from "@/components/statutory/StatutoryLoadError";
+import { SizeInputs } from "@/components/statutory/SizeInputs";
 import { TrialBalancePanel } from "@/components/statutory/TrialBalancePanel";
 import type { TrialBalancePage } from "@/lib/trial-balance-page";
 import { StatutorySublineReview } from "@/components/statutory/StatutorySublineReview";
@@ -72,6 +73,12 @@ type YearEnd = {
   prior_year_validated: boolean;
   first_financial_period: boolean;
   adopted_trial_balance_id: string | null;
+  size_current_turnover: string | null;
+  size_current_balance_sheet: string | null;
+  size_current_employees: number | null;
+  size_preceding_turnover: string | null;
+  size_preceding_balance_sheet: string | null;
+  size_preceding_employees: number | null;
 };
 
 type WorkingDraft = {
@@ -202,6 +209,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
   const [companySaved, setCompanySaved] = useState<string | null>(null);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [approvalSaved, setApprovalSaved] = useState<string | null>(null);
+  const [sizeError, setSizeError] = useState<string | null>(null);
   const [narration, setNarration] = useState("");
   const [lines, setLines] = useState<AdjustmentLine[]>([
     { ...EMPTY_LINE },
@@ -217,6 +225,15 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     queryKey: ["year-end", yearEndId],
     queryFn: () => apiFetch<YearEnd>(`/year-ends/${yearEndId}`, { getToken }),
     enabled: isSignedIn && statutoryWorkspaceOpen(meQuery.data),
+  });
+  const companyCurrencyQuery = useQuery({
+    queryKey: ["company-currency", yearEndQuery.data?.company_id],
+    queryFn: () =>
+      apiFetch<{ functional_currency: string }>(
+        `/companies/${yearEndQuery.data?.company_id}`,
+        { getToken },
+      ),
+    enabled: Boolean(yearEndQuery.data?.company_id),
   });
   const draftQuery = useQuery({
     queryKey: ["working-draft", yearEndId],
@@ -747,6 +764,30 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     }
   }
 
+  async function recordSize(body: {
+    current: { turnover: string; balance_sheet_total: string; employees: number };
+    preceding: {
+      turnover: string;
+      balance_sheet_total: string;
+      employees: number;
+    } | null;
+  }): Promise<void> {
+    setSizeError(null);
+    setBusy("Recording the size test…");
+    try {
+      await apiFetch(`/year-ends/${yearEndId}/size-eligibility`, {
+        method: "POST",
+        getToken,
+        body: JSON.stringify(body),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["year-end", yearEndId] });
+    } catch (caught) {
+      setSizeError(saveMessage(caught, "The size test could not be recorded."));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function markFirstPeriod(): Promise<void> {
     setError(null);
     setBusy("Opening the first-period gate…");
@@ -1258,6 +1299,17 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               ) : null
             }
           />
+          {yearEnd ? (
+            <SizeInputs
+              firstPeriod={yearEnd.first_financial_period}
+              currency={companyCurrencyQuery.data?.functional_currency ?? null}
+              inputs={yearEnd}
+              canEdit={canEditDetails}
+              busy={busy !== null}
+              error={sizeError}
+              onRecord={(body) => void recordSize(body)}
+            />
+          ) : null}
           <FinaliseDraft
             role={meQuery.data?.role}
             status={dashboard.status}
