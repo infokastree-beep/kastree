@@ -58,9 +58,11 @@ def test_migration_adds_the_columns_without_a_read_or_grant_all() -> None:
     model = _MODEL.read_text()
     service = _SIZE.read_text()
     for name in _COLUMNS:
-        assert name not in model
-        assert name not in service
+        assert name in model
+        assert name in service
     assert "current_met >= 2" in service
+    assert "size_eligibility_recorded" in service
+    assert "Turnover and balance-sheet amounts stay off the log" in service
     assert '"rule": "2-of-3"' in _PACK.read_text()
 
 

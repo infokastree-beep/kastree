@@ -16,6 +16,7 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
+from app.services.audit import append_audit_log
 from findraft.engine.money import D, money
 from findraft.models.year_end import YearEnd
 
@@ -149,18 +150,54 @@ def assess_size(
     )
 
 
+def size_audit_value(year_end: YearEnd) -> dict[str, object]:
+    """Decision and headcount only. Turnover and balance-sheet amounts stay off the log."""
+    return {
+        "eligible": year_end.size_eligible,
+        "current_conditions_met": year_end.size_current_met,
+        "preceding_conditions_met": year_end.size_preceding_met,
+        "current_employees": year_end.size_current_employees,
+        "preceding_employees": year_end.size_preceding_employees,
+    }
+
+
 async def record_size_assessment(
     session: AsyncSession,
     *,
     org_id: uuid.UUID,
+    user_id: uuid.UUID | None,
     year_end: YearEnd,
     assessment: SizeAssessment,
+    current: YearSize,
+    preceding: YearSize | None,
 ) -> YearEnd:
     await aset_rls_org_id(session, org_id)
+    previous = None if year_end.size_checked_at is None else size_audit_value(year_end)
+    year_end.size_current_turnover = current.turnover
+    year_end.size_current_balance_sheet = current.balance_sheet_total
+    year_end.size_current_employees = current.employees
+    if preceding is None:
+        year_end.size_preceding_turnover = None
+        year_end.size_preceding_balance_sheet = None
+        year_end.size_preceding_employees = None
+    else:
+        year_end.size_preceding_turnover = preceding.turnover
+        year_end.size_preceding_balance_sheet = preceding.balance_sheet_total
+        year_end.size_preceding_employees = preceding.employees
     year_end.size_eligible = assessment.eligible
     year_end.size_message = assessment.message
     year_end.size_current_met = assessment.current_conditions_met
     year_end.size_preceding_met = assessment.preceding_conditions_met
     year_end.size_checked_at = datetime.now(timezone.utc)
+    await append_audit_log(
+        session,
+        org_id=org_id,
+        user_id=user_id,
+        action="size_eligibility_recorded",
+        entity_type="year_end",
+        entity_id=year_end.id,
+        old_value=previous,
+        new_value=size_audit_value(year_end),
+    )
     await session.flush()
     return year_end

@@ -730,6 +730,62 @@ def test_app_role_sees_only_its_practice(
             session.execute(text("RESET ROLE"))
 
 
+def test_app_role_writes_size_inputs_only_inside_its_practice(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        try:
+            _as_app_role(session)
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(first["org_id"])},
+            )
+            employees = session.execute(
+                text(
+                    """
+                    UPDATE findraft_year_ends
+                    SET size_current_turnover = 100000.00,
+                        size_current_balance_sheet = 35000.00,
+                        size_current_employees = 677
+                    WHERE id = :id
+                    RETURNING size_current_employees
+                    """
+                ),
+                {"id": str(first["year_end_id"])},
+            ).scalar_one()
+            assert employees == 677
+            crossed = session.execute(
+                text(
+                    """
+                    UPDATE findraft_year_ends
+                    SET size_current_employees = 1
+                    WHERE id = :id
+                    """
+                ),
+                {"id": str(second["year_end_id"])},
+            )
+            assert crossed.rowcount == 0
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(second["org_id"])},
+            )
+            hidden = session.execute(
+                text(
+                    """
+                    SELECT size_current_turnover
+                    FROM findraft_year_ends
+                    WHERE id = :id
+                    """
+                ),
+                {"id": str(first["year_end_id"])},
+            ).first()
+            assert hidden is None
+        finally:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+
+
 def test_with_check_rejects_cross_tenant_insert(
     two_practices: tuple[dict, dict],
 ) -> None:

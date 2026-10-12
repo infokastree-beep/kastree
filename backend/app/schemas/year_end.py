@@ -5,9 +5,30 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+
+
+def size_amount_text(value: Decimal | None) -> str | None:
+    """Exact cent text. A Decimal from the year-end row is not sent as a float."""
+    if value is None:
+        return None
+    return format(value, "f")
+
+
+def decimal_text(value: object) -> str | None:
+    """Exact cent text. A Decimal from the year-end row is not sent as a float."""
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return size_amount_text(value)
+    if isinstance(value, str):
+        return value
+    raise ValueError("A size amount must be decimal text")
+
+
+SizeAmountOut = Annotated[str | None, BeforeValidator(decimal_text)]
 
 
 class YearEndCreateRequest(BaseModel):
@@ -49,6 +70,12 @@ class YearEndResponse(BaseModel):
     prior_year_validated: bool
     first_financial_period: bool
     adopted_trial_balance_id: uuid.UUID | None = None
+    size_current_turnover: SizeAmountOut = None
+    size_current_balance_sheet: SizeAmountOut = None
+    size_current_employees: int | None = None
+    size_preceding_turnover: SizeAmountOut = None
+    size_preceding_balance_sheet: SizeAmountOut = None
+    size_preceding_employees: int | None = None
 
 
 class TrialBalanceVersionCreate(BaseModel):
@@ -377,6 +404,12 @@ class SizeEligibilityResponse(BaseModel):
     current_conditions_met: int
     preceding_conditions_met: int | None
     message: str
+    size_current_turnover: SizeAmountOut = None
+    size_current_balance_sheet: SizeAmountOut = None
+    size_current_employees: int | None = None
+    size_preceding_turnover: SizeAmountOut = None
+    size_preceding_balance_sheet: SizeAmountOut = None
+    size_preceding_employees: int | None = None
 
 
 class DashboardFixOut(BaseModel):
