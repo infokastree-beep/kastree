@@ -21,6 +21,7 @@ from app.services.statutory_docx import build_docx
 from app.services.statutory_pages import (
     audit_exemption_note,
     audit_exemption_statements,
+    balance_sheet_audit_exemption,
 )
 from findraft.engine.pack import load_manifest, pack_dir
 from findraft.models.year_end import YearEnd
@@ -111,9 +112,18 @@ def test_pack_statement_is_researched_from_the_cro_page() -> None:
     assert "confirmed" not in str(block["source_status"])
     assert "signed off" not in str(block["source_status"])
     paragraphs = audit_exemption_statements(manifest)
+    assert paragraphs[0] == "I/We, as director(s) of (company name), state that:"
     assert paragraphs[1] == _STATEMENT_MARK
+    assert paragraphs[5].startswith("*(e) ")
+    assert paragraphs[7].startswith("(*")
     assert "company\u2019s obligations" in paragraphs[4]
     assert "sections (a) \u2013 (d)" in paragraphs[7]
+    printed = balance_sheet_audit_exemption(paragraphs, "charlie mungar buffett")
+    assert printed[0] == ("I/We, as director(s) of charlie mungar buffett, state that:")
+    assert "(company name)" not in "\n".join(printed)
+    assert "use sections (a)" not in "\n".join(printed)
+    assert not any(item.startswith("(*") for item in printed)
+    assert printed[5] == paragraphs[5][1:]
     assert audit_exemption_note(manifest) == _NOTE
     assert "eligible" not in " ".join(paragraphs).casefold()
     assert "confirmed" not in _NOTE.casefold()
@@ -186,10 +196,15 @@ def test_cro_statement_prints_on_the_balance_sheet_above_the_signatures(
     claimed = _golden(audit_exemption_claimed=True)
     assert claimed.net_assets == plain.net_assets
     assert claimed.profit == plain.profit
-    statements = audit_exemption_statements(
+    source = audit_exemption_statements(
         load_manifest(pack_dir("frs102-1a-ie", "2024.09") / "pack.json")
     )
+    statements = balance_sheet_audit_exemption(source, "Northwind Limited")
     assert claimed.audit_exemption_statements == statements
+    assert "(company name)" not in claimed.html
+    assert "use sections (a)" not in claimed.html
+    assert "(*In the above statement" not in claimed.html
+    assert "I/We, as director(s) of Northwind Limited, state that:" in claimed.html
     assert claimed.html is not None
     audit = claimed.html.split('data-section="audit-exemption"', 1)[1]
     audit_body = audit.split('data-section="', 1)[0]
@@ -247,6 +262,11 @@ def test_cro_statement_prints_on_the_balance_sheet_above_the_signatures(
     xml = zipfile.ZipFile(BytesIO(dest.read_bytes())).read("word/document.xml").decode()
     assert xml.count(_STATEMENT_MARK) == 1
     assert xml.count(_NOTE) == 1
+    assert "(company name)" not in xml
+    assert "use sections (a)" not in xml
+    assert "(*In the above statement" not in xml
+    assert "I/We, as director(s) of Northwind Limited, state that:" in xml
+    assert "*(e)" not in xml
 
 
 def _headers(
@@ -422,6 +442,11 @@ async def test_fictional_company_claim_is_owner_admin_only_and_prints_when_true(
     assert _NOTE_HTML in early_audit
     assert _STATEMENT_MARK not in early_audit
     assert _STATEMENT_MARK in early_balance
+    assert (
+        "I/We, as director(s) of charlie mungar buffett, state that:" in early_balance
+    )
+    assert "(company name)" not in early_balance
+    assert "use sections (a)" not in early_balance
 
     recorded = await api_client.post(
         f"/year-ends/{year_end_id}/size-eligibility",
@@ -445,6 +470,9 @@ async def test_fictional_company_claim_is_owner_admin_only_and_prints_when_true(
     assert _NOTE_HTML in audit_page
     assert _STATEMENT_MARK not in audit_page
     assert _STATEMENT_MARK in balance
+    assert "I/We, as director(s) of charlie mungar buffett, state that:" in balance
+    assert "(company name)" not in balance
+    assert "use sections (a)" not in balance
     assert "source not confirmed" not in audit_page
     assert "source not confirmed" not in balance
     statements = await api_client.get(

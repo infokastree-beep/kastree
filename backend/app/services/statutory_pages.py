@@ -76,9 +76,34 @@ def audit_exemption_pack(manifest: object) -> tuple[tuple[str, ...], str]:
 
 
 def audit_exemption_statements(manifest: object) -> tuple[str, ...]:
-    """Statement printed on the balance sheet when the claim is true."""
+    """CRO sample, kept as the source. A document does not print it raw."""
     paragraphs, _note = audit_exemption_pack(manifest)
     return paragraphs
+
+
+def balance_sheet_audit_exemption(
+    paragraphs: tuple[str, ...],
+    company_name: str,
+) -> tuple[str, ...]:
+    """Directors' statement for the balance sheet.
+
+    The pack keeps the CRO sample, including the preparer line, the
+    ``(company name)`` placeholder, and the bracketed asterisk note. A
+    document prints the statement only, with the recorded company name.
+    """
+    recorded = company_name.strip() or "the company (name not recorded)"
+    printed: list[str] = []
+    for paragraph in paragraphs:
+        if paragraph.startswith("(*") or "use sections (a)" in paragraph:
+            continue
+        text = paragraph[1:] if paragraph.startswith("*") else paragraph
+        text = text.replace("(company name)", recorded)
+        if not text or "(company name)" in text or text.startswith("(*"):
+            raise ValueError("Audit exemption statement still has a template note")
+        printed.append(text)
+    if not printed:
+        raise ValueError("Audit exemption statement is empty")
+    return tuple(printed)
 
 
 def audit_exemption_note(manifest: object) -> str:

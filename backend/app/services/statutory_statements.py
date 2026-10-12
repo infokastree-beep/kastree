@@ -45,6 +45,7 @@ from app.services.statutory_pages import (
     StatutoryPage,
     audit_exemption_note,
     audit_exemption_statements,
+    balance_sheet_audit_exemption,
     build_statutory_pages,
 )
 from app.models.tb_version import TrialBalanceVersion
@@ -1561,7 +1562,12 @@ def _render_draft(
     from findraft.engine.money import money
 
     exemption = (
-        audit_exemption_statements(manifest) if audit_exemption_claimed is True else ()
+        balance_sheet_audit_exemption(
+            audit_exemption_statements(manifest),
+            entity.name,
+        )
+        if audit_exemption_claimed is True
+        else ()
     )
     exemption_note = (
         audit_exemption_note(manifest) if audit_exemption_claimed is True else ""
