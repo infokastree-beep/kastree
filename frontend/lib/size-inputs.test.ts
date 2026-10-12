@@ -3,7 +3,10 @@
  * Run: node --experimental-strip-types --test lib/size-inputs.test.ts
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import { formatCurrency } from "./currency.ts";
 import {
   sizeAmountToApi,
@@ -34,5 +37,21 @@ describe("QA company size inputs", () => {
     assert.equal(sizeAmountToApi(""), null);
     assert.equal(sizeEmployeesToApi(""), null);
     assert.equal(sizeEmployeesToApi("-1"), null);
+  });
+
+  it("shows the stored size message and does not say eligible", () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+    const component = readFileSync(
+      join(root, "../components/statutory/SizeInputs.tsx"),
+      "utf8",
+    );
+    const workspace = readFileSync(
+      join(root, "../components/statutory/StatutoryDraftWorkspace.tsx"),
+      "utf8",
+    );
+    assert.match(component, /data-testid="size-rule-message"/);
+    assert.match(component, /\{message\}/);
+    assert.equal(/eligible/i.test(component), false);
+    assert.match(workspace, /message=\{yearEnd\.size_message\}/);
   });
 });

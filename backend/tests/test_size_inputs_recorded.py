@@ -69,7 +69,14 @@ async def test_qa_company_size_inputs_are_stored_without_amounts_in_the_audit(
     assert body["size_preceding_turnover"] is None
     assert body["size_preceding_balance_sheet"] is None
     assert body["size_preceding_employees"] is None
-    assert "2 of 3" in body["message"]
+    message = body["message"]
+    assert message == (
+        "Current year: turnover met; balance sheet total met; employees not met. "
+        "This year end is a first financial period, so there is no preceding year. "
+        "A reviewer must confirm whether the audit exemption is available "
+        "(two of three versus all conditions)."
+    )
+    assert "eligible" not in message.casefold()
 
     year_end = await api_client.get(f"/year-ends/{year_end_id}", headers=member)
     assert year_end.status_code == 200, year_end.text
@@ -78,6 +85,7 @@ async def test_qa_company_size_inputs_are_stored_without_amounts_in_the_audit(
     assert stored["size_current_balance_sheet"] == "35000.00"
     assert stored["size_current_employees"] == 677
     assert stored["size_preceding_employees"] is None
+    assert stored["size_message"] == message
 
     _set_role(org_id=provisioned_org["org_id"], user_id=user_id, role="viewer")
     refused = await api_client.post(

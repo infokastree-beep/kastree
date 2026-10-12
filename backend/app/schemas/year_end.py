@@ -76,6 +76,7 @@ class YearEndResponse(BaseModel):
     size_preceding_turnover: SizeAmountOut = None
     size_preceding_balance_sheet: SizeAmountOut = None
     size_preceding_employees: int | None = None
+    size_message: str | None = None
 
 
 class TrialBalanceVersionCreate(BaseModel):

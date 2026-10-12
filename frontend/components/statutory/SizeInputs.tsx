@@ -23,6 +23,7 @@ export function SizeInputs({
   firstPeriod,
   currency,
   inputs,
+  message,
   canEdit,
   busy,
   error,
@@ -31,6 +32,7 @@ export function SizeInputs({
   firstPeriod: boolean;
   currency: string | null;
   inputs: SizeInputFields;
+  message: string | null;
   canEdit: boolean;
   busy: boolean;
   error: string | null;
@@ -66,10 +68,11 @@ export function SizeInputs({
       <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-soft">
         Size test
       </h3>
-      <p className="text-sm text-ink-secondary">
-        Two of three conditions, marked reviewer to confirm. The reviewer must
-        confirm whether the audit exemption needs all conditions.
-      </p>
+      {message ? (
+        <p className="text-sm text-ink" data-testid="size-rule-message">
+          {message}
+        </p>
+      ) : null}
       <dl className="grid max-w-xl gap-2 text-sm text-ink">
         <div className="flex justify-between gap-4">
           <dt>Turnover</dt>

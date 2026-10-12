@@ -98,14 +98,39 @@ def _limits(manifest: dict[str, object]) -> _Limits:
     )
 
 
-def _met(year: YearSize, limits: _Limits) -> int:
-    return sum(
-        (
-            year.turnover <= limits.turnover,
-            year.balance_sheet_total <= limits.balance_sheet,
-            year.employees <= limits.employees,
-        )
+def _outcomes(year: YearSize, limits: _Limits) -> tuple[tuple[str, bool], ...]:
+    return (
+        ("turnover", year.turnover <= limits.turnover),
+        ("balance sheet total", year.balance_sheet_total <= limits.balance_sheet),
+        ("employees", year.employees <= limits.employees),
     )
+
+
+def _met(year: YearSize, limits: _Limits) -> int:
+    return sum(int(met) for _name, met in _outcomes(year, limits))
+
+
+def _year_clause(label: str, year: YearSize, limits: _Limits) -> str:
+    parts = [
+        f"{name} {'met' if met else 'not met'}" for name, met in _outcomes(year, limits)
+    ]
+    return f"{label}: {'; '.join(parts)}."
+
+
+def _size_rule_note(manifest: dict[str, object]) -> str:
+    """Reviewer-to-confirm pack sentence. It is not invented here."""
+    note = manifest.get("size_rule_note")
+    if not isinstance(note, dict) or set(note) != {"source_status", "text"}:
+        raise SizeEligibilityRejected("Pinned pack has no size-rule note")
+    text = note.get("text")
+    if note.get("source_status") != "reviewer-to-confirm" or not isinstance(text, str):
+        raise SizeEligibilityRejected(
+            "Pinned pack size-rule note is not marked reviewer-to-confirm"
+        )
+    cleaned = text.strip()
+    if not cleaned or "eligible" in cleaned.casefold():
+        raise SizeEligibilityRejected("Pinned pack size-rule note is unusable")
+    return cleaned
 
 
 def assess_size(
@@ -131,17 +156,19 @@ def assess_size(
     current_met = _met(current, limits)
     preceding_met = None if preceding is None else _met(preceding, limits)
     eligible = current_met >= 2 and (preceding_met is None or preceding_met >= 2)
+    parts = [_year_clause("Current year", current, limits)]
     if first_financial_period:
-        message = (
-            f"Current year meets {current_met} of 3 small-company conditions. "
+        parts.append(
             "This year end is a first financial period, so there is no preceding year."
         )
-    else:
-        message = (
-            f"Current year meets {current_met} of 3 small-company conditions. "
-            f"Preceding year meets {preceding_met} of 3. "
-            "The pack requires 2 of 3 in both years."
-        )
+    elif preceding is not None:
+        parts.append(_year_clause("Preceding year", preceding, limits))
+    failed_a_condition = current_met < 3 or (
+        preceding_met is not None and preceding_met < 3
+    )
+    if eligible and failed_a_condition:
+        parts.append(_size_rule_note(manifest))
+    message = " ".join(parts)
     return SizeAssessment(
         eligible=eligible,
         current_conditions_met=current_met,

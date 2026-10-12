@@ -63,7 +63,11 @@ def test_migration_adds_the_columns_without_a_read_or_grant_all() -> None:
     assert "current_met >= 2" in service
     assert "size_eligibility_recorded" in service
     assert "Turnover and balance-sheet amounts stay off the log" in service
-    assert '"rule": "2-of-3"' in _PACK.read_text()
+    pack = _PACK.read_text()
+    assert '"rule": "2-of-3"' in pack
+    assert '"size_rule_note"' in pack
+    assert "reviewer-to-confirm" in pack
+    assert "two of three versus all conditions" in pack
 
 
 def test_code_head_is_the_size_inputs_revision() -> None:

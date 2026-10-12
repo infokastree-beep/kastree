@@ -79,6 +79,7 @@ type YearEnd = {
   size_preceding_turnover: string | null;
   size_preceding_balance_sheet: string | null;
   size_preceding_employees: number | null;
+  size_message: string | null;
 };
 
 type WorkingDraft = {
@@ -1304,6 +1305,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               firstPeriod={yearEnd.first_financial_period}
               currency={companyCurrencyQuery.data?.functional_currency ?? null}
               inputs={yearEnd}
+              message={yearEnd.size_message}
               canEdit={canEditDetails}
               busy={busy !== null}
               error={sizeError}
