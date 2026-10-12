@@ -1,0 +1,48 @@
+name: Postgres 15
+description: >-
+  Load postgres:15 from the Actions cache, or pull it with retry and an
+  optional Docker Hub login, then optionally start it on port 5432.
+
+inputs:
+  start:
+    description: Start the database container after the image is present.
+    required: true
+  cache-hit:
+    description: True when the tarball was restored before this action.
+    required: true
+    default: "false"
+  postgres-user:
+    description: POSTGRES_USER for the official image.
+    required: false
+    default: postgres
+  postgres-password:
+    description: POSTGRES_PASSWORD for the official image.
+    required: false
+    default: local
+  postgres-db:
+    description: POSTGRES_DB for the official image.
+    required: false
+    default: findraft_ci
+
+outputs:
+  pulled:
+    description: True when this job pulled the image and wrote a new tarball.
+    value: ${{ steps.pull.outputs.pulled }}
+  source:
+    description: Cache, authenticated Docker Hub, or an anonymous registry.
+    value: ${{ steps.pull.outputs.source }}
+
+runs:
+  using: composite
+  steps:
+    - id: pull
+      shell: bash
+      env:
+        CACHE_HIT: ${{ inputs.cache-hit }}
+        START: ${{ inputs.start }}
+        POSTGRES_USER: ${{ inputs.postgres-user }}
+        POSTGRES_PASSWORD: ${{ inputs.postgres-password }}
+        POSTGRES_DB: ${{ inputs.postgres-db }}
+        DOCKERHUB_USERNAME: ${{ env.DOCKERHUB_USERNAME }}
+        DOCKERHUB_TOKEN: ${{ env.DOCKERHUB_TOKEN }}
+      run: bash "$GITHUB_ACTION_PATH/pull.sh"
