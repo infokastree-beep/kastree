@@ -34,6 +34,7 @@ describe("outputs row", () => {
       "utf8",
     );
     assert.equal(workspace.includes('sectionId === "draft-pdf"'), true);
+    assert.equal(workspace.includes('sectionId === "draft-word"'), true);
     assert.equal(workspace.includes("statutory-outputs"), true);
     assert.equal(workspace.includes("statutory-word-row"), true);
     assert.equal(workspace.includes("statutory-download-word"), true);

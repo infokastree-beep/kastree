@@ -368,9 +368,10 @@ describe("note classes and outputs", () => {
     assert.equal(groups.at(-1)?.items[0]?.label, "Company information");
     const visible = sidebarSections(
       [
-        section("draft-pdf", "Financial statements", "outputs", "Outputs", 1),
+        section("draft-pdf", "PDF", "outputs", "Outputs", 1),
+        section("draft-word", "Word", "outputs", "Outputs", 2),
         {
-          ...section("cash-flow", "Cash flow statement", "sections", "Sections", 2),
+          ...section("cash-flow", "Cash flow statement", "sections", "Sections", 3),
           built: false,
           enabled: true,
         },
@@ -379,7 +380,17 @@ describe("note classes and outputs", () => {
     );
     assert.deepEqual(
       visible.map((item) => item.label),
-      ["Final financial statements"],
+      ["Final PDF", "Final Word"],
+    );
+    assert.deepEqual(
+      sidebarSections(
+        [
+          section("draft-pdf", "PDF", "outputs", "Outputs", 1),
+          section("draft-word", "Word", "outputs", "Outputs", 2),
+        ],
+        "draft",
+      ).map((item) => item.label),
+      ["PDF", "Word"],
     );
     const setup = setupSections([
       section("cover", "Cover", "sections", "Sections", 1),

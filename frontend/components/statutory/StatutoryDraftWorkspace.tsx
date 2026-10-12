@@ -1181,7 +1181,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       {sectionId === "draft-pdf" ? (
         <section className="space-y-3" data-testid="statutory-outputs">
           <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-soft">
-            Outputs
+            PDF
           </h2>
           <div className="flex flex-wrap items-center gap-3">
             <button
@@ -1203,10 +1203,15 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               </p>
             ) : null}
           </div>
-          <div
-            className="flex flex-wrap items-center gap-3"
-            data-testid="statutory-word-row"
-          >
+        </section>
+      ) : null}
+
+      {sectionId === "draft-word" ? (
+        <section className="space-y-3" data-testid="statutory-word-row">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-soft">
+            Word
+          </h2>
+          <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
               data-testid="statutory-download-word"
