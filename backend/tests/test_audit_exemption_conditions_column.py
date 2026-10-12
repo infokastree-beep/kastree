@@ -47,8 +47,8 @@ def test_migration_adds_the_columns_without_a_read_or_grant_all() -> None:
         assert name in model
 
 
-def test_code_head_is_the_audit_exemption_conditions_revision() -> None:
-    assert code_heads() == ("s5t6u7v8w9",)
+def test_code_head_is_the_company_legal_form_revision() -> None:
+    assert code_heads() == ("t6u7v8w9x0",)
 
 
 def test_columns_are_nullable_with_no_server_default() -> None:
