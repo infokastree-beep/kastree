@@ -20,7 +20,7 @@ A first financial period with no incorporation date is V-CO-011. The message is 
 
 | Id | Finding | Status |
 | --- | --- | --- |
-| F1 | Audit position unresolved | Open. Design D1. |
+| F1 | Audit position unresolved | Columns only. Revision q3r4s5t6u7 adds nullable size-input columns on findraft_year_ends. The application does not read or write them yet. |
 | F2 | Period does not match incorporation | Partial. V-CO-011 blocks FINAL when a first financial period does not start on the incorporation date, the date is missing, or the period is longer than the pack cap. Comparatives and the pre-2026 gate stay in design D2. |
 | F3 | Wrong accounting edition for a period starting before 2026 | Open. Design D2. |
 | F4 | Registered office invalid | Shipped as notice V-CO-012. It does not block FINAL. |
@@ -51,6 +51,8 @@ Rules marked reviewer-to-confirm, stored on the Irish pack under `data_checks`:
 - Average employees above 50 is a notice. 50 itself does not fire. This uses `employee_notice_above`, which matches the pack size threshold `thresholds.employees` but is a separate notice, not the size test.
 - Turnover per employee below 2,000.00 is a notice when both turnover and average employees are above zero. The floor is in the pack currency (EUR). The check does not convert a company that reports in another currency. Turnover of exactly 2,000 per employee does not fire. The rule is turnover divided by average employees, compared with `turnover_per_employee_floor`.
 - The registered-office notice is a data check, not a statutory rule. It fires when the address has neither an Eircode nor a whole-word Republic of Ireland county (including `Co.` and `County`). The word Ireland is not a county. `Corkscrew` does not match Cork. `Dublin, Ohio` passes because Dublin is a county word. A Dublin district written only as `D4`, with no Eircode and without the word Dublin, does not pass.
+
+The small-company size test stays two of three. The Irish pack records this as `thresholds.rule` `2-of-3`, marked reviewer-to-confirm. The reviewer must confirm whether the audit exemption needs all conditions. An employee count above 50 fails only that condition. Eligibility needs two of the three conditions in the current year and, unless the year is a first financial period, in the preceding year as well. Revision `q3r4s5t6u7` adds nullable columns for those input figures on `findraft_year_ends`. Existing rows stay NULL. The application does not read or write the columns yet.
 
 ## Supersede a FINAL draft (next, design only)
 

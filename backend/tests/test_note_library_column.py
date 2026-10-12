@@ -7,7 +7,6 @@ from pathlib import Path
 from sqlalchemy import text
 
 from app.db import SyncSessionLocal
-from app.services.schema_revision import code_heads
 
 _MIGRATION = (
     Path(__file__).resolve().parents[1]
@@ -35,10 +34,6 @@ def test_migration_adds_the_column_without_a_read_or_grant_all() -> None:
     assert "SELECT" not in executable
     model = _MODEL.read_text()
     assert "note_library: Mapped[dict[str, object] | None]" in model
-
-
-def test_code_head_is_the_note_library_revision() -> None:
-    assert code_heads() == ("m9n0o1p2q3",)
 
 
 def test_column_is_nullable_jsonb_with_no_server_default() -> None:
