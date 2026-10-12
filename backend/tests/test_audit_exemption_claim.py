@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import shutil
 import subprocess
 import tempfile
@@ -119,6 +118,26 @@ _CURRENT = {
     "balance_sheet_total": "35000.00",
     "employees": 677,
 }
+_AMOUNT_TEXT = frozenset({"677", "100000", "100000.00", "35000", "35000.00"})
+
+
+def _audit_has_no_amounts(rows: list[object]) -> None:
+    """Amount words and figures stay out of the audit values.
+
+    A user id can contain the digits 677. Compare each stored value, not
+    the whole JSON text.
+    """
+    for row in rows:
+        old_value = getattr(row, "old_value")
+        new_value = getattr(row, "new_value")
+        for payload in (old_value, new_value):
+            if payload is None:
+                continue
+            assert isinstance(payload, dict)
+            assert "turnover" not in payload
+            assert "balance_sheet" not in payload
+            for value in payload.values():
+                assert str(value) not in _AMOUNT_TEXT
 
 
 def _year(**overrides: object) -> YearEnd:
@@ -696,20 +715,13 @@ async def test_fictional_company_claim_is_owner_admin_only_and_prints_when_true(
         "claimed_by_user_id": None,
         "claimed_at": None,
     }
-    logged = json.dumps(
-        [row.old_value for row in rows] + [row.new_value for row in rows]
-    )
     for row in rows:
         assert set(row.new_value) == {
             "claimed",
             "claimed_by_user_id",
             "claimed_at",
         }
-    assert "100000" not in logged
-    assert "35000" not in logged
-    assert "677" not in logged
-    assert "turnover" not in logged
-    assert "balance_sheet" not in logged
+    _audit_has_no_amounts(rows)
 
 
 _CONDITION_KEYS = {
@@ -897,13 +909,6 @@ async def test_fictional_company_confirmations_are_owner_admin_only(
         "conditions_by_user_id": None,
         "conditions_at": None,
     }
-    logged = json.dumps(
-        [row.old_value for row in rows] + [row.new_value for row in rows]
-    )
     for row in rows:
         assert set(row.new_value) == _CONDITION_KEYS
-    assert "100000" not in logged
-    assert "35000" not in logged
-    assert "677" not in logged
-    assert "turnover" not in logged
-    assert "balance_sheet" not in logged
+    _audit_has_no_amounts(rows)

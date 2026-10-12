@@ -5,6 +5,7 @@ tests/test_admin_api.py
 tests/test_adopted_trial_balance.py
 tests/test_small_adopted_finalise.py
 tests/test_audit_gdpr.py
+tests/test_audit_exemption_claim.py
 tests/test_beta_practice.py
 tests/test_clerk_user_email.py
 tests/test_client_limits.py
