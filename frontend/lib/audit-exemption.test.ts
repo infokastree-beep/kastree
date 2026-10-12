@@ -83,9 +83,16 @@ describe("audit exemption claim", () => {
     assert.match(component, /data-testid="audit-exemption-not-claimed"/);
     assert.match(component, /data-testid="audit-exemption-clear"/);
     assert.match(component, /\{canRecord \?/);
+    assert.match(component, /data-testid="audit-exemption-conditions"/);
+    assert.match(component, /testId: "audit-exemption-not-excluded"/);
+    assert.match(component, /testId: "audit-exemption-no-member-notice"/);
+    assert.match(component, /testId: "audit-exemption-returns-not-late"/);
+    assert.match(component, /data-testid=\{`\$\{field\.testId\}-yes`\}/);
+    assert.match(component, /data-testid="audit-exemption-conditions-record"/);
     assert.match(workspace, /canRecord=\{canRecordClaim\}/);
     assert.match(workspace, /role === "owner" \|\| meQuery\.data\?\.role === "admin"/);
-    assert.match(workspace, /\/audit-exemption/);
+    assert.match(workspace, /\/audit-exemption`,/);
+    assert.match(workspace, /\/audit-exemption-conditions/);
     assert.match(
       banner,
       /Statutory wording not yet reviewed by a qualified reviewer/,

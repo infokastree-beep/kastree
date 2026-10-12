@@ -53,6 +53,18 @@ _FIXES: dict[str, CheckPresentation] = {
         "Review",
         CheckFix("review", anchor="audit-exemption-claim"),
     ),
+    "V-CO-022": CheckPresentation(
+        "Review",
+        CheckFix("review", anchor="audit-exemption-conditions"),
+    ),
+    "V-CO-023": CheckPresentation(
+        "Review",
+        CheckFix("review", anchor="audit-exemption-conditions"),
+    ),
+    "V-CO-024": CheckPresentation(
+        "Review",
+        CheckFix("review", anchor="audit-exemption-conditions"),
+    ),
     "V-DISC-001": CheckPresentation("Disclosures", CheckFix("disclosures")),
     "V-NOTE-001": CheckPresentation("Disclosures", CheckFix("notes")),
     "V-NOTE-002": CheckPresentation("Disclosures", CheckFix("notes")),

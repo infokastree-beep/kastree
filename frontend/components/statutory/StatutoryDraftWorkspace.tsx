@@ -41,7 +41,10 @@ import {
 import { SectionPreview } from "@/components/statutory/SectionPreview";
 import { SectionsSetup } from "@/components/statutory/SectionsSetup";
 import { StatutoryLoadError } from "@/components/statutory/StatutoryLoadError";
-import { AuditExemptionClaim } from "@/components/statutory/AuditExemptionClaim";
+import {
+  AuditExemptionClaim,
+  type DirectorsConfirmations,
+} from "@/components/statutory/AuditExemptionClaim";
 import { SizeInputs } from "@/components/statutory/SizeInputs";
 import { TrialBalancePanel } from "@/components/statutory/TrialBalancePanel";
 import type { TrialBalancePage } from "@/lib/trial-balance-page";
@@ -84,6 +87,11 @@ type YearEnd = {
   audit_exemption_claimed: boolean | null;
   audit_exemption_claimed_by_user_id: string | null;
   audit_exemption_claimed_at: string | null;
+  audit_exemption_not_excluded: boolean | null;
+  audit_exemption_no_member_notice: boolean | null;
+  audit_exemption_returns_not_late: boolean | null;
+  audit_exemption_conditions_by_user_id: string | null;
+  audit_exemption_conditions_at: string | null;
 };
 
 type WorkingDraft = {
@@ -216,6 +224,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
   const [approvalSaved, setApprovalSaved] = useState<string | null>(null);
   const [sizeError, setSizeError] = useState<string | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
+  const [conditionsError, setConditionsError] = useState<string | null>(null);
   const [narration, setNarration] = useState("");
   const [lines, setLines] = useState<AdjustmentLine[]>([
     { ...EMPTY_LINE },
@@ -816,6 +825,28 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     }
   }
 
+  async function recordConditions(body: DirectorsConfirmations): Promise<void> {
+    setConditionsError(null);
+    setBusy("Recording the directors' confirmations…");
+    try {
+      await apiFetch(`/year-ends/${yearEndId}/audit-exemption-conditions`, {
+        method: "POST",
+        getToken,
+        body: JSON.stringify(body),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["year-end", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["statutory-preview", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["statutory-pack"] });
+    } catch (caught) {
+      setConditionsError(
+        saveMessage(caught, "The directors' confirmations could not be recorded."),
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function markFirstPeriod(): Promise<void> {
     setError(null);
     setBusy("Opening the first-period gate…");
@@ -1341,6 +1372,9 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               />
               <AuditExemptionClaim
                 claimed={yearEnd.audit_exemption_claimed}
+                notExcluded={yearEnd.audit_exemption_not_excluded}
+                noMemberNotice={yearEnd.audit_exemption_no_member_notice}
+                returnsNotLate={yearEnd.audit_exemption_returns_not_late}
                 canRecord={canRecordClaim}
                 busy={busy !== null}
                 positionMessage={
@@ -1353,7 +1387,9 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
                   )?.message ?? null
                 }
                 error={claimError}
+                conditionsError={conditionsError}
                 onRecord={(claimed) => void recordClaim(claimed)}
+                onRecordConditions={(body) => void recordConditions(body)}
               />
             </>
           ) : null}

@@ -113,6 +113,25 @@ class YearEnd(Base):
     audit_exemption_claimed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # NULL until an owner or admin records the three directors' confirmations.
+    # There is no server default. One who and when covers the set.
+    audit_exemption_not_excluded: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
+    audit_exemption_no_member_notice: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
+    audit_exemption_returns_not_late: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
+    audit_exemption_conditions_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    audit_exemption_conditions_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     pack_id: Mapped[str] = mapped_column(String(64), nullable=False)
     pack_version: Mapped[str] = mapped_column(String(16), nullable=False)
     adopted_trial_balance_id: Mapped[uuid.UUID | None] = mapped_column(

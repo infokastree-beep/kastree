@@ -14,6 +14,8 @@ import {
   checkLine,
   fixHref,
   groupFailedChecks,
+  presentCheck,
+  stopsFinalise,
   type ReviewCheck,
 } from "./dashboard-groups.ts";
 
@@ -89,6 +91,49 @@ describe("review groups", () => {
     assert.equal(blockingSentence(2), "2 checks must be fixed");
     assert.equal(blockingSentence(1), "1 check must be fixed");
     assert.equal(blockingSentence(0), null);
+  });
+
+  it("shows each missing directors' confirmation in Review with its own Fix link", () => {
+    const yearEndId = "year-1";
+    const groups = groupFailedChecks([
+      failed("V-CO-022", "WARNING", "excluded"),
+      failed("V-CO-023", "WARNING", "notice"),
+      failed("V-CO-024", "WARNING", "returns"),
+      { code: "V-CO-022", severity: "WARNING", passed: true, message: "recorded" },
+    ]);
+    assert.deepEqual(
+      groups.map((group) => group.area),
+      ["Review"],
+    );
+    assert.equal(groups[0]?.checks.length, 3);
+    for (const code of ["V-CO-022", "V-CO-023", "V-CO-024"]) {
+      const fix = presentCheck(failed(code, "WARNING")).fix;
+      assert.equal(fix.section, "review");
+      assert.equal(fix.anchor, "audit-exemption-conditions");
+      assert.equal(
+        fixHref(yearEndId, fix),
+        "/year-ends/year-1/draft?section=review#audit-exemption-conditions",
+      );
+      assert.equal(stopsFinalise(failed(code, "WARNING")), true);
+    }
+    assert.equal(
+      stopsFinalise({
+        code: "V-CO-022",
+        severity: "WARNING",
+        passed: true,
+        message: "recorded",
+      }),
+      false,
+    );
+    assert.equal(
+      blockingFailureCount([
+        failed("V-CO-022", "WARNING"),
+        failed("V-CO-023", "WARNING"),
+        failed("V-CO-024", "WARNING"),
+        failed("V-CO-021", "NOTICE"),
+      ]),
+      3,
+    );
   });
 });
 

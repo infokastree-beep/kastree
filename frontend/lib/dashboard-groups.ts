@@ -59,6 +59,18 @@ const FIXES: Record<string, { area: string; fix: CheckFix }> = {
     area: "Review",
     fix: { section: "review", anchor: "audit-exemption-claim" },
   },
+  "V-CO-022": {
+    area: "Review",
+    fix: { section: "review", anchor: "audit-exemption-conditions" },
+  },
+  "V-CO-023": {
+    area: "Review",
+    fix: { section: "review", anchor: "audit-exemption-conditions" },
+  },
+  "V-CO-024": {
+    area: "Review",
+    fix: { section: "review", anchor: "audit-exemption-conditions" },
+  },
   "V-DISC-001": { area: "Disclosures", fix: { section: "disclosures" } },
   "V-NOTE-001": { area: "Disclosures", fix: { section: "notes" } },
   "V-NOTE-002": { area: "Disclosures", fix: { section: "notes" } },
@@ -90,6 +102,9 @@ const COMPANY_BLOCKING = new Set([
   "V-CO-010",
   "V-CO-011",
   "V-CO-020",
+  "V-CO-022",
+  "V-CO-023",
+  "V-CO-024",
 ]);
 
 export function presentCheck(check: ReviewCheck): { area: string; fix: CheckFix } {

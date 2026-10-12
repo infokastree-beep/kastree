@@ -36,6 +36,9 @@ _BLOCKING = frozenset(
         "V-CO-010",
         "V-CO-011",
         "V-CO-020",
+        "V-CO-022",
+        "V-CO-023",
+        "V-CO-024",
     }
 )
 _AUDIT_NOT_RECORDED = (
@@ -52,6 +55,41 @@ _AUDIT_NOT_EVIDENCED = (
     "An audit is required. An auditor's report is out of scope."
 )
 _AUDIT_CLAIMED = "The audit exemption is claimed and the size test is recorded."
+_EXCLUDED_MISSING = (
+    "Record the directors' confirmation that the company is not an excluded class "
+    "(Fifth Schedule to the Companies Act 2014)."
+)
+_EXCLUDED_REFUSED = (
+    "The company is recorded as an excluded class. "
+    "The audit exemption is not available."
+)
+_EXCLUDED_RECORDED = (
+    "The directors have recorded that the company is not an excluded class."
+)
+_NOTICE_MISSING = (
+    "Record the directors' confirmation that no notice under section 334 "
+    "of the Companies Act 2014 has been served."
+)
+_NOTICE_REFUSED = (
+    "A notice under section 334 is recorded. The audit exemption is not available."
+)
+_NOTICE_RECORDED = (
+    "The directors have recorded that no notice under section 334 has been served."
+)
+_RETURNS_MISSING = (
+    "Record the directors' confirmation that annual returns were not filed late "
+    "more than once in five years (section 363 of the Companies Act 2014, "
+    "as substituted by section 22 of the Companies (Corporate Governance, "
+    "Enforcement and Regulatory Provisions) Act 2024)."
+)
+_RETURNS_REFUSED = (
+    "Annual returns are recorded as filed late more than once in five years. "
+    "The audit exemption is not available."
+)
+_RETURNS_RECORDED = (
+    "The directors have recorded that annual returns were not filed late "
+    "more than once in five years."
+)
 MISSING_INCORPORATION = "Country of incorporation not recorded"
 
 
@@ -783,31 +821,150 @@ async def record_audit_exemption(
     return year_end
 
 
+def _conditions_snapshot(year_end: YearEnd) -> dict[str, object]:
+    """Who, when, and the three confirmations. Amounts stay off this log."""
+    actor = year_end.audit_exemption_conditions_by_user_id
+    recorded_at = year_end.audit_exemption_conditions_at
+    return {
+        "not_excluded": year_end.audit_exemption_not_excluded,
+        "no_member_notice": year_end.audit_exemption_no_member_notice,
+        "returns_not_late": year_end.audit_exemption_returns_not_late,
+        "conditions_by_user_id": None if actor is None else str(actor),
+        "conditions_at": None if recorded_at is None else recorded_at.isoformat(),
+    }
+
+
+def _conditions_never_recorded(year_end: YearEnd) -> bool:
+    return (
+        year_end.audit_exemption_not_excluded is None
+        and year_end.audit_exemption_no_member_notice is None
+        and year_end.audit_exemption_returns_not_late is None
+        and year_end.audit_exemption_conditions_by_user_id is None
+        and year_end.audit_exemption_conditions_at is None
+    )
+
+
+async def record_audit_exemption_conditions(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    user_id: uuid.UUID,
+    year_end: YearEnd,
+    not_excluded: bool | None,
+    no_member_notice: bool | None,
+    returns_not_late: bool | None,
+) -> YearEnd:
+    """Store the three directors' confirmations, or clear them back to not recorded."""
+    values = (not_excluded, no_member_notice, returns_not_late)
+    if any(item is None for item in values) and any(
+        item is not None for item in values
+    ):
+        raise CompanyDetailsRejected(
+            "Record all three directors' confirmations together, or clear them together."
+        )
+    previous = (
+        None if _conditions_never_recorded(year_end) else _conditions_snapshot(year_end)
+    )
+    if not_excluded is None:
+        year_end.audit_exemption_not_excluded = None
+        year_end.audit_exemption_no_member_notice = None
+        year_end.audit_exemption_returns_not_late = None
+        year_end.audit_exemption_conditions_by_user_id = None
+        year_end.audit_exemption_conditions_at = None
+    else:
+        year_end.audit_exemption_not_excluded = not_excluded
+        year_end.audit_exemption_no_member_notice = no_member_notice
+        year_end.audit_exemption_returns_not_late = returns_not_late
+        year_end.audit_exemption_conditions_by_user_id = user_id
+        year_end.audit_exemption_conditions_at = datetime.now(UTC)
+    await append_audit_log(
+        session,
+        org_id=org_id,
+        user_id=user_id,
+        action="audit_exemption_conditions",
+        entity_type="year_end",
+        entity_id=year_end.id,
+        old_value=previous,
+        new_value=_conditions_snapshot(year_end),
+    )
+    await session.flush()
+    return year_end
+
+
+def _confirmation_check(
+    code: str,
+    value: bool | None,
+    missing: str,
+    refused: str,
+    recorded: str,
+) -> ReconciliationCheck:
+    if value is True:
+        return _check(code, "WARNING", True, recorded)
+    if value is False:
+        return _check(code, "WARNING", False, refused)
+    return _check(code, "WARNING", False, missing)
+
+
+def _confirmation_checks(year_end: YearEnd) -> tuple[ReconciliationCheck, ...]:
+    """Each directors' confirmation is its own check. NULL and false both fail."""
+    return (
+        _confirmation_check(
+            "V-CO-022",
+            year_end.audit_exemption_not_excluded,
+            _EXCLUDED_MISSING,
+            _EXCLUDED_REFUSED,
+            _EXCLUDED_RECORDED,
+        ),
+        _confirmation_check(
+            "V-CO-023",
+            year_end.audit_exemption_no_member_notice,
+            _NOTICE_MISSING,
+            _NOTICE_REFUSED,
+            _NOTICE_RECORDED,
+        ),
+        _confirmation_check(
+            "V-CO-024",
+            year_end.audit_exemption_returns_not_late,
+            _RETURNS_MISSING,
+            _RETURNS_REFUSED,
+            _RETURNS_RECORDED,
+        ),
+    )
+
+
 def audit_position_checks(year_end: YearEnd) -> tuple[ReconciliationCheck, ...]:
     """NULL, false, and true are different. A notice does not block FINAL."""
     claimed = year_end.audit_exemption_claimed
     if claimed is None:
-        return (_check("V-CO-020", "WARNING", False, _AUDIT_NOT_RECORDED),)
-    if claimed is False:
-        return (_check("V-CO-020", "WARNING", False, _AUDIT_REQUIRED),)
-    if year_end.size_checked_at is None:
-        return (_check("V-CO-020", "WARNING", False, _AUDIT_SIZE_MISSING),)
-    if year_end.size_eligible is not True:
-        return (_check("V-CO-020", "WARNING", False, _AUDIT_NOT_EVIDENCED),)
-    checks = [_check("V-CO-020", "WARNING", True, _AUDIT_CLAIMED)]
-    condition_failed = (
-        year_end.size_current_met is not None and year_end.size_current_met < 3
-    ) or (year_end.size_preceding_met is not None and year_end.size_preceding_met < 3)
-    if condition_failed:
-        checks.append(
-            _check(
-                "V-CO-021",
-                "NOTICE",
-                False,
-                year_end.size_message or "",
-            )
+        position: tuple[ReconciliationCheck, ...] = (
+            _check("V-CO-020", "WARNING", False, _AUDIT_NOT_RECORDED),
         )
-    return tuple(checks)
+    elif claimed is False:
+        position = (_check("V-CO-020", "WARNING", False, _AUDIT_REQUIRED),)
+    elif year_end.size_checked_at is None:
+        position = (_check("V-CO-020", "WARNING", False, _AUDIT_SIZE_MISSING),)
+    elif year_end.size_eligible is not True:
+        position = (_check("V-CO-020", "WARNING", False, _AUDIT_NOT_EVIDENCED),)
+    else:
+        checks = [_check("V-CO-020", "WARNING", True, _AUDIT_CLAIMED)]
+        condition_failed = (
+            year_end.size_current_met is not None and year_end.size_current_met < 3
+        ) or (
+            year_end.size_preceding_met is not None and year_end.size_preceding_met < 3
+        )
+        if condition_failed:
+            checks.append(
+                _check(
+                    "V-CO-021",
+                    "NOTICE",
+                    False,
+                    year_end.size_message or "",
+                )
+            )
+        position = tuple(checks)
+    if claimed is True:
+        return position + _confirmation_checks(year_end)
+    return position
 
 
 def _currency_notice(company: Company, year_end: YearEnd) -> ReconciliationCheck | None:

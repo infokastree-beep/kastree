@@ -7,7 +7,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 
 def size_amount_text(value: Decimal | None) -> str | None:
@@ -80,6 +80,11 @@ class YearEndResponse(BaseModel):
     audit_exemption_claimed: bool | None = None
     audit_exemption_claimed_by_user_id: uuid.UUID | None = None
     audit_exemption_claimed_at: datetime | None = None
+    audit_exemption_not_excluded: bool | None = None
+    audit_exemption_no_member_notice: bool | None = None
+    audit_exemption_returns_not_late: bool | None = None
+    audit_exemption_conditions_by_user_id: uuid.UUID | None = None
+    audit_exemption_conditions_at: datetime | None = None
 
 
 class AuditExemptionRequest(BaseModel):
@@ -97,6 +102,38 @@ class AuditExemptionResponse(BaseModel):
     claimed: bool | None
     claimed_by_user_id: uuid.UUID | None
     claimed_at: datetime | None
+
+
+class AuditExemptionConditionsRequest(BaseModel):
+    """The three directors' confirmations, recorded together or cleared together."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    not_excluded: bool | None
+    no_member_notice: bool | None
+    returns_not_late: bool | None
+
+    @model_validator(mode="after")
+    def recorded_together(self) -> AuditExemptionConditionsRequest:
+        values = (self.not_excluded, self.no_member_notice, self.returns_not_late)
+        if any(item is None for item in values) and any(
+            item is not None for item in values
+        ):
+            raise ValueError(
+                "Record all three directors' confirmations together, or clear them together."
+            )
+        return self
+
+
+class AuditExemptionConditionsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    year_end_id: uuid.UUID
+    not_excluded: bool | None
+    no_member_notice: bool | None
+    returns_not_late: bool | None
+    conditions_by_user_id: uuid.UUID | None
+    conditions_at: datetime | None
 
 
 class TrialBalanceVersionCreate(BaseModel):
