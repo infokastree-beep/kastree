@@ -3,23 +3,24 @@
  * Run: node --experimental-strip-types --test lib/finalise-status.test.ts
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   CARRIED_ACK_LABEL,
   FINALISED_409,
   FINALISE_LOCK_NOTE,
-  FINALISED_STATE,
   WORDING_BANNER,
   canOfferFinalise,
   carriedAcknowledgementRequired,
   currencyCodeFromNotice,
-  finalStateLabel,
   finaliseFailureMessage,
   finaliseFailureParts,
   requestIdFromBody,
   finaliseStatusLine,
   pdfDownloadLabel,
-  shownStatus,
+  statusPillLabel,
   wordDownloadLabel,
   wordingSignedOffFromServer,
 } from "./finalise-status.ts";
@@ -85,29 +86,33 @@ describe("finalise offer", () => {
     );
   });
 
-  it("names the FINAL state and the PDF that belongs to it", () => {
-    assert.equal(FINALISED_STATE, "FINAL");
+  it("names one status pill and keeps the wording caveat off the buttons", () => {
     assert.equal(WORDING_BANNER, "Statutory wording not yet reviewed by a qualified reviewer");
     assert.equal(wordingSignedOffFromServer(undefined), false);
     assert.equal(wordingSignedOffFromServer({}), false);
     assert.equal(wordingSignedOffFromServer({ wording_signed_off: false }), false);
     assert.equal(wordingSignedOffFromServer({ wording_signed_off: true }), true);
-    assert.equal(finalStateLabel(false), `FINAL — ${WORDING_BANNER}`);
-    assert.equal(finalStateLabel(true), "FINAL");
-    assert.equal(shownStatus("final", false), `final — ${WORDING_BANNER}`);
-    assert.equal(shownStatus("final", true), "final");
-    assert.equal(shownStatus("draft", false), "draft");
-    assert.equal(pdfDownloadLabel("final"), `Download final PDF — ${WORDING_BANNER}`);
-    assert.equal(pdfDownloadLabel("final", false), `Download final PDF — ${WORDING_BANNER}`);
-    assert.equal(pdfDownloadLabel("final", true), "Download final PDF");
+    assert.equal(
+      statusPillLabel({ lifecycle: "Draft", readiness: "3 blockers" }),
+      "Draft · 3 blockers",
+    );
+    assert.equal(
+      statusPillLabel({ lifecycle: "Draft", readiness: "Ready to finalise" }),
+      "Draft · Ready to finalise",
+    );
+    assert.equal(statusPillLabel({ lifecycle: "Final", readiness: null }), "Final");
+    assert.equal(pdfDownloadLabel("final"), "Download final PDF");
     assert.equal(pdfDownloadLabel("draft"), "Download draft PDF");
     assert.equal(pdfDownloadLabel(undefined), "Download draft PDF");
-    assert.equal(
-      wordDownloadLabel("final", false),
-      `Download Word (.docx) — ${WORDING_BANNER}`,
+    assert.equal(wordDownloadLabel(), "Download Word (.docx)");
+    const workspace = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../components/statutory/StatutoryDraftWorkspace.tsx"),
+      "utf8",
     );
-    assert.equal(wordDownloadLabel("final", true), "Download Word (.docx)");
-    assert.equal(wordDownloadLabel("draft", false), "Download Word (.docx)");
+    assert.equal(workspace.includes(WORDING_BANNER), false);
+    assert.equal(workspace.includes("FINAL statutory pack"), false);
+    assert.equal(workspace.includes("statutory-traffic"), false);
+    assert.equal(workspace.includes("statutory-status-pill"), true);
   });
 
   it("shows each finalise refusal in the server's own words", () => {

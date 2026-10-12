@@ -8,7 +8,7 @@ from app.services.dashboard_groups import (
     blocking_failure_count,
     present_check,
 )
-from app.services.draft_workflow import Dashboard, _dashboard_dict
+from app.services.draft_workflow import Dashboard, _dashboard_dict, present_status
 from app.services.reconciliation import ReconciliationCheck
 
 
@@ -47,6 +47,25 @@ def test_fix_targets_match_the_review_pages() -> None:
     assert present_check("V-TB-001").area == "Figures"
 
 
+def test_present_status_is_one_lifecycle() -> None:
+    assert present_status(status="draft", can_finalise=False, blocking_count=3) == {
+        "lifecycle": "Draft",
+        "readiness": "3 blockers",
+    }
+    assert present_status(status="draft", can_finalise=False, blocking_count=1) == {
+        "lifecycle": "Draft",
+        "readiness": "1 blocker",
+    }
+    assert present_status(status="locked", can_finalise=True, blocking_count=0) == {
+        "lifecycle": "Draft",
+        "readiness": "Ready to finalise",
+    }
+    assert present_status(status="final", can_finalise=False, blocking_count=4) == {
+        "lifecycle": "Final",
+        "readiness": None,
+    }
+
+
 def test_blocking_count_skips_notices_that_do_not_stop_finalise() -> None:
     checks = (
         _check("V-DISC-001", "CRITICAL"),
@@ -83,6 +102,10 @@ def test_dashboard_payload_keeps_the_engine_disclosure_message() -> None:
     payload = _dashboard_dict(board)
     assert payload["unanswered_count"] == 1
     assert payload["blocking_count"] == 1
+    assert payload["status"] == "draft"
+    assert payload["traffic"] == "red"
+    assert payload["can_finalise"] is False
+    assert payload["status_view"] == {"lifecycle": "Draft", "readiness": "1 blocker"}
     checks = payload["checks"]
     assert isinstance(checks, list)
     row = checks[0]

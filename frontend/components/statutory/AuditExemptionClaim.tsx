@@ -5,10 +5,12 @@ import { useEffect, useState } from "react";
 import {
   AUDIT_EXEMPTION_ABRIDGEMENT_NOTE,
   AUDIT_EXEMPTION_NOTE,
-  AUDIT_EXEMPTION_PARAGRAPHS,
   AUDIT_EXEMPTION_PROVISION,
   AUDIT_EXEMPTION_SOURCE,
   AUDIT_EXEMPTION_SOURCE_LABEL,
+  approvalDateLine,
+  printedAuditExemption,
+  unprintedAuditExemptionSource,
 } from "@/lib/audit-exemption";
 
 export type DirectorsConfirmations = {
@@ -47,10 +49,14 @@ function recordedWord(value: boolean | null): string {
 
 export function AuditExemptionClaim({
   claimed,
+  companyName,
+  approvalDate,
+  signingDirectors,
   notExcluded,
   noMemberNotice,
   returnsNotLate,
   canRecord,
+  lockLabel,
   busy,
   positionMessage,
   noticeMessage,
@@ -60,10 +66,14 @@ export function AuditExemptionClaim({
   onRecordConditions,
 }: {
   claimed: boolean | null;
+  companyName: string;
+  approvalDate: string | null;
+  signingDirectors: readonly string[];
   notExcluded: boolean | null;
   noMemberNotice: boolean | null;
   returnsNotLate: boolean | null;
   canRecord: boolean;
+  lockLabel: string | null;
   busy: boolean;
   positionMessage: string | null;
   noticeMessage: string | null;
@@ -92,6 +102,10 @@ export function AuditExemptionClaim({
     });
   }, [notExcluded, noMemberNotice, returnsNotLate]);
 
+  const editable = canRecord && lockLabel == null;
+  const printed = printedAuditExemption(companyName);
+  const sourceText = unprintedAuditExemptionSource();
+  const signatories = signingDirectors.map((name) => name.trim()).filter((name) => name !== "");
   const ready =
     draft.not_excluded !== null &&
     draft.no_member_notice !== null &&
@@ -125,19 +139,40 @@ export function AuditExemptionClaim({
       <p className="text-sm text-ink-secondary" data-testid="audit-exemption-provision">
         {AUDIT_EXEMPTION_SOURCE}. {AUDIT_EXEMPTION_PROVISION}
       </p>
-      <div data-testid="audit-exemption-statement">
-        {AUDIT_EXEMPTION_PARAGRAPHS.map((paragraph) => (
-          <p key={paragraph} className="text-sm text-ink-secondary">
+      <div data-testid="audit-exemption-printed">
+        {printed.map((paragraph) => (
+          <p key={paragraph} className="text-sm text-ink">
             {paragraph}
           </p>
         ))}
       </div>
+      <section className="signature space-y-1" data-testid="audit-exemption-signatures">
+        <p className="text-sm text-ink">Approved by the board and signed on its behalf by</p>
+        <p className="text-sm text-ink">{approvalDateLine(approvalDate)}</p>
+        {signatories.length > 0 ? (
+          signatories.map((name) => (
+            <p key={name} className="text-sm text-ink">
+              {name}
+              <br />
+              Director
+            </p>
+          ))
+        ) : (
+          <p className="text-sm text-ink">A signatory has not been recorded.</p>
+        )}
+      </section>
       <p className="text-sm text-ink-secondary" data-testid="audit-exemption-note">
         {AUDIT_EXEMPTION_NOTE}
       </p>
-      <p className="text-sm text-ink-secondary" data-testid="audit-exemption-abridgement">
-        {AUDIT_EXEMPTION_ABRIDGEMENT_NOTE}
-      </p>
+      <details className="text-sm text-ink-secondary" data-testid="audit-exemption-source-text">
+        <summary>Source text (CRO), not printed</summary>
+        <div className="mt-2 space-y-2">
+          {sourceText.map((paragraph) => (
+            <p key={paragraph}>{paragraph}</p>
+          ))}
+          <p data-testid="audit-exemption-abridgement">{AUDIT_EXEMPTION_ABRIDGEMENT_NOTE}</p>
+        </div>
+      </details>
       <p className="text-sm text-ink" data-testid="audit-exemption-position">
         {position}
       </p>
@@ -151,7 +186,12 @@ export function AuditExemptionClaim({
           {noticeMessage}
         </p>
       ) : null}
-      {canRecord ? (
+      {lockLabel ? (
+        <p className="text-sm font-semibold text-ink" data-testid="audit-exemption-locked">
+          {lockLabel}
+        </p>
+      ) : null}
+      {editable ? (
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -199,7 +239,7 @@ export function AuditExemptionClaim({
         {CONFIRMATION_FIELDS.map((field) => (
           <fieldset key={field.key} className="space-y-1" data-testid={field.testId}>
             <legend className="text-sm text-ink">{field.label}</legend>
-            {canRecord ? (
+            {editable ? (
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -229,7 +269,7 @@ export function AuditExemptionClaim({
             ) : null}
           </fieldset>
         ))}
-        {canRecord ? (
+        {editable ? (
           <div className="flex flex-wrap gap-2">
             <button
               type="button"

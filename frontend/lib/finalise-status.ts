@@ -29,18 +29,17 @@ export function wordingSignedOffFromServer(
   return access?.wording_signed_off === true;
 }
 
-export function finalStateLabel(wordingSignedOff: boolean): string {
-  if (wordingSignedOff) {
-    return FINALISED_STATE;
-  }
-  return `${FINALISED_STATE} — ${WORDING_BANNER}`;
-}
+export type DraftStatusView = {
+  lifecycle: "Draft" | "Final";
+  readiness: string | null;
+};
 
-export function shownStatus(status: string, wordingSignedOff: boolean): string {
-  if (status !== "final" || wordingSignedOff) {
-    return status;
+/** One pill. Readiness is part of the pill only while the draft is open. */
+export function statusPillLabel(view: DraftStatusView): string {
+  if (view.lifecycle === "Final" || view.readiness == null || view.readiness === "") {
+    return view.lifecycle;
   }
-  return `final — ${WORDING_BANNER}`;
+  return `${view.lifecycle} · ${view.readiness}`;
 }
 
 export const CARRIED_ACK_LABEL =
@@ -69,27 +68,15 @@ export function carriedAcknowledgementRequired(names: readonly string[]): boolea
   return names.length > 0;
 }
 
-export function pdfDownloadLabel(
-  status: string | undefined,
-  wordingSignedOff = false,
-): string {
+export function pdfDownloadLabel(status: string | undefined): string {
   if (status !== "final") {
     return "Download draft PDF";
   }
-  if (wordingSignedOff) {
-    return "Download final PDF";
-  }
-  return `Download final PDF — ${WORDING_BANNER}`;
+  return "Download final PDF";
 }
 
-export function wordDownloadLabel(
-  status: string | undefined,
-  wordingSignedOff = false,
-): string {
-  if (status !== "final" || wordingSignedOff) {
-    return "Download Word (.docx)";
-  }
-  return `Download Word (.docx) — ${WORDING_BANNER}`;
+export function wordDownloadLabel(): string {
+  return "Download Word (.docx)";
 }
 
 const GENERIC_SERVER = new Set(["Internal Server Error", "Something went wrong."]);
