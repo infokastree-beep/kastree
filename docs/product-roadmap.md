@@ -255,10 +255,12 @@ Scoped capabilities (after the gate clears — still not scheduled):
 - **iXBRL tagging** — later sub-phase; separate technical standard.
 - **Multi-entity true consolidation** — intercompany eliminations, ownership
   %, currency translation (explicitly out of Product 1).
-- **Cash Flow Statement** — *historical* (IAS 7 / FRS 102 style), not
-  forecasting. Needs prior-period data; requires resolving PPE cost /
-  depreciation netting so gross capex is derivable. Forward-looking cash-flow
-  work is a separate initiative (section 3 below).
+- **Cash flow statement** — optional for a small entity (FRS 102
+  (September 2024) paragraph 1A.7A), not yet built, demand-gated. Indirect
+  method only, and only if a later approval asks for it. It needs
+  prior-period balances. The direct method stays out. Forward-looking
+  cash-flow work is a separate initiative (section 3 below). Strategic
+  report and ESG stay out.
 
 ### 3. Internal-use-only scenario analysis / forecasting / budgeting
 

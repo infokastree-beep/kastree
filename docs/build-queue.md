@@ -22,6 +22,9 @@ Status of the current build queue. Wording that is drawn from a public source st
 | 16. Correction after final | design waiting approval |
 | 17. Earlier-edition pack | design waiting approval |
 | 18. Infrastructure | waiting |
+| A. Notes coverage | design waiting approval |
+| B. Optional cash flow statement | design waiting approval |
+| C. Cash flow, strategic report, and ESG docs | design waiting approval |
 | Deferred: disclosures library with Excel import and export; outputs matrix with Excel; per-statement options panel; in-review state with a reviewer role; fixed assets input; density option; iXBRL; other packs; consolidation; e-signatures | deferred |
 
 Housekeeping left pull request 49 open. Its environment changes are not on main.
