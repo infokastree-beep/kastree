@@ -284,6 +284,7 @@ def compose_pdf_parts(
             compliance=document.compliance_statement or "",
             columns=as_at_columns,
             rows=sofp_rows,
+            exemption_statements=document.audit_exemption_statements,
         ),
         "notes": {
             "kind": "notes",
@@ -875,6 +876,7 @@ def _statement_section(
     compliance: str,
     columns: list[str],
     rows: list[dict[str, object]],
+    exemption_statements: tuple[str, ...] = (),
 ) -> dict[str, object]:
     section: dict[str, object] = {
         "kind": "statement",
@@ -885,6 +887,7 @@ def _statement_section(
         "columns": columns,
         "rows": rows,
         "show_notes": any(bool(row.get("note")) for row in rows),
+        "exemption_statements": list(exemption_statements),
     }
     if period_note:
         section["period_note"] = period_note

@@ -11,7 +11,7 @@
     "test:export-download": "node --experimental-strip-types --test lib/export-download.test.ts",
     "test:api-base": "node --experimental-strip-types --test lib/api-base.test.ts",
     "test:dev-routes": "node --experimental-strip-types --test lib/dev-routes.test.ts",
-    "test:report-setup": "node --experimental-strip-types --test lib/report-display.test.ts lib/workspace-sections.test.ts lib/workspace-load-error.test.ts lib/draft-pdf.test.ts lib/section-preview.test.ts lib/finalise-status.test.ts lib/reset-confirm.test.ts lib/dashboard-groups.test.ts lib/disclosure-groups.test.ts lib/note-library.test.ts lib/trial-balance-page.test.ts lib/size-inputs.test.ts",
+    "test:report-setup": "node --experimental-strip-types --test lib/report-display.test.ts lib/workspace-sections.test.ts lib/workspace-load-error.test.ts lib/draft-pdf.test.ts lib/section-preview.test.ts lib/finalise-status.test.ts lib/reset-confirm.test.ts lib/dashboard-groups.test.ts lib/disclosure-groups.test.ts lib/note-library.test.ts lib/trial-balance-page.test.ts lib/size-inputs.test.ts lib/audit-exemption.test.ts",
     "test:practice-jurisdiction": "node --experimental-strip-types --test lib/practice-jurisdiction.test.ts",
     "test:draft-word": "node --experimental-strip-types --test lib/draft-word.test.ts",
     "test:company-form": "node --experimental-strip-types --test lib/company-form.test.ts lib/countries.test.ts",

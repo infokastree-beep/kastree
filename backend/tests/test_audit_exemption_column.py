@@ -1,4 +1,4 @@
-"""Revision r4s5t6u7v8 adds the claim columns and does not read them."""
+"""Revision r4s5t6u7v8 adds the claim columns. The model maps them."""
 
 from __future__ import annotations
 
@@ -16,7 +16,6 @@ _MIGRATION = (
     / "r4s5t6u7v8_audit_exemption_claim.py"
 )
 _MODEL = Path(__file__).resolve().parents[2] / "findraft" / "models" / "year_end.py"
-_APP = Path(__file__).resolve().parents[1] / "app"
 _COLUMNS = (
     "audit_exemption_claimed",
     "audit_exemption_claimed_by_user_id",
@@ -40,10 +39,8 @@ def test_migration_adds_the_columns_without_a_read_or_grant_all() -> None:
     assert "SET DEFAULT" not in source
     assert "SELECT" not in executable
     model = _MODEL.read_text()
-    app = "\n".join(path.read_text() for path in _APP.rglob("*.py"))
     for name in _COLUMNS:
-        assert name not in model
-        assert name not in app
+        assert name in model
 
 
 def test_code_head_is_the_audit_exemption_claim_revision() -> None:

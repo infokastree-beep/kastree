@@ -19,6 +19,11 @@
     "source_status": "reviewer-to-confirm",
     "text": "A reviewer must confirm whether the audit exemption is available (two of three versus all conditions)."
   },
+  "audit_exemption_statements": {
+    "source_status": "pending-reviewer-signoff",
+    "exemption": "The directors are availing of the exemption from audit.",
+    "members": "The members have not required the company to obtain an audit of these financial statements."
+  },
   "data_checks": {
     "source_status": "reviewer-to-confirm",
     "legal_form": "private-company-limited-by-shares",

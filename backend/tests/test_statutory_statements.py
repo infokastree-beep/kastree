@@ -78,6 +78,7 @@ def _golden(
     practice_name: str = "",
     share_classes: tuple[ShareClassFact, ...] = (),
     note_library: object | None = None,
+    audit_exemption_claimed: bool | None = None,
 ) -> StatutoryStatements:
     return build_statutory_statements(
         prior_year_validated=True,
@@ -96,6 +97,7 @@ def _golden(
         practice_name=practice_name,
         share_classes=share_classes,
         note_library=note_library,
+        audit_exemption_claimed=audit_exemption_claimed,
     )
 
 

@@ -41,6 +41,7 @@ import {
 import { SectionPreview } from "@/components/statutory/SectionPreview";
 import { SectionsSetup } from "@/components/statutory/SectionsSetup";
 import { StatutoryLoadError } from "@/components/statutory/StatutoryLoadError";
+import { AuditExemptionClaim } from "@/components/statutory/AuditExemptionClaim";
 import { SizeInputs } from "@/components/statutory/SizeInputs";
 import { TrialBalancePanel } from "@/components/statutory/TrialBalancePanel";
 import type { TrialBalancePage } from "@/lib/trial-balance-page";
@@ -80,6 +81,9 @@ type YearEnd = {
   size_preceding_balance_sheet: string | null;
   size_preceding_employees: number | null;
   size_message: string | null;
+  audit_exemption_claimed: boolean | null;
+  audit_exemption_claimed_by_user_id: string | null;
+  audit_exemption_claimed_at: string | null;
 };
 
 type WorkingDraft = {
@@ -211,6 +215,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [approvalSaved, setApprovalSaved] = useState<string | null>(null);
   const [sizeError, setSizeError] = useState<string | null>(null);
+  const [claimError, setClaimError] = useState<string | null>(null);
   const [narration, setNarration] = useState("");
   const [lines, setLines] = useState<AdjustmentLine[]>([
     { ...EMPTY_LINE },
@@ -359,6 +364,8 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     meQuery.data?.role === "owner" ||
     meQuery.data?.role === "admin" ||
     meQuery.data?.role === "member";
+  const canRecordClaim =
+    meQuery.data?.role === "owner" || meQuery.data?.role === "admin";
 
   async function saveCompany(next: CompanyDetailsWrite): Promise<void> {
     setCompanyError(null);
@@ -784,6 +791,26 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       await queryClient.invalidateQueries({ queryKey: ["year-end", yearEndId] });
     } catch (caught) {
       setSizeError(saveMessage(caught, "The size test could not be recorded."));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function recordClaim(claimed: boolean | null): Promise<void> {
+    setClaimError(null);
+    setBusy("Recording the audit exemption…");
+    try {
+      await apiFetch(`/year-ends/${yearEndId}/audit-exemption`, {
+        method: "POST",
+        getToken,
+        body: JSON.stringify({ claimed }),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["year-end", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["statutory-preview", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["statutory-pack"] });
+    } catch (caught) {
+      setClaimError(saveMessage(caught, "The audit exemption could not be recorded."));
     } finally {
       setBusy(null);
     }
@@ -1301,16 +1328,34 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
             }
           />
           {yearEnd ? (
-            <SizeInputs
-              firstPeriod={yearEnd.first_financial_period}
-              currency={companyCurrencyQuery.data?.functional_currency ?? null}
-              inputs={yearEnd}
-              message={yearEnd.size_message}
-              canEdit={canEditDetails}
-              busy={busy !== null}
-              error={sizeError}
-              onRecord={(body) => void recordSize(body)}
-            />
+            <>
+              <SizeInputs
+                firstPeriod={yearEnd.first_financial_period}
+                currency={companyCurrencyQuery.data?.functional_currency ?? null}
+                inputs={yearEnd}
+                message={yearEnd.size_message}
+                canEdit={canEditDetails}
+                busy={busy !== null}
+                error={sizeError}
+                onRecord={(body) => void recordSize(body)}
+              />
+              <AuditExemptionClaim
+                claimed={yearEnd.audit_exemption_claimed}
+                canRecord={canRecordClaim}
+                busy={busy !== null}
+                positionMessage={
+                  dashboard.checks.find((check) => check.code === "V-CO-020")
+                    ?.message ?? null
+                }
+                noticeMessage={
+                  dashboard.checks.find(
+                    (check) => check.code === "V-CO-021" && !check.passed,
+                  )?.message ?? null
+                }
+                error={claimError}
+                onRecord={(claimed) => void recordClaim(claimed)}
+              />
+            </>
           ) : null}
           <FinaliseDraft
             role={meQuery.data?.role}

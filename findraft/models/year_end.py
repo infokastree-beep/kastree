@@ -100,6 +100,19 @@ class YearEnd(Base):
     size_preceding_employees: Mapped[int | None] = mapped_column(
         Integer, nullable=True
     )
+    # NULL until an owner or admin records the position. True is claimed.
+    # False is not claimed. There is no server default.
+    audit_exemption_claimed: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
+    audit_exemption_claimed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    audit_exemption_claimed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     pack_id: Mapped[str] = mapped_column(String(64), nullable=False)
     pack_version: Mapped[str] = mapped_column(String(16), nullable=False)
     adopted_trial_balance_id: Mapped[uuid.UUID | None] = mapped_column(

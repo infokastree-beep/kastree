@@ -8,6 +8,7 @@ attach an auditor's report.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -31,6 +32,34 @@ class StatutoryPage:
     paragraphs: tuple[str, ...]
 
 
+def audit_exemption_statements(manifest: object) -> tuple[str, str]:
+    """Pack sentences. They stay pending reviewer sign-off until that changes."""
+    if not isinstance(manifest, Mapping):
+        raise ValueError("Pinned pack has no audit-exemption statements")
+    block = manifest.get("audit_exemption_statements")
+    if not isinstance(block, Mapping) or set(block) != {
+        "source_status",
+        "exemption",
+        "members",
+    }:
+        raise ValueError("Pinned pack has no audit-exemption statements")
+    exemption = block.get("exemption")
+    members = block.get("members")
+    if (
+        block.get("source_status") != "pending-reviewer-signoff"
+        or not isinstance(exemption, str)
+        or not isinstance(members, str)
+    ):
+        raise ValueError(
+            "Pinned pack audit-exemption statements are not pending reviewer sign-off"
+        )
+    cleaned_exemption = exemption.strip()
+    cleaned_members = members.strip()
+    if not cleaned_exemption or not cleaned_members:
+        raise ValueError("Pinned pack audit-exemption statements are unusable")
+    return (cleaned_exemption, cleaned_members)
+
+
 def build_statutory_pages(
     *,
     company_name: str,
@@ -46,6 +75,8 @@ def build_statutory_pages(
     approval_date: str = "",
     signing_directors: str = "",
     dividends: Decimal | None = None,
+    audit_exemption_claimed: bool | None = None,
+    audit_statements: tuple[str, ...] = (),
 ) -> tuple[StatutoryPage, ...]:
     """Compilation, directors' report, approval, then audit exemption."""
     return (
@@ -65,7 +96,11 @@ def build_statutory_pages(
             approval_date=approval_date,
             signing_directors=signing_directors,
         ),
-        _audit_exemption(size_eligible=size_eligible),
+        _audit_exemption(
+            size_eligible=size_eligible,
+            claimed=audit_exemption_claimed,
+            statements=audit_statements,
+        ),
     )
 
 
@@ -206,7 +241,16 @@ def _approval(
     )
 
 
-def _audit_exemption(*, size_eligible: bool | None) -> StatutoryPage:
+def _audit_exemption(
+    *,
+    size_eligible: bool | None,
+    claimed: bool | None = None,
+    statements: tuple[str, ...] = (),
+) -> StatutoryPage:
+    if claimed is True:
+        if len(statements) != 2:
+            raise ValueError("Audit exemption statements are missing")
+        return StatutoryPage(heading="Audit exemption", paragraphs=statements)
     if size_eligible is True:
         body = (
             "The recorded size test meets the pack's small-company conditions. "
