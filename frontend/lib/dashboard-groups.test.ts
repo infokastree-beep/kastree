@@ -144,8 +144,9 @@ describe("review screen", () => {
       "utf8",
     );
     assert.match(workspace, /place="workspace-header"/);
-    assert.match(workspace, /place="downloads"/);
+    assert.equal(workspace.includes('place="downloads"'), false);
     assert.equal(workspace.includes('place="review-dashboard"'), false);
+    assert.equal(workspace.includes("statutory-status-pill"), true);
     assert.match(workspace, /blockingCount=/);
     assert.match(workspace, /<ReviewChecks/);
     const finalise = readFileSync(

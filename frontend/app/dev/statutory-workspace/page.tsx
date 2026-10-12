@@ -6,12 +6,15 @@
  */
 
 import { useState } from "react";
+import { AuditExemptionClaim } from "@/components/statutory/AuditExemptionClaim";
 import { FinaliseDraft } from "@/components/statutory/FinaliseDraft";
+import { SizeInputs } from "@/components/statutory/SizeInputs";
 import { TrialBalancePanel } from "@/components/statutory/TrialBalancePanel";
 import { ReportSetupForm, type ReportSetupWrite } from "@/components/statutory/ReportSetupForm";
+import { AUDIT_POSITION_FINAL_LOCK } from "@/lib/audit-exemption";
 import {
-  finalStateLabel,
   pdfDownloadLabel,
+  statusPillLabel,
   wordDownloadLabel,
 } from "@/lib/finalise-status";
 import { SectionPreview } from "@/components/statutory/SectionPreview";
@@ -421,12 +424,62 @@ export default function StatutoryWorkspacePreviewPage() {
               />
               Preview a refusal
             </label>
+            <p className="mt-2" data-testid="statutory-status">
+              <span
+                className="inline-flex rounded-full border border-line bg-surface-elevated px-3 py-1 text-sm font-semibold text-ink"
+                data-testid="statutory-status-pill"
+              >
+                {statusPillLabel(
+                  draftStatus === "final"
+                    ? { lifecycle: "Final", readiness: null }
+                    : {
+                        lifecycle: "Draft",
+                        readiness: previewRefusal ? "3 blockers" : "Ready to finalise",
+                      },
+                )}
+              </span>
+            </p>
+            <SizeInputs
+              firstPeriod
+              currency="EUR"
+              inputs={{
+                size_current_turnover: "100000.00",
+                size_current_balance_sheet: "35000.00",
+                size_current_employees: 677,
+                size_preceding_turnover: null,
+                size_preceding_balance_sheet: null,
+                size_preceding_employees: null,
+              }}
+              message={null}
+              canEdit={previewRole === "owner" || previewRole === "admin"}
+              lockLabel={draftStatus === "final" ? AUDIT_POSITION_FINAL_LOCK : null}
+              busy={false}
+              error={null}
+              onRecord={() => undefined}
+            />
+            <AuditExemptionClaim
+              claimed
+              companyName="charlie mungar buffett"
+              approvalDate="2027-03-17"
+              signingDirectors={["warren buffett"]}
+              notExcluded
+              noMemberNotice
+              returnsNotLate
+              canRecord={previewRole === "owner" || previewRole === "admin"}
+              lockLabel={draftStatus === "final" ? AUDIT_POSITION_FINAL_LOCK : null}
+              busy={false}
+              positionMessage={null}
+              noticeMessage={null}
+              error={null}
+              conditionsError={null}
+              onRecord={() => undefined}
+              onRecordConditions={() => undefined}
+            />
             <FinaliseDraft
               role={previewRole}
               status={draftStatus}
               canFinalise={!previewRefusal}
               blockingCount={previewRefusal ? 3 : 0}
-              wordingSignedOff={false}
               carriedDisclosures={showCarried ? ["HAS_EMPLOYEES"] : []}
               onConfirm={async () => {
                 if (previewRefusal) {
@@ -443,18 +496,13 @@ export default function StatutoryWorkspacePreviewPage() {
             <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-soft">
               Outputs
             </h2>
-            {draftStatus === "final" ? (
-              <p className="text-sm font-semibold text-ink" data-testid="statutory-outputs-state">
-                {finalStateLabel(false)}
-              </p>
-            ) : null}
             <button
               type="button"
               data-testid="statutory-download"
               disabled
               className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {pdfDownloadLabel(draftStatus, false)}
+              {pdfDownloadLabel(draftStatus)}
             </button>
             <p className="text-sm text-ink-secondary" data-testid="statutory-download-reason">
               This preview does not call the API.
@@ -466,7 +514,7 @@ export default function StatutoryWorkspacePreviewPage() {
                 disabled
                 className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {wordDownloadLabel(draftStatus, false)}
+                {wordDownloadLabel()}
               </button>
             </div>
           </section>

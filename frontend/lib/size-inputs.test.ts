@@ -50,6 +50,8 @@ describe("QA company size inputs", () => {
       "utf8",
     );
     assert.match(component, /data-testid="size-rule-message"/);
+    assert.match(component, /data-testid="size-inputs-locked"/);
+    assert.match(component, /const editable = canEdit && lockLabel == null/);
     assert.match(component, /\{message\}/);
     assert.equal(/eligible/i.test(component), false);
     assert.match(workspace, /message=\{yearEnd\.size_message\}/);

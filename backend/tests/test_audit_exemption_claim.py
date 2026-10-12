@@ -414,6 +414,12 @@ def test_cro_statement_prints_on_the_balance_sheet_above_the_signatures(
     assert "use sections (a)" not in pdf
     assert "455,812" in pdf
     assert "157,650" in pdf
+    assert pdf.index("I/We, as director(s) of Northwind Limited, state that:") < pdf.index(
+        "Approved by the board"
+    )
+    assert xml.index("I/We, as director(s) of Northwind Limited, state that:") < xml.index(
+        "Approved by the board"
+    )
 
 
 def _pdf_text(payload: bytes) -> str:
@@ -912,3 +918,174 @@ async def test_fictional_company_confirmations_are_owner_admin_only(
     for row in rows:
         assert set(row.new_value) == _CONDITION_KEYS
     _audit_has_no_amounts(rows)
+
+
+_FINAL_SNAPSHOT = {
+    "watermark": "FINAL",
+    "marker": "audit-position-unchanged",
+}
+_CLOSED_DRAFTS = (
+    ("final", "This draft is final. The audit position cannot be changed."),
+    ("locked", "This draft is locked. The audit position cannot be changed."),
+    ("frozen", "This draft is frozen. The audit position cannot be changed."),
+)
+
+
+def _login_name() -> str:
+    with SyncSessionLocal() as session:
+        name = session.execute(text("SELECT current_user")).scalar_one()
+    print(f"executing_role={name}", flush=True)
+    return str(name)
+
+
+def _year_end_position(org_id: uuid.UUID, year_end_id: str) -> tuple[object, ...]:
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        row = session.execute(
+            text(
+                """
+                SELECT audit_exemption_claimed,
+                       audit_exemption_claimed_by_user_id::text,
+                       audit_exemption_claimed_at::text,
+                       audit_exemption_not_excluded,
+                       audit_exemption_no_member_notice,
+                       audit_exemption_returns_not_late,
+                       audit_exemption_conditions_by_user_id::text,
+                       audit_exemption_conditions_at::text,
+                       size_current_turnover::text,
+                       size_current_balance_sheet::text,
+                       size_current_employees,
+                       size_checked_at::text,
+                       size_message,
+                       size_eligible,
+                       size_current_met
+                FROM findraft_year_ends
+                WHERE id = :id
+                """
+            ),
+            {"id": year_end_id},
+        ).one()
+    return tuple(row)
+
+
+def _draft_state(org_id: uuid.UUID, draft_id: str) -> tuple[str, bool, object]:
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        row = session.execute(
+            text(
+                """
+                SELECT status, is_frozen, snapshot
+                FROM findraft_draft_versions
+                WHERE id = :id
+                """
+            ),
+            {"id": draft_id},
+        ).one()
+    return str(row[0]), bool(row[1]), row[2]
+
+
+def _close_draft(org_id: uuid.UUID, draft_id: str, kind: str) -> None:
+    if kind == "final":
+        statement = text(
+            """
+            UPDATE findraft_draft_versions
+            SET status = 'final',
+                snapshot = CAST(:snapshot AS jsonb),
+                inputs_sha256 = :digest,
+                engine_sha = :digest
+            WHERE id = :id
+            """
+        )
+    elif kind == "locked":
+        statement = text(
+            """
+            UPDATE findraft_draft_versions
+            SET status = 'locked'
+            WHERE id = :id
+            """
+        )
+    else:
+        statement = text(
+            """
+            UPDATE findraft_draft_versions
+            SET is_frozen = true
+            WHERE id = :id
+            """
+        )
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        updated = session.execute(
+            statement,
+            {
+                "id": draft_id,
+                "snapshot": '{"watermark": "FINAL", "marker": "audit-position-unchanged"}',
+                "digest": "a" * 64,
+            },
+        )
+        assert updated.rowcount == 1
+        session.commit()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("kind", "detail"), _CLOSED_DRAFTS)
+async def test_closed_draft_refuses_the_audit_position(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+    kind: str,
+    detail: str,
+) -> None:
+    """Size, the claim, and the confirmations stay put on a closed draft.
+
+    The login is findraft on both jobs. This file is on the parity list, so
+    the parity job runs it without superuser rights.
+    """
+    assert _login_name() == "findraft"
+    year_end_id, draft_id, owner = await _open_fixture(api_client, provisioned_org)
+    org_id = provisioned_org["org_id"]
+    open_board = await _dashboard(api_client, owner, year_end_id, draft_id)
+    assert open_board["status"] == "draft"
+    assert open_board["can_finalise"] is False
+    assert "traffic" in open_board
+    assert isinstance(open_board["blocking_count"], int)
+    open_view = open_board["status_view"]
+    assert isinstance(open_view, dict)
+    assert open_view["lifecycle"] == "Draft"
+    blockers = open_board["blocking_count"]
+    assert open_view["readiness"] == (
+        "1 blocker" if blockers == 1 else f"{blockers} blockers"
+    )
+    assert _check(open_board, "V-CO-020")["passed"] is False
+    before_position = _year_end_position(org_id, year_end_id)
+    assert before_position[0] is None
+    _close_draft(org_id, draft_id, kind)
+    closed = _draft_state(org_id, draft_id)
+    if kind == "final":
+        assert closed == ("final", False, _FINAL_SNAPSHOT)
+        final_board = await _dashboard(api_client, owner, year_end_id, draft_id)
+        assert final_board["status"] == "final"
+        assert final_board["can_finalise"] is False
+        assert final_board["traffic"] in {"red", "amber", "green"}
+        assert "blocking_count" in final_board
+        assert final_board["status_view"] == {"lifecycle": "Final", "readiness": None}
+    elif kind == "locked":
+        assert closed[0] == "locked"
+        assert closed[2] is None
+    else:
+        assert closed[0] == "draft"
+        assert closed[1] is True
+        assert closed[2] is None
+
+    for path, body in (
+        (f"/year-ends/{year_end_id}/size-eligibility", {"current": _CURRENT}),
+        (f"/year-ends/{year_end_id}/audit-exemption", {"claimed": True}),
+        (
+            f"/year-ends/{year_end_id}/audit-exemption-conditions",
+            _CONDITIONS_YES,
+        ),
+    ):
+        refused = await api_client.post(path, headers=owner, json=body)
+        assert refused.status_code == 409, refused.text
+        assert refused.json()["detail"] == detail
+
+    assert _year_end_position(org_id, year_end_id) == before_position
+    assert _draft_state(org_id, draft_id) == closed

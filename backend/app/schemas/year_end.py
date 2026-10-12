@@ -499,6 +499,15 @@ class DisclosureQuestionOut(BaseModel):
     answer: Literal["yes", "no", "unanswered"]
 
 
+class DraftStatusView(BaseModel):
+    """Lifecycle is Draft or Final. Readiness is present only while Draft."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    lifecycle: Literal["Draft", "Final"]
+    readiness: str | None = None
+
+
 class DashboardResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -507,6 +516,7 @@ class DashboardResponse(BaseModel):
     row_version: int
     traffic: Literal["red", "amber", "green"]
     can_finalise: bool
+    status_view: DraftStatusView
     unanswered_disclosures: list[str]
     unanswered_count: int = 0
     blocking_count: int = 0

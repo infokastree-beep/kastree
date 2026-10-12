@@ -16,6 +16,10 @@ import {
   AUDIT_EXEMPTION_SOURCE,
   AUDIT_EXEMPTION_SOURCE_LABEL,
   AUDIT_EXEMPTION_SOURCE_STATUS,
+  AUDIT_POSITION_FINAL_LOCK,
+  approvalDateLine,
+  printedAuditExemption,
+  unprintedAuditExemptionSource,
 } from "./audit-exemption.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -79,10 +83,30 @@ describe("audit exemption claim", () => {
     const banner = readFileSync(join(here, "finalise-status.ts"), "utf8");
     assert.match(component, /data-testid="audit-exemption-source"/);
     assert.match(component, /AUDIT_EXEMPTION_SOURCE_LABEL/);
+    assert.match(component, /data-testid="audit-exemption-printed"/);
+    assert.match(component, /data-testid="audit-exemption-signatures"/);
+    assert.match(component, /Source text \(CRO\), not printed/);
+    assert.match(component, /data-testid="audit-exemption-locked"/);
+    const printed = printedAuditExemption("charlie mungar buffett");
+    assert.equal(printed[0], "I/We, as director(s) of charlie mungar buffett, state that:");
+    assert.deepEqual(
+      printed.slice(1).map((line) => line.slice(0, 3)),
+      ["(a)", "(b)", "(c)", "(d)"],
+    );
+    assert.equal(printed.join(" ").includes("(company name)"), false);
+    assert.equal(printed.join(" ").includes("(e)"), false);
+    const source = unprintedAuditExemptionSource();
+    assert.equal(source.some((line) => line.includes("(company name)")), true);
+    assert.equal(source.some((line) => line.startsWith("*(e)")), true);
+    assert.equal(source.some((line) => line.includes("use sections (a)")), true);
+    assert.equal(approvalDateLine(null), "Approval date has not been recorded.");
+    assert.equal(approvalDateLine("2027-03-17"), "Approved on 17 March 2027.");
+    assert.equal(AUDIT_POSITION_FINAL_LOCK, "Locked: this draft is final");
     assert.match(component, /data-testid="audit-exemption-claimed"/);
     assert.match(component, /data-testid="audit-exemption-not-claimed"/);
     assert.match(component, /data-testid="audit-exemption-clear"/);
-    assert.match(component, /\{canRecord \?/);
+    assert.match(component, /const editable = canRecord && lockLabel == null/);
+    assert.equal(component.includes("{canRecord ?"), false);
     assert.match(component, /data-testid="audit-exemption-conditions"/);
     assert.match(component, /testId: "audit-exemption-not-excluded"/);
     assert.match(component, /testId: "audit-exemption-no-member-notice"/);

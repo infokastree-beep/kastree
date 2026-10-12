@@ -152,6 +152,7 @@ from app.services.draft_workflow import (
     DraftRejected,
     PostedLine,
     acknowledge_mappings,
+    audit_position_write_refusal,
     dashboard_for_draft,
     finalise_draft,
     frozen_snapshot,
@@ -255,6 +256,28 @@ async def _owned_year_end(
     if year_end is None or year_end.org_id != org_id:
         raise HTTPException(status_code=404, detail="Year end not found")
     return year_end
+
+
+async def _refuse_audit_position_write(
+    session: AsyncSession, *, org_id: uuid.UUID, year_end: YearEnd
+) -> None:
+    """The latest draft decides. An open draft may still record the position."""
+    draft = (
+        await session.scalars(
+            select(DraftVersion)
+            .where(
+                DraftVersion.org_id == org_id,
+                DraftVersion.year_end_id == year_end.id,
+            )
+            .order_by(DraftVersion.version_number.desc())
+            .limit(1)
+        )
+    ).first()
+    if draft is None:
+        return
+    message = audit_position_write_refusal(draft)
+    if message is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=message)
 
 
 def _version_response(
@@ -1821,6 +1844,9 @@ async def check_size_eligibility(
     company = await session.get(Company, year_end.company_id)
     if company is None or company.org_id != auth.org_id:
         raise HTTPException(status_code=404, detail="Company not found")
+    await _refuse_audit_position_write(
+        session, org_id=auth.org_id, year_end=year_end
+    )
     try:
         manifest = load_manifest(
             pack_dir(year_end.pack_id, year_end.pack_version) / "pack.json"
@@ -1893,6 +1919,9 @@ async def post_audit_exemption(
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
+    await _refuse_audit_position_write(
+        session, org_id=auth.org_id, year_end=year_end
+    )
     await record_audit_exemption(
         session,
         org_id=auth.org_id,
@@ -1922,6 +1951,9 @@ async def post_audit_exemption_conditions(
     await aset_rls_org_id(session, auth.org_id)
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    await _refuse_audit_position_write(
+        session, org_id=auth.org_id, year_end=year_end
     )
     try:
         await record_audit_exemption_conditions(

@@ -705,9 +705,7 @@ export function StatutoryWorkbench() {
       {pack ? (
         <section className="space-y-4 rounded border border-stone-200 bg-white p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-800">
-              {pack.watermark} statutory pack
-            </h2>
+            <h2 className="text-sm font-semibold text-stone-900">Statements</h2>
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"

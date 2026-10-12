@@ -29,14 +29,12 @@ import { blockingFailureCount } from "@/lib/dashboard-groups";
 import type { DisclosureQuestion } from "@/lib/disclosure-groups";
 import {
   currencyCodeFromNotice,
-  finalStateLabel,
   finaliseFailureMessage,
-  requestIdFromBody,
-  finaliseStatusLine,
   pdfDownloadLabel,
-  shownStatus,
+  requestIdFromBody,
+  statusPillLabel,
   wordDownloadLabel,
-  wordingSignedOffFromServer,
+  type DraftStatusView,
 } from "@/lib/finalise-status";
 import { SectionPreview } from "@/components/statutory/SectionPreview";
 import { SectionsSetup } from "@/components/statutory/SectionsSetup";
@@ -119,6 +117,7 @@ type DraftDashboard = {
   row_version: number;
   traffic: "red" | "amber" | "green";
   can_finalise: boolean;
+  status_view?: DraftStatusView;
   unanswered_disclosures: string[];
   unanswered_count?: number;
   blocking_count?: number;
@@ -188,14 +187,38 @@ function flagLabel(flag: string): string {
     .join(" ");
 }
 
-function trafficClass(traffic: DraftDashboard["traffic"]): string {
-  if (traffic === "green") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-950";
+function statusViewFor(dashboard: DraftDashboard): DraftStatusView {
+  if (dashboard.status_view != null) {
+    return dashboard.status_view;
   }
-  if (traffic === "amber") {
-    return "border-amber-200 bg-amber-50 text-amber-950";
+  if (dashboard.status === "final") {
+    return { lifecycle: "Final", readiness: null };
   }
-  return "border-red-200 bg-red-50 text-red-950";
+  const blockers = dashboard.blocking_count ?? blockingFailureCount(dashboard.checks);
+  return {
+    lifecycle: "Draft",
+    readiness: dashboard.can_finalise
+      ? "Ready to finalise"
+      : blockers === 1
+        ? "1 blocker"
+        : `${blockers} blockers`,
+  };
+}
+
+function auditLockLabel(draft: WorkingDraft | null): string | null {
+  if (draft == null) {
+    return null;
+  }
+  if (draft.status === "final") {
+    return "Locked: this draft is final";
+  }
+  if (draft.status === "locked") {
+    return "Locked: this draft is locked";
+  }
+  if (draft.frozen) {
+    return "Locked: this draft is frozen";
+  }
+  return null;
 }
 
 async function absentOn404<T>(path: string, getToken: () => Promise<string | null>): Promise<T | null> {
@@ -272,9 +295,6 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       apiFetch<{ lines: string[] }>("/year-ends/canonical-lines", { getToken }),
     enabled: draft !== null && draft.status === "draft",
   });
-  const wordingSignedOff = wordingSignedOffFromServer(
-    meQuery.data?.product2_access,
-  );
   const yearEnd = yearEndQuery.data;
   const statementsPath =
     yearEnd?.adopted_trial_balance_id != null
@@ -1135,12 +1155,6 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
           <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-soft">
             Outputs
           </h2>
-          {dashboard?.status === "final" ? (
-            <p className="text-sm font-semibold text-ink" data-testid="statutory-outputs-state">
-              {finalStateLabel(wordingSignedOff)}
-            </p>
-          ) : null}
-          <StandingWordingNotice place="downloads" />
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
@@ -1153,7 +1167,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               onClick={() => void downloadPdf()}
               className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {pdfDownloadLabel(dashboard?.status, wordingSignedOff)}
+              {pdfDownloadLabel(dashboard?.status)}
             </button>
             {pdfReason !== null ? (
               <p className="text-sm text-ink-secondary" data-testid="statutory-download-reason">
@@ -1178,7 +1192,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               onClick={() => void downloadWord()}
               className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {wordDownloadLabel(dashboard?.status, wordingSignedOff)}
+              {wordDownloadLabel()}
             </button>
             {wordPreparing ? (
               <p className="text-sm text-ink-secondary" data-testid="statutory-word-progress">
@@ -1299,37 +1313,32 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
 
       {sectionId === "review" && dashboard ? (
         <section
-          className={`rounded-md border px-4 py-3 ${trafficClass(dashboard.traffic)}`}
+          className="rounded-md border border-line px-4 py-3"
           data-testid="statutory-review-dashboard"
         >
           <p className="text-xs font-semibold uppercase tracking-[0.12em]">
             Review dashboard
           </p>
-          <p className="mt-1 text-lg font-semibold capitalize" data-testid="statutory-traffic">
-            {dashboard.traffic}
+          <p className="mt-2" data-testid="statutory-status">
+            <span
+              className="inline-flex rounded-full border border-line bg-surface-elevated px-3 py-1 text-sm font-semibold text-ink"
+              data-testid="statutory-status-pill"
+            >
+              {statusPillLabel(statusViewFor(dashboard))}
+            </span>
           </p>
-          <p className="mt-1 text-sm">
-            Draft version {draft?.version_number}. Status{" "}
-            {shownStatus(dashboard.status, wordingSignedOff)}.
-            {finaliseStatusLine({
-              canFinalise: dashboard.can_finalise,
-              tbVersionId: draft?.tb_version_id ?? null,
-            })}
-            {dashboard.checks.some(
-              (check) => check.code === "V-SEC-006" || check.code === "V-SEC-007",
-            ) ? (
-              <span data-testid="statutory-setup-notices">
-                {" "}
-                {dashboard.checks
-                  .filter(
-                    (check) =>
-                      check.code === "V-SEC-006" || check.code === "V-SEC-007",
-                  )
-                  .map((check) => check.message)
-                  .join(" ")}
-              </span>
-            ) : null}
-          </p>
+          {dashboard.checks.some(
+            (check) => check.code === "V-SEC-006" || check.code === "V-SEC-007",
+          ) ? (
+            <p className="mt-2 text-sm" data-testid="statutory-setup-notices">
+              {dashboard.checks
+                .filter(
+                  (check) => check.code === "V-SEC-006" || check.code === "V-SEC-007",
+                )
+                .map((check) => check.message)
+                .join(" ")}
+            </p>
+          ) : null}
           <ReviewChecks
             yearEndId={yearEndId}
             checks={dashboard.checks}
@@ -1366,16 +1375,21 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
                 inputs={yearEnd}
                 message={yearEnd.size_message}
                 canEdit={canEditDetails}
+                lockLabel={auditLockLabel(draft)}
                 busy={busy !== null}
                 error={sizeError}
                 onRecord={(body) => void recordSize(body)}
               />
               <AuditExemptionClaim
                 claimed={yearEnd.audit_exemption_claimed}
+                companyName={statementsQuery.data?.company_name ?? ""}
+                approvalDate={detailsQuery.data?.approval_date ?? null}
+                signingDirectors={detailsQuery.data?.signing_directors ?? []}
                 notExcluded={yearEnd.audit_exemption_not_excluded}
                 noMemberNotice={yearEnd.audit_exemption_no_member_notice}
                 returnsNotLate={yearEnd.audit_exemption_returns_not_late}
                 canRecord={canRecordClaim}
+                lockLabel={auditLockLabel(draft)}
                 busy={busy !== null}
                 positionMessage={
                   dashboard.checks.find((check) => check.code === "V-CO-020")
@@ -1401,7 +1415,6 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               dashboard.blocking_count ?? blockingFailureCount(dashboard.checks)
             }
             carriedDisclosures={dashboard.carried_disclosures ?? []}
-            wordingSignedOff={wordingSignedOff}
             busy={busy !== null}
             onConfirm={finaliseDraft}
           />
@@ -1582,9 +1595,6 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
 
       {statementsQuery.data ? (
         <section className="space-y-4" data-testid="statutory-draft-pack">
-          <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-amber-800">
-            {statementsQuery.data.watermark} statutory pack
-          </h2>
           <p className="text-sm text-ink-secondary">
             Net assets {statementsQuery.data.net_assets ?? "—"}. Profit{" "}
             {statementsQuery.data.profit ?? "—"}.

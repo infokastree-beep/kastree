@@ -173,7 +173,7 @@ describe("sectionsForFramework", () => {
     assert.equal(workspace.includes("statutory-turn-on"), true);
     assert.equal(workspace.includes("<SectionsSetup"), true);
     assert.equal(workspace.includes("statutory-setup-notices"), true);
-    assert.equal(workspace.includes("finaliseStatusLine"), true);
+    assert.equal(workspace.includes("statusPillLabel"), true);
     assert.equal(workspace.includes("statutory-confirm-currency"), true);
     assert.equal(workspace.includes("Ready to finalise."), false);
     assert.equal(workspace.includes("<FinaliseDraft"), true);
@@ -183,12 +183,11 @@ describe("sectionsForFramework", () => {
     );
     assert.equal(finalise.includes("FINALISE_LOCK_NOTE"), true);
     assert.equal(finalise.includes("statutory-finalise-lock"), true);
-    assert.equal(workspace.includes("statutory-outputs-state"), true);
+    assert.equal(workspace.includes("statutory-outputs-state"), false);
     assert.equal(workspace.includes("pdfDownloadLabel"), true);
-    assert.equal(workspace.includes("finalStateLabel"), true);
     assert.equal(workspace.includes("wordDownloadLabel"), true);
-    assert.equal(workspace.includes("wordingSignedOffFromServer"), true);
-    assert.equal(workspace.includes("shownStatus"), true);
+    assert.equal(workspace.includes("statutory-status-pill"), true);
+    assert.equal(workspace.includes("Locked: this draft is final"), true);
     assert.equal(workspace.includes("canOfferFinalise"), false);
     const form = readFileSync(
       join(here, "../components/statutory/ReportSetupForm.tsx"),

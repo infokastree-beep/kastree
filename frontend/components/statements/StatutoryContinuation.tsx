@@ -360,11 +360,8 @@ export function StatutoryContinuation({
       {pack ? (
         <section className="space-y-4" data-testid="statutory-pack">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-amber-800">
-              {pack.watermark} statutory pack
-            </h3>
+            <h3 className="text-sm font-semibold text-ink">Statements</h3>
             <div className="flex flex-wrap items-center gap-3">
-              {forbidden ? null : <StandingWordingNotice place="downloads" />}
               <button
                 type="button"
                 data-testid="statutory-download"

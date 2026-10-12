@@ -25,6 +25,7 @@ export function SizeInputs({
   inputs,
   message,
   canEdit,
+  lockLabel,
   busy,
   error,
   onRecord,
@@ -34,6 +35,7 @@ export function SizeInputs({
   inputs: SizeInputFields;
   message: string | null;
   canEdit: boolean;
+  lockLabel: string | null;
   busy: boolean;
   error: string | null;
   onRecord: (body: {
@@ -45,6 +47,7 @@ export function SizeInputs({
   const [preceding, setPreceding] = useState<YearFields>(EMPTY_YEAR);
   const [formError, setFormError] = useState<string | null>(null);
   const recorded = inputs.size_current_turnover != null;
+  const editable = canEdit && lockLabel == null;
 
   function yearRequest(fields: YearFields): SizeYearRequest | null {
     const turnover = sizeAmountToApi(fields.turnover);
@@ -120,7 +123,12 @@ export function SizeInputs({
           Size test inputs have not been recorded.
         </p>
       )}
-      {canEdit ? (
+      {lockLabel ? (
+        <p className="text-sm font-semibold text-ink" data-testid="size-inputs-locked">
+          {lockLabel}
+        </p>
+      ) : null}
+      {editable ? (
         <form
           className="max-w-xl space-y-3"
           onSubmit={(event) => {

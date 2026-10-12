@@ -270,6 +270,36 @@ def _refuse_frozen(draft: DraftVersion) -> None:
         raise DraftRejected("draft is frozen; writes are refused", 409)
 
 
+def audit_position_write_refusal(draft: DraftVersion) -> str | None:
+    """Size inputs, the claim, and the confirmations stay as finalised.
+
+    A later draft version is the working copy. The latest draft is the one
+    that decides. Final, locked, and frozen each refuse the write.
+    """
+    if draft.status == "final":
+        return "This draft is final. The audit position cannot be changed."
+    if draft.status == "locked":
+        return "This draft is locked. The audit position cannot be changed."
+    if draft.is_frozen:
+        return "This draft is frozen. The audit position cannot be changed."
+    return None
+
+
+def present_status(
+    *, status: str, can_finalise: bool, blocking_count: int
+) -> dict[str, str | None]:
+    """One lifecycle. Readiness exists only while the draft is not final."""
+    if status == "final":
+        return {"lifecycle": "Final", "readiness": None}
+    if can_finalise:
+        readiness = "Ready to finalise"
+    elif blocking_count == 1:
+        readiness = "1 blocker"
+    else:
+        readiness = f"{blocking_count} blockers"
+    return {"lifecycle": "Draft", "readiness": readiness}
+
+
 async def _replay(
     session: AsyncSession,
     *,
@@ -1596,15 +1626,21 @@ def _dashboard_dict(board: Dashboard) -> dict[str, object]:
                 },
             }
         )
+    blocking_count = blocking_failure_count(board.checks)
     return {
         "draft_id": str(board.draft_id),
         "status": board.status,
         "row_version": board.row_version,
         "traffic": board.traffic,
         "can_finalise": board.can_finalise,
+        "status_view": present_status(
+            status=board.status,
+            can_finalise=board.can_finalise,
+            blocking_count=blocking_count,
+        ),
         "unanswered_disclosures": list(board.unanswered_disclosures),
         "unanswered_count": len(board.unanswered_disclosures),
-        "blocking_count": blocking_failure_count(board.checks),
+        "blocking_count": blocking_count,
         "carried_disclosures": list(board.carried_disclosures),
         "disclosure_questions": [
             {
