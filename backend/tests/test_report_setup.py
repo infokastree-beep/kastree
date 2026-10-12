@@ -67,8 +67,8 @@ def test_sidebar_sections_follow_the_reporting_framework() -> None:
         "Disclosures",
         "Company details",
     ]
-    assert labels[8:-1] == pack_labels
-    assert labels[-1] == "Financial statements"
+    assert labels[8:-2] == pack_labels
+    assert labels[-2:] == ["PDF", "Word"]
     assert "History" not in labels
     assert [section.group for section in frs] == [
         "overview",
@@ -80,6 +80,7 @@ def test_sidebar_sections_follow_the_reporting_framework() -> None:
         "inputs",
         "inputs",
         *["sections"] * len(pack_labels),
+        "outputs",
         "outputs",
     ]
     setup = next(section for section in frs if section.id == "sections-setup")
@@ -484,6 +485,10 @@ async def test_framework_catalogue_is_not_a_single_frs_list(
     assert by_id["cash-flow"]["built"] is False
     assert by_id["trading"]["built"] is False
     assert by_id["draft-pdf"]["built"] is None
+    assert by_id["draft-pdf"]["group"] == "outputs"
+    assert by_id["draft-word"]["label"] == "Word"
+    assert by_id["draft-word"]["group"] == "outputs"
+    assert by_id["draft-word"]["built"] is None
 
 
 def test_engine_sources_have_no_report_setup_import() -> None:

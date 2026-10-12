@@ -135,10 +135,19 @@ def _pack_sidebar() -> tuple[WorkspaceSection, ...]:
     rows.append(
         WorkspaceSection(
             id="draft-pdf",
-            label="Financial statements",
+            label="PDF",
             group="outputs",
             group_label="Outputs",
             order=order,
+        )
+    )
+    rows.append(
+        WorkspaceSection(
+            id="draft-word",
+            label="Word",
+            group="outputs",
+            group_label="Outputs",
+            order=order + 1,
         )
     )
     return tuple(rows)

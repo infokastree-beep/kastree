@@ -92,20 +92,22 @@ export function setupSections(
   );
 }
 
-/** The outputs row uses the final label only when the draft is final. */
+const FINAL_OUTPUT_LABELS: Readonly<Record<string, string>> = {
+  "draft-pdf": "Final PDF",
+  "draft-word": "Final Word",
+};
+
+/** PDF and Word use the final label only when the draft is final. */
 export function sidebarSections(
   sections: readonly WorkspaceSection[],
   status: string | undefined,
 ): WorkspaceSection[] {
   return navigatorSections(sections).map((section) => {
-    if (section.id !== "draft-pdf") {
+    const finalLabel = FINAL_OUTPUT_LABELS[section.id];
+    if (status !== "final" || finalLabel == null) {
       return section;
     }
-    return {
-      ...section,
-      label:
-        status === "final" ? "Final financial statements" : section.label,
-    };
+    return { ...section, label: finalLabel };
   });
 }
 
