@@ -343,6 +343,8 @@ class PreviewChild:
     number: int | None
     label: str
     anchor: str
+    note_class: str | None = None
+    note_class_label: str | None = None
 
 
 def extract_section_html(html: str, anchor: str) -> str | None:
@@ -426,6 +428,8 @@ def children_of(
 
 
 def _note_children(section: dict[str, object]) -> tuple[PreviewChild, ...]:
+    from app.services.note_classes import class_label, note_class_for
+
     notes = section.get("notes")
     if not isinstance(notes, list):
         return ()
@@ -439,12 +443,15 @@ def _note_children(section: dict[str, object]) -> tuple[PreviewChild, ...]:
             continue
         number_text, separator, label = title.partition(". ")
         number = int(number_text) if separator and number_text.isdigit() else None
+        note_class = note_class_for(code)
         children.append(
             PreviewChild(
                 id=code,
                 number=number,
                 label=label if number is not None else title,
                 anchor=f"note-{code}",
+                note_class=note_class,
+                note_class_label=class_label(note_class),
             )
         )
     return tuple(children)
@@ -459,18 +466,19 @@ def unbuilt_section_notices(year_end: YearEnd) -> tuple[ReconciliationCheck, ...
     labels = [
         catalogue[section_id]["label"]
         for section_id in _UNBUILT
-        if _section_included(section_id, saved, catalogue)
+        if saved.get(section_id) is True
     ]
     if not labels:
         return ()
     if len(labels) == 1:
         message = (
-            f"{labels[0]} is switched on. " "This pack does not build this statement."
+            f"{labels[0]} is switched on in saved report options. "
+            "This pack does not build this statement, so that choice is ignored."
         )
     else:
         message = (
-            f"{', '.join(labels)} are switched on. "
-            "This pack does not build these statements."
+            f"{', '.join(labels)} are switched on in saved report options. "
+            "This pack does not build these statements, so those choices are ignored."
         )
     return (
         ReconciliationCheck(
@@ -582,6 +590,8 @@ def _section_included(
     saved: dict[str, bool] | None,
     catalogue: dict[str, dict[str, str]],
 ) -> bool:
+    if section_id in _UNBUILT:
+        return False
     rule = catalogue[section_id]
     if rule["lock"] == "locked":
         return True

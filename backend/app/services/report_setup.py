@@ -57,11 +57,14 @@ _WORKSPACE_BEFORE: tuple[WorkspaceSection, ...] = (
     WorkspaceSection(
         "report-setup", "Report setup", "report-options", "Report options", 2
     ),
-    WorkspaceSection("trial-balance", "Trial balance", "inputs", "Inputs", 3),
-    WorkspaceSection("sub-lines", "Mapping", "inputs", "Inputs", 4),
-    WorkspaceSection("adjustments", "Adjustments", "inputs", "Inputs", 5),
-    WorkspaceSection("disclosures", "Disclosures", "inputs", "Inputs", 6),
-    WorkspaceSection("company-details", "Company details", "inputs", "Inputs", 7),
+    WorkspaceSection(
+        "sections-setup", "Sections setup", "report-options", "Report options", 3
+    ),
+    WorkspaceSection("trial-balance", "Trial balance", "inputs", "Inputs", 4),
+    WorkspaceSection("sub-lines", "Mapping", "inputs", "Inputs", 5),
+    WorkspaceSection("adjustments", "Adjustments", "inputs", "Inputs", 6),
+    WorkspaceSection("disclosures", "Disclosures", "inputs", "Inputs", 7),
+    WorkspaceSection("company-details", "Company details", "inputs", "Inputs", 8),
 )
 
 
@@ -105,16 +108,8 @@ def _pack_sidebar() -> tuple[WorkspaceSection, ...]:
     raw = loaded.get("sections")
     if not isinstance(raw, list):
         raise ValueError("pack sections are missing")
-    rows: list[WorkspaceSection] = [
-        WorkspaceSection(
-            id="sections-setup",
-            label="Sections setup",
-            group="sections",
-            group_label="Sections",
-            order=len(_WORKSPACE_BEFORE) + 1,
-        )
-    ]
-    order = len(_WORKSPACE_BEFORE) + 2
+    rows: list[WorkspaceSection] = []
+    order = len(_WORKSPACE_BEFORE) + 1
     for item in raw:
         if not isinstance(item, dict):
             raise ValueError("pack section is malformed")
@@ -140,7 +135,7 @@ def _pack_sidebar() -> tuple[WorkspaceSection, ...]:
     rows.append(
         WorkspaceSection(
             id="draft-pdf",
-            label="Draft PDF",
+            label="Financial statements",
             group="outputs",
             group_label="Outputs",
             order=order,

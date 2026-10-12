@@ -12,6 +12,8 @@ class PreviewChildOut(BaseModel):
     number: int | None = None
     label: str
     anchor: str
+    note_class: str | None = None
+    note_class_label: str | None = None
 
 
 class SectionOutlineItem(BaseModel):

@@ -84,6 +84,24 @@ def _note_body(document: object, code: str) -> str:
     return str(note.body)
 
 
+def test_catalogue_disambiguates_policy_blocks_from_notes() -> None:
+    from app.services.note_library import _catalogue
+
+    rows = list(_catalogue())
+    entity = next(row for row in rows if row.block_id == "N0_ENTITY")
+    assert entity.title == "Company information"
+    assert entity.row_kind == "Note"
+    debtors = {(row.row_kind, row.note_class) for row in rows if row.title == "Debtors"}
+    creditors = {
+        (row.row_kind, row.note_class) for row in rows if row.title == "Creditors"
+    }
+    assert debtors == {("Policy", "policies"), ("Note", "current assets")}
+    assert creditors == {("Policy", "policies"), ("Note", "creditors")}
+    for row in rows:
+        assert row.title != row.block_id
+        assert "N0_" not in row.title
+
+
 def test_null_library_keeps_the_golden_notes_and_figures() -> None:
     document = _golden()
     assert document.net_assets == Decimal("455812.00")
@@ -169,7 +187,21 @@ async def test_library_routes_reject_bad_blocks_and_keep_golden_figures(
     assert _library_column(draft_id, org_id) is None
     assert listed.json()["row_version"] == _draft_version(draft_id, org_id)
     rows = {row["block_id"]: row for row in listed.json()["rows"]}
+    assert rows["N0_ENTITY"]["title"] == "Company information"
+    assert rows["N0_ENTITY"]["kind"] == "Note"
+    assert rows["N0_ENTITY"]["note_class"] == "other"
     assert rows["N0_ENTITY"]["sentence"] == "This note is always included."
+    assert rows["DEBTORS"]["title"] == "Debtors"
+    assert rows["DEBTORS"]["kind"] == "Policy"
+    assert rows["DEBTORS"]["note_class"] == "policies"
+    assert rows["N3_DEBTORS"]["title"] == "Debtors"
+    assert rows["N3_DEBTORS"]["kind"] == "Note"
+    assert rows["N3_DEBTORS"]["note_class"] == "current assets"
+    assert rows["CREDITORS"]["kind"] == "Policy"
+    assert rows["N4_CREDITORS"]["kind"] == "Note"
+    for row in listed.json()["rows"]:
+        assert row["title"] != row["block_id"]
+        assert "N0_" not in row["title"]
     assert (
         rows["N2_FA"]["sentence"]
         == "Included because Tangible fixed assets has a balance."

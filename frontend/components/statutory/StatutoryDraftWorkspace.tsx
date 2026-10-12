@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
@@ -59,9 +59,10 @@ import { StandingWordingNotice } from "@/components/statutory/StandingWordingNot
 import { StatutoryOptIn } from "@/components/statutory/StatutoryOptIn";
 import {
   activeSection,
-  navigatorSections,
   sectionIsOn,
   sectionsForFramework,
+  sidebarSections,
+  UNBUILT_NOTICE_KEY,
   type ReportingFramework,
 } from "@/lib/workspace-sections";
 
@@ -366,6 +367,25 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
 
   const forbidden = meQuery.isSuccess && !statutoryWorkspaceOpen(meQuery.data);
   const dashboard = dashboardQuery.data;
+  const unbuiltMessage =
+    dashboard?.checks.find(
+      (check) => check.code === "V-SEC-005" && check.passed === false,
+    )?.message ?? null;
+  const [showUnbuiltNotice, setShowUnbuiltNotice] = useState(false);
+  useEffect(() => {
+    if (unbuiltMessage == null) {
+      return;
+    }
+    try {
+      if (window.localStorage.getItem(UNBUILT_NOTICE_KEY) === "shown") {
+        return;
+      }
+      window.localStorage.setItem(UNBUILT_NOTICE_KEY, "shown");
+    } catch {
+      // A private-mode browser still shows the notice for this visit.
+    }
+    setShowUnbuiltNotice(true);
+  }, [unbuiltMessage]);
   const trialBalanceQuery = useQuery({
     queryKey: ["trial-balance-page", yearEndId],
     queryFn: () =>
@@ -1002,7 +1022,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
   return (
     <div className="flex items-start gap-6" data-testid="statutory-draft-workspace">
       <WorkspaceSidebar
-        sections={navigatorSections(sections)}
+        sections={sidebarSections(sections, dashboard?.status)}
         activeId={sectionId}
         childrenBySection={outlineChildren}
         activeChildId={noteId}
@@ -1016,6 +1036,14 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       <div className="min-w-0 flex-1 space-y-6">
       <div className="space-y-3">
       <StandingWordingNotice place="workspace-header" />
+      {showUnbuiltNotice && unbuiltMessage ? (
+        <p
+          className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          data-testid="statutory-unbuilt-notice"
+        >
+          {unbuiltMessage}
+        </p>
+      ) : null}
       {dashboard?.checks
         .filter(
           (check) =>
@@ -1192,7 +1220,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               onClick={() => void downloadWord()}
               className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {wordDownloadLabel()}
+              {wordDownloadLabel(dashboard?.status)}
             </button>
             {wordPreparing ? (
               <p className="text-sm text-ink-secondary" data-testid="statutory-word-progress">
@@ -1341,7 +1369,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
           ) : null}
           <ReviewChecks
             yearEndId={yearEndId}
-            checks={dashboard.checks}
+            checks={dashboard.checks.filter((check) => check.code !== "V-SEC-005")}
             unansweredCount={
               dashboard.unanswered_count ?? dashboard.unanswered_disclosures.length
             }

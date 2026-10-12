@@ -18,6 +18,8 @@ from findraft.engine.notes import ANSWER_FLAGS, DERIVED
 from findraft.engine.pack import pack_dir
 from findraft.engine.predicates import Unanswered, evaluate
 
+from app.services.note_classes import class_label, note_class_for
+
 from app.services.reconciliation import ReconciliationCheck
 
 ReasonName = Literal[
@@ -92,6 +94,8 @@ class BlockSpec:
     pack_heading: str | None
     controllable: bool
     parent: str | None
+    note_class: str
+    row_kind: Literal["Note", "Policy"]
 
 
 @dataclass(frozen=True)
@@ -104,6 +108,9 @@ class LibraryRow:
     can_restore: bool
     can_add: bool
     can_remove: bool
+    kind: Literal["Note", "Policy"]
+    note_class: str
+    note_class_label: str
 
 
 @dataclass(frozen=True)
@@ -371,6 +378,9 @@ def _row(
         can_restore=controllable and reason == "omitted",
         can_add=controllable and reason == "disclosure_no",
         can_remove=controllable and reason == "added",
+        kind=spec.row_kind,
+        note_class=spec.note_class,
+        note_class_label=class_label(spec.note_class),
     )
 
 
@@ -547,6 +557,8 @@ def _catalogue() -> tuple[BlockSpec, ...]:
                 pack_heading=None,
                 controllable=code == _RELATED_PARTY,
                 parent=None,
+                note_class=note_class_for(code),
+                row_kind="Note",
             )
         )
         if code == "N1_POLICIES":
@@ -567,6 +579,8 @@ def _catalogue() -> tuple[BlockSpec, ...]:
                         pack_heading=heading if isinstance(heading, str) else None,
                         controllable=True,
                         parent=_COMMITMENT_PARENT,
+                        note_class=note_class_for(_COMMITMENT_PARENT),
+                        row_kind="Note",
                     )
                 )
     return tuple(rows)
@@ -597,6 +611,8 @@ def _policy_specs() -> tuple[BlockSpec, ...]:
                 pack_heading=None,
                 controllable=kind == "disclosure",
                 parent="N1_POLICIES",
+                note_class="policies",
+                row_kind="Policy",
             )
         )
     return tuple(specs)

@@ -776,6 +776,9 @@ def _library_row_payload(row: LibraryRow) -> dict[str, object]:
         "can_restore": row.can_restore,
         "can_add": row.can_add,
         "can_remove": row.can_remove,
+        "kind": row.kind,
+        "note_class": row.note_class,
+        "note_class_label": row.note_class_label,
     }
 
 
