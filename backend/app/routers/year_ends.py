@@ -90,6 +90,8 @@ from app.schemas.year_end import (
     TrialBalanceLinesResponse,
     TrialBalanceVersionCreate,
     TrialBalanceVersionResponse,
+    AuditExemptionRequest,
+    AuditExemptionResponse,
     YearEndCreateRequest,
     YearEndResponse,
     AdjustmentPostRequest,
@@ -177,6 +179,7 @@ from app.services.company_details import (
     confirm_currency,
     company_details_response,
     incorporation_output_message_for_year_end,
+    record_audit_exemption,
     save_approval_details,
     save_company_details,
 )
@@ -1870,6 +1873,36 @@ async def get_size_eligibility(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
     return _size_response(year_end)
+
+
+@router.post(
+    "/{year_end_id}/audit-exemption",
+    response_model=AuditExemptionResponse,
+)
+async def post_audit_exemption(
+    year_end_id: uuid.UUID,
+    body: AuditExemptionRequest,
+    auth: Annotated[AuthContext, Depends(require_client_admin)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> AuditExemptionResponse:
+    """Owner or admin records claimed, not claimed, or clears the position."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    await record_audit_exemption(
+        session,
+        org_id=auth.org_id,
+        user_id=auth.user_id,
+        year_end=year_end,
+        claimed=body.claimed,
+    )
+    return AuditExemptionResponse(
+        year_end_id=year_end.id,
+        claimed=year_end.audit_exemption_claimed,
+        claimed_by_user_id=year_end.audit_exemption_claimed_by_user_id,
+        claimed_at=year_end.audit_exemption_claimed_at,
+    )
 
 
 @router.get(

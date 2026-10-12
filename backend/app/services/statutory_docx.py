@@ -197,6 +197,11 @@ def _write_composed(
             )
             if anchor == "sofp":
                 add_paragraph(_NOTES_SENTENCE)
+                extras = section.get("exemption_statements")
+                if isinstance(extras, list):
+                    for extra in extras:
+                        if isinstance(extra, str) and extra.strip():
+                            add_paragraph(escape_export_text(extra))
                 _write_signature(document, signature)
             continue
         if kind == "notes":

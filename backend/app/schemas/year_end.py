@@ -77,6 +77,26 @@ class YearEndResponse(BaseModel):
     size_preceding_balance_sheet: SizeAmountOut = None
     size_preceding_employees: int | None = None
     size_message: str | None = None
+    audit_exemption_claimed: bool | None = None
+    audit_exemption_claimed_by_user_id: uuid.UUID | None = None
+    audit_exemption_claimed_at: datetime | None = None
+
+
+class AuditExemptionRequest(BaseModel):
+    """True is claimed, false is not claimed, null clears the position."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    claimed: bool | None
+
+
+class AuditExemptionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    year_end_id: uuid.UUID
+    claimed: bool | None
+    claimed_by_user_id: uuid.UUID | None
+    claimed_at: datetime | None
 
 
 class TrialBalanceVersionCreate(BaseModel):

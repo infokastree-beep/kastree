@@ -41,7 +41,11 @@ from app.services.statutory_display import (
     parse_iso_date,
     statement_period_phrase,
 )
-from app.services.statutory_pages import StatutoryPage, build_statutory_pages
+from app.services.statutory_pages import (
+    StatutoryPage,
+    audit_exemption_statements,
+    build_statutory_pages,
+)
 from app.models.tb_version import TrialBalanceVersion
 from app.services.adopted_trial_balance import (
     active_adopted_draft,
@@ -272,6 +276,9 @@ _DOCUMENT = """<!DOCTYPE html>
 </table>
 {% if section.anchor == "sofp" %}
 <p class="notes-line">The notes form part of these financial statements.</p>
+{% for paragraph in section.exemption_statements|default([]) %}
+<p>{{ paragraph }}</p>
+{% endfor -%}
 <section class="signature">
 <p>Approved by the board and signed on its behalf by</p>
 <p>{{ signature.date_line }}</p>
@@ -418,6 +425,7 @@ class StatutoryStatements:
     profit_before_tax: Decimal | None = None
     tax_charge: Decimal | None = None
     corporation_tax: Decimal | None = None
+    audit_exemption_statements: tuple[str, ...] = ()
 
 
 class _ExternalFetchRefused(BaseException):
@@ -1330,6 +1338,7 @@ def _render_html(
     approval_date: str = "",
     signing_directors: str = "",
     statement_order: tuple[str, ...] = ("income", "sofp", "notes"),
+    exemption_statements: tuple[str, ...] = (),
 ) -> str:
     """Build the section list the template walks. The engine rows stay intact."""
     start = parse_iso_date(period_start)
@@ -1369,6 +1378,7 @@ def _render_html(
             "columns": columns,
             "rows": sofp_rows,
             "show_notes": any(bool(row.get("note")) for row in sofp_rows),
+            "exemption_statements": list(exemption_statements),
         },
         "income": {
             "kind": "statement",
@@ -1494,6 +1504,7 @@ def _render_draft(
     signing_directors: str = "",
     share_classes: tuple[ShareClassFact, ...] = (),
     note_library: object | None = None,
+    audit_exemption_claimed: bool | None = None,
 ) -> StatutoryStatements:
     directory = (
         pack_dir(pack_id, pack_version)
@@ -1548,6 +1559,9 @@ def _render_draft(
     checks = tuple(report.checks) + library_notices(ctx, library)
     from findraft.engine.money import money
 
+    exemption = (
+        audit_exemption_statements(manifest) if audit_exemption_claimed is True else ()
+    )
     dividend_amount = aggregated.get("DIVIDENDS", Decimal("0"))
     pages = build_statutory_pages(
         company_name=entity.name,
@@ -1565,6 +1579,8 @@ def _render_draft(
         dividends=money(dividend_amount)
         if isinstance(dividend_amount, Decimal)
         else None,
+        audit_exemption_claimed=audit_exemption_claimed,
+        audit_statements=exemption,
     )
     figures = _income_figures(income, aggregated)
     html = _render_html(
@@ -1582,6 +1598,7 @@ def _render_draft(
         approval_date=approval_date,
         signing_directors=signing_directors,
         statement_order=_statement_order(manifest),
+        exemption_statements=exemption,
     )
     return StatutoryStatements(
         watermark=watermark,
@@ -1605,6 +1622,7 @@ def _render_draft(
         profit_before_tax=figures[1],
         tax_charge=figures[2],
         corporation_tax=figures[3],
+        audit_exemption_statements=exemption,
     )
 
 
@@ -1653,6 +1671,7 @@ def build_statutory_statements(
     signing_directors: str = "",
     share_classes: tuple[ShareClassFact, ...] = (),
     note_library: object | None = None,
+    audit_exemption_claimed: bool | None = None,
 ) -> StatutoryStatements:
     """Render a DRAFT only when every critical check has passed.
 
@@ -1697,6 +1716,7 @@ def build_statutory_statements(
             signing_directors=signing_directors,
             share_classes=share_classes,
             note_library=note_library,
+            audit_exemption_claimed=audit_exemption_claimed,
         )
     except (OSError, ValueError, KeyError) as exc:
         return _withheld(report, build_error=str(exc))
@@ -1790,6 +1810,7 @@ async def statements_for_version(
         signing_directors=_signing_phrase(year_end.signing_directors),
         share_classes=share_classes_from_company(company),
         note_library=None if draft is None else draft.note_library,
+        audit_exemption_claimed=year_end.audit_exemption_claimed,
     )
 
 
@@ -1883,4 +1904,5 @@ async def statements_for_adopted(
         signing_directors=_signing_phrase(year_end.signing_directors),
         share_classes=share_classes_from_company(company),
         note_library=None if draft is None else draft.note_library,
+        audit_exemption_claimed=year_end.audit_exemption_claimed,
     )

@@ -118,7 +118,10 @@ def _set_statutory(
 
 
 async def _letterhead(
-    api_client: AsyncClient, headers: dict[str, str], year_end_id: str
+    api_client: AsyncClient,
+    headers: dict[str, str],
+    year_end_id: str,
+    org_id: uuid.UUID,
 ) -> None:
     saved = await api_client.put(
         f"/year-ends/{year_end_id}/company-details",
@@ -141,6 +144,9 @@ async def _letterhead(
         },
     )
     assert approved.status_code == 200, approved.text
+    from tests.evidence_exemption import record_evidenced_exemption
+
+    record_evidenced_exemption(org_id, year_end_id)
 
 
 async def _open_small(
@@ -192,7 +198,7 @@ async def _open_small(
     draft = await api_client.get(f"/year-ends/{year_end_id}/draft", headers=headers)
     assert draft.status_code == 200, draft.text
     draft_id = str(draft.json()["draft_id"])
-    await _letterhead(api_client, headers, year_end_id)
+    await _letterhead(api_client, headers, year_end_id, provisioned_org["org_id"])
     _answer_all_no(
         org_id=provisioned_org["org_id"],
         company_id=provisioned_org["company_id"],
@@ -358,7 +364,7 @@ async def test_small_file_without_engine_files_names_the_pages(
     draft = await api_client.get(f"/year-ends/{year_end_id}/draft", headers=headers)
     assert draft.status_code == 200, draft.text
     draft_id = str(draft.json()["draft_id"])
-    await _letterhead(api_client, headers, year_end_id)
+    await _letterhead(api_client, headers, year_end_id, provisioned_org["org_id"])
     _answer_all_no(
         org_id=provisioned_org["org_id"],
         company_id=provisioned_org["company_id"],
@@ -497,7 +503,7 @@ async def test_finalise_with_fixed_assets_and_a_register(
     draft = await api_client.get(f"/year-ends/{year_end_id}/draft", headers=headers)
     assert draft.status_code == 200, draft.text
     draft_id = str(draft.json()["draft_id"])
-    await _letterhead(api_client, headers, year_end_id)
+    await _letterhead(api_client, headers, year_end_id, provisioned_org["org_id"])
     _answer_all_no(
         org_id=provisioned_org["org_id"],
         company_id=provisioned_org["company_id"],

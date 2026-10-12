@@ -35,8 +35,23 @@ _BLOCKING = frozenset(
         "V-CO-009",
         "V-CO-010",
         "V-CO-011",
+        "V-CO-020",
     }
 )
+_AUDIT_NOT_RECORDED = (
+    "The audit position has not been recorded. "
+    "Record whether the audit exemption is claimed."
+)
+_AUDIT_REQUIRED = "An audit is required. An auditor's report is out of scope."
+_AUDIT_SIZE_MISSING = (
+    "The size test has not been recorded. "
+    "Record it before the audit exemption can be evidenced."
+)
+_AUDIT_NOT_EVIDENCED = (
+    "The recorded size test does not evidence the audit exemption. "
+    "An audit is required. An auditor's report is out of scope."
+)
+_AUDIT_CLAIMED = "The audit exemption is claimed and the size test is recorded."
 MISSING_INCORPORATION = "Country of incorporation not recorded"
 
 
@@ -713,6 +728,85 @@ def company_detail_checks(
             subsequent_events_answered=subsequent_events_answered,
         )
     )
+    checks.extend(audit_position_checks(year_end))
+    return tuple(checks)
+
+
+def _claim_snapshot(year_end: YearEnd) -> dict[str, object]:
+    """Who, when, and the three-state value. Amounts stay off this log."""
+    actor = year_end.audit_exemption_claimed_by_user_id
+    claimed_at = year_end.audit_exemption_claimed_at
+    return {
+        "claimed": year_end.audit_exemption_claimed,
+        "claimed_by_user_id": None if actor is None else str(actor),
+        "claimed_at": None if claimed_at is None else claimed_at.isoformat(),
+    }
+
+
+def _claim_never_recorded(year_end: YearEnd) -> bool:
+    return (
+        year_end.audit_exemption_claimed is None
+        and year_end.audit_exemption_claimed_by_user_id is None
+        and year_end.audit_exemption_claimed_at is None
+    )
+
+
+async def record_audit_exemption(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    user_id: uuid.UUID,
+    year_end: YearEnd,
+    claimed: bool | None,
+) -> YearEnd:
+    """Store claimed, not claimed, or clear the position back to not recorded."""
+    previous = None if _claim_never_recorded(year_end) else _claim_snapshot(year_end)
+    if claimed is None:
+        year_end.audit_exemption_claimed = None
+        year_end.audit_exemption_claimed_by_user_id = None
+        year_end.audit_exemption_claimed_at = None
+    else:
+        year_end.audit_exemption_claimed = claimed
+        year_end.audit_exemption_claimed_by_user_id = user_id
+        year_end.audit_exemption_claimed_at = datetime.now(UTC)
+    await append_audit_log(
+        session,
+        org_id=org_id,
+        user_id=user_id,
+        action="audit_exemption_claimed",
+        entity_type="year_end",
+        entity_id=year_end.id,
+        old_value=previous,
+        new_value=_claim_snapshot(year_end),
+    )
+    await session.flush()
+    return year_end
+
+
+def audit_position_checks(year_end: YearEnd) -> tuple[ReconciliationCheck, ...]:
+    """NULL, false, and true are different. A notice does not block FINAL."""
+    claimed = year_end.audit_exemption_claimed
+    if claimed is None:
+        return (_check("V-CO-020", "WARNING", False, _AUDIT_NOT_RECORDED),)
+    if claimed is False:
+        return (_check("V-CO-020", "WARNING", False, _AUDIT_REQUIRED),)
+    if year_end.size_checked_at is None:
+        return (_check("V-CO-020", "WARNING", False, _AUDIT_SIZE_MISSING),)
+    if year_end.size_eligible is not True:
+        return (_check("V-CO-020", "WARNING", False, _AUDIT_NOT_EVIDENCED),)
+    checks = [_check("V-CO-020", "WARNING", True, _AUDIT_CLAIMED)]
+    condition_failed = (
+        year_end.size_current_met is not None and year_end.size_current_met < 3
+    ) or (year_end.size_preceding_met is not None and year_end.size_preceding_met < 3)
+    if condition_failed:
+        checks.append(
+            _check(
+                "V-CO-021",
+                "NOTICE",
+                False,
+                year_end.size_message or "",
+            )
+        )
     return tuple(checks)
 
 

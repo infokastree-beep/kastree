@@ -1149,7 +1149,10 @@ def _answer_all_no(*, org_id: uuid.UUID, company_id: uuid.UUID, draft_id: str) -
 
 
 async def _record_letterhead(
-    api_client: AsyncClient, headers: dict[str, str], year_end_id: str
+    api_client: AsyncClient,
+    headers: dict[str, str],
+    year_end_id: str,
+    org_id: uuid.UUID,
 ) -> None:
     saved = await api_client.put(
         f"/year-ends/{year_end_id}/company-details",
@@ -1170,6 +1173,9 @@ async def _record_letterhead(
         },
     )
     assert approved.status_code == 200, approved.text
+    from tests.evidence_exemption import record_evidenced_exemption
+
+    record_evidenced_exemption(org_id, year_end_id)
 
 
 async def _open_adopted(
@@ -1720,7 +1726,9 @@ async def _ready_golden(
     draft = await api_client.get(f"/year-ends/{year_end_id}/draft", headers=headers)
     assert draft.status_code == 200, draft.text
     draft_id = draft.json()["draft_id"]
-    await _record_letterhead(api_client, headers, year_end_id)
+    await _record_letterhead(
+        api_client, headers, year_end_id, provisioned_org["org_id"]
+    )
     _answer_all_no(
         org_id=provisioned_org["org_id"],
         company_id=provisioned_org["company_id"],

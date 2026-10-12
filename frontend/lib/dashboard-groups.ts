@@ -27,6 +27,7 @@ const GROUP_ORDER = [
   "Sections",
   "Setup",
   "Figures",
+  "Review",
   "Other",
 ] as const;
 
@@ -50,6 +51,14 @@ const FIXES: Record<string, { area: string; fix: CheckFix }> = {
   "V-CO-017": { area: "Company details", fix: { section: "company-details" } },
   "V-CO-018": { area: "Figures", fix: { section: "income" } },
   "V-CO-019": { area: "Disclosures", fix: { section: "disclosures" } },
+  "V-CO-020": {
+    area: "Review",
+    fix: { section: "review", anchor: "audit-exemption-claim" },
+  },
+  "V-CO-021": {
+    area: "Review",
+    fix: { section: "review", anchor: "audit-exemption-claim" },
+  },
   "V-DISC-001": { area: "Disclosures", fix: { section: "disclosures" } },
   "V-NOTE-001": { area: "Disclosures", fix: { section: "notes" } },
   "V-NOTE-002": { area: "Disclosures", fix: { section: "notes" } },
@@ -80,6 +89,7 @@ const COMPANY_BLOCKING = new Set([
   "V-CO-009",
   "V-CO-010",
   "V-CO-011",
+  "V-CO-020",
 ]);
 
 export function presentCheck(check: ReviewCheck): { area: string; fix: CheckFix } {
