@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AUDIT_EXEMPTION_ABRIDGEMENT_NOTE,
   AUDIT_EXEMPTION_NOTE,
   AUDIT_EXEMPTION_PARAGRAPHS,
   AUDIT_EXEMPTION_PROVISION,
@@ -56,6 +57,9 @@ export function AuditExemptionClaim({
       </div>
       <p className="text-sm text-ink-secondary" data-testid="audit-exemption-note">
         {AUDIT_EXEMPTION_NOTE}
+      </p>
+      <p className="text-sm text-ink-secondary" data-testid="audit-exemption-abridgement">
+        {AUDIT_EXEMPTION_ABRIDGEMENT_NOTE}
       </p>
       <p className="text-sm text-ink" data-testid="audit-exemption-position">
         {position}

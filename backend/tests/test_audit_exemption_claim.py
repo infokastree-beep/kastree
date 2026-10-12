@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
+import tempfile
 import uuid
 import zipfile
 from datetime import UTC, datetime
@@ -19,10 +22,12 @@ from app.services.company_details import audit_position_checks, blocks_final
 from app.services.statutory_compose import compose_pdf_html, compose_pdf_parts
 from app.services.statutory_docx import build_docx
 from app.services.statutory_pages import (
+    audit_exemption_abridgement_note,
     audit_exemption_note,
     audit_exemption_statements,
     balance_sheet_audit_exemption,
 )
+from app.services.statutory_statements import write_statement_pdf
 from findraft.engine.pack import load_manifest, pack_dir
 from findraft.models.year_end import YearEnd
 from tests.conftest import auth_headers, make_access_token
@@ -123,7 +128,15 @@ def test_pack_statement_is_researched_from_the_cro_page() -> None:
     assert "(company name)" not in "\n".join(printed)
     assert "use sections (a)" not in "\n".join(printed)
     assert not any(item.startswith("(*") for item in printed)
-    assert printed[5] == paragraphs[5][1:]
+    assert [item[:3] for item in printed[1:]] == ["(a)", "(b)", "(c)", "(d)"]
+    assert "s.352" not in "\n".join(printed)
+    assert "s.353" not in "\n".join(printed)
+    assert "has done so" not in "\n".join(printed)
+    abridgement = audit_exemption_abridgement_note(manifest)
+    assert "352" in abridgement and "353" in abridgement
+    assert "separate recorded claim" in abridgement
+    assert "confirmed" not in abridgement.casefold()
+    assert "signed off" not in abridgement.casefold()
     assert audit_exemption_note(manifest) == _NOTE
     assert "eligible" not in " ".join(paragraphs).casefold()
     assert "confirmed" not in _NOTE.casefold()
@@ -205,6 +218,8 @@ def test_cro_statement_prints_on_the_balance_sheet_above_the_signatures(
     assert "use sections (a)" not in claimed.html
     assert "(*In the above statement" not in claimed.html
     assert "I/We, as director(s) of Northwind Limited, state that:" in claimed.html
+    assert "s.352" not in claimed.html
+    assert "has done so on the grounds" not in claimed.html
     assert claimed.html is not None
     audit = claimed.html.split('data-section="audit-exemption"', 1)[1]
     audit_body = audit.split('data-section="', 1)[0]
@@ -239,6 +254,8 @@ def test_cro_statement_prints_on_the_balance_sheet_above_the_signatures(
     assert _NOTE_HTML in composed_audit.split("</section>", 1)[0]
     assert _STATEMENT_MARK not in composed_audit.split("</section>", 1)[0]
     assert _STATEMENT_MARK in composed_before
+    assert "s.352" not in composed
+    assert "has done so on the grounds" not in composed
     assert "source not confirmed" not in composed
     _html, sections = compose_pdf_parts(
         claimed,
@@ -267,6 +284,37 @@ def test_cro_statement_prints_on_the_balance_sheet_above_the_signatures(
     assert "(*In the above statement" not in xml
     assert "I/We, as director(s) of Northwind Limited, state that:" in xml
     assert "*(e)" not in xml
+    assert "(e) the company has relied" not in xml
+    assert "s.352" not in xml
+    assert "s.353" not in xml
+    assert "has done so on the grounds" not in xml
+    assert "separate recorded claim" not in xml
+    pdf = _pdf_text(write_statement_pdf(composed))
+    assert "I/We, as director(s) of Northwind Limited, state that:" in pdf
+    assert "(a) the company is availing itself" in pdf
+    assert "(d) we acknowledge" in pdf
+    assert "(e) the company has relied" not in pdf
+    assert "s.352" not in pdf
+    assert "s.353" not in pdf
+    assert "has done so on the grounds" not in pdf
+    assert "(company name)" not in pdf
+    assert "use sections (a)" not in pdf
+    assert "455,812" in pdf
+    assert "157,650" in pdf
+
+
+def _pdf_text(payload: bytes) -> str:
+    exe = shutil.which("pdftotext")
+    assert exe is not None, "pdftotext is not installed"
+    with tempfile.NamedTemporaryFile(suffix=".pdf") as handle:
+        handle.write(payload)
+        handle.flush()
+        completed = subprocess.run(
+            [exe, "-layout", handle.name, "-"],
+            check=True,
+            capture_output=True,
+        )
+    return completed.stdout.decode("utf-8")
 
 
 def _headers(
@@ -447,6 +495,8 @@ async def test_fictional_company_claim_is_owner_admin_only_and_prints_when_true(
     )
     assert "(company name)" not in early_balance
     assert "use sections (a)" not in early_balance
+    assert "s.352" not in early_balance
+    assert "(e) the company has relied" not in early_balance
 
     recorded = await api_client.post(
         f"/year-ends/{year_end_id}/size-eligibility",
@@ -473,6 +523,8 @@ async def test_fictional_company_claim_is_owner_admin_only_and_prints_when_true(
     assert "I/We, as director(s) of charlie mungar buffett, state that:" in balance
     assert "(company name)" not in balance
     assert "use sections (a)" not in balance
+    assert "s.352" not in balance
+    assert "(e) the company has relied" not in balance
     assert "source not confirmed" not in audit_page
     assert "source not confirmed" not in balance
     statements = await api_client.get(

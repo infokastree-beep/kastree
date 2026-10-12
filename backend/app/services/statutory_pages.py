@@ -34,13 +34,20 @@ class StatutoryPage:
 
 
 _AUDIT_EXEMPTION_KEYS = frozenset(
-    {"source", "provision", "source_status", "paragraphs", "explanatory_note"}
+    {
+        "source",
+        "provision",
+        "source_status",
+        "paragraphs",
+        "explanatory_note",
+        "abridgement_note",
+    }
 )
 _RESEARCHED = "researched (public source)"
 
 
-def audit_exemption_pack(manifest: object) -> tuple[tuple[str, ...], str]:
-    """CRO statement paragraphs and the explanatory note.
+def audit_exemption_pack(manifest: object) -> tuple[tuple[str, ...], str, str]:
+    """CRO sample, the page note, and the unused abridgement note.
 
     ``source_status`` is researched from a public source. It is not a
     reviewer sign-off.
@@ -53,6 +60,7 @@ def audit_exemption_pack(manifest: object) -> tuple[tuple[str, ...], str]:
     provision = block.get("provision")
     paragraphs = block.get("paragraphs")
     note = block.get("explanatory_note")
+    abridgement = block.get("abridgement_note")
     if (
         block.get("source") != "CRO"
         or block.get("source_status") != _RESEARCHED
@@ -61,6 +69,7 @@ def audit_exemption_pack(manifest: object) -> tuple[tuple[str, ...], str]:
         or not isinstance(paragraphs, list)
         or not paragraphs
         or not isinstance(note, str)
+        or not isinstance(abridgement, str)
     ):
         raise ValueError(
             "Pinned pack audit-exemption statements are not researched (public source)"
@@ -70,14 +79,27 @@ def audit_exemption_pack(manifest: object) -> tuple[tuple[str, ...], str]:
         if not isinstance(item, str) or not item or item != item.strip():
             raise ValueError("Pinned pack audit-exemption statements are unusable")
         cleaned.append(item)
-    if not note or note != note.strip():
+    if (
+        not note
+        or note != note.strip()
+        or not abridgement
+        or abridgement != abridgement.strip()
+    ):
         raise ValueError("Pinned pack audit-exemption explanatory note is unusable")
-    return (tuple(cleaned), note)
+    if "352" not in abridgement or "353" not in abridgement:
+        raise ValueError(
+            "Pinned pack abridgement note does not name sections 352 and 353"
+        )
+    if "separate recorded claim" not in abridgement:
+        raise ValueError(
+            "Pinned pack abridgement note does not require a separate claim"
+        )
+    return (tuple(cleaned), note, abridgement)
 
 
 def audit_exemption_statements(manifest: object) -> tuple[str, ...]:
     """CRO sample, kept as the source. A document does not print it raw."""
-    paragraphs, _note = audit_exemption_pack(manifest)
+    paragraphs, _note, _abridgement = audit_exemption_pack(manifest)
     return paragraphs
 
 
@@ -87,29 +109,52 @@ def balance_sheet_audit_exemption(
 ) -> tuple[str, ...]:
     """Directors' statement for the balance sheet.
 
-    The pack keeps the CRO sample, including the preparer line, the
-    ``(company name)`` placeholder, and the bracketed asterisk note. A
-    document prints the statement only, with the recorded company name.
+    The pack keeps the CRO sample. A document prints sections (a) to (d)
+    only, with the recorded company name. Item (e) is the abridgement
+    exemption and stays unused until a separate claim is recorded.
     """
     recorded = company_name.strip() or "the company (name not recorded)"
     printed: list[str] = []
     for paragraph in paragraphs:
-        if paragraph.startswith("(*") or "use sections (a)" in paragraph:
+        if _omit_from_balance_sheet(paragraph):
             continue
-        text = paragraph[1:] if paragraph.startswith("*") else paragraph
-        text = text.replace("(company name)", recorded)
-        if not text or "(company name)" in text or text.startswith("(*"):
+        text = paragraph.replace("(company name)", recorded)
+        if (
+            not text
+            or "(company name)" in text
+            or text.startswith("(*")
+            or text.startswith("(e)")
+            or "s.352" in text
+            or "s.353" in text
+        ):
             raise ValueError("Audit exemption statement still has a template note")
         printed.append(text)
-    if not printed:
-        raise ValueError("Audit exemption statement is empty")
+    if [item[:3] for item in printed[1:]] != ["(a)", "(b)", "(c)", "(d)"]:
+        raise ValueError("Audit exemption statement is not sections (a) to (d)")
     return tuple(printed)
+
+
+def _omit_from_balance_sheet(paragraph: str) -> bool:
+    """Template notes and the unused s.352 abridgement clause."""
+    return (
+        paragraph.startswith("(*")
+        or "use sections (a)" in paragraph
+        or paragraph.startswith("*(e)")
+        or paragraph.startswith("(e)")
+        or paragraph.startswith("has done so on the grounds")
+    )
 
 
 def audit_exemption_note(manifest: object) -> str:
     """Explanatory note. It is not the statement on the balance sheet."""
-    _paragraphs, note = audit_exemption_pack(manifest)
+    _paragraphs, note, _abridgement = audit_exemption_pack(manifest)
     return note
+
+
+def audit_exemption_abridgement_note(manifest: object) -> str:
+    """Why item (e) stays in the pack and is not printed."""
+    _paragraphs, _note, abridgement = audit_exemption_pack(manifest)
+    return abridgement
 
 
 def build_statutory_pages(

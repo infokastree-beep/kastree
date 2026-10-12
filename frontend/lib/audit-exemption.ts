@@ -22,3 +22,6 @@ export const AUDIT_EXEMPTION_PARAGRAPHS = [
 ] as const;
 
 export const AUDIT_EXEMPTION_NOTE = "This page is an explanatory note. The audit exemption statement is printed on the balance sheet, immediately above the directors' signatures, as section 335 of the Companies Act 2014 requires.";
+
+export const AUDIT_EXEMPTION_ABRIDGEMENT_NOTE =
+  "Item (e), and the sentence that follows it, is the small-company abridgement exemption in sections 352 and 353 of the Companies Act 2014. The CRO sample adds it only when the company also claims that exemption. It needs a separate recorded claim. It is not printed.";
