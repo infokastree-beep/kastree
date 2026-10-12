@@ -7,6 +7,8 @@
 # tests/test_findraft_tenant_isolation.py
 #   Every test asserts the login is superuser and then SET ROLE findraft_app.
 #   Cleanup also DISABLE TRIGGER, which only the table owner can do.
+#   The audit-exemption HTTP tests, including the directors' confirmations,
+#   are listed in parity_http_tests.txt and run as this login.
 # tests/test_companies_migration.py::test_rls_disable_rolls_back_when_transaction_aborts
 #   ALTER TABLE ... DISABLE ROW LEVEL SECURITY. The production login is not
 #   the table owner. The rest of that file drives Alembic, not the HTTP API.
