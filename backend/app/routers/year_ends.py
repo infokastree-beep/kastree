@@ -558,6 +558,7 @@ async def put_company_details(
             session,
             org_id=auth.org_id,
             user_id=auth.user_id,
+            role=auth.role,
             company=company,
             year_end=year_end,
             body=body,

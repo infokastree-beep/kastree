@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { StatutoryLoadError } from "@/components/statutory/StatutoryLoadError";
 import { countryChoices } from "@/lib/countries";
+import { LEGAL_FORM_CHOICES } from "@/lib/legal-forms";
 
 export type DirectorInput = {
   name: string;
@@ -35,6 +36,7 @@ export const DIRECTORS_RESPONSIBILITIES_WORDING =
 
 export type CompanyDetails = {
   country_of_incorporation: string | null;
+  legal_form: string | null;
   registered_office: string | null;
   business_address: string | null;
   company_number: string | null;
@@ -51,6 +53,7 @@ export type CompanyDetails = {
 
 export type CompanyDetailsWrite = {
   country_of_incorporation: string | null;
+  legal_form: string | null;
   registered_office: string | null;
   business_address: string | null;
   company_number: string | null;
@@ -87,6 +90,7 @@ const FIELD =
 export function CompanyDetailsForm({
   details,
   canEdit,
+  canRecordLegalForm,
   busy,
   companyError,
   companySaved,
@@ -97,6 +101,7 @@ export function CompanyDetailsForm({
 }: {
   details: CompanyDetails;
   canEdit: boolean;
+  canRecordLegalForm: boolean;
   busy: boolean;
   companyError: string | null;
   companySaved: string | null;
@@ -108,6 +113,7 @@ export function CompanyDetailsForm({
   const [country, setCountry] = useState(
     textValue(details.country_of_incorporation).trim().toUpperCase(),
   );
+  const [legalForm, setLegalForm] = useState(details.legal_form ?? "");
   const [office, setOffice] = useState(textValue(details.registered_office));
   const [business, setBusiness] = useState(textValue(details.business_address));
   const [number, setNumber] = useState(textValue(details.company_number));
@@ -223,6 +229,7 @@ export function CompanyDetailsForm({
           event.preventDefault();
           onSaveCompany({
             country_of_incorporation: country.trim() === "" ? null : country.trim(),
+            legal_form: legalForm.trim() === "" ? null : legalForm.trim(),
             registered_office: office.trim() === "" ? null : office,
             business_address: business.trim() === "" ? null : business,
             company_number: number.trim() === "" ? null : number,
@@ -271,6 +278,25 @@ export function CompanyDetailsForm({
         <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-soft">
           Company
         </h2>
+        <label className="flex max-w-xl flex-col gap-1.5 text-sm">
+          <span className="text-xs font-semibold uppercase tracking-[0.12em] text-soft">
+            Legal form
+          </span>
+          <select
+            value={legalForm}
+            disabled={locked || !canRecordLegalForm}
+            onChange={(event) => setLegalForm(event.target.value)}
+            className={FIELD}
+            data-testid="company-details-legal-form"
+          >
+            <option value="">Not recorded</option>
+            {LEGAL_FORM_CHOICES.map((row) => (
+              <option key={row.code} value={row.code}>
+                {row.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <p className="max-w-3xl text-sm text-ink-secondary">
           These facts are stored as entered. A blank field stays blank.
         </p>

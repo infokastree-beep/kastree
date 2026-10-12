@@ -1,4 +1,4 @@
-"""Revision t6u7v8w9x0 adds companies.legal_form. Nothing maps it."""
+"""Revision t6u7v8w9x0 adds companies.legal_form. The model maps it."""
 
 from __future__ import annotations
 
@@ -31,7 +31,12 @@ def test_migration_adds_the_column_without_a_read_or_grant_all() -> None:
     assert "GRANT ALL" not in executable
     assert "SET DEFAULT" not in source
     assert "SELECT" not in executable
-    assert "legal_form" not in _MODEL.read_text()
+    model = _MODEL.read_text()
+    column = model.split("legal_form:", 1)[1].split("industry:", 1)[0]
+    assert "Mapped[str | None]" in column
+    assert "String(64)" in column
+    assert "nullable=True" in column
+    assert "server_default" not in column
 
 
 def test_code_head_is_the_company_legal_form_revision() -> None:

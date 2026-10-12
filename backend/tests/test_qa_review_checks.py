@@ -119,6 +119,19 @@ def test_pack_data_checks_are_reviewer_to_confirm() -> None:
     rules = payload["data_checks"]
     assert rules["source_status"] == "reviewer-to-confirm"
     assert rules["legal_form_suffixes"] == ["Limited", "Ltd", "Teoranta", "Teo"]
+    forms = payload["company_legal_forms"]
+    assert forms["source_status"] == "researched (public source)"
+    assert [item["code"] for item in forms["forms"]] == [
+        "ltd",
+        "dac",
+        "plc",
+        "clg",
+        "ulc",
+        "puc",
+        "pulc",
+    ]
+    assert forms["forms"][0]["suffixes"] == rules["legal_form_suffixes"]
+    assert forms["forms"][1]["missing_suffix"] == "notice"
     assert rules["first_period_max_months"] == 18
     assert rules["company_number_min_digits"] == 5
     assert rules["company_number_max_digits"] == 7
@@ -226,6 +239,43 @@ def test_suffix_period_office_and_number_boundaries() -> None:
 
     other = _year(company, pack_id="frs102-1a")
     assert "V-CO-010" not in _by_code(company, other)
+
+    ltd = _company(name="Harbour Limited", legal_form="ltd")
+    assert _by_code(ltd, _year(ltd))["V-CO-010"].passed is True
+    plc = _company(name="Harbour Limited", legal_form="plc")
+    plc_check = _by_code(plc, _year(plc))["V-CO-010"]
+    assert plc_check.passed is False
+    assert "public limited company" in plc_check.message
+    assert blocks_final((plc_check,)) is True
+    named = _company(name="Harbour public limited company", legal_form="plc")
+    assert _by_code(named, _year(named))["V-CO-010"].passed is True
+
+    dac = _company(
+        name="Harbour Limited",
+        legal_form="dac",
+        directors=[{"name": "Ada Lovelace"}],
+    )
+    dac_found = _by_code(dac, _year(dac))
+    assert "V-CO-010" not in dac_found
+    assert dac_found["V-CO-025"].severity == "NOTICE"
+    assert dac_found["V-CO-025"].passed is False
+    assert "section 971" in dac_found["V-CO-025"].message
+    assert dac_found["V-CO-026"].passed is False
+    assert "section 985" in dac_found["V-CO-026"].message
+    assert blocks_final((dac_found["V-CO-025"], dac_found["V-CO-026"])) is False
+    suffixed = _company(
+        name="Harbour Designated Activity Company",
+        legal_form="dac",
+        directors=[
+            {"name": "Ada Lovelace"},
+            {"name": "Grace Hopper", "resigned_on": "2026-06-01"},
+            {"name": "Katherine Johnson"},
+        ],
+    )
+    suffixed_found = _by_code(suffixed, _year(suffixed))
+    assert suffixed_found["V-CO-010"].passed is True
+    assert "V-CO-025" not in suffixed_found
+    assert "V-CO-026" not in suffixed_found
 
     dublin = _company(registered_office="1 Harbour Street, Dublin")
     cork = _company(registered_office="Co. Cork")

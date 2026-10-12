@@ -1,5 +1,6 @@
 import { apiFetch } from "@/lib/api";
 import type { CompanyEntityFormValues } from "@/lib/company-form";
+import { legalFormCode } from "@/lib/legal-forms";
 import type {
   CompanyCreateRequest,
   CompanyUpdateRequest,
@@ -24,6 +25,7 @@ export async function createCompanyEntity(
     functional_currency: values.functionalCurrency,
     company_type: values.companyType,
     country_of_incorporation: country === "" ? null : country,
+    legal_form: legalFormCode(values.legalForm),
   };
   const trimmedCompany = values.companyNumber.trim();
   const trimmedIndustry = values.industry.trim();
@@ -73,6 +75,7 @@ export async function updateCompanyEntity(
     functional_currency: values.functionalCurrency,
     company_type: values.companyType,
     country_of_incorporation: country === "" ? null : country,
+    legal_form: legalFormCode(values.legalForm),
     company_number: values.companyNumber.trim() ? values.companyNumber.trim() : null,
     industry: values.industry.trim() ? values.industry.trim() : null,
   };

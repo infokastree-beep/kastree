@@ -42,6 +42,8 @@ const FIXES: Record<string, { area: string; fix: CheckFix }> = {
   "V-CO-008": { area: "Company details", fix: { section: "company-details" } },
   "V-CO-009": { area: "Company details", fix: { section: "company-details" } },
   "V-CO-010": { area: "Company details", fix: { section: "company-details" } },
+  "V-CO-025": { area: "Company details", fix: { section: "company-details" } },
+  "V-CO-026": { area: "Company details", fix: { section: "company-details" } },
   "V-CO-011": { area: "Company details", fix: { section: "company-details" } },
   "V-CO-012": { area: "Company details", fix: { section: "company-details" } },
   "V-CO-013": { area: "Company details", fix: { section: "company-details" } },

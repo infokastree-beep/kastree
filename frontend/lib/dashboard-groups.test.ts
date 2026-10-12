@@ -134,6 +134,12 @@ describe("review groups", () => {
       ]),
       3,
     );
+    assert.equal(stopsFinalise(failed("V-CO-025", "NOTICE")), false);
+    assert.equal(stopsFinalise(failed("V-CO-026", "NOTICE")), false);
+    assert.equal(
+      presentCheck(failed("V-CO-025", "NOTICE")).fix.section,
+      "company-details",
+    );
   });
 });
 

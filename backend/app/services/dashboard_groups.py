@@ -36,6 +36,8 @@ _FIXES: dict[str, CheckPresentation] = {
     "V-CO-008": CheckPresentation("Company details", CheckFix("company-details")),
     "V-CO-009": CheckPresentation("Company details", CheckFix("company-details")),
     "V-CO-010": CheckPresentation("Company details", CheckFix("company-details")),
+    "V-CO-025": CheckPresentation("Company details", CheckFix("company-details")),
+    "V-CO-026": CheckPresentation("Company details", CheckFix("company-details")),
     "V-CO-011": CheckPresentation("Company details", CheckFix("company-details")),
     "V-CO-012": CheckPresentation("Company details", CheckFix("company-details")),
     "V-CO-013": CheckPresentation("Company details", CheckFix("company-details")),

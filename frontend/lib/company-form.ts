@@ -6,6 +6,7 @@ export type CompanyEntityFormValues = {
   name: string;
   functionalCurrency: string;
   countryOfIncorporation: string;
+  legalForm: string;
   companyNumber: string;
   industry: string;
   companyType: "trading" | "holding";
@@ -17,6 +18,7 @@ export type CompanyEntityInitialValues = {
   name: string;
   functionalCurrency: string;
   countryOfIncorporation: string;
+  legalForm: string;
   companyNumber: string;
   industry: string;
   companyType: CompanyEntityFormValues["companyType"];
@@ -26,6 +28,7 @@ export function editCompanyInitialValues(company: {
   name: string;
   functional_currency: string;
   country_of_incorporation?: string | null;
+  legal_form?: string | null;
   company_number?: string | null;
   industry?: string | null;
   company_type: CompanyEntityInitialValues["companyType"];
@@ -34,6 +37,7 @@ export function editCompanyInitialValues(company: {
     name: company.name,
     functionalCurrency: company.functional_currency,
     countryOfIncorporation: company.country_of_incorporation ?? "",
+    legalForm: company.legal_form ?? "",
     companyNumber: company.company_number ?? "",
     industry: company.industry ?? "",
     companyType: company.company_type,

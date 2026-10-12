@@ -37,6 +37,7 @@ export interface ICompany {
   name: string;
   company_number: string | null;
   country_of_incorporation: string | null;
+  legal_form: string | null;
   industry: string | null;
   company_type: "trading" | "holding";
   functional_currency: string;
@@ -53,6 +54,7 @@ export interface CompanyCreateRequest {
   name: string;
   company_number?: string | null;
   country_of_incorporation?: string | null;
+  legal_form?: string | null;
   industry?: string | null;
   company_type?: "trading" | "holding";
   functional_currency?: string;
@@ -62,6 +64,7 @@ export interface CompanyUpdateRequest {
   name?: string;
   company_number?: string | null;
   country_of_incorporation?: string | null;
+  legal_form?: string | null;
   industry?: string | null;
   company_type?: "trading" | "holding";
   functional_currency?: string;

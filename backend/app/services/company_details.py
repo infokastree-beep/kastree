@@ -21,6 +21,7 @@ from app.schemas.company_details import (
     ShareClassWrite,
 )
 from app.services.audit import append_audit_log
+from app.services.legal_forms import record_legal_form_change
 from app.services.countries import country_label
 from app.services.reconciliation import ReconciliationCheck
 from findraft.models.year_end import YearEnd
@@ -476,6 +477,7 @@ def company_details_response(
 ) -> CompanyDetailsResponse:
     return CompanyDetailsResponse(
         country_of_incorporation=company.country_of_incorporation,
+        legal_form=company.legal_form,
         registered_office=company.registered_office,
         business_address=company.business_address,
         company_number=company.company_number,
@@ -494,6 +496,7 @@ def company_details_response(
 def _company_snapshot(company: Company) -> dict[str, object]:
     return {
         "country_of_incorporation": company.country_of_incorporation,
+        "legal_form": company.legal_form,
         "registered_office": company.registered_office,
         "business_address": company.business_address,
         "company_number": company.company_number,
@@ -523,13 +526,22 @@ async def save_company_details(
     *,
     org_id: uuid.UUID,
     user_id: uuid.UUID | None,
+    role: str,
     company: Company,
     year_end: YearEnd,
     body: CompanyDetailsWrite,
 ) -> CompanyDetailsResponse:
     previous = _company_snapshot(company)
+    previous_form = company.legal_form
     if "country_of_incorporation" in body.model_fields_set:
         company.country_of_incorporation = body.country_of_incorporation
+    if "legal_form" in body.model_fields_set:
+        if body.legal_form != company.legal_form and role not in {"owner", "admin"}:
+            raise CompanyDetailsRejected(
+                "Only an owner or an administrator can change the legal form.",
+                status_code=403,
+            )
+        company.legal_form = body.legal_form
     company.registered_office = _single_line(
         body.registered_office, label="Registered office", limit=500
     )
@@ -553,6 +565,14 @@ async def save_company_details(
         entity_id=company.id,
         old_value=previous,
         new_value=_company_snapshot(company),
+    )
+    await record_legal_form_change(
+        session,
+        org_id=org_id,
+        user_id=user_id,
+        company_id=company.id,
+        previous=previous_form,
+        current=company.legal_form,
     )
     return company_details_response(company, year_end)
 

@@ -8,6 +8,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.company import country_of_incorporation_code
+from app.services.legal_forms import legal_form_code
 
 
 class DirectorRecord(BaseModel):
@@ -50,6 +51,7 @@ class CompanyDetailsWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     country_of_incorporation: str | None = None
+    legal_form: str | None = None
     registered_office: str | None = None
     business_address: str | None = None
     company_number: str | None = None
@@ -65,6 +67,11 @@ class CompanyDetailsWrite(BaseModel):
     @classmethod
     def _country(cls, value: object) -> str | None:
         return country_of_incorporation_code(value)
+
+    @field_validator("legal_form", mode="before")
+    @classmethod
+    def _legal_form(cls, value: object) -> str | None:
+        return legal_form_code(value)
 
 
 class ApprovalWrite(BaseModel):
@@ -89,6 +96,8 @@ class CompanyDetailsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     country_of_incorporation: str | None
+    # Optional so a final snapshot saved before this field still validates.
+    legal_form: str | None = None
     registered_office: str | None
     business_address: str | None
     company_number: str | None
