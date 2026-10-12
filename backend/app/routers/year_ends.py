@@ -956,6 +956,8 @@ def _preview_children(children: tuple[PreviewChild, ...]) -> list[PreviewChildOu
             number=child.number,
             label=child.label,
             anchor=child.anchor,
+            note_class=child.note_class,
+            note_class_label=child.note_class_label,
         )
         for child in children
     ]
@@ -1045,6 +1047,8 @@ async def get_statutory_preview(
                 number=child.number,
                 label=child.label,
                 anchor=child.anchor,
+                note_class=child.note_class,
+                note_class_label=child.note_class_label,
             )
             for child in preview.children
         ],

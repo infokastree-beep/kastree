@@ -21,6 +21,9 @@ export type NoteLibraryRow = {
   can_restore: boolean;
   can_add: boolean;
   can_remove: boolean;
+  kind: "Note" | "Policy";
+  note_class: string;
+  note_class_label: string;
 };
 
 export function reasonSentence(

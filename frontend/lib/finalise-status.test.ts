@@ -105,6 +105,7 @@ describe("finalise offer", () => {
     assert.equal(pdfDownloadLabel("draft"), "Download draft PDF");
     assert.equal(pdfDownloadLabel(undefined), "Download draft PDF");
     assert.equal(wordDownloadLabel(), "Download Word (.docx)");
+    assert.equal(wordDownloadLabel("final"), "Download final Word (.docx)");
     const workspace = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), "../components/statutory/StatutoryDraftWorkspace.tsx"),
       "utf8",

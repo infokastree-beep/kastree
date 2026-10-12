@@ -46,6 +46,14 @@
     "employee_notice_above": 50,
     "turnover_per_employee_floor": "2000.00"
   },
+  "note_classes": [
+    "policies",
+    "fixed assets",
+    "current assets",
+    "creditors",
+    "equity",
+    "other"
+  ],
   "sections": [
     {"id": "cover", "order": 1, "label": "Cover", "group": "usually-required", "default": "on", "lock": "user", "source_status": "pending-reviewer-signoff", "new_page": "yes"},
     {"id": "contents", "order": 2, "label": "Contents", "group": "usually-required", "default": "on", "lock": "user", "source_status": "pending-reviewer-signoff", "new_page": "yes"},

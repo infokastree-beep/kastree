@@ -75,7 +75,10 @@ export function pdfDownloadLabel(status: string | undefined): string {
   return "Download final PDF";
 }
 
-export function wordDownloadLabel(): string {
+export function wordDownloadLabel(status?: string): string {
+  if (status === "final") {
+    return "Download final Word (.docx)";
+  }
   return "Download Word (.docx)";
 }
 

@@ -604,6 +604,9 @@ class NoteLibraryRowOut(BaseModel):
     can_restore: bool
     can_add: bool
     can_remove: bool
+    kind: Literal["Note", "Policy"]
+    note_class: str
+    note_class_label: str
 
 
 class NoteLibraryResponse(BaseModel):
