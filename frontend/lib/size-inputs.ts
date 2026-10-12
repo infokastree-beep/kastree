@@ -1,7 +1,5 @@
 /** Display and request text for stored size-test inputs. */
 
-import { formatCurrency } from "./currency.ts";
-
 export type SizeInputFields = {
   size_current_turnover: string | null;
   size_current_balance_sheet: string | null;
@@ -36,14 +34,18 @@ export function sizeEmployeesToApi(raw: string): number | null {
   return Number(raw.trim());
 }
 
-export function sizeMoneyLabel(value: string | null, currency: string | null): string {
+export function sizeMoneyLabel(
+  value: string | null,
+  currency: string | null,
+  format: (amount: string, currency: string) => string,
+): string {
   if (value == null || value.trim() === "") {
     return NOT_RECORDED;
   }
   if (currency == null || currency.trim() === "") {
     return value;
   }
-  return formatCurrency(value, currency);
+  return format(value, currency);
 }
 
 export function sizeEmployeesLabel(value: number | null): string {

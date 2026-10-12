@@ -4,6 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { formatCurrency } from "./currency.ts";
 import {
   sizeAmountToApi,
   sizeEmployeesLabel,
@@ -20,11 +21,11 @@ describe("QA company size inputs", () => {
   });
 
   it("shows those figures in the company currency and leaves a blank as not recorded", () => {
-    assert.equal(sizeMoneyLabel("100000.00", "EUR"), "€100,000.00");
-    assert.equal(sizeMoneyLabel("35000.00", "EUR"), "€35,000.00");
-    assert.equal(sizeMoneyLabel("100000.00", "GBP"), "£100,000.00");
+    assert.equal(sizeMoneyLabel("100000.00", "EUR", formatCurrency), "€100,000.00");
+    assert.equal(sizeMoneyLabel("35000.00", "EUR", formatCurrency), "€35,000.00");
+    assert.equal(sizeMoneyLabel("100000.00", "GBP", formatCurrency), "£100,000.00");
     assert.equal(sizeEmployeesLabel(677), "677");
-    assert.equal(sizeMoneyLabel(null, "EUR"), "not recorded");
+    assert.equal(sizeMoneyLabel(null, "EUR", formatCurrency), "not recorded");
     assert.equal(sizeEmployeesLabel(null), "not recorded");
   });
 

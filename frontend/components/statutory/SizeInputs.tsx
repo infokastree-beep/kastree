@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatCurrency } from "@/lib/currency";
 import {
   sizeAmountToApi,
   sizeEmployeesLabel,
@@ -73,13 +74,13 @@ export function SizeInputs({
         <div className="flex justify-between gap-4">
           <dt>Turnover</dt>
           <dd data-testid="size-current-turnover">
-            {sizeMoneyLabel(inputs.size_current_turnover, currency)}
+            {sizeMoneyLabel(inputs.size_current_turnover, currency, formatCurrency)}
           </dd>
         </div>
         <div className="flex justify-between gap-4">
           <dt>Balance sheet total</dt>
           <dd data-testid="size-current-balance-sheet">
-            {sizeMoneyLabel(inputs.size_current_balance_sheet, currency)}
+            {sizeMoneyLabel(inputs.size_current_balance_sheet, currency, formatCurrency)}
           </dd>
         </div>
         <div className="flex justify-between gap-4">
@@ -92,12 +93,16 @@ export function SizeInputs({
           <>
             <div className="flex justify-between gap-4">
               <dt>Preceding turnover</dt>
-              <dd>{sizeMoneyLabel(inputs.size_preceding_turnover, currency)}</dd>
+              <dd>{sizeMoneyLabel(inputs.size_preceding_turnover, currency, formatCurrency)}</dd>
             </div>
             <div className="flex justify-between gap-4">
               <dt>Preceding balance sheet total</dt>
               <dd>
-                {sizeMoneyLabel(inputs.size_preceding_balance_sheet, currency)}
+                {sizeMoneyLabel(
+                  inputs.size_preceding_balance_sheet,
+                  currency,
+                  formatCurrency,
+                )}
               </dd>
             </div>
             <div className="flex justify-between gap-4">
