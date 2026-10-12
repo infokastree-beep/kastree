@@ -15,6 +15,10 @@
     "balance_sheet": "7500000.00",
     "employees": 50
   },
+  "size_rule_note": {
+    "source_status": "reviewer-to-confirm",
+    "text": "A reviewer must confirm whether the audit exemption is available (two of three versus all conditions)."
+  },
   "data_checks": {
     "source_status": "reviewer-to-confirm",
     "legal_form": "private-company-limited-by-shares",
