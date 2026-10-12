@@ -92,6 +92,8 @@ from app.schemas.year_end import (
     TrialBalanceVersionResponse,
     AuditExemptionRequest,
     AuditExemptionResponse,
+    AuditExemptionConditionsRequest,
+    AuditExemptionConditionsResponse,
     YearEndCreateRequest,
     YearEndResponse,
     AdjustmentPostRequest,
@@ -180,6 +182,7 @@ from app.services.company_details import (
     company_details_response,
     incorporation_output_message_for_year_end,
     record_audit_exemption,
+    record_audit_exemption_conditions,
     save_approval_details,
     save_company_details,
 )
@@ -1902,6 +1905,43 @@ async def post_audit_exemption(
         claimed=year_end.audit_exemption_claimed,
         claimed_by_user_id=year_end.audit_exemption_claimed_by_user_id,
         claimed_at=year_end.audit_exemption_claimed_at,
+    )
+
+
+@router.post(
+    "/{year_end_id}/audit-exemption-conditions",
+    response_model=AuditExemptionConditionsResponse,
+)
+async def post_audit_exemption_conditions(
+    year_end_id: uuid.UUID,
+    body: AuditExemptionConditionsRequest,
+    auth: Annotated[AuthContext, Depends(require_client_admin)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> AuditExemptionConditionsResponse:
+    """Owner or admin records the three directors' confirmations, or clears them."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        await record_audit_exemption_conditions(
+            session,
+            org_id=auth.org_id,
+            user_id=auth.user_id,
+            year_end=year_end,
+            not_excluded=body.not_excluded,
+            no_member_notice=body.no_member_notice,
+            returns_not_late=body.returns_not_late,
+        )
+    except CompanyDetailsRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    return AuditExemptionConditionsResponse(
+        year_end_id=year_end.id,
+        not_excluded=year_end.audit_exemption_not_excluded,
+        no_member_notice=year_end.audit_exemption_no_member_notice,
+        returns_not_late=year_end.audit_exemption_returns_not_late,
+        conditions_by_user_id=year_end.audit_exemption_conditions_by_user_id,
+        conditions_at=year_end.audit_exemption_conditions_at,
     )
 
 

@@ -31,6 +31,11 @@ def test_fix_targets_match_the_review_pages() -> None:
     assert present_check("V-CO-020").fix.section == "review"
     assert present_check("V-CO-020").fix.anchor == "audit-exemption-claim"
     assert present_check("V-CO-021").fix.section == "review"
+    for code in ("V-CO-022", "V-CO-023", "V-CO-024"):
+        shown = present_check(code)
+        assert shown.area == "Review"
+        assert shown.fix.section == "review"
+        assert shown.fix.anchor == "audit-exemption-conditions"
     assert present_check("V-DISC-001").fix.section == "disclosures"
     assert present_check("V-GATE-001").fix.anchor == "statutory-first-period-gate"
     assert present_check("V-CMP-001").fix.section == "sofp"

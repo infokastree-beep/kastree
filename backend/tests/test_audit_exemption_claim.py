@@ -63,6 +63,51 @@ _NOT_EVIDENCED = (
     "An audit is required. An auditor's report is out of scope."
 )
 _CLAIMED = "The audit exemption is claimed and the size test is recorded."
+_EXCLUDED_MISSING = (
+    "Record the directors' confirmation that the company is not an excluded class "
+    "(Fifth Schedule to the Companies Act 2014)."
+)
+_EXCLUDED_REFUSED = (
+    "The company is recorded as an excluded class. "
+    "The audit exemption is not available."
+)
+_EXCLUDED_RECORDED = (
+    "The directors have recorded that the company is not an excluded class."
+)
+_NOTICE_MISSING = (
+    "Record the directors' confirmation that no notice under section 334 "
+    "of the Companies Act 2014 has been served."
+)
+_NOTICE_REFUSED = (
+    "A notice under section 334 is recorded. The audit exemption is not available."
+)
+_NOTICE_RECORDED = (
+    "The directors have recorded that no notice under section 334 has been served."
+)
+_RETURNS_MISSING = (
+    "Record the directors' confirmation that annual returns were not filed late "
+    "more than once in five years (section 363 of the Companies Act 2014, "
+    "as substituted by section 22 of the Companies (Corporate Governance, "
+    "Enforcement and Regulatory Provisions) Act 2024)."
+)
+_RETURNS_REFUSED = (
+    "Annual returns are recorded as filed late more than once in five years. "
+    "The audit exemption is not available."
+)
+_RETURNS_RECORDED = (
+    "The directors have recorded that annual returns were not filed late "
+    "more than once in five years."
+)
+_MISSING_CONFIRMATIONS = {
+    "V-CO-022": _EXCLUDED_MISSING,
+    "V-CO-023": _NOTICE_MISSING,
+    "V-CO-024": _RETURNS_MISSING,
+}
+_RECORDED_CONFIRMATIONS = {
+    "audit_exemption_not_excluded": True,
+    "audit_exemption_no_member_notice": True,
+    "audit_exemption_returns_not_late": True,
+}
 _SIZE_MESSAGE = (
     "Current year: turnover met; balance sheet total met; employees not met. "
     "This year end is a first financial period, so there is no preceding year. "
@@ -154,7 +199,7 @@ def test_each_claim_state_on_the_fictional_company() -> None:
     assert blocks_final(audit_position_checks(refused)) is True
 
     untested = _year(audit_exemption_claimed=True)
-    assert _messages(untested) == {"V-CO-020": _SIZE_MISSING}
+    assert _messages(untested) == {"V-CO-020": _SIZE_MISSING, **_MISSING_CONFIRMATIONS}
     assert blocks_final(audit_position_checks(untested)) is True
 
     failed = _year(
@@ -164,7 +209,7 @@ def test_each_claim_state_on_the_fictional_company() -> None:
         size_current_met=1,
         size_message="Current year: turnover not met; balance sheet total not met; employees not met.",
     )
-    assert _messages(failed) == {"V-CO-020": _NOT_EVIDENCED}
+    assert _messages(failed) == {"V-CO-020": _NOT_EVIDENCED, **_MISSING_CONFIRMATIONS}
     assert blocks_final(audit_position_checks(failed)) is True
     assert "eligible" not in _NOT_EVIDENCED.casefold()
 
@@ -174,6 +219,7 @@ def test_each_claim_state_on_the_fictional_company() -> None:
         size_eligible=True,
         size_current_met=2,
         size_message=_SIZE_MESSAGE,
+        **_RECORDED_CONFIRMATIONS,
     )
     found = {item.code: item for item in audit_position_checks(partial)}
     assert found["V-CO-020"].passed is True
@@ -182,7 +228,49 @@ def test_each_claim_state_on_the_fictional_company() -> None:
     assert found["V-CO-021"].severity == "NOTICE"
     assert found["V-CO-021"].message == _SIZE_MESSAGE
     assert "eligible" not in found["V-CO-021"].message.casefold()
+    assert found["V-CO-022"].passed is True
+    assert found["V-CO-023"].passed is True
+    assert found["V-CO-024"].passed is True
     assert blocks_final(audit_position_checks(partial)) is False
+
+    unmet = _year(
+        audit_exemption_claimed=True,
+        size_checked_at=datetime(2026, 10, 1, tzinfo=UTC),
+        size_eligible=True,
+        size_current_met=2,
+        size_message=_SIZE_MESSAGE,
+    )
+    gaps = {item.code: item for item in audit_position_checks(unmet)}
+    assert gaps["V-CO-022"].message == _EXCLUDED_MISSING
+    assert gaps["V-CO-023"].message == _NOTICE_MISSING
+    assert gaps["V-CO-024"].message == _RETURNS_MISSING
+    assert blocks_final(audit_position_checks(unmet)) is True
+    first_gap = next(
+        item
+        for item in audit_position_checks(unmet)
+        if not item.passed and blocks_final((item,))
+    )
+    assert first_gap.code == "V-CO-022"
+
+    late_returns = _year(
+        audit_exemption_claimed=True,
+        size_checked_at=datetime(2026, 10, 1, tzinfo=UTC),
+        size_eligible=True,
+        size_current_met=2,
+        size_message=_SIZE_MESSAGE,
+        audit_exemption_not_excluded=True,
+        audit_exemption_no_member_notice=False,
+        audit_exemption_returns_not_late=True,
+    )
+    recorded = {item.code: item for item in audit_position_checks(late_returns)}
+    assert recorded["V-CO-022"].passed is True
+    assert recorded["V-CO-022"].message == _EXCLUDED_RECORDED
+    assert recorded["V-CO-023"].passed is False
+    assert recorded["V-CO-023"].message == _NOTICE_REFUSED
+    assert recorded["V-CO-024"].passed is True
+    assert recorded["V-CO-024"].message == _RETURNS_RECORDED
+    assert blocks_final(audit_position_checks(late_returns)) is True
+    assert "V-CO-022" not in _messages(refused)
 
     met = _year(
         audit_exemption_claimed=True,
@@ -190,8 +278,14 @@ def test_each_claim_state_on_the_fictional_company() -> None:
         size_eligible=True,
         size_current_met=3,
         size_message="Current year: turnover met; balance sheet total met; employees met.",
+        **_RECORDED_CONFIRMATIONS,
     )
-    assert _messages(met) == {"V-CO-020": _CLAIMED}
+    assert _messages(met) == {
+        "V-CO-020": _CLAIMED,
+        "V-CO-022": _EXCLUDED_RECORDED,
+        "V-CO-023": _NOTICE_RECORDED,
+        "V-CO-024": _RETURNS_RECORDED,
+    }
     assert blocks_final(audit_position_checks(met)) is False
 
 
@@ -611,6 +705,203 @@ async def test_fictional_company_claim_is_owner_admin_only_and_prints_when_true(
             "claimed_by_user_id",
             "claimed_at",
         }
+    assert "100000" not in logged
+    assert "35000" not in logged
+    assert "677" not in logged
+    assert "turnover" not in logged
+    assert "balance_sheet" not in logged
+
+
+_CONDITION_KEYS = {
+    "not_excluded",
+    "no_member_notice",
+    "returns_not_late",
+    "conditions_by_user_id",
+    "conditions_at",
+}
+_CONDITIONS_YES = {
+    "not_excluded": True,
+    "no_member_notice": True,
+    "returns_not_late": True,
+}
+
+
+def _by_code(board: dict[str, object]) -> dict[str, dict[str, object]]:
+    checks = board["checks"]
+    assert isinstance(checks, list)
+    return {
+        str(item["code"]): item
+        for item in checks
+        if isinstance(item, dict) and "code" in item
+    }
+
+
+@pytest.mark.asyncio
+async def test_fictional_company_confirmations_are_owner_admin_only(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """677 employees, turnover 100,000, balance sheet 35,000, first period."""
+    year_end_id, draft_id, owner = await _open_fixture(api_client, provisioned_org)
+    member, _member_id = _headers(
+        provisioned_org, role="member", prefix="conditions-member"
+    )
+    viewer, _viewer_id = _headers(
+        provisioned_org, role="viewer", prefix="conditions-viewer"
+    )
+    admin, admin_id = _headers(provisioned_org, role="admin", prefix="conditions-admin")
+
+    stored = await api_client.get(f"/year-ends/{year_end_id}", headers=owner)
+    assert stored.status_code == 200, stored.text
+    for name in (
+        "audit_exemption_not_excluded",
+        "audit_exemption_no_member_notice",
+        "audit_exemption_returns_not_late",
+        "audit_exemption_conditions_by_user_id",
+        "audit_exemption_conditions_at",
+    ):
+        assert stored.json()[name] is None
+    quiet = _by_code(await _dashboard(api_client, owner, year_end_id, draft_id))
+    assert "V-CO-022" not in quiet
+    assert "V-CO-023" not in quiet
+    assert "V-CO-024" not in quiet
+
+    path = f"/year-ends/{year_end_id}/audit-exemption-conditions"
+    for headers in (member, viewer):
+        refused = await api_client.post(path, headers=headers, json=_CONDITIONS_YES)
+        assert refused.status_code == 403, refused.text
+        assert refused.json()["detail"] == _FORBIDDEN
+    mixed = await api_client.post(
+        path,
+        headers=owner,
+        json={"not_excluded": True, "no_member_notice": None, "returns_not_late": True},
+    )
+    assert mixed.status_code == 422, mixed.text
+
+    claimed = await api_client.post(
+        f"/year-ends/{year_end_id}/audit-exemption",
+        headers=admin,
+        json={"claimed": True},
+    )
+    assert claimed.status_code == 200, claimed.text
+    sized = await api_client.post(
+        f"/year-ends/{year_end_id}/size-eligibility",
+        headers=member,
+        json={"current": _CURRENT},
+    )
+    assert sized.status_code == 200, sized.text
+    missing = await _dashboard(api_client, owner, year_end_id, draft_id)
+    missing_codes = _by_code(missing)
+    assert missing["can_finalise"] is False
+    blocking_before = missing["blocking_count"]
+    assert isinstance(blocking_before, int)
+    for code, message in _MISSING_CONFIRMATIONS.items():
+        item = missing_codes[code]
+        assert item["passed"] is False
+        assert item["message"] == message
+        assert item["area"] == "Review"
+        fix = item["fix"]
+        assert isinstance(fix, dict)
+        assert fix["section"] == "review"
+        assert fix["anchor"] == "audit-exemption-conditions"
+
+    recorded = await api_client.post(path, headers=admin, json=_CONDITIONS_YES)
+    assert recorded.status_code == 200, recorded.text
+    assert recorded.json()["not_excluded"] is True
+    assert recorded.json()["no_member_notice"] is True
+    assert recorded.json()["returns_not_late"] is True
+    assert recorded.json()["conditions_by_user_id"] == str(admin_id)
+    assert recorded.json()["conditions_at"] is not None
+    met = await _dashboard(api_client, owner, year_end_id, draft_id)
+    met_codes = _by_code(met)
+    assert met["blocking_count"] == blocking_before - 3
+    assert met_codes["V-CO-022"]["passed"] is True
+    assert met_codes["V-CO-022"]["message"] == _EXCLUDED_RECORDED
+    assert met_codes["V-CO-023"]["message"] == _NOTICE_RECORDED
+    assert met_codes["V-CO-024"]["message"] == _RETURNS_RECORDED
+    year_end = await api_client.get(f"/year-ends/{year_end_id}", headers=viewer)
+    assert year_end.status_code == 200, year_end.text
+    assert year_end.json()["audit_exemption_conditions_by_user_id"] == str(admin_id)
+
+    late = await api_client.post(
+        path,
+        headers=owner,
+        json={
+            "not_excluded": True,
+            "no_member_notice": True,
+            "returns_not_late": False,
+        },
+    )
+    assert late.status_code == 200, late.text
+    assert late.json()["conditions_by_user_id"] == str(provisioned_org["user_id"])
+    refused_board = _by_code(await _dashboard(api_client, owner, year_end_id, draft_id))
+    assert refused_board["V-CO-022"]["passed"] is True
+    assert refused_board["V-CO-023"]["passed"] is True
+    assert refused_board["V-CO-024"]["passed"] is False
+    assert refused_board["V-CO-024"]["message"] == _RETURNS_REFUSED
+    after_false = await _dashboard(api_client, owner, year_end_id, draft_id)
+    assert after_false["blocking_count"] == blocking_before - 2
+
+    cleared = await api_client.post(
+        path,
+        headers=owner,
+        json={"not_excluded": None, "no_member_notice": None, "returns_not_late": None},
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["not_excluded"] is None
+    assert cleared.json()["conditions_by_user_id"] is None
+    assert cleared.json()["conditions_at"] is None
+    blank = _by_code(await _dashboard(api_client, owner, year_end_id, draft_id))
+    assert blank["V-CO-022"]["message"] == _EXCLUDED_MISSING
+    assert blank["V-CO-023"]["message"] == _NOTICE_MISSING
+    assert blank["V-CO-024"]["message"] == _RETURNS_MISSING
+
+    hidden = await api_client.post(
+        f"/year-ends/{year_end_id}/audit-exemption",
+        headers=owner,
+        json={"claimed": False},
+    )
+    assert hidden.status_code == 200, hidden.text
+    gone = _by_code(await _dashboard(api_client, owner, year_end_id, draft_id))
+    assert "V-CO-022" not in gone
+    assert "V-CO-023" not in gone
+    assert "V-CO-024" not in gone
+
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
+        rows = session.execute(
+            text(
+                """
+                SELECT user_id, old_value, new_value
+                FROM audit_logs
+                WHERE org_id = :org AND action = 'audit_exemption_conditions'
+                ORDER BY chain_seq
+                """
+            ),
+            {"org": str(provisioned_org["org_id"])},
+        ).all()
+    assert len(rows) == 3
+    assert rows[0].old_value is None
+    assert rows[0].user_id == admin_id
+    assert rows[0].new_value["not_excluded"] is True
+    assert rows[0].new_value["no_member_notice"] is True
+    assert rows[0].new_value["returns_not_late"] is True
+    assert rows[0].new_value["conditions_by_user_id"] == str(admin_id)
+    assert rows[1].old_value["returns_not_late"] is True
+    assert rows[1].user_id == provisioned_org["user_id"]
+    assert rows[1].new_value["returns_not_late"] is False
+    assert rows[2].new_value == {
+        "not_excluded": None,
+        "no_member_notice": None,
+        "returns_not_late": None,
+        "conditions_by_user_id": None,
+        "conditions_at": None,
+    }
+    logged = json.dumps(
+        [row.old_value for row in rows] + [row.new_value for row in rows]
+    )
+    for row in rows:
+        assert set(row.new_value) == _CONDITION_KEYS
     assert "100000" not in logged
     assert "35000" not in logged
     assert "677" not in logged
