@@ -70,8 +70,8 @@ def test_migration_adds_the_columns_without_a_read_or_grant_all() -> None:
     assert "two of three versus all conditions" in pack
 
 
-def test_code_head_is_the_size_inputs_revision() -> None:
-    assert code_heads() == ("q3r4s5t6u7",)
+def test_code_head_is_the_audit_exemption_claim_revision() -> None:
+    assert code_heads() == ("r4s5t6u7v8",)
 
 
 def test_columns_are_nullable_with_no_server_default() -> None:
