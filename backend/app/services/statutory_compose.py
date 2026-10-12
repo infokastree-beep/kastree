@@ -48,6 +48,7 @@ from app.services.statutory_statements import (
     _signature_view,
     _signing_phrase,
     _with_note_column,
+    note_keep_together,
     render_statutory_html,
 )
 from findraft.engine.pack import load_manifest
@@ -1070,10 +1071,19 @@ def _note_section(
         }
         for row in note.fa_rows
     ]
+    kept = note_keep_together(
+        note.code,
+        note.body,
+        line_count=len(lines),
+        fa_count=len(fa_rows),
+    )
     return {
         "code": note.code,
         "title": note.title or "",
         "body": note.body,
+        "paragraphs": kept["paragraphs"],
+        "policy": kept["policy"],
+        "short": kept["short"],
         "lines": lines,
         "lines_compact": 0 < len(lines) <= _SHORT_NOTE_TABLE_ROWS,
         "fa_rows": fa_rows,

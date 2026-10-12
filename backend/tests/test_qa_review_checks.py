@@ -215,7 +215,12 @@ def test_suffix_period_office_and_number_boundaries() -> None:
     missing = _company(name="Harbour Limited", incorporated_on=None)
     missing_check = _by_code(missing, _year(missing))["V-CO-011"]
     assert missing_check.passed is False
-    assert "has not been recorded" in missing_check.message
+    assert missing_check.message == (
+        "The date of incorporation has not been recorded. "
+        "A first financial period has to start on that date."
+    )
+    assert missing_check.message.strip() != ""
+    assert blocks_final((missing_check,))
     ordinary = _year(missing, first_financial_period=False)
     assert "V-CO-011" not in _by_code(missing, ordinary)
 
@@ -242,6 +247,41 @@ def test_suffix_period_office_and_number_boundaries() -> None:
     assert "V-CO-013" in _by_code(letters, _year(letters))
     spaced = _company(company_number="123 456")
     assert "V-CO-013" not in _by_code(spaced, _year(spaced))
+
+
+def test_missing_incorporation_date_links_to_company_details() -> None:
+    """A blank date is a sentence and a Fix link, not an empty check."""
+    from app.services.dashboard_groups import present_check
+    from app.services.draft_workflow import Dashboard, _dashboard_dict
+
+    company = _company(name="Harbour Limited", incorporated_on=None)
+    check = _by_code(company, _year(company))["V-CO-011"]
+    board = Dashboard(
+        draft_id=uuid.uuid4(),
+        status="draft",
+        row_version=1,
+        traffic="red",
+        can_finalise=False,
+        checks=(check,),
+        unanswered_disclosures=(),
+        carried_disclosures=(),
+    )
+    shown = _dashboard_dict(board)["checks"]
+    assert isinstance(shown, list) and len(shown) == 1
+    row = shown[0]
+    assert row["code"] == "V-CO-011"
+    assert row["passed"] is False
+    assert row["message"] == (
+        "The date of incorporation has not been recorded. "
+        "A first financial period has to start on that date."
+    )
+    assert row["area"] == "Company details"
+    fix = row["fix"]
+    assert isinstance(fix, dict)
+    assert fix["section"] == "company-details"
+    linked = present_check("V-CO-011")
+    assert linked.area == "Company details"
+    assert linked.fix.section == "company-details"
 
 
 def test_names_employees_tax_and_events_boundaries() -> None:

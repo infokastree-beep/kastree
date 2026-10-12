@@ -12,7 +12,11 @@ The GitHub repository was made private on 8 October 2026 and made public again t
 
 External review of a draft statutory PDF and Word file for one fictional first-period Irish company. The regression fixture is: name "charlie mungar buffett", company number 1111, registered office "New York, Ireland", incorporated 7 May 2025, secretary "Warren Buffet", director "warren buffett" appointed 3 July 2025, average employees 677, period 1 January 2026 to 31 December 2026 marked first financial period, no audit exemption recorded, practice name "kastree's Organization", turnover 100,000, cost of sales 40,250, administrative expenses 34,750, no tax.
 
-No new table. The checks read columns that already exist. The secretary has no appointment date, so that date is not checked. Legal form is not stored separately from the company name. The suffix rule therefore applies to every company on the Irish pack, which is the private-company-limited-by-shares pack. Company name is edited on the company record. The Fix link opens company details, which is the draft page that can hold the other letterhead facts.
+No new table. The checks read columns that already exist. The secretary has no appointment date, so that date is not checked. Legal form is not stored on the company. `companies.company_type` is only `trading` or `holding`, and it chooses the materiality suggestion. It is not a Companies Act form. `companies.name` is free text. The Irish pack `data_checks.legal_form` is the pack-level label `private-company-limited-by-shares`. The suffix check therefore uses Limited, Ltd, Teoranta, and Teo for every company on that pack. A name ending in DAC fails V-CO-010. Company name is edited on the company record. The Fix link opens company details, which is the draft page that can hold the other letterhead facts.
+
+Proposed, not built: `companies.legal_form`, a constrained string. Do not reuse `company_type`. Existing rows stay NULL. NULL is not guessed as a private company or as a designated activity company, and DAC suffixes are not added for every company. Until someone records the form, the Limited / Ltd / Teoranta / Teo rule stays in force. Reviewer-to-confirm pack lists, once the column exists: `private_company_limited_by_shares` uses Limited, Ltd, Teoranta, Teo; `designated_activity_company` uses DAC, Designated Activity Company, and Cuideachta Ghníomhaíochta Ainmnithe. Owner or admin edits it. The change is audited. Grants stay least-privilege. The Fix target stays company details until the company record itself is a Fix destination.
+
+A first financial period with no incorporation date is V-CO-011. The message is "The date of incorporation has not been recorded. A first financial period has to start on that date." It blocks FINAL. The dashboard row has that sentence and a Fix link to company details (`company-incorporated-on`). A company that is not on its first financial period does not get V-CO-011, so there is no empty blocking check. The directors' information page prints "Date of incorporation: not recorded".
 
 | Id | Finding | Status |
 | --- | --- | --- |
@@ -20,7 +24,7 @@ No new table. The checks read columns that already exist. The secretary has no a
 | F2 | Period does not match incorporation | Partial. V-CO-011 blocks FINAL when a first financial period does not start on the incorporation date, the date is missing, or the period is longer than the pack cap. Comparatives and the pre-2026 gate stay in design D2. |
 | F3 | Wrong accounting edition for a period starting before 2026 | Open. Design D2. |
 | F4 | Registered office invalid | Shipped as notice V-CO-012. It does not block FINAL. |
-| F5 | Company name has no legal-form suffix | Shipped as V-CO-010. It blocks FINAL. |
+| F5 | Company name has no legal-form suffix | Shipped as V-CO-010 for the pack's private-company suffixes. It blocks FINAL. A designated activity company needs the proposed `companies.legal_form` column. That column is not built. |
 | F6 | Employees implausible and above 50 | Shipped as notices V-CO-016 and V-CO-017. They do not block FINAL. |
 | F7 | Responsibilities statement incomplete | Open. Design D3. |
 | F8 | Directors' report thin | Open. Design D3. |
@@ -32,11 +36,11 @@ No new table. The checks read columns that already exist. The secretary has no a
 | F14 | Name spelling inconsistent | Shipped as notice V-CO-015. |
 | F15 | Company number implausible | Shipped as notice V-CO-013. |
 | F16 | No tax charge or liability | Shipped as notice V-CO-018. It does not block FINAL. |
-| F17 | Internal checklist reference printed (1AD.28) | Open. Polish PR. |
-| F18 | Dividend sentence is draft hygiene | Open. Polish PR. |
+| F17 | Internal checklist reference printed (1AD.28) | Shipped. Printed commitment headings are the plain catalogue titles. Checklist ids stay in the pack file and are not printed. The employees note heading is the computed number and Employees. |
+| F18 | Dividend sentence is draft hygiene | Shipped. An unanswered dividend figure prints "[dividend not recorded]". Zero prints "No dividend has been recorded for the financial year." Any other amount prints "A dividend has been recorded for the financial year." The sentence does not repeat the amount. The figure is the trial-balance DIVIDENDS line. Checklist item 1AD.35 has no answer flag. |
 | F19 | Signature blocks blank | Open. Design D3. |
-| F20 | Cover shows the wording banner twice | Open. Polish PR. |
-| F21 | Page breaks split paragraphs | Open. Polish PR. |
+| F20 | Cover shows the wording banner twice | Shipped. The wording banner is in the first-page margin once. Later pages keep DRAFT and do not repeat the banner. |
+| F21 | Page breaks split paragraphs | Shipped. Policy paragraphs and short notes use break-inside:avoid in the PDF and keepLines / keepNext in Word. |
 | F22 | Advisers not recorded | Open. |
 
 Rules marked reviewer-to-confirm, stored on the Irish pack under `data_checks`:

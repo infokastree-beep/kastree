@@ -103,7 +103,8 @@ def test_force_included_pension_prints_the_placeholder_and_a_notice() -> None:
     assert document.net_assets == Decimal("455812.00")
     assert document.profit == Decimal("157650.00")
     body = _note_body(document, "N9_COMMITMENTS")
-    assert "1AD.32" in body
+    assert "Retirement benefit commitments" in body
+    assert "1AD.32" not in body
     assert _PENSION_PLACEHOLDER in body
     assert "[capital commitments not recorded]" not in body
     assert document.added_blocks == ("pension_commitments",)
@@ -266,10 +267,13 @@ async def test_library_routes_reject_bad_blocks_and_keep_golden_figures(
     body = statements.json()
     assert body["net_assets"] == "455812.00"
     assert body["profit"] == "157650.00"
-    commitments = next(note for note in body["notes"] if note["code"] == "N9_COMMITMENTS")
+    commitments = next(
+        note for note in body["notes"] if note["code"] == "N9_COMMITMENTS"
+    )
     assert commitments["title"]
     assert _PENSION_PLACEHOLDER in commitments["body"]
-    assert "1AD.32" in commitments["body"]
+    assert "Retirement benefit commitments" in commitments["body"]
+    assert "1AD.32" not in commitments["body"]
     assert body["added_blocks"] == ["pension_commitments"]
     codes = {check["code"] for check in body["checks"]}
     assert "V-NOTE-002" in codes
@@ -310,7 +314,9 @@ async def test_library_routes_reject_bad_blocks_and_keep_golden_figures(
         f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
         headers=headers,
     )
-    policies = next(note for note in after.json()["notes"] if note["code"] == "N1_POLICIES")
+    policies = next(
+        note for note in after.json()["notes"] if note["code"] == "N1_POLICIES"
+    )
     assert "Transactions in foreign currencies" not in policies["body"]
     assert "Revenue is recognised" in policies["body"]
     assert after.json()["net_assets"] == "455812.00"

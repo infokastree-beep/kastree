@@ -30,13 +30,14 @@ def build_docx(payload: Mapping[str, object], dest: Path) -> None:
     if not isinstance(composed, list):
         explicit = payload.get("page_header")
         if isinstance(explicit, str) and explicit:
+            cover_header, running_header = _split_page_header(explicit)
             _configure_word_section(
                 _word_section(document, 0),
-                page_header=explicit,
+                page_header=running_header,
                 notes_footer=False,
                 unlink=False,
             )
-            document.add_paragraph(escape_export_text(explicit))
+            document.add_paragraph(escape_export_text(cover_header))
         else:
             document.add_paragraph(
                 escape_export_text(_required_text(payload, "watermark"))
@@ -121,6 +122,7 @@ def _write_composed(
     page_header = payload.get("page_header")
     if not isinstance(page_header, str) or not page_header:
         page_header = _required_text(payload, "watermark")
+    cover_header, running_header = _split_page_header(page_header)
     signature = payload.get("signature")
     if not isinstance(signature, Mapping):
         signature = {
@@ -128,30 +130,38 @@ def _write_composed(
             "names": [],
         }
     contents_anchors = _contents_anchors(sections)
-    banner = _banner_texts(payload, page_header)
+    banner = _banner_texts(payload, cover_header)
     notes_footer = False
+    header_now = cover_header
+    banner_on_cover = cover_header != running_header
     _configure_word_section(
         _word_section(document, 0),
-        page_header=page_header,
+        page_header=cover_header,
         notes_footer=False,
         unlink=False,
     )
     _mark_fields_for_update(document)
+    opened = False
     for section in sections:
         if not isinstance(section, Mapping):
             raise ValueError("composed section is missing")
         wants_footer = section.get("notes_footer") is True
         wants_break = section.get("page_break") is True
-        if wants_footer != notes_footer:
+        leave_cover = banner_on_cover and opened
+        if leave_cover or wants_footer != notes_footer:
+            header_now = running_header if leave_cover else header_now
+            if leave_cover:
+                banner_on_cover = False
             _append_word_section(
                 document,
                 page_break=wants_break,
-                page_header=page_header,
+                page_header=header_now,
                 notes_footer=wants_footer,
             )
             notes_footer = wants_footer
         elif wants_break:
             _start_new_page(document, True)
+        opened = True
         heading = escape_export_text(_required_text(section, "heading"))
         anchor = section.get("anchor")
         if heading.strip() not in banner:
@@ -195,7 +205,7 @@ def _write_composed(
                 title = _required_text(note, "title").strip()
                 note_heading = add_paragraph(escape_export_text(title or "Note"))
                 _bold_paragraph(note_heading)
-                add_paragraph(escape_export_text(_required_text(note, "body")))
+                _write_note_body(document, note, note_heading)
                 lines = _mappings(note.get("lines"), "lines")
                 if lines:
                     _composed_table(document, columns, lines)
@@ -208,6 +218,64 @@ def _write_composed(
             if shown.strip() in banner:
                 continue
             add_paragraph(shown)
+
+
+def _split_page_header(page_header: str) -> tuple[str, str]:
+    """Cover line, then the header used after the cover.
+
+    The wording banner stays on the cover. Later pages keep the short label.
+    """
+    from app.services.beta import WORDING_BANNER
+
+    if page_header.endswith(WORDING_BANNER):
+        running = page_header[: -len(WORDING_BANNER)].strip()
+        if running:
+            return page_header, running
+    return page_header, page_header
+
+
+def _write_note_body(
+    document: object, note: Mapping[str, object], heading: object
+) -> None:
+    """Keep each policy paragraph, and a short note, from splitting."""
+    add_paragraph = getattr(document, "add_paragraph", None)
+    if not callable(add_paragraph):
+        raise TypeError("document is missing")
+    body = _required_text(note, "body")
+    paragraphs = [part.strip() for part in body.split("\n\n") if part.strip()]
+    if not paragraphs:
+        paragraphs = [body]
+    code = note.get("code")
+    policy = code == "N1_POLICIES"
+    lines = note.get("lines")
+    line_count = len(lines) if isinstance(lines, list) else 0
+    fa = note.get("fa_rows")
+    fa_count = len(fa) if isinstance(fa, list) else 0
+    short = not policy and len(paragraphs) <= 4 and line_count <= 12 and fa_count <= 12
+    _keep_with_next(heading, short or policy)
+    for index, text in enumerate(paragraphs):
+        paragraph = add_paragraph("")
+        lines = text.split("\n")
+        for line_index, line in enumerate(lines):
+            if line_index:
+                paragraph.add_run().add_break()
+            paragraph.add_run(escape_export_text(line))
+        paragraph.paragraph_format.keep_together = True
+        more = index < len(paragraphs) - 1
+        follows = (
+            bool(note.get("lines") or note.get("fa_rows"))
+            and index == len(paragraphs) - 1
+        )
+        if (policy and more) or (short and (more or follows)):
+            _keep_with_next(paragraph, True)
+
+
+def _keep_with_next(paragraph: object, enabled: bool) -> None:
+    if not enabled:
+        return
+    fmt = getattr(paragraph, "paragraph_format", None)
+    if fmt is not None and hasattr(fmt, "keep_with_next"):
+        fmt.keep_with_next = True
 
 
 def _banner_texts(payload: Mapping[str, object], page_header: str) -> frozenset[str]:

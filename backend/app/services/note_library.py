@@ -149,8 +149,7 @@ def present_rows(
 ) -> tuple[LibraryRow, ...]:
     pending_parent = _parent_pending(ctx)
     return tuple(
-        _row(spec, ctx, library, parent_pending=pending_parent)
-        for spec in _catalogue()
+        _row(spec, ctx, library, parent_pending=pending_parent) for spec in _catalogue()
     )
 
 
@@ -221,7 +220,9 @@ def library_notices(
                 code="V-NOTE-001",
                 severity="NOTICE",
                 passed=False,
-                message="Omitted as immaterial: " + ", ".join(sorted(omitted_titles)) + ".",
+                message="Omitted as immaterial: "
+                + ", ".join(sorted(omitted_titles))
+                + ".",
             )
         )
     if added_titles:
@@ -242,8 +243,7 @@ def library_notices(
                 severity="NOTICE",
                 passed=False,
                 message=(
-                    ", ".join(sorted(blank_titles))
-                    + ": particulars are not recorded."
+                    ", ".join(sorted(blank_titles)) + ": particulars are not recorded."
                 ),
             )
         )
@@ -296,8 +296,6 @@ def commitment_print(
         raise LibraryRejected("commitments note has no includeWhen")
     if _any_unanswered(condition, ctx):
         return CommitmentPrint("pending", ())
-    headings = template.get("blocks")
-    pack_headings = headings if isinstance(headings, dict) else {}
     printed: list[PrintedBlock] = []
     for spec in _catalogue():
         if spec.parent != _COMMITMENT_PARENT or spec.placeholder_key is None:
@@ -307,13 +305,13 @@ def commitment_print(
             continue
         if reason == "omitted":
             continue
-        heading = pack_headings.get(spec.block_id)
-        text = heading.strip() if isinstance(heading, str) and heading.strip() else spec.title
+        # The pack ``blocks`` strings are internal checklist labels
+        # (``1AD.28 — ...``). The printed heading is the plain catalogue title.
         printed.append(
             PrintedBlock(
                 block_id=spec.block_id,
                 title=spec.title,
-                heading=text,
+                heading=spec.title,
                 placeholder_key=spec.placeholder_key,
                 added=reason == "added",
             )
@@ -477,9 +475,7 @@ def _any_unanswered(predicate: str, ctx: dict[str, object]) -> bool:
 
 
 def _predicate_names(predicate: str) -> tuple[str, ...]:
-    return tuple(
-        name for name in _NAME.findall(predicate) if name not in _KEYWORDS
-    )
+    return tuple(name for name in _NAME.findall(predicate) if name not in _KEYWORDS)
 
 
 def _predicate_kind(predicate: str) -> Literal["always", "trial_balance", "disclosure"]:
@@ -630,7 +626,9 @@ def _note_templates(directory: object) -> dict[str, dict[str, object]]:
 
 def _load_policies() -> tuple[dict[str, object], ...]:
     path = pack_dir() / "policies.py"
-    spec = importlib.util.spec_from_file_location("findraft_note_library_policies", path)
+    spec = importlib.util.spec_from_file_location(
+        "findraft_note_library_policies", path
+    )
     if spec is None or spec.loader is None:
         raise LibraryRejected("pack policies are missing")
     module = importlib.util.module_from_spec(spec)
@@ -684,9 +682,7 @@ def _questions() -> dict[str, str]:
 
 @lru_cache(maxsize=1)
 def _reason_labels() -> dict[str, str]:
-    loaded = json.loads(
-        (pack_dir() / "reason-labels.json").read_text(encoding="utf-8")
-    )
+    loaded = json.loads((pack_dir() / "reason-labels.json").read_text(encoding="utf-8"))
     if not isinstance(loaded, dict):
         raise LibraryRejected("reason labels are missing")
     labels: dict[str, str] = {}

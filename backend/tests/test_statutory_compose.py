@@ -421,6 +421,23 @@ def test_advisers_print_on_the_directors_page() -> None:
     assert document.profit == Decimal("157650.00")
 
 
+def test_a_missing_incorporation_date_is_not_a_blank_line() -> None:
+    document = _golden()
+    html = compose_pdf_html(
+        document,
+        report_setup=_setup(),
+        period_start=date(2025, 1, 1),
+        period_end=date(2025, 12, 31),
+        first_financial_period=False,
+        letterhead=CompanyLetterhead(incorporated_on=None),
+    )
+    assert "Date of incorporation: not recorded" in html
+    assert "Date of incorporation: <" not in html
+    assert "Date of incorporation:\n" not in html
+    assert document.net_assets == Decimal("455812.00")
+    assert document.profit == Decimal("157650.00")
+
+
 def test_an_enabled_unbuilt_section_is_one_page_without_figures() -> None:
     document = _golden()
     html = _compose(
@@ -560,8 +577,10 @@ def test_a_finalised_document_keeps_final_and_does_not_say_compilation(
 
     html = _compose(final, _setup(statement_type="compilation"))
     printed = f"DRAFT {WORDING_BANNER}"
-    assert f'<p class="watermark">{printed}</p>' in html
-    assert html.count(f'content: "{printed}"') >= 2
+    assert f'<p class="watermark">{printed}</p>' not in html
+    assert '<p class="watermark">DRAFT</p>' in html
+    assert html.count(f'content: "{printed}";') == 1
+    assert 'content: "DRAFT";' in html
     assert "@page :first" in html
     assert "COMPILATION" not in html
     assert "FINAL" not in html
@@ -573,9 +592,11 @@ def test_a_finalised_document_keeps_final_and_does_not_say_compilation(
     joined = "\n".join(pages)
     assert "455,812" in joined
     assert "157,650" in joined
-    for page in pages:
+    assert WORDING_BANNER in pages[0]
+    assert pages[0].count(WORDING_BANNER) == 1
+    for page in pages[1:]:
         assert "DRAFT" in page
-        assert WORDING_BANNER in page
+        assert WORDING_BANNER not in page
         assert "FINAL" not in page
     assert "455,812" in html
     assert "157,650" in html

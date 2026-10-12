@@ -133,7 +133,9 @@ def test_pages_keep_engine_figures_and_leave_gaps() -> None:
     assert "Principal activities have not been recorded." in report
     assert "Profit for the financial year is €157,650." in report
     assert "does not include a business review" in report
-    assert "A dividend has not been recorded on this draft." in report
+    assert "A dividend has been recorded for the financial year." in report
+    assert "A dividend has not been recorded on this draft." not in report
+    assert "[dividend not recorded]" not in report
     approval = _page(document, "Approval of the financial statements")
     assert "Approval date has not been recorded." in approval
     assert "A signatory has not been separately recorded." in approval
