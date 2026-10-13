@@ -154,6 +154,20 @@
     "sole_director": 1,
     "two_or_more_directors": 2
   },
+  "directors_report_items": {
+    "source_status": "researched (public source)",
+    "source": "Companies Act 2014",
+    "directors_and_activities": "Companies Act 2014, section 326(1)",
+    "accounting_records": "Companies Act 2014, section 326(1)(c)",
+    "dividends": "Companies Act 2014, section 326(1)(d)",
+    "own_shares": "Companies Act 2014, section 328",
+    "share_interests": "Companies Act 2014, section 329",
+    "subsequent_events": "Companies Act 2014, section 326(2)(a)",
+    "research_development": "Companies Act 2014, section 326(2)(b)",
+    "political_donations": "Companies Act 2014, section 326(2)(d)",
+    "business_review_optional": "Companies Act 2014, sections 325(1A) and 327(1A)",
+    "subsequent_year_length": "Companies Act 2014, section 288"
+  },
   "note_classes": [
     "policies",
     "fixed assets",

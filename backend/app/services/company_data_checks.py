@@ -134,6 +134,9 @@ def company_data_checks(
     events = _events_notice(subsequent_events_answered)
     if events is not None:
         checks.append(events)
+    length = _subsequent_year_length(year_end)
+    if length is not None:
+        checks.append(length)
     return tuple(checks)
 
 
@@ -404,6 +407,31 @@ def _tax_notice(
         False,
         "There is a profit before tax and no tax charge or corporation tax "
         "creditor. Check whether tax should be recorded.",
+    )
+
+
+def _subsequent_year_length(year_end: YearEnd) -> ReconciliationCheck | None:
+    """A later year is 12 months, or not more than 7 days either side.
+
+    Companies Act 2014, section 288. The first financial year uses the
+    18-month check. A year-end change filed with the Registrar is the
+    exception and is a notice, not a block. The citation is researched
+    from the public Act and is not a reviewer sign-off.
+    """
+    if year_end.first_financial_period or year_end.period_start is None:
+        return None
+    if year_end.accounting_period_change_filed is True:
+        return None
+    expected = _add_months(year_end.period_start, 12) - timedelta(days=1)
+    if abs((year_end.period_end - expected).days) <= 7:
+        return None
+    return _check(
+        "V-CO-027",
+        "NOTICE",
+        False,
+        "This financial year is not within 7 days of 12 months. "
+        "Companies Act 2014, section 288. "
+        "Record that a year-end change was filed if the Registrar was notified.",
     )
 
 

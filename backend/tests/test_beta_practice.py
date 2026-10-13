@@ -216,8 +216,12 @@ async def test_first_practice_golden_final_keeps_the_engine_figures(
         },
     )
     assert approved.status_code == 200, approved.text
+    from tests.directors_report_http import save_nil_directors_report
     from tests.evidence_exemption import record_evidenced_exemption
 
+    await save_nil_directors_report(
+        api_client, headers, year_end_id, directors=["Ada Lovelace"]
+    )
     record_evidenced_exemption(provisioned_org["org_id"], year_end_id)
     final = await api_client.post(
         _draft_path(year_end_id, draft_id, "finalise"),

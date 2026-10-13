@@ -21,6 +21,11 @@ from app.schemas.company_details import (
     ShareClassWrite,
 )
 from app.services.audit import append_audit_log
+from app.services.directors_report import (
+    directors_report_checks,
+    money_text,
+    share_interests_out,
+)
 from app.services.legal_forms import record_legal_form_change
 from app.services.countries import country_label
 from app.services.reconciliation import ReconciliationCheck
@@ -30,6 +35,7 @@ _BLOCKING = frozenset(
     {
         "V-CO-001",
         "V-CO-002",
+        "V-CO-004",
         "V-CO-005",
         "V-CO-006",
         "V-CO-008",
@@ -40,6 +46,14 @@ _BLOCKING = frozenset(
         "V-CO-022",
         "V-CO-023",
         "V-CO-024",
+        "V-CO-029",
+        "V-CO-030",
+        "V-CO-031",
+        "V-CO-032",
+        "V-CO-033",
+        "V-CO-034",
+        "V-CO-035",
+        "V-CO-036",
     }
 )
 _AUDIT_NOT_RECORDED = (
@@ -521,6 +535,17 @@ def company_details_response(
         share_classes=_read_share_classes(company.share_classes),
         approval_date=year_end.approval_date,
         signing_directors=_read_signing(year_end.signing_directors),
+        accounting_records_location=year_end.accounting_records_location,
+        interim_dividend=money_text(year_end.interim_dividend),
+        recommended_dividend=money_text(year_end.recommended_dividend),
+        share_interests=share_interests_out(year_end.share_interests),
+        own_shares_particulars=year_end.own_shares_particulars,
+        subsequent_events_particulars=year_end.subsequent_events_particulars,
+        research_development_relevant=year_end.research_development_relevant,
+        research_development_detail=year_end.research_development_detail,
+        political_donations_relevant=year_end.political_donations_relevant,
+        political_donations_detail=year_end.political_donations_detail,
+        accounting_period_change_filed=year_end.accounting_period_change_filed,
     )
 
 
@@ -727,6 +752,8 @@ def company_detail_checks(
     tax_charge: Decimal | None = None,
     corporation_tax: Decimal | None = None,
     subsequent_events_answered: bool | None = None,
+    own_shares_held: bool | None = None,
+    subsequent_events_yes: bool | None = None,
 ) -> tuple[ReconciliationCheck, ...]:
     """Dashboard facts. A missing value is not filled in."""
     names = director_names(company.directors)
@@ -780,11 +807,14 @@ def company_detail_checks(
         ),
         _check(
             "V-CO-004",
-            "NOTICE",
+            "WARNING",
             _blank(company.principal_activity) is not None,
             "Principal activity is recorded."
             if _blank(company.principal_activity)
-            else "Principal activity has not been recorded.",
+            else (
+                "Principal activities have not been recorded. "
+                "Companies Act 2014, section 326."
+            ),
         ),
         _check(
             "V-CO-005",
@@ -821,6 +851,14 @@ def company_detail_checks(
             tax_charge=tax_charge,
             corporation_tax=corporation_tax,
             subsequent_events_answered=subsequent_events_answered,
+        )
+    )
+    checks.extend(
+        directors_report_checks(
+            company,
+            year_end,
+            own_shares_held=own_shares_held,
+            subsequent_events_yes=subsequent_events_yes,
         )
     )
     checks.extend(audit_position_checks(year_end))

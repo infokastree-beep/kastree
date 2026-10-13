@@ -8,7 +8,7 @@ printed. It does not sum a trial balance.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -16,6 +16,7 @@ from decimal import Decimal
 from pydantic import ValidationError
 
 from app.models.company import Company
+from app.services.directors_report import directors_report_paragraphs
 from app.schemas.report_setup import (
     ColumnHeaders,
     FaceDates,
@@ -153,9 +154,15 @@ def compose_year_end_pdf(
     year_end: YearEnd,
     *,
     company: Company | None = None,
+    disclosure_flags: Mapping[str, bool] | None = None,
 ) -> str:
     """PDF HTML for one year end. A blank report setup still prints the pack pages."""
-    html, _sections = compose_year_end_parts(document, year_end, company=company)
+    html, _sections = compose_year_end_parts(
+        document,
+        year_end,
+        company=company,
+        disclosure_flags=disclosure_flags,
+    )
     return html
 
 
@@ -164,6 +171,7 @@ def compose_year_end_parts(
     year_end: YearEnd,
     *,
     company: Company | None = None,
+    disclosure_flags: Mapping[str, bool] | None = None,
 ) -> tuple[str, list[dict[str, object]]]:
     """PDF HTML plus the section dicts. Callers slice one section from the HTML."""
     currency = "GBP"
@@ -171,6 +179,12 @@ def compose_year_end_parts(
     if company is not None:
         currency = company.functional_currency or "GBP"
         letterhead = letterhead_from_company(company)
+    extra = directors_report_paragraphs(
+        year_end,
+        company,
+        currency=currency,
+        disclosure_flags=disclosure_flags,
+    )
     return compose_pdf_parts(
         document,
         report_setup=year_end.report_setup,
@@ -181,6 +195,7 @@ def compose_year_end_parts(
         signing_directors=year_end.signing_directors,
         currency=currency,
         letterhead=letterhead,
+        directors_report_extra=tuple(extra),
     )
 
 
@@ -195,6 +210,7 @@ def compose_pdf_html(
     signing_directors: object = None,
     currency: str = "EUR",
     letterhead: CompanyLetterhead | None = None,
+    directors_report_extra: tuple[str, ...] = (),
 ) -> str:
     """Filter and label a copy. ``document`` and its Decimals stay put."""
     html, _sections = compose_pdf_parts(
@@ -207,6 +223,7 @@ def compose_pdf_html(
         signing_directors=signing_directors,
         currency=currency,
         letterhead=letterhead,
+        directors_report_extra=directors_report_extra,
     )
     return html
 
@@ -222,6 +239,7 @@ def compose_pdf_parts(
     signing_directors: object = None,
     currency: str = "EUR",
     letterhead: CompanyLetterhead | None = None,
+    directors_report_extra: tuple[str, ...] = (),
 ) -> tuple[str, list[dict[str, object]]]:
     """The PDF HTML and the section dicts that produced it."""
     if document.html is None:
@@ -308,6 +326,7 @@ def compose_pdf_parts(
         period_phrase=statement_period_phrase(start, end),
         period_note=period_note,
     )
+    _append_directors_report(sections, directors_report_extra)
     approved = "" if approval_date is None else approval_date.isoformat()
     html = render_statutory_html(
         company_name=document.company_name,
@@ -866,6 +885,21 @@ def _composed_sections(
             )
         )
     return sections
+
+
+def _append_directors_report(
+    sections: list[dict[str, object]], extra: tuple[str, ...]
+) -> None:
+    """Placeholders and recorded facts. The engine paragraphs stay first."""
+    if not extra:
+        return
+    for section in sections:
+        if section.get("anchor") != "directors-report":
+            continue
+        paragraphs = section.get("paragraphs")
+        if isinstance(paragraphs, list):
+            paragraphs.extend(extra)
+        return
 
 
 def _not_built(section_id: str, label: str) -> dict[str, object]:

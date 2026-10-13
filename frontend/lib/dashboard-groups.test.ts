@@ -136,6 +136,8 @@ describe("review groups", () => {
     );
     assert.equal(stopsFinalise(failed("V-CO-025", "NOTICE")), false);
     assert.equal(stopsFinalise(failed("V-CO-026", "NOTICE")), false);
+    assert.equal(stopsFinalise(failed("V-CO-027", "NOTICE")), false);
+    assert.equal(stopsFinalise(failed("V-CO-029", "WARNING")), true);
     assert.equal(
       presentCheck(failed("V-CO-025", "NOTICE")).fix.section,
       "company-details",

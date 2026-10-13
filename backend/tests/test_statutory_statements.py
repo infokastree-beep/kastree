@@ -458,12 +458,14 @@ async def _ready_golden(
         session.execute(
             text(
                 "UPDATE companies SET registered_office = :office, "
-                "company_number = :number, directors = CAST(:directors AS jsonb) "
+                "company_number = :number, principal_activity = :activity, "
+                "directors = CAST(:directors AS jsonb) "
                 "WHERE id = :id"
             ),
             {
                 "office": _OFFICE,
                 "number": "654321",
+                "activity": "Software",
                 "directors": '[{"name": "Ada Lovelace"}]',
                 "id": str(provisioned_org["company_id"]),
             },

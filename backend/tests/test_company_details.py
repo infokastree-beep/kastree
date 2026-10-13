@@ -160,10 +160,10 @@ def test_notices_do_not_block_final_and_missing_directors_do() -> None:
             "The company secretary has not been recorded.",
         ),
         ReconciliationCheck(
-            "V-CO-004",
+            "V-CO-027",
             "NOTICE",
             False,
-            "Principal activity has not been recorded.",
+            "This financial year is not within 7 days of 12 months.",
         ),
     )
     missing_directors = (
@@ -178,6 +178,15 @@ def test_notices_do_not_block_final_and_missing_directors_do() -> None:
     assert (
         _can_finalise("amber", renderable=True, blocked=False, checks=notices) is True
     )
+    missing_activity = (
+        ReconciliationCheck(
+            "V-CO-004",
+            "WARNING",
+            False,
+            "Principal activities have not been recorded.",
+        ),
+    )
+    assert blocks_final(missing_activity) is True
     assert blocks_final(missing_directors) is True
     assert (
         _can_finalise("amber", renderable=True, blocked=False, checks=missing_directors)
@@ -277,7 +286,7 @@ async def test_saved_company_details_print_on_the_existing_pages(
     assert before_checks["V-CO-006"]["passed"] is False
     assert before_checks["V-CO-003"]["severity"] == "NOTICE"
     assert before_checks["V-CO-003"]["passed"] is False
-    assert before_checks["V-CO-004"]["severity"] == "NOTICE"
+    assert before_checks["V-CO-004"]["severity"] == "WARNING"
     assert before_checks["V-CO-004"]["passed"] is False
     assert board.json()["can_finalise"] is False
 

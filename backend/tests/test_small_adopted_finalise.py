@@ -130,11 +130,21 @@ async def _letterhead(
             "registered_office": "1 Harbour Street, Dublin",
             "company_number": "AB123456",
             "incorporated_on": "2026-01-01",
+            "principal_activity": "Software",
             "secretary": "Charles Babbage",
             "directors": [{"name": "Ada Lovelace"}],
         },
     )
     assert saved.status_code == 200, saved.text
+    from tests.directors_report_http import save_nil_directors_report
+
+    await save_nil_directors_report(
+        api_client,
+        headers,
+        year_end_id,
+        directors=["Ada Lovelace"],
+        secretary="Charles Babbage",
+    )
     approved = await api_client.put(
         f"/year-ends/{year_end_id}/approval",
         headers=headers,

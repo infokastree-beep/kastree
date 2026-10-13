@@ -1,4 +1,4 @@
-"""Revision u7v8w9x0y1 adds directors' report inputs. Nothing maps them."""
+"""Revision u7v8w9x0y1 adds directors' report inputs. The model maps them."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ def test_migration_adds_the_columns_without_a_read_or_grant_all() -> None:
     assert "SELECT" not in executable
     model = _MODEL.read_text()
     for name in _COLUMNS:
-        assert name not in model
+        assert name in model
 
 
 def test_code_head_is_the_directors_report_inputs_revision() -> None:
