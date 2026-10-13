@@ -40,7 +40,7 @@ def test_migration_adds_the_column_without_a_read_or_grant_all() -> None:
 
 
 def test_code_head_is_the_company_legal_form_revision() -> None:
-    assert code_heads() == ("u7v8w9x0y1",)
+    assert code_heads() == ("v8w9x0y1z2",)
 
 
 def test_column_is_nullable_with_no_server_default() -> None:
