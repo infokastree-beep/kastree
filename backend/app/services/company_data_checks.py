@@ -111,9 +111,7 @@ def company_data_checks(
         director_notice = dac_director_notice(_current_directors(company), form)
         if director_notice is not None:
             checks.append(_check("V-CO-026", "NOTICE", False, director_notice))
-    period = _first_period(company, year_end, rules)
-    if period is not None:
-        checks.append(period)
+    checks.extend(_first_period(company, year_end, rules))
     office = _office_notice(company.registered_office)
     if office is not None:
         checks.append(office)
@@ -209,18 +207,21 @@ def _current_directors(company: Company) -> int:
 
 def _first_period(
     company: Company, year_end: YearEnd, rules: DataCheckRules
-) -> ReconciliationCheck | None:
+) -> tuple[ReconciliationCheck, ...]:
     if not year_end.first_financial_period:
-        return None
+        return ()
     reasons: list[str] = []
     incorporated = company.incorporated_on
     start = year_end.period_start
     end = year_end.period_end
+    earlier_period = False
     if incorporated is None:
         reasons.append(
             "The date of incorporation has not been recorded. "
             "A first financial period has to start on that date."
         )
+    elif start is not None and start > incorporated:
+        earlier_period = True
     elif start != incorporated:
         shown = "not recorded" if start is None else _spoken(start)
         reasons.append(
@@ -230,16 +231,34 @@ def _first_period(
         )
     months = rules.first_period_max_months
     if start is not None and end >= _add_months(start, months):
-        reasons.append(f"This first financial period is longer than {months} months.")
-    if not reasons:
-        return _check(
-            "V-CO-011",
-            "WARNING",
-            True,
-            "The first financial period starts on the date of incorporation "
-            f"and is not longer than {months} months.",
+        reasons.append(
+            f"This first financial period is longer than {months} months. "
+            "Companies Act 2014, section 288(1)."
         )
-    return _check("V-CO-011", "WARNING", False, " ".join(reasons))
+    checks: list[ReconciliationCheck] = []
+    if earlier_period:
+        checks.append(
+            _check(
+                "V-CO-037",
+                "WARNING",
+                False,
+                "This period starts after the date of incorporation. "
+                "An earlier financial period must exist.",
+            )
+        )
+    if reasons:
+        checks.append(_check("V-CO-011", "WARNING", False, " ".join(reasons)))
+    elif not earlier_period:
+        checks.append(
+            _check(
+                "V-CO-011",
+                "WARNING",
+                True,
+                "The first financial period starts on the date of incorporation "
+                f"and is not longer than {months} months.",
+            )
+        )
+    return tuple(checks)
 
 
 def _office_notice(office: str | None) -> ReconciliationCheck | None:
