@@ -21,8 +21,8 @@ Status of the current build queue. Wording that is drawn from a public source st
 | 15. Statement of income and retained earnings | waiting |
 | Notes, after item 15, in this order: dividends; taxation; stocks; defined-contribution pension; controlling party; government grants; provisions other than tax; deferred tax; fair-value designation; more than one statement line; combined format lines; set-off | approved, not started |
 | Optional cash flow statement, after those notes | approved, not started |
-| Larger frameworks (medium and large, full FRS 102) and prepared for audit | design waiting approval |
-| ESG and sustainability reporting | later pack, design waiting approval |
+| Larger frameworks (medium and large, full FRS 102) and prepared for audit | approved, not started |
+| ESG and sustainability reporting | later pack, approved as its own design, not started |
 | 16. Correction after final | design waiting approval |
 | 17. Earlier-edition pack | design waiting approval |
 | 18. Infrastructure | waiting |

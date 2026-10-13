@@ -1,6 +1,6 @@
 # Larger frameworks, prepared for audit, and a later ESG pack
 
-Status: design only. Nothing in this note is built. Wait for approval before any pack, column, statement, or upload is added.
+Status: approved, with the amendments in this note. Nothing in this note is built. No larger-framework block is started from this record.
 
 Wording drawn from a public source stays "researched (public source)" and names the provision. Figures and product sentences that a reviewer still has to accept stay "reviewer-to-confirm". Neither status is a reviewer sign-off. The workspace label stays "source not confirmed". The banner stays "Statutory wording not yet reviewed by a qualified reviewer".
 
@@ -65,7 +65,7 @@ FRS 102 (September 2024) Section 1A is the reduced regime. Paragraphs 1A.7 and 1
 
 A statement of income and retained earnings (paragraphs 6.4 and 6.5) is available only when the only changes in equity are profit or loss, dividends, corrections of prior-period material errors, and changes in accounting policy. It is not the default for this pack. Queue item 15 is the small-pack proposal for that statement. This pack does not build it as a substitute for the statement of changes in equity.
 
-The cash-flow function is the one described in the approved notes design: indirect, opening cash from the prior cash balance, first financial period opening cash zero and the statement says so, withhold unless opening plus movement equals closing cash within €0.01. On this pack the section is locked on, so there is no off switch. The small pack keeps cash flow optional and off until that optional block is built. The engine does not read the toggle. Prior-year balances come from queue item 11. The function does not change the income statement, the balance sheet, or the small-pack golden figures.
+The cash-flow function is the one described in the approved notes design: indirect, opening cash from the prior cash balance, first financial period opening cash zero and the statement says so, reconcile within €0.01 or withhold. Overdrafts repayable on demand count as cash. Hire-purchase and lease-financed additions are non-cash. Income tax paid is operating unless specifically identified with investing or financing. Interest paid and dividends paid are financing, and that choice is reviewer-to-confirm. On this pack the section is locked on, so there is no off switch. The small pack keeps cash flow optional and off until that optional block is built. The engine does not read the toggle. Prior-year balances come from queue item 11. The function does not change the income statement, the balance sheet, or the small-pack golden figures.
 
 ## 5. Notes and disclosures beyond the small pack
 
@@ -152,29 +152,31 @@ The uploaded file is labelled "Auditor's report — not prepared by this practic
 
 A medium or large company cannot claim the small-company audit exemption. A small or micro company that chose the full pack can still claim the exemption when the existing section 358 conditions pass. Claiming the exemption and prepared-for-audit on the same year is refused.
 
+The prepared-for-audit document never looks final. The banner stays "Statutory wording not yet reviewed by a qualified reviewer". The cover sentence stays "These financial statements were prepared for audit. They do not include an auditor's report." Both stay on every copy. Whether any later status may look final is a reviewer decision. It is recorded here as reviewer-to-confirm. This design does not decide it.
+
 What is blocked:
 
 - Any sentence that is an audit opinion, including "we have audited" and "true and fair view" written as an auditor's opinion. The directors' responsibilities language that the Act already requires is a separate, already-printed statement.
-- Marking the set "audited".
-- Dropping the prepared-for-audit sentence from a year end in that position.
+- Marking the set "audited", or giving the practice's statements a final appearance.
+- Dropping the banner or the prepared-for-audit cover sentence from a year end in that position.
 - Merging the uploaded report into the statement file.
-- Editing the statements after FINAL. The existing 409 sentences stay.
-- A final, locked, or frozen draft refusing the status change, with those same sentences.
+- A final, locked, or frozen draft refusing the status change, with the existing plain 409 sentences.
 
 What can proceed:
 
-- FINAL of the practice's statements while the position is prepared for audit, once the other FINAL gates pass. The set is the practice's statements prepared for audit. It is not an audited set.
-- Attaching the auditor's file after FINAL. The attachment does not reopen the snapshot. Who attached it, and when, is audited. The file body is not copied into the audit row.
+- Saving the practice's statements in the prepared-for-audit position once the other gates that do not depend on a final appearance have passed. The banner and the cover sentence stay. The document does not look final.
+- Attaching the auditor's file. The attachment does not make the statements look final and does not reopen a snapshot. Who attached it, and when, is audited. The file body is not copied into the audit row.
 
 Reviewer sign-off, all reviewer-to-confirm until then:
 
-- The cover sentence.
-- Whether FINAL is allowed before the auditor's file is attached. This design allows it.
+- The cover sentence, which stays as written above.
+- The banner, which stays as written above.
+- Whether any later status may look final. The reviewer decision is recorded. The product does not treat the prepared-for-audit document as final.
 - The file-label wording.
-- Whether a missing section 330 statement blocks FINAL. This design keeps it a notice.
+- Whether a missing section 330 statement blocks a save. This design keeps it a notice.
 - Whether the uploaded file may be a PDF only. This design allows PDF only, checked by magic number, with the existing size cap.
 
-Until this block is built, the current refusal stays. A company that needs an audit still cannot reach FINAL.
+Until this block is built, the current refusal stays. A company that needs an audit still cannot reach a finished set.
 
 ## 8. ESG and sustainability reporting — a later pack
 
@@ -200,42 +202,42 @@ Unknown, and left unknown:
 
 - The existing small-company golden file is unchanged and stays on `frs102-1a-ie`.
 - One medium-company file: size inputs in the medium band, pack `frs102-ie`, a balanced trial balance, prior year present, indirect cash flow that ties within €0.01, OCI nil, and a statement of changes in equity that ties to the face.
-- One large-company file: the same shape, with size inputs in the large band and the prepared-for-audit position once that block exists. Before that block, the file is not expected to finalise.
+- One large-company file: the same shape, with size inputs in the large band and the prepared-for-audit position once that block exists. That file keeps the banner and the cover sentence. It is not a finished set.
 - One refusal file: medium size inputs with the small pack still selected, FINAL refused, figures unprinted as a statutory set.
 - Money in the files is Decimal. No float.
 
 ## 10. Effort by block
 
-Effort is the size of the change, not a calendar estimate.
+Effort is a rough size: small, medium, or large. It is not a calendar estimate.
 
-| Block | What moves | Risk |
-| --- | --- | --- |
-| Pack skeleton | A new content directory and a catalogue row. No statements. | Isolated. The small pack must stay the default. |
-| Size class and explicit choice | One nullable column, a classifier, FINAL sentences, a Fix link. Migration first. | Easy to let the size result switch the pack by itself. The choice stays explicit. |
-| Effective-date pin | Reuse the pre-2026 gate for the new pack id. | A period before 2026 must keep the current refusal. |
-| Other comprehensive income | New statement builder and a presentation page. | Must not change the income-statement profit. |
-| Statement of changes in equity | New statement. Depends on prior-year balances (item 11). | Must tie to share capital and retained earnings. The small-pack golden retained earnings stay 455,712.00. |
-| Required cash flow | The approved indirect function, locked on. Depends on item 11 and on the small-pack optional cash flow existing. | Withhold when it does not tie. Do not invent an opening balance. |
-| Notes, one section at a time | Twenty-five rows in section 5. Each has wording, an input, tests, and Add and Omit. Sections 20 and 23 are the large ones because the September 2024 text is not the small-pack policy. | A 1AD sentence reused under a full-section heading. |
-| Fuller directors' report | New text inputs and two conditional statements. Migration first. | Small-pack business-review sentence must remain on the small pack. |
-| Prepared for audit | A third audit position, cover sentence, separate labelled upload, FINAL allowed for that position. | The current "out of scope" refusal must remain until this block is on. The upload must stay out of the statement file. |
-| Golden files | Three new fixtures and the refusal fixture. | Reusing 455,812.00 or 157,650.00 on a medium file. |
-| ESG pack | A later design of its own, after the unknowns in section 8 are answered. | Building it inside `frs102-ie`. |
+| Block | Effort | What moves | Risk |
+| --- | --- | --- | --- |
+| Pack skeleton | small | A new content directory and a catalogue row. No statements. | Isolated. The small pack must stay the default. |
+| Size class and explicit choice | medium | One nullable column, a classifier, refusal sentences, a Fix link. Migration first. | Easy to let the size result switch the pack by itself. The choice stays explicit. |
+| Effective-date pin | small | Reuse the pre-2026 gate for the new pack id. | A period before 2026 must keep the current refusal. |
+| Other comprehensive income | medium | New statement builder and a presentation page. | Must not change the income-statement profit. |
+| Statement of changes in equity | medium | New statement. Depends on prior-year balances (item 11). | Must tie to share capital and retained earnings. The small-pack golden retained earnings stay 455,712.00. |
+| Required cash flow | medium | The approved indirect function, locked on. Depends on item 11 and on the small-pack optional cash flow existing. | Withhold when it does not tie. Do not invent an opening balance. |
+| Notes, one section at a time | large | Twenty-five rows in section 5. Each has wording, an input, tests, and Add and Omit. Sections 20 and 23 are the large parts, because the September 2024 text is not the small-pack policy. | A 1AD sentence reused under a full-section heading. |
+| Fuller directors' report | large | New text inputs and two conditional statements. Migration first. | Small-pack business-review sentence must remain on the small pack. |
+| Prepared for audit | medium | A third audit position, the banner, the cover sentence, and a separate labelled upload. The document never looks final. | The current "out of scope" refusal must remain until this block is on. The upload must stay out of the statement file. |
+| Golden files | small | Three new fixtures and the refusal fixture. | Reusing 455,812.00 or 157,650.00 on a medium file. |
+| ESG pack | large | A later pack of its own, after the unknowns in section 8 are answered. | Building it inside `frs102-ie`. |
 
-## 11. Build order
+## 11. Recommended order
 
-Each block waits until the one above it is merged. Toggles stay hidden until that block is built.
+Each block waits until the one above it is merged. Toggles stay hidden until that block is built. No block in this list is built from this record.
 
-1. Pack skeleton and catalogue row.
-2. Size classifier and the explicit choice. Migration-only pull request first.
-3. Effective-date pin for `frs102-ie`.
-4. Other comprehensive income.
-5. Statement of changes in equity.
-6. Required cash flow.
-7. Notes in the section 5 order, one pull request per section.
-8. Fuller directors' report. Migration-only pull request first.
-9. Prepared for audit.
-10. Golden files for medium, large, and the refusal case.
-11. ESG pack, only after a separate design is approved.
+1. Pack skeleton and catalogue row. Effort: small.
+2. Size classifier and the explicit choice. Effort: medium. Migration-only pull request first.
+3. Effective-date pin for `frs102-ie`. Effort: small.
+4. Other comprehensive income. Effort: medium.
+5. Statement of changes in equity. Effort: medium.
+6. Required cash flow. Effort: medium.
+7. Notes in the section 5 order, one pull request per section. Effort: large.
+8. Fuller directors' report. Effort: large. Migration-only pull request first.
+9. Prepared for audit. Effort: medium.
+10. Golden files for medium, large, and the refusal case. Effort: small.
+11. ESG pack, only as its own later pack. Effort: large.
 
-This order starts only after approval of this note. It also starts after the small-pack queue has finished items 6 to 15 and the approved notes and optional cash flow, because the required cash flow reuses that function and the statement of changes in equity reuses prior-year balances.
+This order starts after the small-pack queue has finished items 7 to 15 and the approved notes and optional cash flow, because the required cash flow reuses that function and the statement of changes in equity reuses prior-year balances.
