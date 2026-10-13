@@ -51,7 +51,7 @@ def test_migration_adds_the_columns_without_a_read_or_grant_all() -> None:
 
 
 def test_code_head_is_the_directors_report_inputs_revision() -> None:
-    assert code_heads() == ("v8w9x0y1z2",)
+    assert code_heads() == ("w9x0y1z2a3",)
 
 
 def test_columns_are_nullable_with_no_server_default() -> None:
