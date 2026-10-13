@@ -172,6 +172,7 @@ jobs:
           npm run test:report-setup
           npm run test:practice-jurisdiction
           npm run test:practice-letterhead
+          npm run test:section-inputs
           npm run test:draft-word
           npm run test:company-form
           npm run test:statutory-gate

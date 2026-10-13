@@ -42,6 +42,7 @@ from app.schemas.company_details import (
     ApprovalWrite,
     CompanyDetailsResponse,
     CompanyDetailsWrite,
+    CompilationWrite,
     CurrencyConfirmationResponse,
     DirectorsReportWrite,
 )
@@ -196,6 +197,7 @@ from app.services.company_details import (
     record_audit_exemption_conditions,
     save_approval_details,
     save_company_details,
+    save_compilation_report,
 )
 from app.services.directors_report import (
     DirectorsReportRejected,
@@ -660,6 +662,35 @@ async def put_directors_report(
     except DirectorsReportRejected as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     return company_details_response(company, year_end)
+
+
+@router.put("/{year_end_id}/compilation-report", response_model=CompanyDetailsResponse)
+async def put_compilation_report(
+    year_end_id: uuid.UUID,
+    body: CompilationWrite,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> CompanyDetailsResponse:
+    """Save this year's compilation date and signatory. A viewer cannot."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    await _refuse_closed_year_end(session, org_id=auth.org_id, year_end=year_end)
+    company = await _company_for_year_end(
+        session, year_end=year_end, org_id=auth.org_id
+    )
+    try:
+        return await save_compilation_report(
+            session,
+            org_id=auth.org_id,
+            user_id=auth.user_id,
+            company=company,
+            year_end=year_end,
+            body=body,
+        )
+    except CompanyDetailsRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
 @router.get("/{year_end_id}", response_model=YearEndResponse)
@@ -1134,8 +1165,10 @@ async def get_adopted_statement_pdf(
         draft = await active_adopted_draft(
             session, org_id=auth.org_id, year_end=year_end
         )
-        flags = None if draft is None else await disclosure_flags(
-            session, org_id=auth.org_id, draft_id=draft.id
+        flags = (
+            None
+            if draft is None
+            else await disclosure_flags(session, org_id=auth.org_id, draft_id=draft.id)
         )
         html = compose_year_end_pdf(
             document, year_end, company=company, disclosure_flags=flags
@@ -1676,8 +1709,10 @@ async def get_statement_pdf(
         draft = await latest_draft(
             session, org_id=auth.org_id, tb_version_id=version_id
         )
-        flags = None if draft is None else await disclosure_flags(
-            session, org_id=auth.org_id, draft_id=draft.id
+        flags = (
+            None
+            if draft is None
+            else await disclosure_flags(session, org_id=auth.org_id, draft_id=draft.id)
         )
         html = compose_year_end_pdf(
             document, year_end, company=company, disclosure_flags=flags

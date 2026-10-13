@@ -114,7 +114,17 @@ export function WorkspaceSidebar({
               : "text-ink-secondary hover:bg-surface-elevated"
           }`}
         >
-          {child.number != null ? `${child.number}. ${child.label}` : child.label}
+          <span className="block">
+            {child.number != null ? `${child.number}. ${child.label}` : child.label}
+          </span>
+          {child.status ? (
+            <span
+              className="block text-[10px] uppercase tracking-[0.08em]"
+              data-testid={`statutory-child-status-${child.anchor}`}
+            >
+              {child.status === "complete" ? "Complete" : "Missing"}
+            </span>
+          ) : null}
         </button>
       </li>
     );

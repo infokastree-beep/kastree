@@ -83,6 +83,15 @@ class ApprovalWrite(BaseModel):
     signing_directors: list[str] = Field(default_factory=list)
 
 
+class CompilationWrite(BaseModel):
+    """Practice compilation date and signatory. Not the directors' approval."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    compilation_date: date | None = None
+    compilation_signatory: str | None = None
+
+
 class HoldingWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -190,3 +199,6 @@ class CompanyDetailsResponse(BaseModel):
     political_donations_relevant: bool | None = None
     political_donations_detail: str | None = None
     accounting_period_change_filed: bool | None = None
+    # Optional so a final snapshot saved before these facts still validates.
+    compilation_date: date | None = None
+    compilation_signatory: str | None = None

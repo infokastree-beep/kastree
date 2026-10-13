@@ -14,6 +14,7 @@ from app.schemas.company_details import (
     AdviserRecord,
     ApprovalWrite,
     CompanyDetailsResponse,
+    CompilationWrite,
     CompanyDetailsWrite,
     CurrencyConfirmationResponse,
     DirectorRecord,
@@ -548,6 +549,8 @@ def company_details_response(
         political_donations_relevant=year_end.political_donations_relevant,
         political_donations_detail=year_end.political_donations_detail,
         accounting_period_change_filed=year_end.accounting_period_change_filed,
+        compilation_date=year_end.compilation_date,
+        compilation_signatory=year_end.compilation_signatory,
     )
 
 
@@ -662,6 +665,42 @@ async def save_approval_details(
     return company_details_response(company, year_end)
 
 
+def _compilation_snapshot(year_end: YearEnd) -> dict[str, object]:
+    recorded = year_end.compilation_date
+    return {
+        "compilation_date": None if recorded is None else recorded.isoformat(),
+        "compilation_signatory": year_end.compilation_signatory,
+    }
+
+
+async def save_compilation_report(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    user_id: uuid.UUID | None,
+    company: Company,
+    year_end: YearEnd,
+    body: CompilationWrite,
+) -> CompanyDetailsResponse:
+    """Store the practice compilation date and signatory. Amounts stay out."""
+    previous = _compilation_snapshot(year_end)
+    year_end.compilation_date = body.compilation_date
+    year_end.compilation_signatory = _single_line(
+        body.compilation_signatory, label="Compilation signatory", limit=200
+    )
+    await append_audit_log(
+        session,
+        org_id=org_id,
+        user_id=user_id,
+        action="compilation_report_saved",
+        entity_type="year_end",
+        entity_id=year_end.id,
+        old_value=previous,
+        new_value=_compilation_snapshot(year_end),
+    )
+    return company_details_response(company, year_end)
+
+
 def _confirmation_snapshot(year_end: YearEnd) -> dict[str, object]:
     confirmed_at = year_end.currency_confirmed_at
     confirmed_by = year_end.currency_confirmed_by_user_id
@@ -771,9 +810,7 @@ def _practice_letterhead_check(
             "The practice legal name, address, and contact have not been recorded."
         )
     elif len(missing) == 2:
-        sentence = (
-            f"The practice {missing[0]} and {missing[1]} have not been recorded."
-        )
+        sentence = f"The practice {missing[0]} and {missing[1]} have not been recorded."
     else:
         sentence = f"The practice {missing[0]} has not been recorded."
     return _check("V-CO-038", "WARNING", False, sentence)
