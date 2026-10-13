@@ -19,8 +19,8 @@ Status of the current build queue. Wording that is drawn from a public source st
 | 13. Roll forward | waiting |
 | 14. Drafts list | waiting |
 | 15. Statement of income and retained earnings | waiting |
-| Notes, after item 15, in this order: dividends; taxation; stocks; defined-contribution pension; controlling party; government grants; provisions other than tax; deferred tax; fair-value designation; more than one statement line; combined format lines; set-off | approved, not started |
-| Optional cash flow statement, after those notes | approved, not started |
+| Notes, after item 15, in this order: dividends; taxation; stocks; defined-contribution pension; controlling party; government grants; provisions other than tax; deferred tax; fair-value designation; more than one statement line; combined format lines; set-off. Blocks that are not required for a small entity are labelled "optional for a small entity" and default off. Required rows keep today's behaviour. Deferred tax and provisions are ranked above the rare rows | approved, not started |
+| Optional cash flow statement, after those notes | approved, build after item 15 |
 | Larger frameworks (medium and large, full FRS 102) and prepared for audit | approved, not started |
 | ESG and sustainability reporting | later pack, approved as its own design, not started |
 | 16. Correction after final | design waiting approval |
