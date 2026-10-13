@@ -176,6 +176,8 @@ def build_statutory_pages(
     dividends: Decimal | None = None,
     audit_exemption_claimed: bool | None = None,
     audit_note: str = "",
+    compilation_date: str = "",
+    compilation_signatory: str = "",
 ) -> tuple[StatutoryPage, ...]:
     """Compilation, directors' report, approval, then audit exemption."""
     return (
@@ -184,6 +186,8 @@ def build_statutory_pages(
             practice_name=practice_name,
             practice_address=practice_address,
             practice_contact=practice_contact,
+            compilation_date=compilation_date,
+            compilation_signatory=compilation_signatory,
         ),
         _directors_report(
             period_end=period_end,
@@ -244,6 +248,8 @@ def _compilation(
     practice_name: str,
     practice_address: str = "",
     practice_contact: str = "",
+    compilation_date: str = "",
+    compilation_signatory: str = "",
 ) -> StatutoryPage:
     company = _present(company_name) or "the company (name not recorded)"
     practice = _present(practice_name)
@@ -264,10 +270,22 @@ def _compilation(
         "No audit opinion and no review conclusion is expressed. "
         "The directors remain responsible for the financial statements."
     )
+    recorded_date = _present(compilation_date)
+    if recorded_date:
+        date_line = f"Compilation date: {format_iso_date(recorded_date)}."
+    else:
+        date_line = "The compilation date has not been recorded."
+    recorded_signatory = _present(compilation_signatory)
+    if recorded_signatory:
+        signatory_line = f"Compilation signatory: {recorded_signatory}."
+    else:
+        signatory_line = "The compilation signatory has not been recorded."
     return StatutoryPage(
         heading="Compilation report",
         paragraphs=(
             *_letterhead_lines(practice_name, practice_address, practice_contact),
+            date_line,
+            signatory_line,
             opening,
             engagement,
             _COMPILATION_PENDING,

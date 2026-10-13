@@ -179,6 +179,9 @@ class YearEnd(Base):
     accounting_period_change_filed: Mapped[bool | None] = mapped_column(
         Boolean, nullable=True, default=None
     )
+    # Practice compilation report. Not the directors' approval of the statements.
+    compilation_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    compilation_signatory: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Acknowledgement that this year end reports in the company currency.
     # A later change of companies.functional_currency no longer matches.
     currency_confirmed_code: Mapped[str | None] = mapped_column(

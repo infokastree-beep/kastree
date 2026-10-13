@@ -1533,6 +1533,8 @@ def _render_draft(
     share_classes: tuple[ShareClassFact, ...] = (),
     note_library: object | None = None,
     audit_exemption_claimed: bool | None = None,
+    compilation_date: str = "",
+    compilation_signatory: str = "",
 ) -> StatutoryStatements:
     directory = (
         pack_dir(pack_id, pack_version)
@@ -1614,6 +1616,8 @@ def _render_draft(
         size_eligible=size_eligible,
         approval_date=approval_date,
         signing_directors=signing_directors,
+        compilation_date=compilation_date,
+        compilation_signatory=compilation_signatory,
         dividends=money(dividend_amount)
         if isinstance(dividend_amount, Decimal)
         else None,
@@ -1712,6 +1716,8 @@ def build_statutory_statements(
     share_classes: tuple[ShareClassFact, ...] = (),
     note_library: object | None = None,
     audit_exemption_claimed: bool | None = None,
+    compilation_date: str = "",
+    compilation_signatory: str = "",
 ) -> StatutoryStatements:
     """Render a DRAFT only when every critical check has passed.
 
@@ -1759,6 +1765,8 @@ def build_statutory_statements(
             share_classes=share_classes,
             note_library=note_library,
             audit_exemption_claimed=audit_exemption_claimed,
+            compilation_date=compilation_date,
+            compilation_signatory=compilation_signatory,
         )
     except (OSError, ValueError, KeyError) as exc:
         return _withheld(report, build_error=str(exc))
@@ -1856,6 +1864,12 @@ async def statements_for_version(
         if year_end.approval_date is None
         else year_end.approval_date.isoformat(),
         signing_directors=_signing_phrase(year_end.signing_directors),
+        compilation_date=""
+        if year_end.compilation_date is None
+        else year_end.compilation_date.isoformat(),
+        compilation_signatory=""
+        if year_end.compilation_signatory is None
+        else year_end.compilation_signatory,
         share_classes=share_classes_from_company(company),
         note_library=None if draft is None else draft.note_library,
         audit_exemption_claimed=year_end.audit_exemption_claimed,
@@ -1956,6 +1970,12 @@ async def statements_for_adopted(
         if year_end.approval_date is None
         else year_end.approval_date.isoformat(),
         signing_directors=_signing_phrase(year_end.signing_directors),
+        compilation_date=""
+        if year_end.compilation_date is None
+        else year_end.compilation_date.isoformat(),
+        compilation_signatory=""
+        if year_end.compilation_signatory is None
+        else year_end.compilation_signatory,
         share_classes=share_classes_from_company(company),
         note_library=None if draft is None else draft.note_library,
         audit_exemption_claimed=year_end.audit_exemption_claimed,

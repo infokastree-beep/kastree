@@ -10,12 +10,19 @@ import { downloadDraftPdf, pdfBlockReason } from "@/lib/draft-pdf";
 import { WORD_PROGRESS_LABEL, downloadDraftWord } from "@/lib/draft-word";
 import { messageFromPdfBody } from "@/lib/workspace-load-error";
 import {
+  ApprovalDetailsForm,
   CompanyDetailsForm,
   type ApprovalWrite,
   type CompanyDetails,
   type CompanyDetailsWrite,
 } from "@/components/statutory/CompanyDetailsForm";
-import { type DirectorsReportWrite } from "@/components/statutory/DirectorsReportForm";
+import { CompilationDetailsForm } from "@/components/statutory/CompilationDetailsForm";
+import { DirectorsResponsibilitiesPanel } from "@/components/statutory/DirectorsResponsibilitiesPanel";
+import {
+  DirectorsReportForm,
+  PrincipalActivityPanel,
+  type DirectorsReportWrite,
+} from "@/components/statutory/DirectorsReportForm";
 import {
   ReportSetupForm,
   type ReportSetup,
@@ -66,6 +73,13 @@ import {
   UNBUILT_NOTICE_KEY,
   type ReportingFramework,
 } from "@/lib/workspace-sections";
+import {
+  directorsReportNote,
+  directorsReportPart,
+  showCompilationForm,
+  sidebarInputChildren,
+  withSignatories,
+} from "@/lib/section-inputs";
 
 type YearEnd = {
   id: string;
@@ -249,6 +263,8 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
   const [approvalSaved, setApprovalSaved] = useState<string | null>(null);
   const [reportError, setReportError] = useState<string | null>(null);
   const [reportSaved, setReportSaved] = useState<string | null>(null);
+  const [compilationError, setCompilationError] = useState<string | null>(null);
+  const [compilationSaved, setCompilationSaved] = useState<string | null>(null);
   const [sizeError, setSizeError] = useState<string | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
   const [conditionsError, setConditionsError] = useState<string | null>(null);
@@ -334,13 +350,15 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     enabled: yearEndQuery.isSuccess,
   });
   const savedFlags = setupQuery.data?.sections ?? null;
-  const catalogue = sectionsForFramework(
-    frameworksQuery.data?.frameworks ?? [],
-    yearEndQuery.data?.pack_id ?? "",
-  ).map((section) =>
-    section.lock
-      ? { ...section, enabled: sectionIsOn(section, savedFlags) }
-      : section,
+  const catalogue = withSignatories(
+    sectionsForFramework(
+      frameworksQuery.data?.frameworks ?? [],
+      yearEndQuery.data?.pack_id ?? "",
+    ).map((section) =>
+      section.lock
+        ? { ...section, enabled: sectionIsOn(section, savedFlags) }
+        : section,
+    ),
   );
   const openSectionId = activeSection(catalogue, searchParams.get("section"));
   const openMeta = catalogue.find((section) => section.id === openSectionId);
@@ -489,6 +507,40 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
     } catch (caught) {
       setReportError(saveMessage(caught, "The directors' report could not be saved."));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveCompilation(next: {
+    compilation_date: string | null;
+    compilation_signatory: string | null;
+  }): Promise<void> {
+    setCompilationError(null);
+    setCompilationSaved(null);
+    setBusy("Saving the compilation report…");
+    try {
+      const saved = await apiFetch<CompanyDetails>(
+        `/year-ends/${yearEndId}/compilation-report`,
+        {
+          method: "PUT",
+          getToken,
+          body: JSON.stringify(next),
+        },
+      );
+      queryClient.setQueryData(["company-details", yearEndId], saved);
+      setCompilationSaved("Compilation report saved.");
+      await queryClient.invalidateQueries({ queryKey: ["statutory-pack"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["statutory-preview", yearEndId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["draft-dashboard", yearEndId],
+      });
+    } catch (caught) {
+      setCompilationError(
+        saveMessage(caught, "The compilation report could not be saved."),
+      );
     } finally {
       setBusy(null);
     }
@@ -1023,9 +1075,19 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
   const outlineChildren = Object.fromEntries(
     (outlineQuery.data?.sections ?? []).map((item) => [item.id, item.children]),
   );
+  const failedCodes = (dashboard?.checks ?? [])
+    .filter((check) => !check.passed)
+    .map((check) => check.code);
+  const inputChildren = sidebarInputChildren(
+    outlineChildren,
+    detailsQuery.data ?? null,
+    failedCodes,
+  );
   const previewChildren =
     outlineChildren[sectionId] ?? previewQuery.data?.children ?? [];
   const scrollAnchor = scrollAnchorFor(noteId, previewChildren);
+  const reportNote = directorsReportNote(noteId);
+  const reportPart = directorsReportPart(noteId);
   const previewFrame = previewQuery.data ? (
     <div className="space-y-2">
       {showsPageNumberNote(sectionId) ? (
@@ -1052,8 +1114,14 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       <WorkspaceSidebar
         sections={sidebarSections(sections, dashboard?.status)}
         activeId={sectionId}
-        childrenBySection={outlineChildren}
-        activeChildId={noteId}
+        childrenBySection={inputChildren}
+        activeChildId={
+          sectionId === "directors-report"
+            ? reportNote
+            : sectionId === "compilation" && showCompilationForm(noteId)
+              ? "compilation-date"
+              : noteId
+        }
         onSelect={selectSection}
         onSelectChild={(parentId, childId) => {
           router.replace(
@@ -1302,8 +1370,53 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
             <p className="text-sm text-ink-secondary">
               [NOT BUILT: this pack does not build this statement]
             </p>
+          ) : sectionId === "directors-report" || sectionId === "compilation" ? (
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div>
+                {sectionId === "directors-report" && detailsQuery.isLoading ? (
+                  <p className="text-sm text-soft">Loading the directors&apos; report…</p>
+                ) : null}
+                {sectionId === "directors-report" && detailsQuery.data ? (
+                  reportPart === "principal-activity" ? (
+                    <PrincipalActivityPanel
+                      activity={detailsQuery.data.principal_activity}
+                      yearEndId={yearEndId}
+                    />
+                  ) : (
+                    <DirectorsReportForm
+                      key={`${reportPart}-${JSON.stringify(detailsQuery.data)}`}
+                      part={reportPart}
+                      details={detailsQuery.data}
+                      canEdit={canEditDetails}
+                      busy={busy !== null}
+                      error={reportError}
+                      saved={reportSaved}
+                      onSave={(next) => void saveReport(next)}
+                    />
+                  )
+                ) : null}
+                {sectionId === "compilation" && showCompilationForm(noteId) && detailsQuery.data ? (
+                  <CompilationDetailsForm
+                    key={JSON.stringify(detailsQuery.data)}
+                    compilationDate={detailsQuery.data.compilation_date}
+                    compilationSignatory={detailsQuery.data.compilation_signatory}
+                    canEdit={canEditDetails}
+                    busy={busy !== null}
+                    error={compilationError}
+                    saved={compilationSaved}
+                    onSave={(next) => void saveCompilation(next)}
+                  />
+                ) : null}
+              </div>
+              {previewFrame}
+            </div>
           ) : (
-            previewFrame
+            <>
+              {sectionId === "directors-responsibilities" ? (
+                <DirectorsResponsibilitiesPanel />
+              ) : null}
+              {previewFrame}
+            </>
           )}
         </section>
       ) : null}
@@ -1346,7 +1459,11 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
         <TrialBalancePanel page={trialBalanceQuery.data} />
       ) : null}
 
-      {sectionId === "company-details" && detailsQuery.error ? (
+      {(sectionId === "company-details" ||
+        sectionId === "signatories" ||
+        sectionId === "directors-report" ||
+        sectionId === "compilation") &&
+      detailsQuery.error ? (
         <StatutoryLoadError
           testId="statutory-company-load-error"
           message={saveMessage(
@@ -1360,19 +1477,26 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       {sectionId === "company-details" && detailsQuery.data ? (
         <CompanyDetailsForm
           key={JSON.stringify(detailsQuery.data)}
+          yearEndId={yearEndId}
           details={detailsQuery.data}
           canEdit={canEditDetails}
           canRecordLegalForm={canRecordClaim}
           busy={busy !== null}
           companyError={companyError}
           companySaved={companySaved}
+          onSaveCompany={(next) => void saveCompany(next)}
+        />
+      ) : null}
+
+      {sectionId === "signatories" && detailsQuery.data ? (
+        <ApprovalDetailsForm
+          key={JSON.stringify(detailsQuery.data)}
+          details={detailsQuery.data}
+          canEdit={canEditDetails}
+          busy={busy !== null}
           approvalError={approvalError}
           approvalSaved={approvalSaved}
-          reportError={reportError}
-          reportSaved={reportSaved}
-          onSaveCompany={(next) => void saveCompany(next)}
           onSaveApproval={(next) => void saveApproval(next)}
-          onSaveReport={(next) => void saveReport(next)}
         />
       ) : null}
 

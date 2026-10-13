@@ -370,11 +370,19 @@ def test_directors_responsibilities_cite_no_act_section() -> None:
         / "frontend"
         / "components"
         / "statutory"
+        / "DirectorsResponsibilitiesPanel.tsx"
+    ).read_text(encoding="utf-8")
+    company = (
+        _ROOT.parent
+        / "frontend"
+        / "components"
+        / "statutory"
         / "CompanyDetailsForm.tsx"
     ).read_text(encoding="utf-8")
     assert 'data-testid="directors-responsibilities-source"' in workspace
     assert "source not confirmed" in workspace
     assert DIRECTORS_RESPONSIBILITIES in workspace
+    assert 'data-testid="directors-responsibilities-source"' not in company
     pack = (_ROOT.parent / "findraft/content/frs102-1a-ie/2024.09/pack.json").read_text(
         encoding="utf-8"
     )

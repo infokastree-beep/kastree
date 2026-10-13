@@ -1,4 +1,4 @@
-"""Revision w9x0y1z2a3 adds the compilation date and signatory. The model does not map them."""
+"""Revision w9x0y1z2a3 adds the compilation date and signatory. The model reads them."""
 
 from __future__ import annotations
 
@@ -37,8 +37,14 @@ def test_migration_adds_the_columns_without_a_read_or_grant_all() -> None:
     assert "CHECK" not in source
     assert "SELECT" not in executable
     model = _MODEL.read_text()
-    for name in _COLUMNS:
-        assert name not in model
+    assert (
+        "compilation_date: Mapped[date | None] = mapped_column(Date, nullable=True)"
+        in model
+    )
+    assert (
+        "compilation_signatory: Mapped[str | None] = mapped_column(Text, nullable=True)"
+        in model
+    )
     assert "approval_date" in model
     assert "signing_directors" in model
 

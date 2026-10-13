@@ -7,6 +7,7 @@ export type PreviewChild = {
   anchor: string;
   note_class?: string | null;
   note_class_label?: string | null;
+  status?: "complete" | "missing";
 };
 
 /** Pack class order. A test checks this list against the pack file. */

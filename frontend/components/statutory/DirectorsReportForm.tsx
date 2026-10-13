@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { StatutoryLoadError } from "@/components/statutory/StatutoryLoadError";
+import { directorsReportWrite } from "@/lib/section-inputs";
 
 export type ShareHolding = {
   undertaking: string;
@@ -153,7 +155,10 @@ function endWrite(end: EndDraft): ShareInterestEnd | string {
   return { interested: end.interested, holdings };
 }
 
+export type DirectorsReportPart = "records" | "interests" | "other";
+
 export function DirectorsReportForm({
+  part,
   details,
   canEdit,
   busy,
@@ -161,6 +166,7 @@ export function DirectorsReportForm({
   saved,
   onSave,
 }: {
+  part: DirectorsReportPart;
   details: DirectorsReportFacts;
   canEdit: boolean;
   busy: boolean;
@@ -219,6 +225,36 @@ export function DirectorsReportForm({
   }
 
   function submit(): void {
+    if (part === "records") {
+      setFormError(null);
+      onSave(
+        directorsReportWrite(details, {
+          accounting_records_location: blankToNull(location),
+          interim_dividend: blankToNull(interim),
+          recommended_dividend: blankToNull(recommended),
+        }),
+      );
+      return;
+    }
+    if (part === "other") {
+      setFormError(null);
+      const researchRelevant = triFrom(research);
+      const politicalRelevant = triFrom(political);
+      onSave(
+        directorsReportWrite(details, {
+          own_shares_particulars: blankToNull(ownShares),
+          subsequent_events_particulars: blankToNull(events),
+          research_development_relevant: researchRelevant,
+          research_development_detail:
+            researchRelevant === true ? blankToNull(researchDetail) : null,
+          political_donations_relevant: politicalRelevant,
+          political_donations_detail:
+            politicalRelevant === true ? blankToNull(politicalDetail) : null,
+          accounting_period_change_filed: triFrom(periodChange),
+        }),
+      );
+      return;
+    }
     const interests: ShareInterest[] = [];
     for (const person of people) {
       const name = person.name.trim();
@@ -243,23 +279,7 @@ export function DirectorsReportForm({
       });
     }
     setFormError(null);
-    const researchRelevant = triFrom(research);
-    const politicalRelevant = triFrom(political);
-    onSave({
-      accounting_records_location: blankToNull(location),
-      interim_dividend: blankToNull(interim),
-      recommended_dividend: blankToNull(recommended),
-      share_interests: interests,
-      own_shares_particulars: blankToNull(ownShares),
-      subsequent_events_particulars: blankToNull(events),
-      research_development_relevant: researchRelevant,
-      research_development_detail:
-        researchRelevant === true ? blankToNull(researchDetail) : null,
-      political_donations_relevant: politicalRelevant,
-      political_donations_detail:
-        politicalRelevant === true ? blankToNull(politicalDetail) : null,
-      accounting_period_change_filed: triFrom(periodChange),
-    });
+    onSave(directorsReportWrite(details, { share_interests: interests }));
   }
 
   return (
@@ -286,6 +306,8 @@ export function DirectorsReportForm({
         business review. Principal risks and future developments are optional
         and are not collected here.
       </p>
+      {part === "records" ? (
+      <>
       <label className="flex max-w-xl flex-col gap-1.5 text-sm">
         <span className="text-xs font-semibold uppercase tracking-[0.12em] text-soft">
           Accounting records location
@@ -334,6 +356,9 @@ export function DirectorsReportForm({
           data-testid="directors-report-recommended"
         />
       </label>
+      </>
+      ) : null}
+      {part === "interests" ? (
       <fieldset className="space-y-3">
         <legend className="text-xs font-semibold uppercase tracking-[0.12em] text-soft">
           Interests in shares
@@ -419,6 +444,9 @@ export function DirectorsReportForm({
           Add a person
         </button>
       </fieldset>
+      ) : null}
+      {part === "other" ? (
+      <>
       <label className="flex max-w-xl flex-col gap-1.5 text-sm">
         <span className="text-xs font-semibold uppercase tracking-[0.12em] text-soft">
           Own shares
@@ -503,6 +531,8 @@ export function DirectorsReportForm({
         testId="directors-report-period-change"
         onChange={setPeriodChange}
       />
+      </>
+      ) : null}
       {formError !== null ? (
         <StatutoryLoadError
           testId="statutory-directors-report-form-error"
@@ -534,6 +564,37 @@ export function DirectorsReportForm({
         Save directors&apos; report
       </button>
     </form>
+  );
+}
+
+export function PrincipalActivityPanel({
+  activity,
+  yearEndId,
+}: {
+  activity: string | null;
+  yearEndId: string;
+}) {
+  const recorded = activity?.trim() ?? "";
+  return (
+    <section className="space-y-3" data-testid="directors-report-principal-activity">
+      <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-soft">
+        Principal activities
+      </h2>
+      <p className="text-sm text-ink">
+        {recorded === ""
+          ? "Principal activities have not been recorded."
+          : recorded}
+      </p>
+      <p className="text-sm">
+        <Link
+          href={`/year-ends/${yearEndId}/draft?section=company-details#company-principal-activity`}
+          className="font-semibold text-ink underline"
+          data-testid="directors-report-principal-activity-link"
+        >
+          Edit principal activity in Company details
+        </Link>
+      </p>
+    </section>
   );
 }
 
