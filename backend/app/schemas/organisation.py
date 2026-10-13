@@ -18,6 +18,8 @@ class OrganisationResponse(BaseModel):
     subscription_status: str
     functional_currency: str
     jurisdiction: str | None
+    letterhead_address: str | None
+    letterhead_contact: str | None
     created_at: datetime
 
 
@@ -34,6 +36,8 @@ class OrganisationUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=500)
     functional_currency: str | None = Field(default=None, min_length=3, max_length=3)
     jurisdiction: Literal["IE", "GB"] | None = None
+    letterhead_address: str | None = Field(default=None, max_length=2000)
+    letterhead_contact: str | None = Field(default=None, max_length=500)
     # Explicitly acknowledged + ignored by the router (not updatable here).
     subscription_tier: str | None = None
     subscription_status: str | None = None

@@ -152,12 +152,13 @@ async def test_admin_can_set_jurisdiction_without_changing_companies(
     wider = await api_client.put(
         "/organisations/me",
         headers=admin_headers,
-        json={"jurisdiction": "IE", "name": "Admin Rename"},
+        json={"functional_currency": "EUR", "name": "Admin Rename"},
     )
     assert wider.status_code == 403, wider.text
     still = await api_client.get("/organisations/me", headers=owner_headers)
     assert still.json()["jurisdiction"] == "GB"
     assert still.json()["name"] != "Admin Rename"
+    assert still.json()["functional_currency"] == "GBP"
 
     _, _, member_token = _add_org_user(
         org_id=org_id,
@@ -313,3 +314,121 @@ async def test_remove_member_role_gated_and_last_owner_blocked(
         await api_client.get("/organisations/me/members", headers=owner_headers)
     ).json()["members"]
     assert any(m["id"] == str(owner_user_id) and m["role"] == "owner" for m in members)
+
+
+@pytest.mark.asyncio
+async def test_owner_or_admin_saves_the_practice_letterhead(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    org_id = provisioned_org["org_id"]
+    owner_headers = auth_headers(provisioned_org["token"])
+    _, _, admin_token = _add_org_user(
+        org_id=org_id,
+        clerk_org_id=provisioned_org["clerk_org_id"],
+        role="admin",
+        email_prefix="letterhead-admin",
+    )
+    saved = await api_client.put(
+        "/organisations/me",
+        headers=auth_headers(admin_token),
+        json={
+            "name": "Harbour Practice",
+            "letterhead_address": "1 Practice Quay\nDublin",
+            "letterhead_contact": "01 555 0100",
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    body = saved.json()
+    assert body["name"] == "Harbour Practice"
+    assert body["letterhead_address"] == "1 Practice Quay\nDublin"
+    assert body["letterhead_contact"] == "01 555 0100"
+
+    _, _, member_token = _add_org_user(
+        org_id=org_id,
+        clerk_org_id=provisioned_org["clerk_org_id"],
+        role="member",
+        email_prefix="letterhead-member",
+    )
+    forbidden = await api_client.put(
+        "/organisations/me",
+        headers=auth_headers(member_token),
+        json={
+            "name": "Member Practice",
+            "letterhead_address": "2 Other Street",
+            "letterhead_contact": "01 555 0199",
+        },
+    )
+    assert forbidden.status_code == 403
+    assert forbidden.json()["detail"] == (
+        "You don't have permission to access this resource."
+    )
+    _, _, viewer_token = _add_org_user(
+        org_id=org_id,
+        clerk_org_id=provisioned_org["clerk_org_id"],
+        role="viewer",
+        email_prefix="letterhead-viewer",
+    )
+    viewer = await api_client.put(
+        "/organisations/me",
+        headers=auth_headers(viewer_token),
+        json={"letterhead_contact": "01 555 0188"},
+    )
+    assert viewer.status_code == 403
+    assert viewer.json()["detail"] == (
+        "You don't have permission to access this resource."
+    )
+
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        row = session.execute(
+            text(
+                """
+                SELECT user_id::text, old_value, new_value
+                FROM audit_logs
+                WHERE org_id = :org
+                  AND action = 'practice_letterhead_saved'
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            ),
+            {"org": str(org_id)},
+        ).one()
+    assert row.user_id
+    assert row.new_value["name"] == "Harbour Practice"
+    assert row.new_value["letterhead_address"] == "1 Practice Quay\nDublin"
+    assert row.new_value["letterhead_contact"] == "01 555 0100"
+    assert "amount" not in row.new_value
+    unchanged = await api_client.get("/organisations/me", headers=owner_headers)
+    assert unchanged.json()["name"] == "Harbour Practice"
+
+    blank = await api_client.put(
+        "/organisations/me",
+        headers=auth_headers(admin_token),
+        json={"letterhead_address": "  ", "letterhead_contact": ""},
+    )
+    assert blank.status_code == 200, blank.text
+    assert blank.json()["letterhead_address"] is None
+    assert blank.json()["letterhead_contact"] is None
+    broken_address = await api_client.put(
+        "/organisations/me",
+        headers=auth_headers(admin_token),
+        json={"letterhead_address": "1 Quay\tDublin"},
+    )
+    assert broken_address.status_code == 422
+    broken_contact = await api_client.put(
+        "/organisations/me",
+        headers=auth_headers(admin_token),
+        json={"letterhead_contact": "01 555\n0100"},
+    )
+    assert broken_contact.status_code == 422
+    empty_name = await api_client.put(
+        "/organisations/me",
+        headers=auth_headers(admin_token),
+        json={"name": "   "},
+    )
+    assert empty_name.status_code == 422
+    assert empty_name.json()["detail"] == "Legal name is required."
+    kept = await api_client.get("/organisations/me", headers=owner_headers)
+    assert kept.json()["name"] == "Harbour Practice"
+    assert kept.json()["letterhead_address"] is None

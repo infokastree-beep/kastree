@@ -1,4 +1,4 @@
-"""Revision v8w9x0y1z2 adds the practice letterhead. The model does not map it."""
+"""Revision v8w9x0y1z2 adds the practice letterhead. The model maps it."""
 
 from __future__ import annotations
 
@@ -34,7 +34,9 @@ def test_migration_adds_the_columns_without_a_read_or_grant_all() -> None:
     assert "SELECT" not in executable
     model = _MODEL.read_text()
     for name in _COLUMNS:
-        assert name not in model
+        assert (
+            f"{name}: Mapped[str | None] = mapped_column(Text, nullable=True)" in model
+        )
 
 
 def test_code_head_is_the_compilation_letterhead_revision() -> None:

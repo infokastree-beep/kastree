@@ -1522,6 +1522,8 @@ def _render_draft(
     disclosure_flags: dict[str, bool] | None = None,
     watermark: str = WATERMARK,
     practice_name: str = "",
+    practice_address: str = "",
+    practice_contact: str = "",
     period_end: str = "",
     period_start: str = "",
     first_financial_period: bool = False,
@@ -1600,6 +1602,8 @@ def _render_draft(
     pages = build_statutory_pages(
         company_name=entity.name,
         practice_name=practice_name,
+        practice_address=practice_address,
+        practice_contact=practice_contact,
         period_end=period_end,
         period_start=period_start,
         directors=entity.directors_list,
@@ -1697,6 +1701,8 @@ def build_statutory_statements(
     disclosure_flags: dict[str, bool] | None = None,
     watermark: str = WATERMARK,
     practice_name: str = "",
+    practice_address: str = "",
+    practice_contact: str = "",
     period_end: str = "",
     period_start: str = "",
     first_financial_period: bool = False,
@@ -1742,6 +1748,8 @@ def build_statutory_statements(
             disclosure_flags=disclosure_flags,
             watermark=watermark,
             practice_name=practice_name,
+            practice_address=practice_address,
+            practice_contact=practice_contact,
             period_end=period_end,
             period_start=period_start,
             first_financial_period=first_financial_period,
@@ -1832,6 +1840,12 @@ async def statements_for_version(
         disclosure_flags=flags,
         watermark=watermark,
         practice_name="" if organisation is None else organisation.name,
+        practice_address=""
+        if organisation is None or organisation.letterhead_address is None
+        else organisation.letterhead_address,
+        practice_contact=""
+        if organisation is None or organisation.letterhead_contact is None
+        else organisation.letterhead_contact,
         period_end=year_end.period_end.isoformat(),
         period_start=""
         if year_end.period_start is None
@@ -1926,6 +1940,12 @@ async def statements_for_adopted(
         disclosure_flags=flags,
         watermark=watermark,
         practice_name="" if organisation is None else organisation.name,
+        practice_address=""
+        if organisation is None or organisation.letterhead_address is None
+        else organisation.letterhead_address,
+        practice_contact=""
+        if organisation is None or organisation.letterhead_contact is None
+        else organisation.letterhead_contact,
         period_end=year_end.period_end.isoformat(),
         period_start=""
         if year_end.period_start is None

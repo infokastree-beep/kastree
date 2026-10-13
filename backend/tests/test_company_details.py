@@ -71,6 +71,50 @@ _FORBIDDEN = "You don't have permission to access this resource."
 _ARTIFACT = Path("/opt/cursor/artifacts/directors-report-pdf.txt")
 
 
+def test_an_incomplete_practice_letterhead_blocks_final() -> None:
+    from app.models.company import Company
+    from app.services.company_details import company_detail_checks
+    from findraft.models.year_end import YearEnd
+
+    org_id = uuid.uuid4()
+    company = Company(
+        client_id=uuid.uuid4(),
+        org_id=org_id,
+        name="Northwind",
+        functional_currency="EUR",
+    )
+    year_end = YearEnd(
+        org_id=org_id,
+        company_id=uuid.uuid4(),
+        period_end=date(2025, 12, 31),
+        pack_id="frs102-1a-ie",
+        pack_version="2024.09",
+    )
+    missing = next(
+        item
+        for item in company_detail_checks(company, year_end)
+        if item.code == "V-CO-038"
+    )
+    assert missing.passed is False
+    assert missing.message == (
+        "The practice legal name, address, and contact have not been recorded."
+    )
+    assert blocks_final((missing,)) is True
+    recorded = next(
+        item
+        for item in company_detail_checks(
+            company,
+            year_end,
+            practice_name="Harbour Practice",
+            practice_address="1 Practice Quay",
+            practice_contact="01 555 0100",
+        )
+        if item.code == "V-CO-038"
+    )
+    assert recorded.passed is True
+    assert blocks_final((recorded,)) is False
+
+
 def test_non_euro_on_the_irish_pack_is_a_notice() -> None:
     from app.models.company import Company
     from app.services.company_details import company_detail_checks
@@ -571,8 +615,11 @@ async def test_saved_company_details_print_on_the_existing_pages(
             {"id": str(org_id)},
         ).scalar_one()
     compilation = _page(after_body, "Compilation report")
-    assert compilation.startswith(f"{practice} compiled these financial statements")
+    assert f"{practice} compiled these financial statements" in compilation
     assert "The practice name has not been recorded." not in compilation
+    assert "ISRS 4410 (Revised)" in compilation
+    assert "1 Practice Quay" in compilation
+    assert "01 555 0100" in compilation
 
 
 def test_new_columns_stay_inside_the_practice(

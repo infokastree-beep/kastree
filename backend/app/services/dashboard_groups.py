@@ -43,6 +43,10 @@ _FIXES: dict[str, CheckPresentation] = {
         "Comparatives",
         CheckFix("review", anchor="statutory-first-period-gate"),
     ),
+    "V-CO-038": CheckPresentation(
+        "Practice letterhead",
+        CheckFix("settings", anchor="practice-letterhead"),
+    ),
     "V-CO-027": CheckPresentation("Company details", CheckFix("company-details")),
     "V-CO-029": CheckPresentation("Company details", CheckFix("company-details")),
     "V-CO-030": CheckPresentation("Company details", CheckFix("company-details")),
@@ -105,6 +109,7 @@ _OTHER = CheckPresentation("Other", CheckFix("review"))
 
 GROUP_ORDER = (
     "Company details",
+    "Practice letterhead",
     "Disclosures",
     "Comparatives",
     "Sections",

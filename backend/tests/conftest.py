@@ -195,6 +195,8 @@ def provisioned_org() -> Iterator[dict]:
             role="owner",
         )
         set_rls_org_id(session, provisioned.organisation.id)
+        provisioned.organisation.letterhead_address = "1 Practice Quay\nDublin"
+        provisioned.organisation.letterhead_contact = "01 555 0100"
         client = Client(
             org_id=provisioned.organisation.id,
             name=f"Client {suffix}",

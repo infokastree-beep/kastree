@@ -10,7 +10,7 @@ Status of the current build queue. Wording that is drawn from a public source st
 | 4. Two signatories | done |
 | 5. Directors' report required items | done |
 | 6. Remuneration citation | done |
-| 7. Compilation report letterhead | columns added, not read; screen after the revision is applied |
+| 7. Compilation report letterhead | practice letterhead on settings and the compilation report; compilation date and signatory still need columns |
 | 8. Particulars slots | waiting |
 | 9. Period message | done |
 | 10. Dashboard work queue | waiting |
