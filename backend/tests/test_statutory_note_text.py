@@ -92,9 +92,7 @@ _COMMITMENT_FLAGS = (
 )
 
 
-_CITATION = (
-    "sections 305 and 306 of the Companies Act 2014 (FRS 102 paragraph 1AD.38)"
-)
+_CITATION = "sections 305 and 306 of the Companies Act 2014"
 _NOTES = (
     Path(__file__).resolve().parents[2]
     / "findraft"
@@ -115,8 +113,10 @@ def test_directors_disclosure_cites_sections_305_and_306() -> None:
         assert "1AD.38" in citation["provision"]
         assert citation["source_status"] != "confirmed"
     assert _CITATION in loans["directorLoansClause"]
+    assert "1AD.38" not in loans["directorLoansClause"]
     assert "Schedule 3A" not in loans["directorLoansClause"]
     assert _CITATION in related["bodyTemplate"]
+    assert "1AD.38" not in related["bodyTemplate"]
     assert "Schedule 3A" not in related["bodyTemplate"]
     document = _golden(disclosure_flags={"RPT_EXISTS": True})
     assert document.net_assets == Decimal("455812.00")
@@ -125,6 +125,8 @@ def test_directors_disclosure_cites_sections_305_and_306() -> None:
     related_note = next(note for note in document.notes if note.code == "N7_RPT")
     assert _CITATION in loans_note.body
     assert _CITATION in related_note.body
+    assert "1AD.38" not in loans_note.body
+    assert "1AD.38" not in related_note.body
     assert "Schedule 3A" not in loans_note.body
     assert "Schedule 3A" not in related_note.body
 
