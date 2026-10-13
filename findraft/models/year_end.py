@@ -143,6 +143,42 @@ class YearEnd(Base):
     report_setup: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     approval_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     signing_directors: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    # Directors' report facts. NULL is not recorded. There is no server default.
+    # Companies Act 2014, sections 326, 328 and 329. Section 288 uses the
+    # period-change flag for the length notice only.
+    accounting_records_location: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
+    interim_dividend: Mapped[Decimal | None] = mapped_column(
+        Numeric(19, 2), nullable=True, default=None
+    )
+    recommended_dividend: Mapped[Decimal | None] = mapped_column(
+        Numeric(19, 2), nullable=True, default=None
+    )
+    share_interests: Mapped[list[dict[str, object]] | None] = mapped_column(
+        JSONB, nullable=True, default=None
+    )
+    own_shares_particulars: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
+    subsequent_events_particulars: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
+    research_development_relevant: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True, default=None
+    )
+    research_development_detail: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
+    political_donations_relevant: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True, default=None
+    )
+    political_donations_detail: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
+    accounting_period_change_filed: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True, default=None
+    )
     # Acknowledgement that this year end reports in the company currency.
     # A later change of companies.functional_currency no longer matches.
     currency_confirmed_code: Mapped[str | None] = mapped_column(

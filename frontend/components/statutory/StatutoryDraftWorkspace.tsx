@@ -15,6 +15,7 @@ import {
   type CompanyDetails,
   type CompanyDetailsWrite,
 } from "@/components/statutory/CompanyDetailsForm";
+import { type DirectorsReportWrite } from "@/components/statutory/DirectorsReportForm";
 import {
   ReportSetupForm,
   type ReportSetup,
@@ -246,6 +247,8 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
   const [companySaved, setCompanySaved] = useState<string | null>(null);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [approvalSaved, setApprovalSaved] = useState<string | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [reportSaved, setReportSaved] = useState<string | null>(null);
   const [sizeError, setSizeError] = useState<string | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
   const [conditionsError, setConditionsError] = useState<string | null>(null);
@@ -461,6 +464,31 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
     } catch (caught) {
       setApprovalError(saveMessage(caught, "Approval details could not be saved."));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveReport(next: DirectorsReportWrite): Promise<void> {
+    setReportError(null);
+    setReportSaved(null);
+    setBusy("Saving the directors' report…");
+    try {
+      const saved = await apiFetch<CompanyDetails>(
+        `/year-ends/${yearEndId}/directors-report`,
+        {
+          method: "PUT",
+          getToken,
+          body: JSON.stringify(next),
+        },
+      );
+      queryClient.setQueryData(["company-details", yearEndId], saved);
+      setReportSaved("Directors' report saved.");
+      await queryClient.invalidateQueries({ queryKey: ["statutory-pack"] });
+      await queryClient.invalidateQueries({ queryKey: ["statutory-preview", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
+    } catch (caught) {
+      setReportError(saveMessage(caught, "The directors' report could not be saved."));
     } finally {
       setBusy(null);
     }
@@ -1340,8 +1368,11 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
           companySaved={companySaved}
           approvalError={approvalError}
           approvalSaved={approvalSaved}
+          reportError={reportError}
+          reportSaved={reportSaved}
           onSaveCompany={(next) => void saveCompany(next)}
           onSaveApproval={(next) => void saveApproval(next)}
+          onSaveReport={(next) => void saveReport(next)}
         />
       ) : null}
 

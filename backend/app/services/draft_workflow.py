@@ -429,6 +429,12 @@ def _company_detail_checks(
         tax_charge=document.tax_charge,
         corporation_tax=document.corporation_tax,
         subsequent_events_answered="SUBSEQUENT_EVENTS" in flags,
+        own_shares_held=(
+            flags["OWN_SHARES_HELD"] if "OWN_SHARES_HELD" in flags else None
+        ),
+        subsequent_events_yes=(
+            flags["SUBSEQUENT_EVENTS"] if "SUBSEQUENT_EVENTS" in flags else None
+        ),
     )
 
 
@@ -1506,7 +1512,10 @@ async def finalise_draft(
     )
     try:
         composed_html, sections = compose_year_end_parts(
-            document, year_end, company=letterhead
+            document,
+            year_end,
+            company=letterhead,
+            disclosure_flags=adjusted.flags,
         )
         page_header, signature = docx_presentation_for_year_end(document, year_end)
         composed_docx = payload_from_composed(

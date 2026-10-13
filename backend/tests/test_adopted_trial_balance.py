@@ -1162,10 +1162,16 @@ async def _record_letterhead(
         json={
             "registered_office": "1 Harbour Street, Dublin",
             "company_number": "AB123456",
+            "principal_activity": "Software",
             "directors": [{"name": "Ada Lovelace"}],
         },
     )
     assert saved.status_code == 200, saved.text
+    from tests.directors_report_http import save_nil_directors_report
+
+    await save_nil_directors_report(
+        api_client, headers, year_end_id, directors=["Ada Lovelace"]
+    )
     approved = await api_client.put(
         f"/year-ends/{year_end_id}/approval",
         headers=headers,
@@ -2522,6 +2528,16 @@ async def test_final_pdf_and_word_stay_byte_stable(
             "PUT",
             f"/year-ends/{year_end_id}/approval",
             {"approval_date": "2027-04-01", "signing_directors": ["Ada Lovelace"]},
+            _FINAL_PLAIN,
+        ),
+        (
+            "PUT",
+            f"/year-ends/{year_end_id}/directors-report",
+            {
+                "accounting_records_location": "1 Harbour Street, Dublin",
+                "interim_dividend": "0.00",
+                "recommended_dividend": "0.00",
+            },
             _FINAL_PLAIN,
         ),
         (

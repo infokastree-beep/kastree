@@ -111,9 +111,7 @@ def company_data_checks(
         director_notice = dac_director_notice(_current_directors(company), form)
         if director_notice is not None:
             checks.append(_check("V-CO-026", "NOTICE", False, director_notice))
-    period = _first_period(company, year_end, rules)
-    if period is not None:
-        checks.append(period)
+    checks.extend(_first_period(company, year_end, rules))
     office = _office_notice(company.registered_office)
     if office is not None:
         checks.append(office)
@@ -134,6 +132,9 @@ def company_data_checks(
     events = _events_notice(subsequent_events_answered)
     if events is not None:
         checks.append(events)
+    length = _subsequent_year_length(year_end)
+    if length is not None:
+        checks.append(length)
     return tuple(checks)
 
 
@@ -206,18 +207,21 @@ def _current_directors(company: Company) -> int:
 
 def _first_period(
     company: Company, year_end: YearEnd, rules: DataCheckRules
-) -> ReconciliationCheck | None:
+) -> tuple[ReconciliationCheck, ...]:
     if not year_end.first_financial_period:
-        return None
+        return ()
     reasons: list[str] = []
     incorporated = company.incorporated_on
     start = year_end.period_start
     end = year_end.period_end
+    earlier_period = False
     if incorporated is None:
         reasons.append(
             "The date of incorporation has not been recorded. "
             "A first financial period has to start on that date."
         )
+    elif start is not None and start > incorporated:
+        earlier_period = True
     elif start != incorporated:
         shown = "not recorded" if start is None else _spoken(start)
         reasons.append(
@@ -227,16 +231,34 @@ def _first_period(
         )
     months = rules.first_period_max_months
     if start is not None and end >= _add_months(start, months):
-        reasons.append(f"This first financial period is longer than {months} months.")
-    if not reasons:
-        return _check(
-            "V-CO-011",
-            "WARNING",
-            True,
-            "The first financial period starts on the date of incorporation "
-            f"and is not longer than {months} months.",
+        reasons.append(
+            f"This first financial period is longer than {months} months. "
+            "Companies Act 2014, section 288(1)."
         )
-    return _check("V-CO-011", "WARNING", False, " ".join(reasons))
+    checks: list[ReconciliationCheck] = []
+    if earlier_period:
+        checks.append(
+            _check(
+                "V-CO-037",
+                "WARNING",
+                False,
+                "This period starts after the date of incorporation. "
+                "An earlier financial period must exist.",
+            )
+        )
+    if reasons:
+        checks.append(_check("V-CO-011", "WARNING", False, " ".join(reasons)))
+    elif not earlier_period:
+        checks.append(
+            _check(
+                "V-CO-011",
+                "WARNING",
+                True,
+                "The first financial period starts on the date of incorporation "
+                f"and is not longer than {months} months.",
+            )
+        )
+    return tuple(checks)
 
 
 def _office_notice(office: str | None) -> ReconciliationCheck | None:
@@ -404,6 +426,31 @@ def _tax_notice(
         False,
         "There is a profit before tax and no tax charge or corporation tax "
         "creditor. Check whether tax should be recorded.",
+    )
+
+
+def _subsequent_year_length(year_end: YearEnd) -> ReconciliationCheck | None:
+    """A later year is 12 months, or not more than 7 days either side.
+
+    Companies Act 2014, section 288. The first financial year uses the
+    18-month check. A year-end change filed with the Registrar is the
+    exception and is a notice, not a block. The citation is researched
+    from the public Act and is not a reviewer sign-off.
+    """
+    if year_end.first_financial_period or year_end.period_start is None:
+        return None
+    if year_end.accounting_period_change_filed is True:
+        return None
+    expected = _add_months(year_end.period_start, 12) - timedelta(days=1)
+    if abs((year_end.period_end - expected).days) <= 7:
+        return None
+    return _check(
+        "V-CO-027",
+        "NOTICE",
+        False,
+        "This financial year is not within 7 days of 12 months. "
+        "Companies Act 2014, section 288. "
+        "Record that a year-end change was filed if the Registrar was notified.",
     )
 
 
