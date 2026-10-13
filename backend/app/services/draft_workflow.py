@@ -1525,6 +1525,8 @@ async def finalise_draft(
             html=document.html,
             pages=document.pages,
             company_name=document.company_name,
+            turnover=document.turnover,
+            balance_sheet_total=document.balance_sheet_total,
         )
     ).model_dump(mode="json")
     evidence = evidence_response(graph).model_dump(mode="json")

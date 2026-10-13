@@ -83,7 +83,13 @@ describe("audit exemption claim", () => {
     const banner = readFileSync(join(here, "finalise-status.ts"), "utf8");
     assert.match(component, /data-testid="audit-exemption-source"/);
     assert.match(component, /AUDIT_EXEMPTION_SOURCE_LABEL/);
+    assert.match(component, /What prints if the exemption is claimed/);
     assert.match(component, /data-testid="audit-exemption-printed"/);
+    const positionAt = component.indexOf('data-testid="audit-exemption-position"');
+    const headingAt = component.indexOf("What prints if the exemption is claimed");
+    const signaturesAt = component.indexOf('data-testid="audit-exemption-signatures"');
+    assert.equal(positionAt >= 0 && headingAt > positionAt && signaturesAt > headingAt, true);
+    assert.match(component, /claimed === true \?/);
     assert.match(component, /data-testid="audit-exemption-signatures"/);
     assert.match(component, /Source text \(CRO\), not printed/);
     assert.match(component, /data-testid="audit-exemption-locked"/);

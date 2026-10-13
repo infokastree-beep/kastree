@@ -1184,6 +1184,9 @@ async def _record_letterhead(
     from tests.evidence_exemption import record_evidenced_exemption
 
     record_evidenced_exemption(org_id, year_end_id)
+    from tests.compilation_http import save_compilation_report
+
+    await save_compilation_report(api_client, headers, year_end_id)
 
 
 async def _open_adopted(

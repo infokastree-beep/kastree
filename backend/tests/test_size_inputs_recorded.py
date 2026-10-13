@@ -114,6 +114,7 @@ async def test_qa_company_size_inputs_are_stored_without_amounts_in_the_audit(
     assert row.new_value["current_conditions_met"] == 2
     assert row.new_value["current_employees"] == 677
     assert row.new_value["preceding_employees"] is None
+    assert row.new_value["confirmed"] is True
     assert "100000" not in logged
     assert "35000" not in logged
     assert "turnover" not in row.new_value

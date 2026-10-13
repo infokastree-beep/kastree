@@ -527,6 +527,9 @@ async def test_final_docx_reads_the_snapshot(
         api_client, headers, year_end_id, directors=["Ada Lovelace"]
     )
     record_evidenced_exemption(provisioned_org["org_id"], year_end_id)
+    from tests.compilation_http import save_compilation_report
+
+    await save_compilation_report(api_client, headers, year_end_id)
     finalised = await api_client.post(
         _draft_path(year_end_id, draft_id, "finalise"),
         headers={**headers, "Idempotency-Key": "week11-final"},

@@ -129,9 +129,9 @@ def company_data_checks(
     tax = _tax_notice(profit_before_tax, tax_charge, corporation_tax)
     if tax is not None:
         checks.append(tax)
-    events = _events_notice(subsequent_events_answered)
-    if events is not None:
-        checks.append(events)
+    # Events after the balance sheet date are one of the disclosure questions.
+    # The unanswered count already includes that question, so it is not listed again.
+    del subsequent_events_answered
     length = _subsequent_year_length(year_end)
     if length is not None:
         checks.append(length)
@@ -193,11 +193,12 @@ def _name_suffix(company: Company, rules: DataCheckRules) -> ReconciliationCheck
     suffixes = rules.suffixes if form is None else form.suffixes
     if name_has_suffix(company.name, suffixes):
         return _check("V-CO-010", "WARNING", True, passing_suffix_message())
+    recorded_form = "not recorded" if form is None else form.name
     return _check(
         "V-CO-010",
         "WARNING",
         False,
-        missing_suffix_message(suffixes),
+        missing_suffix_message(suffixes, legal_form=recorded_form),
     )
 
 
@@ -451,17 +452,6 @@ def _subsequent_year_length(year_end: YearEnd) -> ReconciliationCheck | None:
         "This financial year is not within 7 days of 12 months. "
         "Companies Act 2014, section 288. "
         "Record that a year-end change was filed if the Registrar was notified.",
-    )
-
-
-def _events_notice(answered: bool | None) -> ReconciliationCheck | None:
-    if answered is None or answered:
-        return None
-    return _check(
-        "V-CO-019",
-        "NOTICE",
-        False,
-        "The question about events after the balance sheet date has not been answered.",
     )
 
 

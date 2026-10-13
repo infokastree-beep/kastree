@@ -57,6 +57,7 @@ _BLOCKING = frozenset(
         "V-CO-035",
         "V-CO-036",
         "V-CO-038",
+        "V-CO-039",
     }
 )
 _AUDIT_NOT_RECORDED = (
@@ -816,6 +817,26 @@ def _practice_letterhead_check(
     return _check("V-CO-038", "WARNING", False, sentence)
 
 
+def _compilation_check(year_end: YearEnd) -> ReconciliationCheck:
+    """Both facts are one blocker. A blank signatory is the same as a missing one."""
+    date_missing = year_end.compilation_date is None
+    signatory_missing = _blank(year_end.compilation_signatory) is None
+    if not date_missing and not signatory_missing:
+        return _check(
+            "V-CO-039",
+            "WARNING",
+            True,
+            "The compilation date and signatory are recorded.",
+        )
+    if date_missing and signatory_missing:
+        message = "The compilation date and signatory have not been recorded."
+    elif date_missing:
+        message = "The compilation date has not been recorded."
+    else:
+        message = "The compilation signatory has not been recorded."
+    return _check("V-CO-039", "WARNING", False, message)
+
+
 def company_detail_checks(
     company: Company,
     year_end: YearEnd,
@@ -941,6 +962,7 @@ def company_detail_checks(
     checks.append(
         _practice_letterhead_check(practice_name, practice_address, practice_contact)
     )
+    checks.append(_compilation_check(year_end))
     return tuple(checks)
 
 

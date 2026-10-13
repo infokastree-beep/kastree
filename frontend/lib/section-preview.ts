@@ -55,6 +55,45 @@ export function groupByNoteClass<
   return ordered;
 }
 
+const GENERAL_NOTE_LABELS = ["Company information", "Accounting policies"] as const;
+
+/** Sidebar only. General is first. Each note keeps the number the PDF printed. */
+export function sidebarNoteGroups<
+  T extends {
+    label: string;
+    number?: number | null;
+    note_class?: string | null;
+    note_class_label?: string | null;
+  },
+>(items: readonly T[], classOrder: readonly string[]): NoteClassGroup<T>[] {
+  const general: T[] = [];
+  const rest: T[] = [];
+  for (const item of items) {
+    if (
+      item.label === "Company information" ||
+      item.label === "Accounting policies"
+    ) {
+      general.push(item);
+    } else {
+      rest.push(item);
+    }
+  }
+  general.sort(
+    (left, right) =>
+      GENERAL_NOTE_LABELS.indexOf(
+        left.label as (typeof GENERAL_NOTE_LABELS)[number],
+      ) -
+      GENERAL_NOTE_LABELS.indexOf(
+        right.label as (typeof GENERAL_NOTE_LABELS)[number],
+      ),
+  );
+  const groups = groupByNoteClass(rest, classOrder);
+  if (general.length === 0) {
+    return groups;
+  }
+  return [{ id: "general", label: "General", items: general }, ...groups];
+}
+
 export type SectionOutline = {
   sections: { id: string; children: PreviewChild[] }[];
 };

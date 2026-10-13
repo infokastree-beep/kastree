@@ -1,15 +1,20 @@
 """Compilation date and signatory are read on the compilation report.
 
-The columns already exist. This does not add a final-draft gate. A final
-draft shows the snapshot, and a directors' report fact survives this save.
+Both facts block FINAL until they are recorded. A final draft shows the
+snapshot, and a directors' report fact survives this save.
 """
 
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
+import tempfile
 import uuid
+import zipfile
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
 
 import pytest
 from httpx import AsyncClient
@@ -122,6 +127,30 @@ def test_golden_figures_stay_put() -> None:
     assert _row(document.sofp, "Profit and loss account").current == Decimal(
         "455712.00"
     )
+    assert document.turnover is not None
+    assert document.turnover == _row(document.income, "Turnover").current
+    assets = sum(
+        (
+            _row(document.sofp, label).current
+            for label in (
+                "Intangible assets",
+                "Tangible assets",
+                "Fixed asset investments",
+                "Right-of-use assets",
+                "Total current assets",
+            )
+        ),
+        Decimal("0"),
+    )
+    assert document.balance_sheet_total is not None
+    assert document.balance_sheet_total == assets
+    from app.services.statutory_present import statement_response
+
+    shown = statement_response(document)
+    assert shown.engine_turnover == format(document.turnover, "f")
+    assert shown.engine_balance_sheet_total == format(assets, "f")
+    assert shown.net_assets == "455812.00"
+    assert shown.profit == "157650.00"
 
 
 def _set_draft(
@@ -326,3 +355,198 @@ async def test_a_member_saves_the_compilation_report_and_a_final_draft_shows_the
     assert body["accounting_records_location"] == "Snapshot Street"
     assert body["approval_date"] == "2026-02-01"
     assert body["signing_directors"] == ["Ada Lovelace"]
+
+
+_MISSING = "The compilation date and signatory have not been recorded."
+_DATE_LINE = "Compilation date:"
+_DATE_VALUE = "31 March 2026"
+_SIGNATORY_LINE = "Compilation signatory:"
+_SIGNATORY_VALUE = "Pat Lee"
+
+
+def test_a_missing_compilation_date_or_signatory_blocks_final() -> None:
+    from app.models.company import Company
+    from app.services.company_details import blocks_final, company_detail_checks
+    from findraft.models.year_end import YearEnd
+
+    org_id = uuid.uuid4()
+    company = Company(
+        client_id=uuid.uuid4(),
+        org_id=org_id,
+        name="Harbour Limited",
+        functional_currency="EUR",
+    )
+    year_end = YearEnd(
+        org_id=org_id,
+        company_id=uuid.uuid4(),
+        period_end=date(2026, 12, 31),
+        pack_id="frs102-1a-ie",
+        pack_version="2024.09",
+    )
+    missing = next(
+        item
+        for item in company_detail_checks(company, year_end)
+        if item.code == "V-CO-039"
+    )
+    assert missing.passed is False
+    assert missing.message == _MISSING
+    assert "V-CO" not in missing.message
+    assert blocks_final((missing,)) is True
+    year_end.compilation_date = date(2026, 3, 31)
+    date_only = next(
+        item
+        for item in company_detail_checks(company, year_end)
+        if item.code == "V-CO-039"
+    )
+    assert date_only.message == "The compilation signatory has not been recorded."
+    year_end.compilation_signatory = "Pat Lee"
+    recorded = next(
+        item
+        for item in company_detail_checks(company, year_end)
+        if item.code == "V-CO-039"
+    )
+    assert recorded.passed is True
+    assert blocks_final((recorded,)) is False
+
+
+def _pdf_text(payload: bytes) -> str:
+    exe = shutil.which("pdftotext")
+    assert exe is not None
+    with tempfile.NamedTemporaryFile(suffix=".pdf") as handle:
+        handle.write(payload)
+        handle.flush()
+        completed = subprocess.run(
+            [exe, "-layout", handle.name, "-"],
+            check=True,
+            capture_output=True,
+        )
+    return completed.stdout.decode("utf-8")
+
+
+def _agrees(text: str) -> None:
+    assert _DATE_LINE in text
+    assert _DATE_VALUE in text
+    assert _SIGNATORY_LINE in text
+    assert _SIGNATORY_VALUE in text
+
+
+@pytest.mark.asyncio
+async def test_finalise_refuses_until_the_compilation_facts_agree_everywhere(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """FINAL stays off until both facts are recorded. The four outputs then match."""
+    _print_role()
+    from app.services.render_jobs import _render_bytes
+    from tests.test_adopted_trial_balance import (
+        _draft_version,
+        _ready_golden,
+        _snapshot,
+    )
+
+    year_end_id, draft_id, headers = await _ready_golden(api_client, provisioned_org)
+    org_id = provisioned_org["org_id"]
+    assert isinstance(org_id, uuid.UUID)
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        cleared = session.execute(
+            text(
+                """
+                UPDATE findraft_year_ends
+                SET compilation_date = NULL, compilation_signatory = NULL
+                WHERE id = :id
+                """
+            ),
+            {"id": year_end_id},
+        )
+        assert cleared.rowcount == 1
+        session.commit()
+    board = await api_client.get(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/dashboard",
+        headers=headers,
+    )
+    assert board.status_code == 200, board.text
+    body = board.json()
+    assert body["can_finalise"] is False
+    check = next(item for item in body["checks"] if item["code"] == "V-CO-039")
+    assert check["passed"] is False
+    assert check["message"] == _MISSING
+    assert check["area"] == "Compilation report"
+    assert check["fix"]["section"] == "compilation"
+    assert check["fix"]["note"] == "compilation-date"
+    refused = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/finalise",
+        headers={**headers, "Idempotency-Key": "compilation-gate"},
+        json={"row_version": _draft_version(draft_id, org_id)},
+    )
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["detail"] == _MISSING
+    from tests.compilation_http import save_compilation_report
+
+    await save_compilation_report(api_client, headers, year_end_id)
+    ready = await api_client.get(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/dashboard",
+        headers=headers,
+    )
+    assert ready.status_code == 200, ready.text
+    assert ready.json()["can_finalise"] is True
+    preview = await api_client.get(
+        f"/year-ends/{year_end_id}/statutory-preview",
+        headers=headers,
+        params={"section": "compilation"},
+    )
+    assert preview.status_code == 200, preview.text
+    pdf = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
+        headers=headers,
+    )
+    assert pdf.status_code == 200, pdf.text
+    finalised = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/finalise",
+        headers={**headers, "Idempotency-Key": "compilation-final"},
+        json={"row_version": _draft_version(draft_id, org_id)},
+    )
+    assert finalised.status_code == 200, finalised.text
+    stored = _snapshot(draft_id, org_id)
+    assert stored is not None
+    workspace = stored["workspace"]
+    assert isinstance(workspace, dict)
+    details = workspace["company_details"]
+    assert isinstance(details, dict)
+    assert details["compilation_date"] == "2026-03-31"
+    assert details["compilation_signatory"] == _SIGNATORY_VALUE
+    composed_html = stored["composed_html"]
+    composed_docx = stored["composed_docx"]
+    assert isinstance(composed_html, str)
+    assert isinstance(composed_docx, dict)
+    final_pdf = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
+        headers=headers,
+    )
+    assert final_pdf.status_code == 200, final_pdf.text
+    final_preview = await api_client.get(
+        f"/year-ends/{year_end_id}/statutory-preview",
+        headers=headers,
+        params={"section": "compilation"},
+    )
+    assert final_preview.status_code == 200, final_preview.text
+    word = _render_bytes(composed_docx)
+    with zipfile.ZipFile(BytesIO(word)) as archive:
+        word_text = archive.read("word/document.xml").decode()
+    for surface in (
+        preview.json()["html"],
+        _pdf_text(pdf.content),
+        composed_html,
+        word_text,
+        final_preview.json()["html"],
+        _pdf_text(final_pdf.content),
+    ):
+        assert isinstance(surface, str)
+        _agrees(surface)
+    statements = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
+        headers=headers,
+    )
+    assert statements.status_code == 200, statements.text
+    assert statements.json()["net_assets"] == "455812.00"
+    assert statements.json()["profit"] == "157650.00"

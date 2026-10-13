@@ -10,11 +10,11 @@ Status of the current build queue. Wording that is drawn from a public source st
 | 4. Two signatories | done |
 | 5. Directors' report required items | done |
 | 6. Remuneration citation | done |
-| 7. Compilation report letterhead | practice letterhead on settings; directors' report inputs, signatories, and the compilation date and signatory sit on their document sections |
-| 8. Particulars slots | waiting |
+| 7. Compilation report letterhead | done. The compilation date and signatory block FINAL until both are recorded |
+| 8. Particulars slots | waiting, after item 10, migration first |
 | 9. Period message | done |
-| 10. Dashboard work queue | waiting |
-| 11. Prior-year comparatives | approved, build after items 9, 7, 8, and 10, migration first |
+| 10. Dashboard work queue | next: formatter and key figures card |
+| 11. Prior-year comparatives | approved, build after items 10 and 8, migration first |
 | 12. Trial balance re-adopt | approved, build after item 11, migration first |
 | 13. Roll forward | waiting |
 | 14. Drafts list | waiting |

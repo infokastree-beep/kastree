@@ -29,7 +29,10 @@ from tests.test_small_adopted_finalise import _ADMIN, _SMALL, _set_statutory
 _PACK = Path(__file__).resolve().parents[2] / (
     "findraft/content/frs102-1a-ie/2024.09/pack.json"
 )
-_NAME = "The company name does not end with Limited, Ltd, Teoranta, or Teo."
+_NAME = (
+    "The legal form has not been recorded and the company name does not end with "
+    "Limited, Ltd, Teoranta, or Teo. Change the legal form or the company name."
+)
 _EARLIER = (
     "This period starts after the date of incorporation. "
     "An earlier financial period must exist."
@@ -56,9 +59,6 @@ _PER_HEAD = (
 _TAX = (
     "There is a profit before tax and no tax charge or corporation tax "
     "creditor. Check whether tax should be recorded."
-)
-_EVENTS = (
-    "The question about events after the balance sheet date has not been answered."
 )
 
 
@@ -169,8 +169,8 @@ def test_fixture_raises_every_qa_data_check() -> None:
         "V-CO-016": ("NOTICE", _EMPLOYEES),
         "V-CO-017": ("NOTICE", _PER_HEAD),
         "V-CO-018": ("NOTICE", _TAX),
-        "V-CO-019": ("NOTICE", _EVENTS),
     }
+    assert "V-CO-019" not in found
     for code, (severity, message) in expected.items():
         item = found[code]
         assert item.passed is False
@@ -210,7 +210,6 @@ def test_clean_letterhead_clears_the_data_checks() -> None:
         "V-CO-016",
         "V-CO-017",
         "V-CO-018",
-        "V-CO-019",
     ):
         assert code not in found
 
@@ -504,8 +503,9 @@ async def test_fixture_dashboard_blocks_final_and_links_each_check(
         "V-CO-016": ("company-details", _EMPLOYEES),
         "V-CO-017": ("company-details", _PER_HEAD),
         "V-CO-018": ("income", _TAX),
-        "V-CO-019": ("disclosures", _EVENTS),
     }
+    assert "V-CO-019" not in checks
+    assert "SUBSEQUENT_EVENTS" in body["unanswered_disclosures"]
     for code, (section, message) in expected_fix.items():
         item = checks[code]
         assert item["passed"] is False

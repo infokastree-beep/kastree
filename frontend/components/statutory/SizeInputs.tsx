@@ -1,13 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatCurrency } from "@/lib/currency";
 import {
+  FROM_ACCOUNTS,
+  FROM_COMPANY_DETAILS,
   sizeAmountToApi,
   sizeEmployeesLabel,
   sizeEmployeesToApi,
   sizeMoneyLabel,
+  sizeSuggestionFields,
   type SizeInputFields,
+  type SizeSuggestion,
   type SizeYearRequest,
 } from "@/lib/size-inputs";
 
@@ -28,6 +32,7 @@ export function SizeInputs({
   lockLabel,
   busy,
   error,
+  suggestion,
   onRecord,
 }: {
   firstPeriod: boolean;
@@ -38,16 +43,42 @@ export function SizeInputs({
   lockLabel: string | null;
   busy: boolean;
   error: string | null;
+  suggestion?: SizeSuggestion;
   onRecord: (body: {
     current: SizeYearRequest;
     preceding: SizeYearRequest | null;
   }) => void;
 }) {
+  const offered = suggestion ?? {
+    turnover: null,
+    balanceSheet: null,
+    employees: null,
+  };
   const [current, setCurrent] = useState<YearFields>(EMPTY_YEAR);
   const [preceding, setPreceding] = useState<YearFields>(EMPTY_YEAR);
+  const [seeded, setSeeded] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const recorded = inputs.size_current_turnover != null;
   const editable = canEdit && lockLabel == null;
+
+  useEffect(() => {
+    if (recorded || seeded) {
+      return;
+    }
+    const next = sizeSuggestionFields(offered, currency, formatCurrency);
+    if (next.turnover === "" && next.balanceSheet === "" && next.employees === "") {
+      return;
+    }
+    setCurrent(next);
+    setSeeded(true);
+  }, [
+    recorded,
+    seeded,
+    offered.turnover,
+    offered.balanceSheet,
+    offered.employees,
+    currency,
+  ]);
 
   function yearRequest(fields: YearFields): SizeYearRequest | null {
     const turnover = sizeAmountToApi(fields.turnover);
@@ -150,6 +181,21 @@ export function SizeInputs({
             fields={current}
             onChange={setCurrent}
             prefix="size-current"
+            turnoverMark={
+              moneyMatches(current.turnover, offered.turnover)
+                ? FROM_ACCOUNTS
+                : null
+            }
+            balanceSheetMark={
+              moneyMatches(current.balanceSheet, offered.balanceSheet)
+                ? FROM_ACCOUNTS
+                : null
+            }
+            employeesMark={
+              employeeMatches(current.employees, offered.employees)
+                ? FROM_COMPANY_DETAILS
+                : null
+            }
           />
           {firstPeriod ? (
             <p className="text-sm text-ink-secondary">
@@ -179,16 +225,36 @@ export function SizeInputs({
   );
 }
 
+function moneyMatches(raw: string, suggestion: string | null): boolean {
+  if (suggestion == null || raw.trim() === "") {
+    return false;
+  }
+  return sizeAmountToApi(raw) === sizeAmountToApi(suggestion);
+}
+
+function employeeMatches(raw: string, suggestion: number | null): boolean {
+  if (suggestion == null || raw.trim() === "") {
+    return false;
+  }
+  return sizeEmployeesToApi(raw) === suggestion;
+}
+
 function YearFieldsInput({
   legend,
   fields,
   onChange,
   prefix,
+  turnoverMark = null,
+  balanceSheetMark = null,
+  employeesMark = null,
 }: {
   legend: string;
   fields: YearFields;
   onChange: (next: YearFields) => void;
   prefix: string;
+  turnoverMark?: string | null;
+  balanceSheetMark?: string | null;
+  employeesMark?: string | null;
 }) {
   return (
     <fieldset className="space-y-2">
@@ -203,6 +269,11 @@ function YearFieldsInput({
           className="rounded-md border border-line bg-surface px-3 py-2"
           data-testid={`${prefix}-turnover-input`}
         />
+        {turnoverMark ? (
+          <span className="text-xs text-ink-secondary" data-testid={`${prefix}-turnover-source`}>
+            {turnoverMark}
+          </span>
+        ) : null}
       </label>
       <label className="flex flex-col gap-1 text-sm">
         Balance sheet total
@@ -214,6 +285,14 @@ function YearFieldsInput({
           className="rounded-md border border-line bg-surface px-3 py-2"
           data-testid={`${prefix}-balance-sheet-input`}
         />
+        {balanceSheetMark ? (
+          <span
+            className="text-xs text-ink-secondary"
+            data-testid={`${prefix}-balance-sheet-source`}
+          >
+            {balanceSheetMark}
+          </span>
+        ) : null}
       </label>
       <label className="flex flex-col gap-1 text-sm">
         Employees
@@ -223,6 +302,14 @@ function YearFieldsInput({
           className="rounded-md border border-line bg-surface px-3 py-2"
           data-testid={`${prefix}-employees-input`}
         />
+        {employeesMark ? (
+          <span
+            className="text-xs text-ink-secondary"
+            data-testid={`${prefix}-employees-source`}
+          >
+            {employeesMark}
+          </span>
+        ) : null}
       </label>
     </fieldset>
   );

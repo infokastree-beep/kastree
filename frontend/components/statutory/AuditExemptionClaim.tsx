@@ -133,12 +133,23 @@ export function AuditExemptionClaim({
       <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-soft">
         Audit exemption
       </h3>
+      <p className="text-sm text-ink" data-testid="audit-exemption-position">
+        {position}
+      </p>
+      {positionMessage ? (
+        <p className="text-sm text-ink" data-testid="audit-exemption-message">
+          {positionMessage}
+        </p>
+      ) : null}
       <p className="text-sm font-semibold text-ink" data-testid="audit-exemption-source">
         {AUDIT_EXEMPTION_SOURCE_LABEL}
       </p>
       <p className="text-sm text-ink-secondary" data-testid="audit-exemption-provision">
         {AUDIT_EXEMPTION_SOURCE}. {AUDIT_EXEMPTION_PROVISION}
       </p>
+      <h4 className="text-sm font-semibold text-ink" data-testid="audit-exemption-print-heading">
+        What prints if the exemption is claimed
+      </h4>
       <div data-testid="audit-exemption-printed">
         {printed.map((paragraph) => (
           <p key={paragraph} className="text-sm text-ink">
@@ -146,21 +157,23 @@ export function AuditExemptionClaim({
           </p>
         ))}
       </div>
-      <section className="signature space-y-1" data-testid="audit-exemption-signatures">
-        <p className="text-sm text-ink">Approved by the board and signed on its behalf by</p>
-        <p className="text-sm text-ink">{approvalDateLine(approvalDate)}</p>
-        {signatories.length > 0 ? (
-          signatories.map((name) => (
-            <p key={name} className="text-sm text-ink">
-              {name}
-              <br />
-              Director
-            </p>
-          ))
-        ) : (
-          <p className="text-sm text-ink">A signatory has not been recorded.</p>
-        )}
-      </section>
+      {claimed === true ? (
+        <section className="signature space-y-1" data-testid="audit-exemption-signatures">
+          <p className="text-sm text-ink">Approved by the board and signed on its behalf by</p>
+          <p className="text-sm text-ink">{approvalDateLine(approvalDate)}</p>
+          {signatories.length > 0 ? (
+            signatories.map((name) => (
+              <p key={name} className="text-sm text-ink">
+                {name}
+                <br />
+                Director
+              </p>
+            ))
+          ) : (
+            <p className="text-sm text-ink">A signatory has not been recorded.</p>
+          )}
+        </section>
+      ) : null}
       <p className="text-sm text-ink-secondary" data-testid="audit-exemption-note">
         {AUDIT_EXEMPTION_NOTE}
       </p>
@@ -173,14 +186,6 @@ export function AuditExemptionClaim({
           <p data-testid="audit-exemption-abridgement">{AUDIT_EXEMPTION_ABRIDGEMENT_NOTE}</p>
         </div>
       </details>
-      <p className="text-sm text-ink" data-testid="audit-exemption-position">
-        {position}
-      </p>
-      {positionMessage ? (
-        <p className="text-sm text-ink" data-testid="audit-exemption-message">
-          {positionMessage}
-        </p>
-      ) : null}
       {noticeMessage ? (
         <p className="text-sm text-ink" data-testid="audit-exemption-notice">
           {noticeMessage}
