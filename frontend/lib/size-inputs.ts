@@ -17,6 +17,37 @@ export type SizeYearRequest = {
 
 const NOT_RECORDED = "not recorded";
 
+export const FROM_ACCOUNTS = "from the accounts, confirm";
+export const FROM_COMPANY_DETAILS = "from company details, confirm";
+
+export type SizeSuggestion = {
+  turnover: string | null;
+  balanceSheet: string | null;
+  employees: number | null;
+};
+
+/** Display text for a suggestion. The recorded test stays empty until confirm. */
+export function sizeSuggestionFields(
+  suggestion: SizeSuggestion,
+  currency: string | null,
+  format: (amount: string, currency: string) => string,
+): { turnover: string; balanceSheet: string; employees: string } {
+  const money = (value: string | null): string => {
+    if (value == null || value.trim() === "") {
+      return "";
+    }
+    if (currency == null || currency.trim() === "") {
+      return value;
+    }
+    return format(value, currency);
+  };
+  return {
+    turnover: money(suggestion.turnover),
+    balanceSheet: money(suggestion.balanceSheet),
+    employees: suggestion.employees == null ? "" : String(suggestion.employees),
+  };
+}
+
 /** Exact cent text for the size-eligibility request. Commas are typing only. */
 export function sizeAmountToApi(raw: string): string | null {
   const cleaned = raw.replace(/[£€$,\s]/g, "");

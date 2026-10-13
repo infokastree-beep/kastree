@@ -9,10 +9,13 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { formatCurrency } from "./currency.ts";
 import {
+  FROM_ACCOUNTS,
+  FROM_COMPANY_DETAILS,
   sizeAmountToApi,
   sizeEmployeesLabel,
   sizeEmployeesToApi,
   sizeMoneyLabel,
+  sizeSuggestionFields,
 } from "./size-inputs.ts";
 
 describe("QA company size inputs", () => {
@@ -30,6 +33,29 @@ describe("QA company size inputs", () => {
     assert.equal(sizeEmployeesLabel(677), "677");
     assert.equal(sizeMoneyLabel(null, "EUR", formatCurrency), "not recorded");
     assert.equal(sizeEmployeesLabel(null), "not recorded");
+  });
+
+  it("offers engine figures and company employees without recording them", () => {
+    const fields = sizeSuggestionFields(
+      { turnover: "157650.00", balanceSheet: "455812.00", employees: 12 },
+      "EUR",
+      formatCurrency,
+    );
+    assert.equal(fields.turnover, "€157,650.00");
+    assert.equal(fields.balanceSheet, "€455,812.00");
+    assert.equal(fields.employees, "12");
+    assert.equal(sizeAmountToApi(fields.turnover), "157650.00");
+    assert.equal(sizeAmountToApi(fields.balanceSheet), "455812.00");
+    assert.equal(FROM_ACCOUNTS, "from the accounts, confirm");
+    assert.equal(FROM_COMPANY_DETAILS, "from company details, confirm");
+    const component = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../components/statutory/SizeInputs.tsx"),
+      "utf8",
+    );
+    assert.match(component, /turnover-source/);
+    assert.match(component, /employees-source/);
+    assert.match(component, /if \(recorded \|\| seeded\)/);
+    assert.equal(component.includes("size_current_turnover = suggestion"), false);
   });
 
   it("rejects a figure that is not exact cents", () => {

@@ -33,7 +33,7 @@ import { NotesLibrary } from "@/components/statutory/NotesLibrary";
 import type { NoteLibraryRow } from "@/lib/note-library";
 import { FinaliseDraft } from "@/components/statutory/FinaliseDraft";
 import { ReviewChecks } from "@/components/statutory/ReviewChecks";
-import { blockingFailureCount } from "@/lib/dashboard-groups";
+import { blockingFailureCount, severityTag } from "@/lib/dashboard-groups";
 import type { DisclosureQuestion } from "@/lib/disclosure-groups";
 import {
   currencyCodeFromNotice,
@@ -159,6 +159,8 @@ type StatementPack = {
   company_name: string;
   sofp: StatementRow[];
   income: StatementRow[];
+  engine_turnover?: string | null;
+  engine_balance_sheet_total?: string | null;
 };
 
 type AdjustmentLine = {
@@ -1567,6 +1569,11 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
                 lockLabel={auditLockLabel(draft)}
                 busy={busy !== null}
                 error={sizeError}
+                suggestion={{
+                  turnover: statementsQuery.data?.engine_turnover ?? null,
+                  balanceSheet: statementsQuery.data?.engine_balance_sheet_total ?? null,
+                  employees: detailsQuery.data?.average_employees ?? null,
+                }}
                 onRecord={(body) => void recordSize(body)}
               />
               <AuditExemptionClaim
@@ -1798,7 +1805,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
                 .filter((check) => !check.passed)
                 .map((check) => (
                   <li key={check.code}>
-                    {check.severity} {check.code}: {check.message}
+                    {severityTag(check)} {check.message}
                   </li>
                 ))}
             </ul>

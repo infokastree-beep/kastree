@@ -2,8 +2,8 @@
 
 import { useEffect, useState, type ReactElement } from "react";
 import {
-  groupByNoteClass,
   NOTE_CLASS_ORDER,
+  sidebarNoteGroups,
   type PreviewChild,
 } from "@/lib/section-preview";
 import {
@@ -76,7 +76,7 @@ export function WorkspaceSidebar({
 
   function visibleGroupIds(): string[] {
     const ids = groupsFrom(sections).map((group) => group.id);
-    for (const noteGroup of groupByNoteClass(
+    for (const noteGroup of sidebarNoteGroups(
       childrenBySection.notes ?? [],
       NOTE_CLASS_ORDER,
     )) {
@@ -214,7 +214,7 @@ export function WorkspaceSidebar({
                       </div>
                       {childrenOpen && children.length > 0 && section.id === "notes" ? (
                         <div className="mb-1 space-y-1 pl-7">
-                          {groupByNoteClass(children, NOTE_CLASS_ORDER).map(
+                          {sidebarNoteGroups(children, NOTE_CLASS_ORDER).map(
                             (noteGroup) => {
                               const noteKey = `notes:${noteGroup.id}`;
                               const noteOpen = groupIsOpen(closed, noteKey);

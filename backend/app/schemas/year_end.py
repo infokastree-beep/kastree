@@ -450,6 +450,8 @@ class StatementResponse(BaseModel):
     rounding_flags: list[RoundingFlagOut]
     company_name: str = ""
     pages: list[StatutoryPageOut] = Field(default_factory=list)
+    engine_turnover: str | None = None
+    engine_balance_sheet_total: str | None = None
     omitted_blocks: list[str] = Field(default_factory=list)
     added_blocks: list[str] = Field(default_factory=list)
 

@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import {
   groupByNoteClass,
   NOTE_CLASS_ORDER,
+  sidebarNoteGroups,
   type PreviewChild,
 } from "./section-preview.ts";
 import {
@@ -140,7 +141,8 @@ describe("sectionsForFramework", () => {
     assert.equal(source.includes("not built"), false);
     assert.equal(source.includes("Expand all"), true);
     assert.equal(source.includes("Collapse all"), true);
-    assert.equal(source.includes("groupByNoteClass"), true);
+    assert.equal(source.includes("sidebarNoteGroups"), true);
+    assert.equal(source.includes("NOTE_CLASS_ORDER"), true);
     assert.equal(source.includes("N0_ENTITY"), false);
     assert.equal(source.includes("N0_"), false);
     for (const word of [
@@ -366,6 +368,19 @@ describe("note classes and outputs", () => {
       ],
     );
     assert.equal(groups.at(-1)?.items[0]?.label, "Company information");
+    const sidebar = sidebarNoteGroups(children, NOTE_CLASS_ORDER);
+    assert.deepEqual(
+      sidebar.map((group) => [group.label, group.items.map((item) => item.number)]),
+      [
+        ["General", [1, 2]],
+        ["Current assets", [4]],
+        ["Other", [9]],
+      ],
+    );
+    assert.deepEqual(
+      sidebar[0]?.items.map((item) => item.label),
+      ["Company information", "Accounting policies"],
+    );
     const visible = sidebarSections(
       [
         section("draft-pdf", "PDF", "outputs", "Outputs", 1),

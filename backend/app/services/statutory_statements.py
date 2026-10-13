@@ -439,6 +439,7 @@ class StatutoryStatements:
     omitted_blocks: tuple[str, ...] = ()
     added_blocks: tuple[str, ...] = ()
     turnover: Decimal | None = None
+    balance_sheet_total: Decimal | None = None
     profit_before_tax: Decimal | None = None
     tax_charge: Decimal | None = None
     corporation_tax: Decimal | None = None
@@ -1625,6 +1626,8 @@ def _render_draft(
         audit_note=exemption_note,
     )
     figures = _income_figures(income, aggregated)
+    total_assets = sofp.get("TOTAL_ASSETS")
+    balance_sheet_total = total_assets if isinstance(total_assets, Decimal) else None
     html = _render_html(
         entity=entity,
         compliance=compliance,
@@ -1661,6 +1664,7 @@ def _render_draft(
         pages=pages,
         company_name=entity.name,
         turnover=figures[0],
+        balance_sheet_total=balance_sheet_total,
         profit_before_tax=figures[1],
         tax_charge=figures[2],
         corporation_tax=figures[3],

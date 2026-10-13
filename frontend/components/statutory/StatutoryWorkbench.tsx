@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
 import { downloadDraftPdf, pdfBlockReason } from "@/lib/draft-pdf";
 import { formatCurrency } from "@/lib/currency";
+import { severityTag } from "@/lib/dashboard-groups";
 import { statutoryWorkspaceOpen, type StatutoryUser } from "@/lib/statutory-gate";
 import { StatutoryOptIn } from "@/components/statutory/StatutoryOptIn";
 import { confidenceBadgeClass, formatConfidence } from "@/lib/utils";
@@ -755,7 +756,7 @@ export function StatutoryWorkbench() {
                 .filter((check) => !check.passed)
                 .map((check) => (
                   <li key={check.code}>
-                    {check.severity} {check.code}: {check.message}
+                    {severityTag(check)} {check.message}
                   </li>
                 ))}
             </ul>

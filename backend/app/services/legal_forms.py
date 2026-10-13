@@ -192,8 +192,16 @@ def suffix_list(suffixes: tuple[str, ...]) -> str:
     return f"{', '.join(items[:-1])}, or {items[-1]}"
 
 
-def missing_suffix_message(suffixes: tuple[str, ...]) -> str:
-    return f"The company name does not end with {suffix_list(suffixes)}."
+def missing_suffix_message(suffixes: tuple[str, ...], *, legal_form: str) -> str:
+    """Name the recorded legal form and the change that clears the check."""
+    if legal_form == "not recorded":
+        recorded = "The legal form has not been recorded"
+    else:
+        recorded = f"The company is recorded as {legal_form}"
+    return (
+        f"{recorded} and the company name does not end with {suffix_list(suffixes)}. "
+        "Change the legal form or the company name."
+    )
 
 
 def dac_suffix_notice(name: str, rule: LegalFormRule) -> str | None:

@@ -15,6 +15,7 @@ import {
 } from "@/lib/statutory-gate";
 import { StandingWordingNotice } from "@/components/statutory/StandingWordingNotice";
 import { StatutoryOptIn } from "@/components/statutory/StatutoryOptIn";
+import { severityTag } from "@/lib/dashboard-groups";
 import { formatDate } from "@/lib/utils";
 
 const FRAMEWORKS = [
@@ -392,7 +393,7 @@ export function StatutoryContinuation({
                 .filter((check) => !check.passed)
                 .map((check) => (
                   <li key={check.code}>
-                    {check.severity} {check.code}: {check.message}
+                    {severityTag(check)} {check.message}
                   </li>
                 ))}
             </ul>

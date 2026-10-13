@@ -185,6 +185,7 @@ def size_audit_value(year_end: YearEnd) -> dict[str, object]:
         "preceding_conditions_met": year_end.size_preceding_met,
         "current_employees": year_end.size_current_employees,
         "preceding_employees": year_end.size_preceding_employees,
+        "confirmed": True,
     }
 
 

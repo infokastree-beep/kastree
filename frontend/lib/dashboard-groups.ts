@@ -23,6 +23,7 @@ export type ReviewGroup = {
 const GROUP_ORDER = [
   "Company details",
   "Practice letterhead",
+  "Compilation report",
   "Disclosures",
   "Comparatives",
   "Sections",
@@ -56,6 +57,10 @@ const FIXES: Record<string, { area: string; fix: CheckFix }> = {
   "V-CO-038": {
     area: "Practice letterhead",
     fix: { section: "settings", anchor: "practice-letterhead" },
+  },
+  "V-CO-039": {
+    area: "Compilation report",
+    fix: { section: "compilation", note: "compilation-date" },
   },
   "V-CO-027": { area: "Company details", fix: { section: "company-details" } },
   "V-CO-029": {
@@ -163,6 +168,7 @@ const COMPANY_BLOCKING = new Set([
   "V-CO-035",
   "V-CO-036",
   "V-CO-038",
+  "V-CO-039",
 ]);
 
 export function presentCheck(check: ReviewCheck): { area: string; fix: CheckFix } {
@@ -225,6 +231,10 @@ export function stopsFinalise(check: ReviewCheck): boolean {
 
 export function blockingFailureCount(checks: readonly ReviewCheck[]): number {
   return checks.filter(stopsFinalise).length;
+}
+
+export function severityTag(check: ReviewCheck): "Blocker" | "Notice" {
+  return stopsFinalise(check) ? "Blocker" : "Notice";
 }
 
 export function blockingSentence(count: number): string | null {

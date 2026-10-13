@@ -15,6 +15,7 @@ import {
   fixHref,
   groupFailedChecks,
   presentCheck,
+  severityTag,
   stopsFinalise,
   type ReviewCheck,
 } from "./dashboard-groups.ts";
@@ -139,6 +140,38 @@ describe("review groups", () => {
     assert.equal(stopsFinalise(failed("V-CO-027", "NOTICE")), false);
     assert.equal(stopsFinalise(failed("V-CO-029", "WARNING")), true);
     assert.equal(stopsFinalise(failed("V-CO-037", "WARNING")), true);
+    assert.equal(stopsFinalise(failed("V-CO-039", "WARNING")), true);
+    assert.equal(severityTag(failed("V-CO-039", "WARNING")), "Blocker");
+    assert.equal(severityTag(failed("V-CO-012", "NOTICE")), "Notice");
+    assert.equal(severityTag(failed("V-DISC-001", "CRITICAL")), "Blocker");
+    const compilation = groupFailedChecks([
+      failed("V-CO-002", "WARNING"),
+      failed("V-CO-038", "WARNING"),
+      failed("V-CO-039", "WARNING"),
+      failed("V-DISC-001", "CRITICAL"),
+      failed("V-CO-012", "NOTICE"),
+    ]);
+    assert.deepEqual(
+      compilation.map((group) => group.area),
+      [
+        "Company details",
+        "Practice letterhead",
+        "Compilation report",
+        "Disclosures",
+      ],
+    );
+    assert.equal(
+      fixHref("year-1", presentCheck(failed("V-CO-039", "WARNING")).fix),
+      "/year-ends/year-1/draft?section=compilation&note=compilation-date",
+    );
+    assert.equal(
+      blockingFailureCount([
+        failed("V-CO-039", "WARNING"),
+        failed("V-CO-012", "NOTICE"),
+        failed("V-CO-027", "NOTICE"),
+      ]),
+      1,
+    );
     assert.equal(presentCheck(failed("V-CO-037", "WARNING")).area, "Comparatives");
     assert.equal(
       fixHref("year-1", presentCheck(failed("V-CO-037", "WARNING")).fix),
