@@ -42,6 +42,7 @@ _BLOCKING = frozenset(
         "V-CO-009",
         "V-CO-010",
         "V-CO-011",
+        "V-CO-037",
         "V-CO-020",
         "V-CO-022",
         "V-CO-023",

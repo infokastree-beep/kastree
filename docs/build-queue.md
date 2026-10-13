@@ -12,7 +12,7 @@ Status of the current build queue. Wording that is drawn from a public source st
 | 6. Remuneration citation | done |
 | 7. Compilation report letterhead | waiting |
 | 8. Particulars slots | waiting |
-| 9. Period message | waiting |
+| 9. Period message | done |
 | 10. Dashboard work queue | waiting |
 | 11. Prior-year comparatives | approved, build after items 9, 7, 8, and 10, migration first |
 | 12. Trial balance re-adopt | approved, build after item 11, migration first |

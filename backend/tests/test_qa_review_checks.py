@@ -30,10 +30,9 @@ _PACK = Path(__file__).resolve().parents[2] / (
     "findraft/content/frs102-1a-ie/2024.09/pack.json"
 )
 _NAME = "The company name does not end with Limited, Ltd, Teoranta, or Teo."
-_PERIOD = (
-    "This first financial period starts on 1 January 2026, but the company "
-    "was incorporated on 7 May 2025. The first period has to start on the "
-    "incorporation date."
+_EARLIER = (
+    "This period starts after the date of incorporation. "
+    "An earlier financial period must exist."
 )
 _OFFICE = (
     "The registered office does not look like an Irish address. "
@@ -147,6 +146,10 @@ def test_pack_data_checks_are_reviewer_to_confirm() -> None:
     assert signatures["sole_director"] == 1
     assert signatures["two_or_more_directors"] == 2
     assert rules["first_period_max_months"] == 18
+    length = payload["first_period_length"]
+    assert length["source_status"] == "researched (public source)"
+    assert length["provision"] == "Companies Act 2014, section 288(1)"
+    assert length["max_months"] == 18
     assert rules["company_number_min_digits"] == 5
     assert rules["company_number_max_digits"] == 7
     assert rules["employee_notice_above"] == 50
@@ -158,7 +161,7 @@ def test_fixture_raises_every_qa_data_check() -> None:
     found = _by_code(company, _year(company))
     expected = {
         "V-CO-010": ("WARNING", _NAME),
-        "V-CO-011": ("WARNING", _PERIOD),
+        "V-CO-037": ("WARNING", _EARLIER),
         "V-CO-012": ("NOTICE", _OFFICE),
         "V-CO-013": ("NOTICE", _NUMBER),
         "V-CO-014": ("NOTICE", _APPOINTMENT),
@@ -173,9 +176,10 @@ def test_fixture_raises_every_qa_data_check() -> None:
         assert item.passed is False
         assert item.severity == severity
         assert item.message == message
-    assert blocks_final((found["V-CO-010"], found["V-CO-011"])) is True
+    assert "V-CO-011" not in found
+    assert blocks_final((found["V-CO-010"], found["V-CO-037"])) is True
     notices = tuple(
-        found[code] for code in expected if code not in {"V-CO-010", "V-CO-011"}
+        found[code] for code in expected if code not in {"V-CO-010", "V-CO-037"}
     )
     assert blocks_final(notices) is False
 
@@ -236,8 +240,24 @@ def test_suffix_period_office_and_number_boundaries() -> None:
     longer = _year(exact, period_start=date(2025, 5, 1), period_end=date(2026, 11, 1))
     length = _by_code(exact, longer)["V-CO-011"]
     assert length.passed is False
-    assert "longer than 18 months" in length.message
+    assert length.message == (
+        "This first financial period is longer than 18 months. "
+        "Companies Act 2014, section 288(1)."
+    )
     assert "incorporation date" not in length.message
+    before = _year(exact, period_start=date(2025, 4, 1), period_end=date(2025, 12, 31))
+    started_early = _by_code(exact, before)["V-CO-011"]
+    assert started_early.passed is False
+    assert "has to start on the incorporation date" in started_early.message
+    assert "V-CO-037" not in _by_code(exact, before)
+    both = _year(exact, period_start=date(2026, 1, 1), period_end=date(2027, 7, 2))
+    both_found = _by_code(exact, both)
+    assert both_found["V-CO-037"].message == _EARLIER
+    assert both_found["V-CO-011"].message == (
+        "This first financial period is longer than 18 months. "
+        "Companies Act 2014, section 288(1)."
+    )
+    assert blocks_final((both_found["V-CO-037"], both_found["V-CO-011"])) is True
 
     missing = _company(name="Harbour Limited", incorporated_on=None)
     missing_check = _by_code(missing, _year(missing))["V-CO-011"]
@@ -476,7 +496,7 @@ async def test_fixture_dashboard_blocks_final_and_links_each_check(
     checks = {item["code"]: item for item in body["checks"]}
     expected_fix = {
         "V-CO-010": ("company-details", _NAME),
-        "V-CO-011": ("company-details", _PERIOD),
+        "V-CO-037": ("review", _EARLIER),
         "V-CO-012": ("company-details", _OFFICE),
         "V-CO-013": ("company-details", _NUMBER),
         "V-CO-014": ("company-details", _APPOINTMENT),
