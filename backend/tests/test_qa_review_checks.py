@@ -137,6 +137,12 @@ def test_pack_data_checks_are_reviewer_to_confirm() -> None:
     assert signatures["directors_report_provision"] == (
         "Companies Act 2014, section 324"
     )
+    items = payload["directors_report_items"]
+    assert items["source_status"] == "researched (public source)"
+    assert items["dividends"] == "Companies Act 2014, section 326(1)(d)"
+    assert items["share_interests"] == "Companies Act 2014, section 329"
+    assert items["subsequent_year_length"] == "Companies Act 2014, section 288"
+    assert rules["source_status"] == "reviewer-to-confirm"
     assert signatures["balance_sheet_provision"] == "Companies Act 2014, section 332"
     assert signatures["sole_director"] == 1
     assert signatures["two_or_more_directors"] == 2
@@ -439,6 +445,7 @@ async def test_fixture_dashboard_blocks_final_and_links_each_check(
             "registered_office": "New York, Ireland",
             "company_number": "1111",
             "incorporated_on": "2025-05-07",
+            "principal_activity": "Investing",
             "secretary": "Warren Buffet",
             "average_employees": 677,
             "directors": [

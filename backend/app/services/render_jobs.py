@@ -377,7 +377,14 @@ async def _live_composed(org_id: uuid.UUID, draft_id: uuid.UUID) -> dict[str, ob
             )
         if not document.renderable:
             raise ValueError("Statutory statements are not renderable")
-        _html, sections = compose_year_end_parts(document, year_end, company=company)
+        from app.services.draft_inputs import disclosure_flags
+
+        flags = await disclosure_flags(
+            session, org_id=org_id, draft_id=draft.id
+        )
+        _html, sections = compose_year_end_parts(
+            document, year_end, company=company, disclosure_flags=flags
+        )
         page_header, signature = docx_presentation(
             document,
             report_setup=year_end.report_setup,

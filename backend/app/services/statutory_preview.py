@@ -21,6 +21,7 @@ from app.services.adopted_trial_balance import (
     active_adopted_draft,
     current_mapping_fingerprint,
 )
+from app.services.draft_inputs import disclosure_flags
 from app.services.statutory_compose import (
     PreviewChild,
     children_of,
@@ -216,8 +217,16 @@ async def build_section_preview(
         )
         if not document.renderable or document.html is None:
             raise PreviewRejected(NOT_RENDERABLE, 400)
+        flags = (
+            await disclosure_flags(session, org_id=org_id, draft_id=draft.id)
+            if draft is not None
+            else None
+        )
         full_html, sections = compose_year_end_parts(
-            document, year_end, company=company
+            document,
+            year_end,
+            company=company,
+            disclosure_flags=flags,
         )
         watermark = document.watermark
     section_html = extract_section_html(full_html, section_id)
@@ -262,5 +271,12 @@ async def build_section_outline(
         return empty
     if not document.renderable or document.html is None:
         return empty
-    _html, sections = compose_year_end_parts(document, year_end, company=company)
+    flags = (
+        await disclosure_flags(session, org_id=org_id, draft_id=draft.id)
+        if draft is not None
+        else None
+    )
+    _html, sections = compose_year_end_parts(
+        document, year_end, company=company, disclosure_flags=flags
+    )
     return {parent: children_of(sections, parent) for parent in OUTLINE_PARENTS}

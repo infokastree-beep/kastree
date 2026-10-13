@@ -2,6 +2,11 @@
 
 import { useState } from "react";
 import { StatutoryLoadError } from "@/components/statutory/StatutoryLoadError";
+import {
+  DirectorsReportForm,
+  type DirectorsReportFacts,
+  type DirectorsReportWrite,
+} from "@/components/statutory/DirectorsReportForm";
 import { countryChoices } from "@/lib/countries";
 import { LEGAL_FORM_CHOICES } from "@/lib/legal-forms";
 
@@ -49,7 +54,7 @@ export type CompanyDetails = {
   share_classes: ShareClassDetails[];
   approval_date: string | null;
   signing_directors: string[];
-};
+} & DirectorsReportFacts;
 
 export type CompanyDetailsWrite = {
   country_of_incorporation: string | null;
@@ -96,8 +101,11 @@ export function CompanyDetailsForm({
   companySaved,
   approvalError,
   approvalSaved,
+  reportError,
+  reportSaved,
   onSaveCompany,
   onSaveApproval,
+  onSaveReport,
 }: {
   details: CompanyDetails;
   canEdit: boolean;
@@ -107,8 +115,11 @@ export function CompanyDetailsForm({
   companySaved: string | null;
   approvalError: string | null;
   approvalSaved: string | null;
+  reportError: string | null;
+  reportSaved: string | null;
   onSaveCompany: (next: CompanyDetailsWrite) => void;
   onSaveApproval: (next: ApprovalWrite) => void;
+  onSaveReport: (next: DirectorsReportWrite) => void;
 }) {
   const [country, setCountry] = useState(
     textValue(details.country_of_incorporation).trim().toUpperCase(),
@@ -373,6 +384,9 @@ export function CompanyDetailsForm({
           <span className="text-xs font-semibold uppercase tracking-[0.12em] text-soft">
             Principal activity
           </span>
+          <span className="text-ink-secondary">
+            Required on the directors&apos; report. Companies Act 2014, section 326.
+          </span>
           <input
             value={activity}
             disabled={locked}
@@ -412,6 +426,10 @@ export function CompanyDetailsForm({
           <legend className="text-xs font-semibold uppercase tracking-[0.12em] text-soft">
             Directors
           </legend>
+          <p className="text-sm text-ink-secondary">
+            The directors who served are required on the directors&apos; report.
+            Companies Act 2014, section 326.
+          </p>
           {directors.map((row, index) => (
             <div
               key={index}
@@ -716,6 +734,15 @@ export function CompanyDetailsForm({
           Save approval details
         </button>
       </form>
+
+      <DirectorsReportForm
+        details={details}
+        canEdit={canEdit}
+        busy={busy}
+        error={reportError}
+        saved={reportSaved}
+        onSave={onSaveReport}
+      />
     </div>
   );
 }
