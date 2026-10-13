@@ -138,6 +138,12 @@ describe("review groups", () => {
     assert.equal(stopsFinalise(failed("V-CO-026", "NOTICE")), false);
     assert.equal(stopsFinalise(failed("V-CO-027", "NOTICE")), false);
     assert.equal(stopsFinalise(failed("V-CO-029", "WARNING")), true);
+    assert.equal(stopsFinalise(failed("V-CO-037", "WARNING")), true);
+    assert.equal(presentCheck(failed("V-CO-037", "WARNING")).area, "Comparatives");
+    assert.equal(
+      fixHref("year-1", presentCheck(failed("V-CO-037", "WARNING")).fix),
+      "/year-ends/year-1/draft?section=review#statutory-first-period-gate",
+    );
     assert.equal(
       presentCheck(failed("V-CO-025", "NOTICE")).fix.section,
       "company-details",

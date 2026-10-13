@@ -45,6 +45,10 @@ const FIXES: Record<string, { area: string; fix: CheckFix }> = {
   "V-CO-025": { area: "Company details", fix: { section: "company-details" } },
   "V-CO-026": { area: "Company details", fix: { section: "company-details" } },
   "V-CO-011": { area: "Company details", fix: { section: "company-details" } },
+  "V-CO-037": {
+    area: "Comparatives",
+    fix: { section: "review", anchor: "statutory-first-period-gate" },
+  },
   "V-CO-027": { area: "Company details", fix: { section: "company-details" } },
   "V-CO-029": { area: "Company details", fix: { section: "company-details" } },
   "V-CO-030": { area: "Company details", fix: { section: "company-details" } },
@@ -113,6 +117,7 @@ const COMPANY_BLOCKING = new Set([
   "V-CO-009",
   "V-CO-010",
   "V-CO-011",
+  "V-CO-037",
   "V-CO-020",
   "V-CO-022",
   "V-CO-023",

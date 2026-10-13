@@ -16,6 +16,7 @@ from app.main import app
 from app.services.mapper import stored_statutory_suggestion, suggest_statutory_mapping
 from app.services.source_storage import LocalPracticeStorage, get_source_storage
 from app.services.tb_import_worker import process_tb_version
+from findraft.engine.pack import pin_pack_version
 from findraft.engine.reconciliation import check_prior_year_gate
 from tests.conftest import auth_headers, balanced_tb_xlsx_bytes, make_access_token
 from tests.test_organisations_api import _add_org_user
@@ -315,6 +316,23 @@ async def test_first_financial_period_opens_the_gate_without_comparatives(
     assert rejected.status_code == 409, rejected.text
 
 
+def test_pack_gate_names_the_edition_and_the_period_start() -> None:
+    with pytest.raises(ValueError) as caught:
+        pin_pack_version(
+            {},
+            {
+                "pack": "frs102-1a-ie",
+                "version": "2024.09",
+                "effective_from": "2026-01-01",
+            },
+            period_start="2025-01-01",
+        )
+    assert str(caught.value) == (
+        "frs102-1a-ie 2024.09 applies to periods beginning on or after "
+        "2026-01-01; period starts 2025-01-01"
+    )
+
+
 @pytest.mark.asyncio
 async def test_pack_rejects_a_period_before_effective_from(
     api_client: AsyncClient,
@@ -330,7 +348,10 @@ async def test_pack_rejects_a_period_before_effective_from(
         },
     )
     assert response.status_code == 400, response.text
-    assert "2026-01-01" in response.json()["detail"]
+    assert response.json()["detail"] == (
+        "frs102-1a-ie 2024.09 applies to periods beginning on or after "
+        "2026-01-01; period starts 2025-01-01"
+    )
 
 
 @pytest.mark.asyncio

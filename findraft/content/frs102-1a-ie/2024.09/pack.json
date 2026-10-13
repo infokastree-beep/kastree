@@ -46,6 +46,11 @@
     "employee_notice_above": 50,
     "turnover_per_employee_floor": "2000.00"
   },
+  "first_period_length": {
+    "source_status": "researched (public source)",
+    "provision": "Companies Act 2014, section 288(1)",
+    "max_months": 18
+  },
   "company_legal_forms": {
     "source_status": "researched (public source)",
     "source": "Companies Act 2014",
