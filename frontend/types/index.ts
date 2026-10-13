@@ -7,6 +7,8 @@ export interface IOrganisation {
   subscription_status: string;
   functional_currency: string;
   jurisdiction: string | null;
+  letterhead_address: string | null;
+  letterhead_contact: string | null;
   created_at: string;
 }
 

@@ -161,6 +161,8 @@ def build_statutory_pages(
     *,
     company_name: str,
     practice_name: str,
+    practice_address: str = "",
+    practice_contact: str = "",
     period_end: str,
     directors: str,
     secretary: str,
@@ -177,7 +179,12 @@ def build_statutory_pages(
 ) -> tuple[StatutoryPage, ...]:
     """Compilation, directors' report, approval, then audit exemption."""
     return (
-        _compilation(company_name=company_name, practice_name=practice_name),
+        _compilation(
+            company_name=company_name,
+            practice_name=practice_name,
+            practice_address=practice_address,
+            practice_contact=practice_contact,
+        ),
         _directors_report(
             period_end=period_end,
             period_start=period_start,
@@ -205,7 +212,39 @@ def _present(value: str) -> str:
     return value.strip()
 
 
-def _compilation(*, company_name: str, practice_name: str) -> StatutoryPage:
+# ISRS 4410 (Revised), Compilation Engagements. The standard's name is
+# researched (public source). The professional body's illustrative report
+# is not copied here. The printed wording stays reviewer-to-confirm until
+# that text is supplied. This is not a reviewer sign-off.
+_COMPILATION_STANDARD = "ISRS 4410 (Revised)"
+_COMPILATION_PENDING = (
+    "The wording of this compilation report is pending the professional "
+    "body's illustrative text."
+)
+
+
+def _letterhead_lines(name: str, address: str, contact: str) -> tuple[str, ...]:
+    lines = [
+        _present(name) or "The practice legal name has not been recorded.",
+    ]
+    recorded_address = _present(address)
+    if recorded_address:
+        lines.extend(
+            part.strip() for part in recorded_address.split("\n") if part.strip()
+        )
+    else:
+        lines.append("The practice address has not been recorded.")
+    lines.append(_present(contact) or "The practice contact has not been recorded.")
+    return tuple(lines)
+
+
+def _compilation(
+    *,
+    company_name: str,
+    practice_name: str,
+    practice_address: str = "",
+    practice_contact: str = "",
+) -> StatutoryPage:
     company = _present(company_name) or "the company (name not recorded)"
     practice = _present(practice_name)
     if practice:
@@ -219,12 +258,19 @@ def _compilation(*, company_name: str, practice_name: str) -> StatutoryPage:
             f"statements for {company} were compiled from information "
             "supplied by the directors."
         )
+    engagement = (
+        f"This compilation engagement is conducted under {_COMPILATION_STANDARD}. "
+        "This compilation is not an audit and it is not a review. "
+        "No audit opinion and no review conclusion is expressed. "
+        "The directors remain responsible for the financial statements."
+    )
     return StatutoryPage(
         heading="Compilation report",
         paragraphs=(
-            opening + " This compilation is not an audit and it is not a review. "
-            "No audit opinion and no review conclusion is expressed. "
-            "The directors remain responsible for the financial statements.",
+            *_letterhead_lines(practice_name, practice_address, practice_contact),
+            opening,
+            engagement,
+            _COMPILATION_PENDING,
         ),
     )
 

@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
 from app.models.company import Company
+from app.models.organisation import Organisation
 from app.services.audit import append_audit_log
 from app.services.beta import final_page_presentation
 from app.services.disclosure_groups import (
@@ -418,6 +419,10 @@ def _company_detail_checks(
     year_end: YearEnd,
     document: StatutoryStatements,
     flags: dict[str, bool],
+    *,
+    practice_name: str,
+    practice_address: str,
+    practice_contact: str,
 ) -> tuple[ReconciliationCheck, ...]:
     from app.services.company_details import company_detail_checks
 
@@ -435,6 +440,22 @@ def _company_detail_checks(
         subsequent_events_yes=(
             flags["SUBSEQUENT_EVENTS"] if "SUBSEQUENT_EVENTS" in flags else None
         ),
+        practice_name=practice_name,
+        practice_address=practice_address,
+        practice_contact=practice_contact,
+    )
+
+
+def _letterhead_from(organisation: object | None) -> tuple[str, str, str]:
+    if organisation is None:
+        return "", "", ""
+    name = getattr(organisation, "name", None)
+    address = getattr(organisation, "letterhead_address", None)
+    contact = getattr(organisation, "letterhead_contact", None)
+    return (
+        "" if name is None else str(name),
+        "" if address is None else str(address),
+        "" if contact is None else str(contact),
     )
 
 
@@ -527,7 +548,20 @@ async def dashboard_for_draft(
     )
     currency = "GBP"
     if company is not None and not company.is_deleted:
-        checks.extend(_company_detail_checks(company, year_end, document, flags))
+        practice_name, practice_address, practice_contact = _letterhead_from(
+            await session.get(Organisation, org_id)
+        )
+        checks.extend(
+            _company_detail_checks(
+                company,
+                year_end,
+                document,
+                flags,
+                practice_name=practice_name,
+                practice_address=practice_address,
+                practice_contact=practice_contact,
+            )
+        )
         currency = company.functional_currency or "GBP"
     checks.extend(unbuilt_section_notices(year_end))
     checks.extend(pack_display_notices(year_end, currency))
@@ -1407,7 +1441,20 @@ async def finalise_draft(
     company = await session.get(Company, year_end.company_id)
     if company is not None and company.org_id == org_id and not company.is_deleted:
         flags = await disclosure_flags(session, org_id=org_id, draft_id=draft.id)
-        checks.extend(_company_detail_checks(company, year_end, document, flags))
+        practice_name, practice_address, practice_contact = _letterhead_from(
+            await session.get(Organisation, org_id)
+        )
+        checks.extend(
+            _company_detail_checks(
+                company,
+                year_end,
+                document,
+                flags,
+                practice_name=practice_name,
+                practice_address=practice_address,
+                practice_contact=practice_contact,
+            )
+        )
     light = _traffic(
         tuple(checks), blocked=document.blocked, renderable=document.renderable
     )

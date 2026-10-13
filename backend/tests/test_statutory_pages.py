@@ -111,11 +111,18 @@ def test_pages_keep_engine_figures_and_leave_gaps() -> None:
     )
     compilation = _page(document, "Compilation report")
     assert "The practice name has not been recorded." in compilation
+    assert "The practice legal name has not been recorded." in compilation
+    assert "The practice address has not been recorded." in compilation
+    assert "The practice contact has not been recorded." in compilation
+    assert "ISRS 4410 (Revised)" in compilation
+    assert "pending the professional body's illustrative text" in compilation
     named = _golden(practice_name="Harbour Practice")
     named_compilation = _page(named, "Compilation report")
-    assert named_compilation.startswith(
+    assert (
         "Harbour Practice compiled these financial statements for Northwind Limited"
+        in named_compilation
     )
+    assert "The practice address has not been recorded." in named_compilation
     assert named.net_assets == document.net_assets
     assert named.profit == document.profit
     assert "not an audit" in compilation

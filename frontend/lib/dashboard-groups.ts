@@ -22,6 +22,7 @@ export type ReviewGroup = {
 
 const GROUP_ORDER = [
   "Company details",
+  "Practice letterhead",
   "Disclosures",
   "Comparatives",
   "Sections",
@@ -48,6 +49,10 @@ const FIXES: Record<string, { area: string; fix: CheckFix }> = {
   "V-CO-037": {
     area: "Comparatives",
     fix: { section: "review", anchor: "statutory-first-period-gate" },
+  },
+  "V-CO-038": {
+    area: "Practice letterhead",
+    fix: { section: "settings", anchor: "practice-letterhead" },
   },
   "V-CO-027": { area: "Company details", fix: { section: "company-details" } },
   "V-CO-029": { area: "Company details", fix: { section: "company-details" } },
@@ -130,6 +135,7 @@ const COMPANY_BLOCKING = new Set([
   "V-CO-034",
   "V-CO-035",
   "V-CO-036",
+  "V-CO-038",
 ]);
 
 export function presentCheck(check: ReviewCheck): { area: string; fix: CheckFix } {
@@ -154,6 +160,9 @@ export function checkLine(check: ReviewCheck, unansweredCount: number): string {
 }
 
 export function fixHref(yearEndId: string, fix: CheckFix): string {
+  if (fix.section === "settings") {
+    return `/settings${fix.anchor ? `#${fix.anchor}` : ""}`;
+  }
   const params = new URLSearchParams({ section: fix.section });
   if (fix.note) {
     params.set("note", fix.note);

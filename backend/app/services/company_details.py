@@ -55,6 +55,7 @@ _BLOCKING = frozenset(
         "V-CO-034",
         "V-CO-035",
         "V-CO-036",
+        "V-CO-038",
     }
 )
 _AUDIT_NOT_RECORDED = (
@@ -744,6 +745,40 @@ def _check(code: str, severity: str, passed: bool, message: str) -> Reconciliati
     )
 
 
+def _practice_letterhead_check(
+    name: str | None,
+    address: str | None,
+    contact: str | None,
+) -> ReconciliationCheck:
+    missing = [
+        label
+        for label, value in (
+            ("legal name", name),
+            ("address", address),
+            ("contact", contact),
+        )
+        if _blank(value) is None
+    ]
+    if not missing:
+        return _check(
+            "V-CO-038",
+            "WARNING",
+            True,
+            "The practice letterhead is recorded.",
+        )
+    if len(missing) == 3:
+        sentence = (
+            "The practice legal name, address, and contact have not been recorded."
+        )
+    elif len(missing) == 2:
+        sentence = (
+            f"The practice {missing[0]} and {missing[1]} have not been recorded."
+        )
+    else:
+        sentence = f"The practice {missing[0]} has not been recorded."
+    return _check("V-CO-038", "WARNING", False, sentence)
+
+
 def company_detail_checks(
     company: Company,
     year_end: YearEnd,
@@ -755,6 +790,9 @@ def company_detail_checks(
     subsequent_events_answered: bool | None = None,
     own_shares_held: bool | None = None,
     subsequent_events_yes: bool | None = None,
+    practice_name: str | None = None,
+    practice_address: str | None = None,
+    practice_contact: str | None = None,
 ) -> tuple[ReconciliationCheck, ...]:
     """Dashboard facts. A missing value is not filled in."""
     names = director_names(company.directors)
@@ -863,6 +901,9 @@ def company_detail_checks(
         )
     )
     checks.extend(audit_position_checks(year_end))
+    checks.append(
+        _practice_letterhead_check(practice_name, practice_address, practice_contact)
+    )
     return tuple(checks)
 
 
