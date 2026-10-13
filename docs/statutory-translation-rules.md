@@ -49,8 +49,11 @@ actually shows.
   notes give acquisitions, disposals, transfers, and the opening, charge,
   disposal, and closing depreciation or amortisation. The FRC note under
   1AD.14 treats an "item" as a class the entity shows. Section 1A does not
-  prescribe which classes those are. A Section 1A entity is not required to
-  give the Section 8 to 35 disclosures (1A.17), so paragraph 17.31's
+  prescribe which classes those are. FRS 102 (September 2024) paragraph
+  1A.1 applies every requirement of the standard to a small entity,
+  including recognition and measurement. Only presentation and disclosure
+  are reduced. The disclosures in Sections 8 to 35 are not required;
+  recognition and measurement still apply (1A.17). Paragraph 17.31's
   class-movement disclosure is not an extra obligation here. The movement
   that is obligatory is Appendix D.
 - **17.8.** Land and buildings are measured separately even when bought

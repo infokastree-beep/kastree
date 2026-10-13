@@ -1644,8 +1644,8 @@ order 9, with the notes after both. The PDF prints those three in that
 declared order. The other ids in the array (cover, contents, other
 comprehensive income, changes in equity, and the trading statement) are
 not built. The cash flow statement is an optional statement for a small
-entity (FRS 102 (September 2024) paragraph 1A.7A), not yet built,
-demand-gated. Strategic report and ESG stay out. The sidebar catalogue stays the hardcoded list. Pending reviewer
+entity (FRS 102 (September 2024) paragraph 1A.7A), not yet built, approved,
+build after item 15. Strategic report and ESG stay out. The sidebar catalogue stays the hardcoded list. Pending reviewer
 sign-off of statement order.
 
 ### Note sign convention — reviewer sign-off
@@ -2073,7 +2073,7 @@ comparison headers. "Sign statement of financial position" and any signatory
 list. XBRL. Those are separate, larger features. Consolidation, XBRL, and
 signatory management stay out of this pass. The indirect cash flow statement
 is an optional statement for a small entity (FRS 102 (September 2024)
-paragraph 1A.7A), not yet built, demand-gated.
+paragraph 1A.7A), not yet built, approved, build after item 15.
 
 ### Week 9 statutory evidence graph
 

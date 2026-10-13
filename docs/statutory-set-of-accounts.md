@@ -65,8 +65,8 @@ stay out. Consolidation, XBRL, workpapers, styles, comments, notepad, roll
 forward, compare reports, and FX stay out. Roll forward and compare must not
 be blocked by this shape: Home lists drafts and does not own the only copy
 of a year end. The cash flow statement is an optional statement for a small
-entity (FRS 102 (September 2024) paragraph 1A.7A), not yet built,
-demand-gated. The direct method stays out.
+entity (FRS 102 (September 2024) paragraph 1A.7A), not yet built, approved,
+build after item 15. The direct method stays out.
 
 ---
 
@@ -92,7 +92,7 @@ An unknown framework id stays Report setup plus Review dashboard.
 | 8 | `oci` | Statement of comprehensive income | engine-conditional | engine | user toggle | 1A.9(a), only if other comprehensive income exists. |
 | 9 | `sofp` | Statement of financial position | frs-locked | on | locked on | 1A.8(a), including the 1A.6A compliance statement already rendered above the face. |
 | 10 | `socie` | Statement of changes in equity | engine-conditional | engine | user toggle | 1A.9(b), only if equity moves other than through profit or loss. |
-| 11 | `cash-flow` | Cash flow statement | off | off | user toggle | Optional statement, not yet built, demand-gated. FRS 102 (September 2024) 1A.7A. A small entity is not required to present a statement of cash flows. |
+| 11 | `cash-flow` | Cash flow statement | off | off | user toggle | Optional statement, not yet built, approved, build after item 15. FRS 102 (September 2024) 1A.7A. A small entity is not required to present a statement of cash flows. |
 | 12 | `notes` | Notes | frs-locked | on | locked on | 1A.8(c). Includes basis of preparation (1AD.3) and accounting policies (1AD.4). Note *blocks* stay on disclosure answers. |
 | 13 | `trading` | Supplementary trading statement | off | off | user toggle | Not an FRS 102 Section 1A statement. |
 

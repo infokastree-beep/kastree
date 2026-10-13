@@ -1,9 +1,10 @@
-# Notes coverage and optional cash flow — design for approval
+# Notes coverage and optional cash flow
 
-Status: design only. Nothing in this note is built. Wording drawn from a
-public source stays "researched (public source)". That is not a reviewer
-sign-off. The workspace label stays "source not confirmed". The banner stays
-"Statutory wording not yet reviewed by a qualified reviewer".
+Status: approved, with the amendments in this note. Nothing in this note is
+built. Wording drawn from a public source stays "researched (public source)".
+That is not a reviewer sign-off. The workspace label stays "source not
+confirmed". The banner stays "Statutory wording not yet reviewed by a
+qualified reviewer".
 
 The pack checklist `disclosure-checklist.json` is the project's list of
 FRS 102 Section 1A appendix items, numbered 1AD.1 to 1AD.55. Its
@@ -95,26 +96,38 @@ This widens today's catalogue. It is not built in this design.
 Ranked by how often a small Irish company needs the row. "Often" means a
 typical trading company in a year's accounts. "Sometimes" means only when
 that fact exists. "Rare" means the checklist already names it and most
-small companies answer no.
+small companies answer no. Deferred tax and provisions are ranked
+Sometimes, above the rare rows.
+
+FRS 102 (September 2024) paragraph 1A.1: every requirement of the standard
+applies to a small entity, including recognition and measurement. Only
+presentation and disclosure are reduced. Where a row names Section 21, 24,
+28, or 29, the disclosures in that section are not required; recognition
+and measurement still apply.
+
+A library block that is not required for a small entity is labelled
+"optional for a small entity" and defaults off. A required row keeps
+today's include behaviour. The checklist quotes in
+`disclosure-checklist.json` are licensed extracts and are not rewritten.
 
 The provision column is researched (public source) from the pack's 1AD list
 or from FRS 102 Section 1A where the appendix does not require the row.
 Practice rows are not presented as a legal mandate.
 
-| Rank | Row | Provision | Data | Needs |
-| --- | --- | --- | --- | --- |
-| 1. Often, including a nil | Dividends | 1AD.35. The directors' report amount is Companies Act 2014, section 326(1)(d), which is queue item 5 and is not mapped yet | Interim and recommended amounts, or a recorded nil. The trial-balance dividends line is not the same split | Wording for a nil and for an amount. No new engine total. Test that a nil prints and that an amount ties to the recorded figure. Sign-off of the sentence |
-| 2. Often when there is a tax charge or a tax creditor | Taxation note | Not an 1AD numbered note. The face already shows tax on profit. FRS 102 Section 29 is not required of a small entity | Tax charge and the corporation-tax balance the engine already has | A short note that repeats those two figures. Test that both tie to the face. Sign-off. Do not add a tax reconciliation unless a later approval asks for one |
-| 3. Often when stocks are not zero | Stocks note | 1AD.4 is the policy, which already prints. A carrying-amount note is not a separate 1AD line | The stocks balance | One line that repeats the face amount under the existing policy. Test that it ties. Sign-off |
-| 4. Often | Defined-contribution pension sentence | 1AD.32 is the commitment note, and it stays for the yes case. A defined-contribution sentence is practice. Section 28 is not required of a small entity | A yes/no, and the contribution charged only when yes. No new calculated total | Wording, a question, an input for the amount the preparer records, a test, sign-off |
-| 5. Often, usually a nil | Controlling party | 1AD.51 sits on the related-party note and does not have its own sentence | A name, or "the directors" | One sentence on note 7. Test the nil and the named case. Sign-off |
-| 6. Sometimes | Government grants | Not an 1AD line. Section 24 is not required of a small entity | A yes/no and a short particular when yes | Wording, question, input, test, sign-off |
-| 7. Sometimes | Provisions other than tax | Not an 1AD line. Section 21 is not required of a small entity | A yes/no, the face amount if a provision line exists, and a particular | Wording, question, input, test that the amount ties when a face line exists. Sign-off |
-| 8. Rare for this pack | Deferred tax | Section 29 is not required of a small entity | A yes/no and the amount the preparer records | Same shape as grants. Do not invent a deferred-tax calculation |
-| 9. Rare | Fair-value designation particulars | 1AD.25, checklist only, no note | The existing yes, plus a particular | A block on the debtors note. Empty particular with a yes blocks FINAL |
-| 10. Rare | More than one statement line for one balance | 1AD.12, checklist only | The existing yes and the breakdown amounts | A line-level particular. Amounts are Decimal and must tie |
-| 11. Rare | Combined format lines | 1AD.53, checklist only | The existing yes and the particular | Wording and a particular |
-| 12. Rare | Set-off | 1AD.55, checklist only | The existing yes and the particular | Wording and a particular |
+| Rank | Row | Nature | Provision | Data | Needs |
+| --- | --- | --- | --- | --- | --- |
+| 1. Often, including a nil | Dividends | Required. Keeps today's behaviour | 1AD.35. The directors' report amount is Companies Act 2014, section 326(1)(d), which is queue item 5 | Interim and recommended amounts, or a recorded nil. The trial-balance dividends line is not the same split | Wording for a nil and for an amount. No new engine total. Test that a nil prints and that an amount ties to the recorded figure. Sign-off of the sentence |
+| 2. Often when there is a tax charge or a tax creditor | Taxation note | Optional for a small entity. Defaults off | Not an 1AD numbered note. The face already shows tax on profit. The disclosures in Section 29 are not required; recognition and measurement still apply | Tax charge and the corporation-tax balance the engine already has | A short note that repeats those two figures. Test that both tie to the face. Sign-off. Do not add a tax reconciliation unless a later approval asks for one |
+| 3. Often when stocks are not zero | Stocks note | Optional for a small entity. Defaults off | 1AD.4 is the policy, which already prints. A carrying-amount line beyond that policy is not a separate 1AD line | The stocks balance | One line that repeats the face amount under the existing policy. Test that it ties. Sign-off |
+| 4. Often | Defined-contribution pension charge | Optional for a small entity. Defaults off | 1AD.32 is the commitment note, and it stays for the yes case. A defined-contribution sentence is practice. The disclosures in Section 28 are not required; recognition and measurement still apply | A yes/no question, plus the pension charge the practice has already posted. Kastree does not calculate the charge | Wording, the question, the posted-amount input, a test, sign-off |
+| 5. Often, usually a nil | Controlling party | Required. Keeps today's behaviour | 1AD.51 sits on the related-party note and does not have its own sentence | A name, or "the directors" | One sentence on note 7. Test the nil and the named case. Sign-off |
+| 6. Sometimes | Government grants | Optional for a small entity. Defaults off | Not an 1AD line. The disclosures in Section 24 are not required; recognition and measurement still apply | A yes/no question, plus the grant amount the practice has already posted. Kastree does not calculate the amount. A short particular when the answer is yes | Wording, the question, the posted-amount input, a test, sign-off |
+| 7. Sometimes | Provisions other than tax | Optional for a small entity. Defaults off | Not an 1AD line. The disclosures in Section 21 are not required; recognition and measurement still apply | A yes/no question, plus the provision amount the practice has already posted. Kastree does not calculate the amount. A particular when the answer is yes. When a provision line is already on the face, the posted amount ties to that line | Wording, the question, the posted-amount input, a test that the amount ties when a face line exists. Sign-off |
+| 8. Sometimes | Deferred tax | Optional for a small entity. Defaults off | The disclosures in Section 29 are not required; recognition and measurement still apply | A yes/no question, plus the deferred-tax amount the practice has already posted. Kastree does not calculate deferred tax | Wording, the question, the posted-amount input, a test, sign-off |
+| 9. Rare | Fair-value designation particulars | Required when relevant. Keeps today's behaviour | 1AD.25, checklist only, no note | The existing yes, plus a particular | A block on the debtors note. Empty particular with a yes blocks FINAL |
+| 10. Rare | More than one statement line for one balance | Required when relevant. Keeps today's behaviour | 1AD.12, checklist only | The existing yes and the breakdown amounts | A line-level particular. Amounts are Decimal and must tie |
+| 11. Rare | Combined format lines | Required when relevant. Keeps today's behaviour | 1AD.53, checklist only | The existing yes and the particular | Wording and a particular |
+| 12. Rare | Set-off | Required when relevant. Keeps today's behaviour | 1AD.55, checklist only | The existing yes and the particular | Wording and a particular |
 
 These stay where they already are, and this design does not rebuild them:
 
@@ -140,8 +153,7 @@ banner stays as it is.
 
 FRS 102 (September 2024) paragraph 1A.7A: a small entity is not required to
 present a statement of cash flows. The statement stays optional. It is not
-yet built. It is demand-gated: it is not built unless this design is
-approved and a later request asks for the build.
+yet built. It is approved, build after item 15.
 
 The method, if built, is indirect only. The direct method stays out.
 
@@ -159,20 +171,34 @@ Inputs:
 - the fixed-asset cost movement when a register exists, so additions are not
   inferred from a net book value change
 
-Classification, stored beside the canonical lines, not in a prompt:
+Classification, stored beside the canonical lines, not in a prompt.
+Researched (public source) from FRS 102 (September 2024) Section 7. Where
+Section 7 allows more than one heading, the choice below is
+reviewer-to-confirm.
 
-- cash: the cash line
+- cash: the cash line, and bank overdrafts repayable on demand. Those
+  overdrafts are cash and cash equivalents.
 - operating, non-cash: depreciation, amortisation, profit or loss on disposal
 - operating, working capital: stocks, debtors, creditors, accruals
-- investing: fixed-asset additions and disposals
-- financing: loans drawn and repaid, share issues, dividends paid
+- investing: fixed-asset additions and disposals that are paid in cash.
+  Hire-purchase and lease-financed additions are non-cash. They are left
+  out of the cash flow. The cash element is the financing repayment.
+- financing: loans drawn and repaid, share issues, and the cash element of
+  hire-purchase and lease repayments
+- income tax paid: operating, unless that tax is specifically identified
+  with investing or financing activities
+- interest paid: financing. Section 7 allows operating or financing. This
+  choice is reviewer-to-confirm.
+- dividends paid: financing. Section 7 allows operating or financing. This
+  choice is reviewer-to-confirm.
 
-Opening cash is the prior cash balance. Closing cash is the current cash
-balance. The statement reconciles: opening cash, plus the net increase or
-decrease, equals closing cash, within €0.01. If it does not, the statement
-is withheld. A missing prior balance is withheld too, except a recorded
-first financial period, where opening cash is zero and the statement says
-so. The function does not invent an opening balance.
+Opening cash is the prior cash balance, including overdrafts repayable on
+demand. Closing cash is the current cash balance on the same basis. The
+statement reconciles, or it is withheld: opening cash, plus the net
+increase or decrease, equals closing cash, within €0.01. If it does not,
+the statement is withheld. A missing prior balance is withheld too, except
+a recorded first financial period, where opening cash is zero and the
+statement says so. The function does not invent an opening balance.
 
 ### Tests
 
@@ -200,9 +226,11 @@ column. It does not use an LLM.
 
 ## C. Docs
 
-The docs now say the cash flow statement is an optional statement for a
-small entity (FRS 102 (September 2024) paragraph 1A.7A), not yet built,
-demand-gated. Strategic report and ESG stay out. The direct method stays
-out. Those edits are in `docs/statutory-set-of-accounts.md`,
-`docs/tracked-gaps.md`, and `docs/product-roadmap.md`. They are part of
-this design and wait for approval with it.
+The docs say the cash flow statement is an optional statement for a small
+entity (FRS 102 (September 2024) paragraph 1A.7A), not yet built, approved,
+build after item 15. Strategic report and ESG stay out. The direct method
+stays out. Those edits are in `docs/statutory-set-of-accounts.md`,
+`docs/tracked-gaps.md`, and `docs/product-roadmap.md`.
+`docs/statutory-translation-rules.md` records that the disclosures in
+Sections 8 to 35 are not required and that recognition and measurement
+still apply.
