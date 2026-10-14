@@ -272,6 +272,28 @@ class PriorYearFinalRequest(BaseModel):
     confirm: bool
 
 
+class StartNextYearRequest(BaseModel):
+    """Ask before creating the next period. No amounts."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    confirm: bool
+
+
+class StartNextYearResponse(BaseModel):
+    """What carries, what the preparer must do, and the new year end after confirm."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    carries_over: list[str]
+    preparer_must: list[str]
+    period_start: date
+    period_end: date
+    source_draft_id: uuid.UUID
+    year_end_id: uuid.UUID | None = None
+    draft_id: uuid.UUID | None = None
+
+
 class ReconciliationGateResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

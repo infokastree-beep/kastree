@@ -61,10 +61,11 @@ until the DPA and EU-residency review are done.
 
 **Cuts that stay cut.** Auditor's report (row 13). Free-text note overrides
 and text blocks. Bank reconciliation. UK pack. Strategic report and ESG
-stay out. Consolidation, XBRL, workpapers, styles, comments, notepad, roll
-forward, compare reports, and FX stay out. Roll forward and compare must not
-be blocked by this shape: Home lists drafts and does not own the only copy
-of a year end. The cash flow statement is an optional statement for a small
+stay out. Consolidation, XBRL, workpapers, styles, comments, notepad,
+compare reports, and FX stay out. Start next year is the roll-forward: it
+is on a final draft and in the draft list, and it asks before it writes.
+Home lists drafts and does not own the only copy of a year end. The cash
+flow statement is an optional statement for a small
 entity (FRS 102 (September 2024) paragraph 1A.7A), not yet built, approved,
 build after item 15. The direct method stays out.
 
@@ -165,8 +166,8 @@ workspace mode. Proposed tree, in this order:
 | Start new report | Existing `statutory-new-report`. | Reused. |
 | Lock | Existing `statutory-lock` / next-version button. | Reused. |
 
-Roll forward and compare are not buttons. The list does not prevent a
-later screen from reading the same drafts.
+Start next year is on a final row. Compare is not a button. The list does
+not prevent a later screen from reading the same drafts.
 
 ### Report options
 

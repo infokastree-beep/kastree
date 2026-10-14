@@ -28,6 +28,7 @@ import {
   type ParticularsWrite,
 } from "@/components/statutory/ParticularsForm";
 import { DraftList } from "@/components/statutory/DraftList";
+import { StartNextYear } from "@/components/statutory/StartNextYear";
 import { PriorYearComparatives } from "@/components/statutory/PriorYearComparatives";
 import {
   ReportSetupForm,
@@ -1510,7 +1511,13 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
         <TrialBalancePanel page={trialBalanceQuery.data} />
       ) : null}
 
-      {sectionId === "drafts" ? <DraftList yearEndId={yearEndId} /> : null}
+      {draft?.status === "final" && sectionId !== "drafts" ? (
+        <StartNextYear yearEndId={yearEndId} canStart={canEditDetails} />
+      ) : null}
+
+      {sectionId === "drafts" ? (
+        <DraftList yearEndId={yearEndId} canStartNextYear={canEditDetails} />
+      ) : null}
 
       {sectionId === "prior-year" ? (
         <PriorYearComparatives

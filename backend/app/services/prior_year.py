@@ -15,6 +15,7 @@ from decimal import Decimal
 
 from pydantic import ValidationError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
@@ -37,6 +38,7 @@ from app.services.audit import append_audit_log
 from app.services.reconciliation import ReconciliationRejected
 from app.services.report_setup import default_report_setup
 from findraft.engine.lines import CONSUMED, FIXED_ASSETS
+from findraft.engine.pack import load_manifest, pack_dir, pin_pack_version
 from findraft.engine.mapping import aggregate
 from findraft.engine.money import D, money
 from findraft.engine.reconciliation import (
@@ -83,6 +85,24 @@ OTHER_PERIOD = (
     "and another period already ends on {previous_end}."
 )
 NO_FINAL = "No final snapshot is available for the previous period."
+NO_FINAL_HERE = "This year end has no final draft to roll forward."
+NO_PERIOD_START = "This year end has no period start."
+NEXT_YEAR_EXISTS = (
+    "A statutory draft already exists for the period ending {end}. Open that draft."
+)
+CARRIES_OVER: tuple[str, ...] = (
+    "The final current column is stored as the next year's comparative figures. "
+    "A later change to this final draft does not move that column.",
+    "The next year uses the same reporting pack.",
+    "Company details and confirmed account mappings stay on the company.",
+)
+PREPARER_MUST: tuple[str, ...] = (
+    "Adopt a trial balance for the new period. This action does not copy a trial balance.",
+    "Confirm mappings and statutory sub-lines where the new file needs them.",
+    "Answer disclosures, particulars, company size, and audit exemption for the new period.",
+    "Record the approval date and the signatories.",
+    "Review the comparative column on Prior-year comparatives before the new draft is final.",
+)
 
 _SOURCES = ("product1_tb", "first_period", "manual", "final_snapshot")
 
@@ -118,6 +138,19 @@ class SourcePreview:
     lines: tuple[tuple[str, Decimal], ...]
     mapping_differences: tuple[MappingDifference, ...]
     checks: tuple[tuple[str, bool | None, str], ...]
+
+
+@dataclass(frozen=True)
+class NextYearResult:
+    """Preview or the year end created by Start next year. No amounts."""
+
+    carries_over: tuple[str, ...]
+    preparer_must: tuple[str, ...]
+    period_start: date
+    period_end: date
+    source_draft_id: uuid.UUID
+    year_end_id: uuid.UUID | None
+    draft_id: uuid.UUID | None
 
 
 @dataclass(frozen=True)
@@ -1064,3 +1097,166 @@ async def undo_first_financial_period(
     )
     await session.flush()
     return year_end
+
+
+def _anniversary(value: date) -> date:
+    """The same month and day one year later. 29 February becomes 28 February."""
+    try:
+        return value.replace(year=value.year + 1)
+    except ValueError:
+        return value.replace(year=value.year + 1, day=28)
+
+
+def _totals_from_snapshot(snapshot: object) -> dict[str, Decimal] | None:
+    if not isinstance(snapshot, dict):
+        return None
+    raw = snapshot.get("canonical_current")
+    if not isinstance(raw, dict):
+        return None
+    totals: dict[str, Decimal] = {}
+    for key, value in raw.items():
+        if (
+            not isinstance(key, str)
+            or key not in CONSUMED
+            or not isinstance(value, str)
+        ):
+            continue
+        amount = canonical_amount(value)
+        if amount != 0:
+            totals[key] = amount
+    return totals
+
+
+async def _latest_final_snapshot(
+    session: AsyncSession, *, org_id: uuid.UUID, year_end_id: uuid.UUID
+) -> tuple[DraftVersion, dict[str, Decimal]] | None:
+    drafts = (
+        await session.scalars(
+            select(DraftVersion)
+            .where(
+                DraftVersion.org_id == org_id,
+                DraftVersion.year_end_id == year_end_id,
+                DraftVersion.status == "final",
+            )
+            .order_by(DraftVersion.version_number.desc())
+        )
+    ).all()
+    for draft in drafts:
+        totals = _totals_from_snapshot(draft.snapshot)
+        if totals is not None:
+            return draft, totals
+    return None
+
+
+async def start_next_year(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    user_id: uuid.UUID | None,
+    year_end: YearEnd,
+    confirm: bool,
+) -> NextYearResult:
+    """Open the next period and store this final column as its comparatives.
+
+    ``confirm`` false writes nothing. The final draft is not updated.
+    """
+    await aset_rls_org_id(session, org_id)
+    if year_end.period_start is None:
+        raise PriorYearRejected(NO_PERIOD_START, 409)
+    found = await _latest_final_snapshot(
+        session, org_id=org_id, year_end_id=year_end.id
+    )
+    if found is None:
+        raise PriorYearRejected(NO_FINAL_HERE, 409)
+    source_draft, _totals = found
+    next_start = year_end.period_end + timedelta(days=1)
+    next_end = _anniversary(year_end.period_end)
+    if next_end < next_start:
+        raise PriorYearRejected(NO_PERIOD_START, 409)
+    existing = await session.scalar(
+        select(YearEnd).where(
+            YearEnd.org_id == org_id,
+            YearEnd.company_id == year_end.company_id,
+            YearEnd.period_end == next_end,
+        )
+    )
+    if isinstance(existing, YearEnd):
+        raise PriorYearRejected(NEXT_YEAR_EXISTS.format(end=next_end.isoformat()), 409)
+    if not confirm:
+        return NextYearResult(
+            carries_over=CARRIES_OVER,
+            preparer_must=PREPARER_MUST,
+            period_start=next_start,
+            period_end=next_end,
+            source_draft_id=source_draft.id,
+            year_end_id=None,
+            draft_id=None,
+        )
+    try:
+        manifest = load_manifest(
+            pack_dir(year_end.pack_id, year_end.pack_version) / "pack.json"
+        )
+        pinned = pin_pack_version({}, manifest, period_start=next_start.isoformat())
+    except (ValueError, FileNotFoundError, OSError) as exc:
+        raise PriorYearRejected(str(exc), 422) from exc
+    created = YearEnd(
+        org_id=year_end.org_id,
+        company_id=year_end.company_id,
+        period_start=next_start,
+        period_end=next_end,
+        pack_id=str(pinned["pack_id"]),
+        pack_version=str(pinned["pack_version"]),
+    )
+    try:
+        async with session.begin_nested():
+            session.add(created)
+            await session.flush()
+    except IntegrityError as exc:
+        raise PriorYearRejected(
+            NEXT_YEAR_EXISTS.format(end=next_end.isoformat()), 409
+        ) from exc
+    opened = DraftVersion(
+        org_id=created.org_id,
+        company_id=created.company_id,
+        year_end_id=created.id,
+        version_number=1,
+        pack_id=created.pack_id,
+        pack_version=created.pack_version,
+        status="draft",
+        tb_version_id=None,
+        mappings_sha256=None,
+        is_frozen=False,
+        row_version=1,
+    )
+    session.add(opened)
+    await session.flush()
+    await confirm_from_final(
+        session,
+        org_id=org_id,
+        user_id=user_id,
+        year_end=created,
+        confirm=True,
+    )
+    await _audit(
+        session,
+        org_id=org_id,
+        user_id=user_id,
+        action="next_year_started",
+        year_end_id=year_end.id,
+        new_value={
+            "year_end_id": str(year_end.id),
+            "next_year_end_id": str(created.id),
+            "source_draft_id": str(source_draft.id),
+            "draft_id": str(opened.id),
+        },
+    )
+    await session.flush()
+    return NextYearResult(
+        carries_over=CARRIES_OVER,
+        preparer_must=PREPARER_MUST,
+        period_start=next_start,
+        period_end=next_end,
+        source_draft_id=source_draft.id,
+        year_end_id=created.id,
+        draft_id=opened.id,
+    )

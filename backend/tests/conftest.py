@@ -14,6 +14,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
@@ -51,6 +52,92 @@ def open_owner_session() -> Session:
         expire_on_commit=False,
     )
     return factory()
+
+
+# Privileges the application login does not have, and this cleanup needs.
+# UPDATE covers SELECT ... FOR KEY SHARE on a foreign key. DELETE covers
+# the row and ON DELETE CASCADE. subscription_events already has UPDATE.
+_CLEANUP_GRANTS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("archived_records", ("UPDATE", "DELETE")),
+    ("audit_logs", ("UPDATE", "DELETE")),
+    ("findraft_draft_operations", ("UPDATE", "DELETE")),
+    ("findraft_tb_lines", ("UPDATE", "DELETE")),
+    ("findraft_fa_lines", ("UPDATE", "DELETE")),
+    ("findraft_confirmed_mappings", ("UPDATE", "DELETE")),
+    ("subscription_events", ("DELETE",)),
+)
+
+
+def _grant_append_only_delete(session: Session) -> tuple[tuple[str, str], ...]:
+    """Grant missing cleanup privileges. A superuser needs no grant."""
+    granted: list[tuple[str, str]] = []
+    for table, privileges in _CLEANUP_GRANTS:
+        for privilege in privileges:
+            allowed = session.execute(
+                text("SELECT has_table_privilege(current_user, :table, :privilege)"),
+                {"table": table, "privilege": privilege},
+            ).scalar_one()
+            if not allowed:
+                session.execute(
+                    text(f"GRANT {privilege} ON TABLE {table} TO CURRENT_USER")
+                )
+                granted.append((table, privilege))
+    return tuple(granted)
+
+
+def _revoke_append_only_delete(
+    session: Session, granted: tuple[tuple[str, str], ...]
+) -> None:
+    """Drop only the privileges this cleanup granted."""
+    for table, privilege in granted:
+        session.execute(text(f"REVOKE {privilege} ON TABLE {table} FROM CURRENT_USER"))
+        cleared = session.execute(
+            text(
+                "SELECT rolsuper OR rolbypassrls OR NOT has_table_privilege("
+                "current_user, :table, :privilege) "
+                "FROM pg_roles WHERE rolname = current_user"
+            ),
+            {"table": table, "privilege": privilege},
+        ).scalar_one()
+        if not cleared:
+            raise RuntimeError(f"{privilege} grant left on {table}")
+
+
+def _delete_append_only(
+    session: Session, table: str, clause: str, params: dict[str, str]
+) -> None:
+    """Delete rows the application login is not granted to delete.
+
+    ``archived_records`` and the other append-only tables grant ``findraft``
+    ``SELECT`` and ``INSERT`` only. The table owner still has the grant
+    option, so this cleanup grants ``DELETE`` to the current user, deletes
+    the rows, and revokes ``DELETE`` before the transaction commits. A
+    superuser deletes directly. The privilege script is not changed.
+    """
+    if not table.replace("_", "").isalnum():
+        raise ValueError(table)
+    statement = text(f"DELETE FROM {table} WHERE {clause}")
+    savepoint = session.begin_nested()
+    try:
+        session.execute(statement, params)
+        savepoint.commit()
+    except ProgrammingError as exc:
+        savepoint.rollback()
+        if getattr(exc.orig, "pgcode", None) != "42501":
+            raise
+        session.execute(text(f"GRANT DELETE ON TABLE {table} TO CURRENT_USER"))
+        session.execute(statement, params)
+        session.execute(text(f"REVOKE DELETE ON TABLE {table} FROM CURRENT_USER"))
+        still = session.execute(
+            text(
+                "SELECT rolsuper OR rolbypassrls OR NOT has_table_privilege("
+                "current_user, :table, 'DELETE') "
+                "FROM pg_roles WHERE rolname = current_user"
+            ),
+            {"table": table},
+        ).scalar_one()
+        if not still:
+            raise RuntimeError(f"DELETE grant left on {table}")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -229,6 +316,7 @@ def provisioned_org() -> Iterator[dict]:
     yield data
     with open_owner_session() as session:
         set_rls_org_id(session, data["org_id"])
+        granted_deletes = _grant_append_only_delete(session)
         session.execute(
             text(
                 "DELETE FROM statement_line_items WHERE statement_id IN "
@@ -302,9 +390,8 @@ def provisioned_org() -> Iterator[dict]:
             ),
             {"oid": str(data["org_id"])},
         )
-        session.execute(
-            text("DELETE FROM archived_records WHERE org_id = :oid"),
-            {"oid": str(data["org_id"])},
+        _delete_append_only(
+            session, "archived_records", "org_id = :oid", {"oid": str(data["org_id"])}
         )
         session.execute(
             text(
@@ -355,16 +442,17 @@ def provisioned_org() -> Iterator[dict]:
                 "ALTER TABLE audit_logs DISABLE TRIGGER findraft_audit_log_append_only"
             )
         )
-        session.execute(
-            text("DELETE FROM audit_logs WHERE org_id = :oid"),
-            {"oid": str(data["org_id"])},
+        _delete_append_only(
+            session, "audit_logs", "org_id = :oid", {"oid": str(data["org_id"])}
         )
         session.execute(
             text("DELETE FROM findraft_render_jobs WHERE org_id = :oid"),
             {"oid": str(data["org_id"])},
         )
-        session.execute(
-            text("DELETE FROM findraft_draft_operations WHERE org_id = :oid"),
+        _delete_append_only(
+            session,
+            "findraft_draft_operations",
+            "org_id = :oid",
             {"oid": str(data["org_id"])},
         )
         session.execute(
@@ -379,21 +467,21 @@ def provisioned_org() -> Iterator[dict]:
             text("DELETE FROM findraft_disclosure_answers WHERE org_id = :oid"),
             {"oid": str(data["org_id"])},
         )
-        session.execute(
-            text("DELETE FROM findraft_confirmed_mappings WHERE org_id = :oid"),
+        _delete_append_only(
+            session,
+            "findraft_confirmed_mappings",
+            "org_id = :oid",
             {"oid": str(data["org_id"])},
         )
-        session.execute(
-            text("DELETE FROM findraft_fa_lines WHERE org_id = :oid"),
-            {"oid": str(data["org_id"])},
+        _delete_append_only(
+            session, "findraft_fa_lines", "org_id = :oid", {"oid": str(data["org_id"])}
         )
         session.execute(
             text("DELETE FROM findraft_fa_versions WHERE org_id = :oid"),
             {"oid": str(data["org_id"])},
         )
-        session.execute(
-            text("DELETE FROM findraft_tb_lines WHERE org_id = :oid"),
-            {"oid": str(data["org_id"])},
+        _delete_append_only(
+            session, "findraft_tb_lines", "org_id = :oid", {"oid": str(data["org_id"])}
         )
         session.execute(
             text("DELETE FROM findraft_draft_versions WHERE org_id = :oid"),
@@ -481,6 +569,7 @@ def provisioned_org() -> Iterator[dict]:
         session.execute(
             text("ALTER TABLE audit_logs ENABLE TRIGGER findraft_audit_log_append_only")
         )
+        _revoke_append_only_delete(session, granted_deletes)
         session.commit()
 
 

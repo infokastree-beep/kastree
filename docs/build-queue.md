@@ -16,7 +16,7 @@ Status of the current build queue. Wording that is drawn from a public source st
 | 10. Dashboard work queue | done. Shared formatter and the key figures card |
 | 11. Prior-year comparatives | done. Readers merged in #153. An open draft may replace the column and undo the first period after z2a3b4c5d6 |
 | 12. Trial balance re-adopt | design merged in #111. Build after item 11, migration first |
-| 13. Roll forward | done. The previous FINAL snapshot copy is the roll-forward. It is not a button |
+| 13. Roll forward | done. Start next year copies the latest final column onto the next period. The dialog lists what carries and what the preparer must do |
 | 14. Drafts list | done. Version number, status, locked or frozen. Open stays on ?section= |
 | 15. Statement of income and retained earnings | waiting |
 | Notes, after item 15, in this order: dividends; taxation; stocks; defined-contribution pension; controlling party; government grants; provisions other than tax; deferred tax; fair-value designation; more than one statement line; combined format lines; set-off. Blocks that are not required for a small entity are labelled "optional for a small entity" and default off. Required rows keep today's behaviour. Deferred tax and provisions are ranked above the rare rows | approved, not started |
