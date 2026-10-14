@@ -102,7 +102,9 @@ def directors_report_paragraphs(
     ]
     own = _flag(disclosure_flags, "OWN_SHARES_HELD")
     if own is True:
-        paragraphs.append(_conditional(_blank(year_end.own_shares_particulars), _OWN_SHARES))
+        paragraphs.append(
+            _conditional(_blank(year_end.own_shares_particulars), _OWN_SHARES)
+        )
     events = _flag(disclosure_flags, "SUBSEQUENT_EVENTS")
     if events is True:
         text = _blank(year_end.subsequent_events_particulars)
@@ -569,7 +571,10 @@ def _interest_sentence(
 ) -> str:
     if not _interests_complete(people, directors, secretary) or people is None:
         return _INTERESTS
-    if all(not person.at_start.interested and not person.at_end.interested for person in people):
+    if all(
+        not person.at_start.interested and not person.at_end.interested
+        for person in people
+    ):
         if secretary is None:
             return (
                 "No director had an interest in the shares of the company, or of "
@@ -629,6 +634,55 @@ def _relevance(
     return [f"{lead}: {text}"]
 
 
+_DIVIDEND_NOTE_NIL = (
+    "No dividend was paid during the financial year and the directors "
+    "do not recommend a dividend."
+)
+_DIVIDEND_NOTE_INTERIM_NIL = "No interim dividend was paid during the financial year."
+_DIVIDEND_NOTE_INTERIM_PAID = (
+    "An interim dividend of {amount} was paid during the financial year."
+)
+_DIVIDEND_NOTE_RECOMMENDED_NIL = "The directors do not recommend a dividend."
+_DIVIDEND_NOTE_RECOMMENDED_PAID = "A dividend of {amount} is recommended."
+
+
+def dividend_note_paragraphs(
+    interim: Decimal | None,
+    recommended: Decimal | None,
+    *,
+    currency: str,
+) -> tuple[str, ...] | None:
+    """1AD.35 from the recorded interim and recommended amounts.
+
+    A blank is not a nil. Both amounts must be recorded before the note
+    prints. Zero is the recorded nil. These amounts are not the
+    trial-balance dividends line, and they are not added together.
+    The wording is researched (public source). It is not a reviewer sign-off.
+    """
+    if interim is None or recommended is None:
+        return None
+    interim_nil = abs(interim) <= _CENTS
+    recommended_nil = abs(recommended) <= _CENTS
+    if interim_nil and recommended_nil:
+        return (_DIVIDEND_NOTE_NIL,)
+    parts: list[str] = []
+    if interim_nil:
+        parts.append(_DIVIDEND_NOTE_INTERIM_NIL)
+    else:
+        parts.append(
+            _DIVIDEND_NOTE_INTERIM_PAID.format(amount=_money_phrase(interim, currency))
+        )
+    if recommended_nil:
+        parts.append(_DIVIDEND_NOTE_RECOMMENDED_NIL)
+    else:
+        parts.append(
+            _DIVIDEND_NOTE_RECOMMENDED_PAID.format(
+                amount=_money_phrase(recommended, currency)
+            )
+        )
+    return tuple(parts)
+
+
 def _money_phrase(amount: Decimal, currency: str) -> str:
     cents = amount.quantize(_CENTS, rounding=ROUND_HALF_UP)
     negative = cents < 0
@@ -671,7 +725,9 @@ def _audit_snapshot(year_end: YearEnd) -> dict[str, object]:
         )
         is not None,
         "political_donations_relevant": year_end.political_donations_relevant,
-        "political_donations_detail_recorded": _blank(year_end.political_donations_detail)
+        "political_donations_detail_recorded": _blank(
+            year_end.political_donations_detail
+        )
         is not None,
         "accounting_period_change_filed": year_end.accounting_period_change_filed,
     }

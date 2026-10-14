@@ -1,7 +1,9 @@
 # Notes coverage and optional cash flow
 
-Status: approved, with the amendments in this note. Nothing in this note is
-built. Wording drawn from a public source stays "researched (public source)".
+Status: approved, with the amendments in this note. Dividends (rank 1) is
+built from the recorded interim and recommended amounts. The other rows
+in this note are not built. Wording drawn from a public source stays
+"researched (public source)".
 That is not a reviewer sign-off. The workspace label stays "source not
 confirmed". The banner stays "Statutory wording not yet reviewed by a
 qualified reviewer".
