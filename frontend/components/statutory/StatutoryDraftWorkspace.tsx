@@ -24,6 +24,10 @@ import {
   type DirectorsReportWrite,
 } from "@/components/statutory/DirectorsReportForm";
 import {
+  ParticularsForm,
+  type ParticularsWrite,
+} from "@/components/statutory/ParticularsForm";
+import {
   ReportSetupForm,
   type ReportSetup,
   type ReportSetupWrite,
@@ -266,6 +270,8 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [approvalSaved, setApprovalSaved] = useState<string | null>(null);
   const [reportError, setReportError] = useState<string | null>(null);
+  const [particularsError, setParticularsError] = useState<string | null>(null);
+  const [particularsSaved, setParticularsSaved] = useState<string | null>(null);
   const [reportSaved, setReportSaved] = useState<string | null>(null);
   const [compilationError, setCompilationError] = useState<string | null>(null);
   const [compilationSaved, setCompilationSaved] = useState<string | null>(null);
@@ -486,6 +492,31 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
     } catch (caught) {
       setApprovalError(saveMessage(caught, "Approval details could not be saved."));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveParticulars(next: ParticularsWrite): Promise<void> {
+    setParticularsError(null);
+    setParticularsSaved(null);
+    setBusy("Saving particulars…");
+    try {
+      const saved = await apiFetch<CompanyDetails>(
+        `/year-ends/${yearEndId}/particulars`,
+        {
+          method: "PUT",
+          getToken,
+          body: JSON.stringify(next),
+        },
+      );
+      queryClient.setQueryData(["company-details", yearEndId], saved);
+      setParticularsSaved("Particulars saved.");
+      await queryClient.invalidateQueries({ queryKey: ["statutory-pack"] });
+      await queryClient.invalidateQueries({ queryKey: ["statutory-preview", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
+    } catch (caught) {
+      setParticularsError(saveMessage(caught, "Particulars could not be saved."));
     } finally {
       setBusy(null);
     }
@@ -1086,6 +1117,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     outlineChildren,
     detailsQuery.data ?? null,
     failedCodes,
+    dashboard?.disclosure_questions ?? [],
   );
   const previewChildren =
     outlineChildren[sectionId] ?? previewQuery.data?.children ?? [];
@@ -1339,6 +1371,19 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
             ) : null}
           </div>
         </section>
+      ) : null}
+
+      {sectionId === "notes" && detailsQuery.data ? (
+        <ParticularsForm
+          key={JSON.stringify(detailsQuery.data)}
+          details={detailsQuery.data}
+          canEdit={canEditDetails}
+          busy={busy !== null || !writable}
+          activeAnchor={noteId}
+          error={particularsError}
+          saved={particularsSaved}
+          onSave={(next) => void saveParticulars(next)}
+        />
       ) : null}
 
       {sectionId === "notes" && notesQuery.data ? (

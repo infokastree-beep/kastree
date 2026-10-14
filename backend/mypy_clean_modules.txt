@@ -100,6 +100,7 @@ app/services/dashboard_groups.py
 app/services/legal_forms.py
 app/services/disclosure_groups.py
 app/services/note_library.py
+app/services/particulars.py
 app/services/schema_revision.py
 app/services/render_jobs.py
 app/services/report_setup.py

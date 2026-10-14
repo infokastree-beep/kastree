@@ -45,6 +45,7 @@ from app.schemas.company_details import (
     CompilationWrite,
     CurrencyConfirmationResponse,
     DirectorsReportWrite,
+    ParticularsWrite,
 )
 from app.schemas.report_setup import (
     ReportingFrameworkList,
@@ -203,6 +204,7 @@ from app.services.directors_report import (
     DirectorsReportRejected,
     save_directors_report,
 )
+from app.services.particulars import save_particulars
 from app.services.draft_inputs import disclosure_flags, latest_draft
 from app.services.report_setup import (
     framework_list,
@@ -660,6 +662,36 @@ async def put_directors_report(
             body=body,
         )
     except DirectorsReportRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    return company_details_response(company, year_end)
+
+
+@router.put("/{year_end_id}/particulars", response_model=CompanyDetailsResponse)
+async def put_particulars(
+    year_end_id: uuid.UUID,
+    body: ParticularsWrite,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> CompanyDetailsResponse:
+    """Save note particulars and share classes. A viewer cannot."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    await _refuse_closed_year_end(session, org_id=auth.org_id, year_end=year_end)
+    company = await _company_for_year_end(
+        session, year_end=year_end, org_id=auth.org_id
+    )
+    try:
+        await save_particulars(
+            session,
+            org_id=auth.org_id,
+            user_id=auth.user_id,
+            company=company,
+            year_end=year_end,
+            body=body,
+        )
+    except CompanyDetailsRejected as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     return company_details_response(company, year_end)
 

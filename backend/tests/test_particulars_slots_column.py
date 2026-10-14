@@ -1,4 +1,4 @@
-"""Revision x0y1z2a3b4 adds particulars slots. Nothing reads them yet."""
+"""Revision x0y1z2a3b4 adds particulars slots. The model maps them."""
 
 from __future__ import annotations
 
@@ -30,11 +30,15 @@ def test_migration_adds_the_slots_without_a_read_or_grant_all() -> None:
     executable = source.split('"""', 2)[-1]
     assert 'revision: str = "x0y1z2a3b4"' in source
     assert 'down_revision: Union[str, None] = "w9x0y1z2a3"' in source
+    model = _MODEL.read_text()
     for name in _COLUMNS:
         assert f"ADD COLUMN {name} TEXT" in source
         assert f"DROP COLUMN IF EXISTS {name}" in source
-        assert name not in YearEnd.__table__.columns
-        assert name not in _MODEL.read_text()
+        assert name in YearEnd.__table__.columns
+        assert (
+            f"{name}: Mapped[str | None] = mapped_column(\n        Text, nullable=True, default=None\n    )"
+            in model
+        )
     assert "subsequent_events_particulars" not in executable
     assert "share_classes" not in executable
     assert "findraft_table_privileges.sql" in source

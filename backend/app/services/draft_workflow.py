@@ -443,6 +443,7 @@ def _company_detail_checks(
         practice_name=practice_name,
         practice_address=practice_address,
         practice_contact=practice_contact,
+        disclosure_flags=flags,
     )
 
 

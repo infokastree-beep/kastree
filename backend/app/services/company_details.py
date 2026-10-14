@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Literal
@@ -58,6 +59,10 @@ _BLOCKING = frozenset(
         "V-CO-036",
         "V-CO-038",
         "V-CO-039",
+        "V-CO-040",
+        "V-CO-041",
+        "V-CO-042",
+        "V-CO-043",
     }
 )
 _AUDIT_NOT_RECORDED = (
@@ -552,6 +557,10 @@ def company_details_response(
         accounting_period_change_filed=year_end.accounting_period_change_filed,
         compilation_date=year_end.compilation_date,
         compilation_signatory=year_end.compilation_signatory,
+        related_party_particulars=year_end.related_party_particulars,
+        directors_remuneration_particulars=year_end.directors_remuneration_particulars,
+        loan_terms_particulars=year_end.loan_terms_particulars,
+        guarantee_particulars=year_end.guarantee_particulars,
     )
 
 
@@ -851,6 +860,7 @@ def company_detail_checks(
     practice_name: str | None = None,
     practice_address: str | None = None,
     practice_contact: str | None = None,
+    disclosure_flags: Mapping[str, bool] | None = None,
 ) -> tuple[ReconciliationCheck, ...]:
     """Dashboard facts. A missing value is not filled in."""
     names = director_names(company.directors)
@@ -958,6 +968,9 @@ def company_detail_checks(
             subsequent_events_yes=subsequent_events_yes,
         )
     )
+    from app.services.particulars import particulars_checks
+
+    checks.extend(particulars_checks(year_end, disclosure_flags))
     checks.extend(audit_position_checks(year_end))
     checks.append(
         _practice_letterhead_check(practice_name, practice_address, practice_contact)

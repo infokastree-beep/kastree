@@ -1,5 +1,6 @@
 /** Sidebar rows for facts that belong on a document section. */
 
+import type { DisclosureQuestion } from "@/lib/disclosure-groups";
 import type { PreviewChild } from "@/lib/section-preview";
 import type { WorkspaceSection } from "@/lib/workspace-sections";
 
@@ -133,7 +134,7 @@ export function interestsComplete(details: SectionFacts | null): boolean {
   return true;
 }
 
-const OTHER_GATES = new Set(["V-CO-033", "V-CO-034"]);
+const OTHER_GATES = new Set(["V-CO-033"]);
 
 export function otherMattersComplete(
   details: DirectorsReportStored | null,
@@ -227,10 +228,128 @@ export function compilationDateChild(details: SectionFacts | null): PreviewChild
   };
 }
 
+export type ShareClassInput = {
+  class_name: string;
+  authorised_number: number | null;
+  issued_number: number;
+  nominal_value: string;
+};
+
+export type ParticularsStored = {
+  related_party_particulars: string | null;
+  directors_remuneration_particulars: string | null;
+  loan_terms_particulars: string | null;
+  guarantee_particulars: string | null;
+  subsequent_events_particulars: string | null;
+  share_classes: ShareClassInput[];
+};
+
+function answerYes(
+  questions: readonly DisclosureQuestion[],
+  flag: string,
+): boolean {
+  return questions.some(
+    (question) => question.flag_name === flag && question.answer === "yes",
+  );
+}
+
+function yesSlot(
+  questions: readonly DisclosureQuestion[],
+  flags: readonly string[],
+  text: string | null | undefined,
+): InputStatus {
+  const required = flags.some((flag) => answerYes(questions, flag));
+  if (!required) {
+    return "complete";
+  }
+  return mark(recorded(text));
+}
+
+export function notesParticularChildren(
+  details: Partial<ParticularsStored> | null,
+  questions: readonly DisclosureQuestion[],
+): PreviewChild[] {
+  const classes = details?.share_classes ?? [];
+  const shareComplete = classes.some((row) => row.class_name.trim() !== "");
+  return [
+    {
+      id: "share-capital",
+      number: null,
+      label: "Share capital by class",
+      anchor: "share-capital",
+      note_class: "equity",
+      note_class_label: "Equity",
+      status: mark(shareComplete),
+    },
+    {
+      id: "related-parties",
+      number: null,
+      label: "Related parties",
+      anchor: "related-parties",
+      note_class: "other",
+      note_class_label: "Other",
+      status: yesSlot(questions, ["RPT_EXISTS"], details?.related_party_particulars),
+    },
+    {
+      id: "directors-remuneration",
+      number: null,
+      label: "Directors' remuneration",
+      anchor: "directors-remuneration",
+      note_class: "other",
+      note_class_label: "Other",
+      status: yesSlot(
+        questions,
+        ["DIRECTORS_EXIST"],
+        details?.directors_remuneration_particulars,
+      ),
+    },
+    {
+      id: "loans-and-credit",
+      number: null,
+      label: "Loans and credit",
+      anchor: "loans-and-credit",
+      note_class: "creditors",
+      note_class_label: "Creditors",
+      status: yesSlot(
+        questions,
+        ["CONNECTED_LOANS", "DIRECTOR_LOAN_AGREEMENTS"],
+        details?.loan_terms_particulars,
+      ),
+    },
+    {
+      id: "guarantees",
+      number: null,
+      label: "Guarantees",
+      anchor: "guarantees",
+      note_class: "other",
+      note_class_label: "Other",
+      status: yesSlot(
+        questions,
+        ["GUARANTEES_EXIST", "DIRECTOR_GUARANTEES", "DIRECTOR_GUARANTEE_AGREEMENTS"],
+        details?.guarantee_particulars,
+      ),
+    },
+    {
+      id: "subsequent-events",
+      number: null,
+      label: "Post-balance-sheet events",
+      anchor: "subsequent-events",
+      note_class: "other",
+      note_class_label: "Other",
+      status: yesSlot(
+        questions,
+        ["SUBSEQUENT_EVENTS"],
+        details?.subsequent_events_particulars,
+      ),
+    },
+  ];
+}
+
 export function sidebarInputChildren(
   outline: Readonly<Record<string, PreviewChild[]>>,
   details: SectionFacts | null,
   failedCodes: readonly string[],
+  questions: readonly DisclosureQuestion[] = [],
 ): Record<string, PreviewChild[]> {
   const next: Record<string, PreviewChild[]> = { ...outline };
   const directors = directorsReportChildren(details, failedCodes);
@@ -243,6 +362,10 @@ export function sidebarInputChildren(
     (child) => child.id !== "compilation-date",
   );
   next.compilation = [...compilation, compilationDateChild(details)];
+  const notes = notesParticularChildren(details, questions);
+  const noteIds = new Set(notes.map((child) => child.id));
+  const existing = (outline.notes ?? []).filter((child) => !noteIds.has(child.id));
+  next.notes = [...existing, ...notes];
   return next;
 }
 

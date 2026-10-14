@@ -361,6 +361,37 @@ class ShareClassFact:
 
 
 @dataclass(frozen=True)
+class NoteParticulars:
+    """Preparer text printed under the pack sentence. Blank keeps the placeholder."""
+
+    related_party: str = ""
+    directors_remuneration: str = ""
+    loan_terms: str = ""
+    guarantees: str = ""
+    subsequent_events: str = ""
+
+
+def note_particulars_from_year_end(year_end: YearEnd) -> NoteParticulars:
+    def text(value: str | None) -> str:
+        return "" if value is None else value.strip()
+
+    return NoteParticulars(
+        related_party=text(year_end.related_party_particulars),
+        directors_remuneration=text(year_end.directors_remuneration_particulars),
+        loan_terms=text(year_end.loan_terms_particulars),
+        guarantees=text(year_end.guarantee_particulars),
+        subsequent_events=text(year_end.subsequent_events_particulars),
+    )
+
+
+_LOANS_CITATION = (
+    "Loans and credit are disclosed in accordance with sections 307 and 308 "
+    "of the Companies Act 2014."
+)
+_LOANS_BLANK = "[loans and credit particulars not recorded]"
+
+
+@dataclass(frozen=True)
 class StatementEntity:
     name: str
     registered_office: str
@@ -1143,6 +1174,39 @@ def _note_inclusion(template: dict[str, object], ctx: dict[str, object]) -> str:
     return "yes" if affirmed else "no"
 
 
+def _filled_particular(key: str, slots: NoteParticulars) -> str:
+    """Stored prose replaces the placeholder. A blank stays the placeholder."""
+    if key == "guarantee_particulars" and slots.guarantees:
+        return slots.guarantees
+    if key == "subsequent_events" and slots.subsequent_events:
+        return slots.subsequent_events
+    return _PARTICULARS[key]
+
+
+def _flag_yes(ctx: dict[str, object], name: str) -> bool:
+    return ctx.get(name) is True
+
+
+def _append_loan_particulars(
+    parts: list[str],
+    ctx: dict[str, object],
+    slots: NoteParticulars,
+) -> None:
+    """The pack sentence stays. The citation and the particular follow it."""
+    loans_yes = _flag_yes(ctx, "CONNECTED_LOANS") or _flag_yes(
+        ctx, "DIRECTOR_LOAN_AGREEMENTS"
+    )
+    if slots.loan_terms or loans_yes:
+        detail = slots.loan_terms or _LOANS_BLANK
+        parts.append(f"{_LOANS_CITATION} {detail}")
+    director_guarantee = _flag_yes(ctx, "DIRECTOR_GUARANTEES") or _flag_yes(
+        ctx, "DIRECTOR_GUARANTEE_AGREEMENTS"
+    )
+    if director_guarantee:
+        detail = slots.guarantees or _PARTICULARS["guarantee_particulars"]
+        parts.append(detail)
+
+
 def _with_particulars(context: dict[str, str]) -> dict[str, str]:
     filled = dict(context)
     for key, placeholder in _PARTICULARS.items():
@@ -1204,8 +1268,14 @@ def _compose_notes(
     first_financial_period: bool = False,
     share_classes: tuple[ShareClassFact, ...] = (),
     library: NoteLibrary | None = None,
+    particulars: NoteParticulars | None = None,
 ) -> tuple[tuple[StatementNote, ...], tuple[RoundingFlag, ...], dict[str, int]]:
     stored = library if library is not None else NoteLibrary((), ())
+    slots = particulars if particulars is not None else NoteParticulars()
+    if slots.related_party:
+        context["rpt_table"] = f" {slots.related_party}"
+    if slots.directors_remuneration:
+        context["directors_agg_table"] = f" {slots.directors_remuneration}"
     commitment_template = templates.get("N9_COMMITMENTS")
     commitments = (
         commitment_print(commitment_template, disclosure_ctx, stored)
@@ -1247,7 +1317,7 @@ def _compose_notes(
             and commitments.mode == "blocks"
         ):
             parts = [
-                f"{block.heading}\n{_PARTICULARS[block.placeholder_key]}"
+                f"{block.heading}\n{_filled_particular(block.placeholder_key, slots)}"
                 for block in commitments.blocks
             ]
             notes.append(
@@ -1290,6 +1360,8 @@ def _compose_notes(
                 and not _names_absent_statement(clause)
             ):
                 parts.append(clause)
+        if code == "N5_LOANS":
+            _append_loan_particulars(parts, disclosure_ctx, slots)
         human = _human_title(code, template.get("title"))
         lines: tuple[NoteLine, ...] = ()
         fa_rows: tuple[FixedAssetRow, ...] = ()
@@ -1536,6 +1608,7 @@ def _render_draft(
     audit_exemption_claimed: bool | None = None,
     compilation_date: str = "",
     compilation_signatory: str = "",
+    note_particulars: NoteParticulars | None = None,
 ) -> StatutoryStatements:
     directory = (
         pack_dir(pack_id, pack_version)
@@ -1585,6 +1658,7 @@ def _render_draft(
         first_financial_period=first_financial_period,
         share_classes=share_classes,
         library=library,
+        particulars=note_particulars,
     )
     omitted_blocks, added_blocks = effective_ids(ctx, library)
     checks = tuple(report.checks) + library_notices(ctx, library)
@@ -1722,6 +1796,7 @@ def build_statutory_statements(
     audit_exemption_claimed: bool | None = None,
     compilation_date: str = "",
     compilation_signatory: str = "",
+    note_particulars: NoteParticulars | None = None,
 ) -> StatutoryStatements:
     """Render a DRAFT only when every critical check has passed.
 
@@ -1771,6 +1846,7 @@ def build_statutory_statements(
             audit_exemption_claimed=audit_exemption_claimed,
             compilation_date=compilation_date,
             compilation_signatory=compilation_signatory,
+            note_particulars=note_particulars,
         )
     except (OSError, ValueError, KeyError) as exc:
         return _withheld(report, build_error=str(exc))
@@ -1875,6 +1951,7 @@ async def statements_for_version(
         if year_end.compilation_signatory is None
         else year_end.compilation_signatory,
         share_classes=share_classes_from_company(company),
+        note_particulars=note_particulars_from_year_end(year_end),
         note_library=None if draft is None else draft.note_library,
         audit_exemption_claimed=year_end.audit_exemption_claimed,
     )
@@ -1981,6 +2058,7 @@ async def statements_for_adopted(
         if year_end.compilation_signatory is None
         else year_end.compilation_signatory,
         share_classes=share_classes_from_company(company),
+        note_particulars=note_particulars_from_year_end(year_end),
         note_library=None if draft is None else draft.note_library,
         audit_exemption_claimed=year_end.audit_exemption_claimed,
     )
