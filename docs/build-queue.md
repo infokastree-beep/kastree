@@ -14,7 +14,7 @@ Status of the current build queue. Wording that is drawn from a public source st
 | 8. Particulars slots | done. The four columns and share capital by class are typed inputs on Notes. A Yes with an empty slot blocks FINAL |
 | 9. Period message | done |
 | 10. Dashboard work queue | done. Shared formatter and the key figures card |
-| 11. Prior-year comparatives | design merged in #113. Build after items 10 and 8, migration first |
+| 11. Prior-year comparatives | migration y1z2a3b4c5 adds the source columns and does not map them. Readers wait until /health matches |
 | 12. Trial balance re-adopt | design merged in #111. Build after item 11, migration first |
 | 13. Roll forward | waiting |
 | 14. Drafts list | waiting |
