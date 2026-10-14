@@ -117,6 +117,7 @@ class AdoptableTrialBalance:
     period_end: date
     currency: str | None
     account_count: int
+    file_name: str | None
 
 
 def _subline_gap(product1_line: str, account_name: str) -> str:
@@ -367,6 +368,7 @@ async def list_adoptable_trial_balances(
                 period_end=tb.period_end,
                 currency=tb.currency,
                 account_count=len(carried),
+                file_name=tb.original_filename,
             )
         )
     return adoptable
@@ -382,6 +384,7 @@ class TrialBalancePageFacts:
     uploaded_at: datetime | None
     account_count: int | None
     currency: str | None
+    file_name: str | None
 
 
 def _blank_trial_balance_page() -> TrialBalancePageFacts:
@@ -392,6 +395,7 @@ def _blank_trial_balance_page() -> TrialBalancePageFacts:
         uploaded_at=None,
         account_count=None,
         currency=None,
+        file_name=None,
     )
 
 
@@ -404,8 +408,8 @@ async def read_trial_balance_page(
     """The adopted trial balance, or a blank page when none is selected.
 
     ``account_count`` is the carried-row count
-    ``list_adoptable_trial_balances`` already uses. The original upload name
-    is not a column on ``trial_balances``.
+    ``list_adoptable_trial_balances`` already uses. ``file_name`` is the
+    stored upload name. A null name stays null.
     """
     await aset_rls_org_id(session, org_id)
     trial_balance_id = year_end.adopted_trial_balance_id
@@ -427,6 +431,7 @@ async def read_trial_balance_page(
         uploaded_at=tb.created_at,
         account_count=len(carried),
         currency=tb.currency,
+        file_name=tb.original_filename,
     )
 
 

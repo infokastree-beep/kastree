@@ -3,8 +3,8 @@
 import Link from "next/link";
 import {
   FACE_DATES_SENTENCE,
-  FILE_NAME_NOT_RECORDED,
   NO_TRIAL_BALANCE_SELECTED,
+  recordedFileName,
   formatPeriodDate,
   formatUploadedAt,
   statementsHref,
@@ -51,7 +51,7 @@ export function TrialBalancePanel({ page }: { page: TrialBalancePage }) {
         <div>
           <dt className="text-ink-secondary">File name</dt>
           <dd className="text-ink" data-testid="statutory-trial-balance-file">
-            {page.file_name ?? FILE_NAME_NOT_RECORDED}
+            {recordedFileName(page.file_name)}
           </dd>
         </div>
         <div>

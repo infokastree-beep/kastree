@@ -35,6 +35,21 @@ export type TrialBalancePage = {
   file_name: string | null;
 };
 
+export function recordedFileName(fileName: string | null): string {
+  if (fileName == null || fileName === "") return FILE_NAME_NOT_RECORDED;
+  return fileName;
+}
+
+export function adoptableTrialBalanceLabel(item: {
+  period_end: string;
+  file_name: string | null;
+  account_count: number;
+  currency: string | null;
+}): string {
+  const currency = item.currency ? ` · ${item.currency}` : "";
+  return `${item.period_end} · ${recordedFileName(item.file_name)} · ${item.account_count} accounts${currency}`;
+}
+
 export function statementsHref(trialBalanceId: string): string {
   return `/dashboard/${encodeURIComponent(trialBalanceId)}/statements?tab=Statutory`;
 }

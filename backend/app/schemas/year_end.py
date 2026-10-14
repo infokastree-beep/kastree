@@ -816,6 +816,7 @@ class AdoptableTrialBalanceOut(BaseModel):
     period_end: date
     currency: str | None
     account_count: int
+    file_name: str | None
 
 
 class AdoptableTrialBalanceList(BaseModel):
@@ -825,7 +826,7 @@ class AdoptableTrialBalanceList(BaseModel):
 
 
 class TrialBalancePageResponse(BaseModel):
-    """Read-only Inputs page. ``file_name`` stays null until a name is stored."""
+    """Read-only Inputs page. ``file_name`` is null when the upload name was not stored."""
 
     model_config = ConfigDict(extra="forbid")
 

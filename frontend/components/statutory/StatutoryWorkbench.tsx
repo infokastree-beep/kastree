@@ -9,6 +9,7 @@ import { downloadDraftPdf, pdfBlockReason } from "@/lib/draft-pdf";
 import { formatStoredAmount } from "@/lib/currency";
 import { severityTag } from "@/lib/dashboard-groups";
 import { statutoryWorkspaceOpen, type StatutoryUser } from "@/lib/statutory-gate";
+import { adoptableTrialBalanceLabel } from "@/lib/trial-balance-page";
 import { StatutoryOptIn } from "@/components/statutory/StatutoryOptIn";
 import { confidenceBadgeClass, formatConfidence } from "@/lib/utils";
 import type { ClientListResponse, CompanyListResponse, ICompany } from "@/types";
@@ -30,6 +31,7 @@ type AdoptableTrialBalance = {
   period_end: string;
   currency: string | null;
   account_count: number;
+  file_name: string | null;
 };
 
 type CarriedMapping = {
@@ -544,8 +546,7 @@ export function StatutoryWorkbench() {
               <option value="">Select a trial balance</option>
               {adoptableQuery.data?.items.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.period_end} · {item.account_count} accounts
-                  {item.currency ? ` · ${item.currency}` : ""}
+                  {adoptableTrialBalanceLabel(item)}
                 </option>
               ))}
             </select>

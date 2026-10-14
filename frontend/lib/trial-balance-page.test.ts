@@ -11,7 +11,9 @@ import {
   FACE_DATES_SENTENCE,
   FILE_NAME_NOT_RECORDED,
   NO_TRIAL_BALANCE_SELECTED,
+  adoptableTrialBalanceLabel,
   formatPeriodDate,
+  recordedFileName,
   formatUploadedAt,
   statementsHref,
 } from "./trial-balance-page.ts";
@@ -41,7 +43,33 @@ describe("trial balance page", () => {
       "utf8",
     );
     assert.match(panel, /NO_TRIAL_BALANCE_SELECTED/);
-    assert.match(panel, /FILE_NAME_NOT_RECORDED/);
+    assert.match(panel, /recordedFileName/);
+    assert.equal(recordedFileName(null), "File name was not recorded.");
+    assert.equal(recordedFileName(""), "File name was not recorded.");
+    assert.equal(recordedFileName("year-end.xlsx"), "year-end.xlsx");
+    assert.equal(
+      adoptableTrialBalanceLabel({
+        period_end: "2026-12-31",
+        file_name: "year-end.xlsx",
+        account_count: 24,
+        currency: "EUR",
+      }),
+      "2026-12-31 · year-end.xlsx · 24 accounts · EUR",
+    );
+    assert.equal(
+      adoptableTrialBalanceLabel({
+        period_end: "2026-12-31",
+        file_name: null,
+        account_count: 2,
+        currency: null,
+      }),
+      "2026-12-31 · File name was not recorded. · 2 accounts",
+    );
+    const workbench = readFileSync(
+      join(here, "../components/statutory/StatutoryWorkbench.tsx"),
+      "utf8",
+    );
+    assert.match(workbench, /adoptableTrialBalanceLabel/);
     assert.match(panel, /FACE_DATES_SENTENCE/);
     assert.match(panel, /Open in Statements/);
     assert.equal(panel.includes("method: \"POST\""), false);

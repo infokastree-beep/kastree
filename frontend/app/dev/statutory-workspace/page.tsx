@@ -379,7 +379,7 @@ export default function StatutoryWorkspacePreviewPage() {
                 uploaded_at: "2026-03-02T10:15:00Z",
                 account_count: 24,
                 currency: "EUR",
-                file_name: null,
+                file_name: "year-end.xlsx",
               }}
             />
           </div>

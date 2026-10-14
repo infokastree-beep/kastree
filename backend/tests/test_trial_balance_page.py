@@ -1,4 +1,4 @@
-"""Read-only Inputs > Trial balance page. No adopt and no file-name column."""
+"""Read-only Inputs > Trial balance page. The stored upload name is shown."""
 
 from __future__ import annotations
 
@@ -12,7 +12,13 @@ from sqlalchemy import text
 from app.db import SyncSessionLocal, set_rls_org_id
 from app.models.trial_balance import TrialBalance
 from app.services.org_provisioning import provision_first_signup
-from tests.conftest import auth_headers, make_access_token
+from tests.conftest import (
+    _grant_append_only_delete,
+    _revoke_append_only_delete,
+    auth_headers,
+    balanced_tb_xlsx_bytes,
+    make_access_token,
+)
 from tests.test_adopted_trial_balance import _CASH_PAIR, _insert_tb
 from tests.test_organisations_api import _add_org_user
 from tests.test_role_enforcement import _set_role
@@ -72,6 +78,12 @@ async def test_trial_balance_page_reads_the_adopted_file(
         rows=_CASH_PAIR,
         period_start=date(2026, 1, 1),
     )
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        stored_tb = session.get(TrialBalance, tb_id)
+        assert stored_tb is not None
+        stored_tb.original_filename = "year-end.xlsx"
+        session.commit()
     adopted = await api_client.post(
         f"/year-ends/{year_end_id}/adopt-trial-balance",
         headers=headers,
@@ -96,7 +108,8 @@ async def test_trial_balance_page_reads_the_adopted_file(
     assert body["account_count"] == listed.json()["items"][0]["account_count"]
     assert body["account_count"] == 2
     assert body["currency"] == "EUR"
-    assert body["file_name"] is None
+    assert body["file_name"] == "year-end.xlsx"
+    assert listed.json()["items"][0]["file_name"] == "year-end.xlsx"
     uploaded = datetime.fromisoformat(str(body["uploaded_at"]).replace("Z", "+00:00"))
     assert uploaded == _stored_uploaded_at(org_id, tb_id)
     for amount_key in ("debit", "credit", "amount", "net_balance"):
@@ -162,6 +175,7 @@ async def test_trial_balance_page_is_hidden_from_another_organisation(
     assert hidden.json()["detail"] == "Year end not found"
     with SyncSessionLocal() as session:
         set_rls_org_id(session, other_org_id)
+        granted = _grant_append_only_delete(session)
         session.execute(
             text("DELETE FROM users WHERE org_id = :oid"),
             {"oid": str(other_org_id)},
@@ -170,4 +184,39 @@ async def test_trial_balance_page_is_hidden_from_another_organisation(
             text("DELETE FROM organisations WHERE id = :oid"),
             {"oid": str(other_org_id)},
         )
+        _revoke_append_only_delete(session, granted)
         session.commit()
+
+
+@pytest.mark.asyncio
+async def test_upload_stores_the_safe_file_name(
+    api_client: AsyncClient,
+    provisioned_org: dict[str, object],
+) -> None:
+    headers = auth_headers(provisioned_org["token"])
+    upload = await api_client.post(
+        "/trial-balances/upload",
+        data={
+            "company_id": str(provisioned_org["company_id"]),
+            "period_end": "2026-08-31",
+            "currency": "EUR",
+        },
+        files={
+            "file": (
+                "../../secret/accounts.xlsx",
+                balanced_tb_xlsx_bytes(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        headers=headers,
+    )
+    assert upload.status_code == 202, upload.text
+    tb_id = uuid.UUID(str(upload.json()["tb_id"]))
+    org_id = provisioned_org["org_id"]
+    assert isinstance(org_id, uuid.UUID)
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        stored = session.get(TrialBalance, tb_id)
+        assert stored is not None
+        assert stored.original_filename == "accounts.xlsx"
+        assert "secret" not in (stored.file_url or "")
