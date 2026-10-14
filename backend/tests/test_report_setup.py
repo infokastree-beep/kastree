@@ -49,6 +49,7 @@ def test_sidebar_sections_follow_the_reporting_framework() -> None:
         "Directors' responsibilities statement",
         "Compilation report",
         "Income statement",
+        "Statement of income and retained earnings",
         "Statement of comprehensive income",
         "Statement of financial position",
         "Statement of changes in equity",
@@ -522,6 +523,7 @@ def test_pack_declares_section_locks_and_defaults() -> None:
         "directors-responsibilities",
         "compilation",
         "income",
+        "income-retained",
         "oci",
         "sofp",
         "socie",
@@ -532,7 +534,7 @@ def test_pack_declares_section_locks_and_defaults() -> None:
     locked = sorted(
         section_id for section_id, rule in catalogue.items() if rule["lock"] == "locked"
     )
-    assert locked == ["income", "notes", "sofp"]
+    assert locked == ["income", "income-retained", "notes", "sofp"]
     assert catalogue["income"]["default"] == "on"
     assert catalogue["oci"]["default"] == "engine"
     assert catalogue["cash-flow"]["default"] == "off"

@@ -76,7 +76,7 @@ _ENGINE_HEADINGS = {
     "audit-exemption": "Audit exemption",
 }
 _NOTES_FOOTER = frozenset({"income", "sofp", "notes"})
-_STATEMENTS = frozenset({"income", "sofp", "notes"})
+_STATEMENTS = frozenset({"income", "sofp", "notes", "income-retained"})
 
 
 @dataclass(frozen=True)
@@ -284,6 +284,12 @@ def compose_pdf_parts(
         rounding=setup.rounding,
         note_numbers=numbers,
     )
+    retained_rows = _face_rows(
+        document.retained_earnings,
+        comparative=comparative,
+        rounding=setup.rounding,
+        note_numbers=numbers,
+    )
     built: dict[str, dict[str, object]] = {
         "income": _statement_section(
             anchor="income",
@@ -316,6 +322,16 @@ def compose_pdf_parts(
             ],
         },
     }
+    if retained_rows:
+        built["income-retained"] = _statement_section(
+            anchor="income-retained",
+            heading="Statement of income and retained earnings",
+            period_phrase=statement_period_phrase(start, end),
+            period_note=period_note,
+            compliance="",
+            columns=income_columns,
+            rows=retained_rows,
+        )
     sections = _composed_sections(
         document,
         saved=saved,
@@ -805,6 +821,8 @@ def _composed_sections(
     engine = _engine_pages(document)
     planned: list[tuple[str, str]] = []
     for section_id, label in _pack_order():
+        if section_id == "income-retained" and section_id not in built:
+            continue
         included = _section_included(section_id, saved, catalogue)
         if section_id == "compilation":
             if included and section_id in engine:

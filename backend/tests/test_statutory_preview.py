@@ -20,7 +20,12 @@ from app.services.statutory_compose import (
     extract_section_html,
     preview_document,
 )
-from app.services.statutory_preview import NOT_RENDERABLE, SECTION_ABSENT
+from app.services.statutory_preview import (
+    NOT_RENDERABLE,
+    RETAINED_ABSENT,
+    SECTION_ABSENT,
+    absent_retained_section,
+)
 from tests.conftest import auth_headers, make_access_token
 from tests.test_adopted_trial_balance import _insert_tb
 from tests.test_findraft_tenant_isolation import _delete_org, _provision
@@ -28,6 +33,24 @@ from tests.test_organisations_api import _add_org_user
 from tests.test_statutory_statements import _golden
 
 _FORBIDDEN = "You don't have permission to access this resource."
+
+
+def test_omitted_retained_earnings_preview_is_not_in_the_golden_pdf() -> None:
+    document = _golden()
+    assert document.html is not None
+    html, _sections = compose_pdf_parts(
+        document,
+        report_setup=_setup(),
+        period_start=date(2025, 1, 1),
+        period_end=date(2025, 12, 31),
+        first_financial_period=False,
+    )
+    assert extract_section_html(html, "income-retained") is None
+    preview = preview_document(html, absent_retained_section())
+    assert RETAINED_ABSENT in preview
+    assert "Statement of income and retained earnings" not in html
+    assert document.net_assets == Decimal("455812.00")
+    assert document.profit == Decimal("157650.00")
 
 
 def _setup() -> dict[str, object]:

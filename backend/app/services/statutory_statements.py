@@ -476,6 +476,7 @@ class StatutoryStatements:
     tax_charge: Decimal | None = None
     corporation_tax: Decimal | None = None
     audit_exemption_statements: tuple[str, ...] = ()
+    retained_earnings: tuple[StatementRow, ...] = ()
 
 
 class _ExternalFetchRefused(BaseException):
@@ -1422,6 +1423,85 @@ def _note_view(note: StatementNote, *, comparative: bool) -> dict[str, object]:
     }
 
 
+_RETAINED_HEADING = "Statement of income and retained earnings"
+_RETAINED_OPENING = "Retained earnings at the beginning of the period"
+_RETAINED_PROFIT = "Profit for the financial year"
+_RETAINED_DIVIDENDS = "Dividends"
+_RETAINED_CLOSING = "Retained earnings at the end of the period"
+
+
+def _face_amount_row(rows: tuple[StatementRow, ...], label: str) -> StatementRow | None:
+    return next((row for row in rows if row.label == label), None)
+
+
+def _equity_unchanged(
+    rows: tuple[StatementRow, ...], label: str, *, first_financial_period: bool
+) -> bool:
+    """Share capital and share premium did not move. A missing line refuses."""
+    row = _face_amount_row(rows, label)
+    if row is None:
+        return False
+    prior = Decimal("0") if first_financial_period or row.prior is None else row.prior
+    return row.current == prior
+
+
+def retained_earnings_rows(
+    *,
+    checks: tuple[ReconciliationCheck, ...],
+    sofp: tuple[StatementRow, ...],
+    income: tuple[StatementRow, ...],
+    profit: Decimal,
+    dividends: Decimal,
+    prior_retained_earnings: Decimal,
+    first_financial_period: bool,
+) -> tuple[StatementRow, ...]:
+    """The four V-RE-001 figures, when that check passes and equity did not move.
+
+    Opening retained earnings, profit, dividends, and closing retained
+    earnings. Dividends are shown as a deduction so the column foots.
+    Share capital or share premium that changed leaves the statement out.
+    The income statement and the statement of financial position stay.
+    """
+    from findraft.engine.money import money
+
+    if not any(item.code == "V-RE-001" and item.passed for item in checks):
+        return ()
+    if not _equity_unchanged(
+        sofp, "Called up share capital", first_financial_period=first_financial_period
+    ):
+        return ()
+    if not _equity_unchanged(
+        sofp, "Share premium account", first_financial_period=first_financial_period
+    ):
+        return ()
+    closing = _face_amount_row(sofp, "Profit and loss account")
+    profit_row = _face_amount_row(income, _RETAINED_PROFIT)
+    if closing is None or profit_row is None or profit_row.current != profit:
+        return ()
+    opening = money(-prior_retained_earnings)
+    dividend_amount = money(dividends)
+    if opening + profit - dividend_amount != closing.current:
+        return ()
+    return (
+        StatementRow(label=_RETAINED_OPENING, current=opening, prior=None),
+        StatementRow(
+            label=_RETAINED_PROFIT,
+            current=profit,
+            prior=None if first_financial_period else profit_row.prior,
+        ),
+        StatementRow(
+            label=_RETAINED_DIVIDENDS,
+            current=money(-dividend_amount),
+            prior=None,
+        ),
+        StatementRow(
+            label=_RETAINED_CLOSING,
+            current=closing.current,
+            prior=None if first_financial_period else closing.prior,
+        ),
+    )
+
+
 def _render_html(
     *,
     entity: StatementEntity,
@@ -1439,6 +1519,7 @@ def _render_html(
     signing_directors: str = "",
     statement_order: tuple[str, ...] = ("income", "sofp", "notes"),
     exemption_statements: tuple[str, ...] = (),
+    retained_earnings: tuple[StatementRow, ...] = (),
 ) -> str:
     """Build the section list the template walks. The engine rows stay intact."""
     start = parse_iso_date(period_start)
@@ -1465,6 +1546,7 @@ def _render_html(
 
     sofp_rows = _face(sofp)
     income_rows = _face(income)
+    retained_rows = _face(retained_earnings) if retained_earnings else []
     sections: list[dict[str, object]] = [
         {
             "kind": "prose",
@@ -1510,6 +1592,20 @@ def _render_html(
     }
     for anchor in statement_order:
         sections.append(rendered[anchor])
+        if anchor == "income" and retained_rows:
+            sections.append(
+                {
+                    "kind": "statement",
+                    "anchor": "income-retained",
+                    "heading": _RETAINED_HEADING,
+                    "period_phrase": period_phrase,
+                    "period_note": period_note,
+                    "compliance": "",
+                    "columns": columns,
+                    "rows": retained_rows,
+                    "show_notes": False,
+                }
+            )
     return render_statutory_html(
         company_name=entity.name,
         sections=sections,
@@ -1619,6 +1715,7 @@ def _render_draft(
     compilation_date: str = "",
     compilation_signatory: str = "",
     note_particulars: NoteParticulars | None = None,
+    prior_retained_earnings: Decimal = Decimal("0"),
 ) -> StatutoryStatements:
     directory = (
         pack_dir(pack_id, pack_version)
@@ -1710,6 +1807,17 @@ def _render_draft(
         audit_note=exemption_note,
     )
     figures = _income_figures(income, aggregated)
+    retained = retained_earnings_rows(
+        checks=tuple(report.checks),
+        sofp=sofp_rows,
+        income=income_rows,
+        profit=sofp_profit,
+        dividends=dividend_amount
+        if isinstance(dividend_amount, Decimal)
+        else Decimal("0"),
+        prior_retained_earnings=prior_retained_earnings,
+        first_financial_period=first_financial_period,
+    )
     total_assets = sofp.get("TOTAL_ASSETS")
     balance_sheet_total = total_assets if isinstance(total_assets, Decimal) else None
     html = _render_html(
@@ -1728,6 +1836,7 @@ def _render_draft(
         signing_directors=signing_directors,
         statement_order=_statement_order(manifest),
         exemption_statements=exemption,
+        retained_earnings=retained,
     )
     return StatutoryStatements(
         watermark=watermark,
@@ -1753,6 +1862,7 @@ def _render_draft(
         tax_charge=figures[2],
         corporation_tax=figures[3],
         audit_exemption_statements=exemption,
+        retained_earnings=retained,
     )
 
 
@@ -1857,6 +1967,7 @@ def build_statutory_statements(
             compilation_date=compilation_date,
             compilation_signatory=compilation_signatory,
             note_particulars=note_particulars,
+            prior_retained_earnings=prior_retained_earnings,
         )
     except (OSError, ValueError, KeyError) as exc:
         return _withheld(report, build_error=str(exc))

@@ -18,7 +18,7 @@ Status of the current build queue. Wording that is drawn from a public source st
 | 12. Trial balance re-adopt | done. Readers map adjustments_basis_trial_balance_id. Preview lists each journal. Final, locked, and frozen refuse. Pack date, overlap, and contiguity apply. Uploads block a span longer than 18 months |
 | 13. Roll forward | done. Start next year copies the latest final column onto the next period. The dialog lists what carries and what the preparer must do |
 | 14. Drafts list | done. Version number, status, locked or frozen. Open stays on ?section= |
-| 15. Statement of income and retained earnings | waiting |
+| 15. Statement of income and retained earnings | done. Printed from the retained-earnings roll-forward when that check passes and share capital and share premium are unchanged |
 | Notes, after item 15, in this order: dividends; taxation; stocks; defined-contribution pension; controlling party; government grants; provisions other than tax; deferred tax; fair-value designation; more than one statement line; combined format lines; set-off. Blocks that are not required for a small entity are labelled "optional for a small entity" and default off. Required rows keep today's behaviour. Deferred tax and provisions are ranked above the rare rows | approved, not started |
 | Optional cash flow statement, after those notes | approved, build after item 15 |
 | Larger frameworks (medium and large, full FRS 102) and prepared for audit | approved, not started |
