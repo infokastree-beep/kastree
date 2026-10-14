@@ -15,6 +15,7 @@ tests/test_compilation_report.py
 tests/test_company_legal_form.py
 tests/test_directors_report_items.py
 tests/test_particulars.py
+tests/test_prior_year_comparatives.py
 tests/test_contact_api.py
 tests/test_country_of_incorporation.py
 tests/test_draft_locking.py

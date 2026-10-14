@@ -209,6 +209,22 @@ class YearEnd(Base):
     currency_confirmed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Comparative source. NULL until a member confirms one. Revision y1z2a3b4c5.
+    comparative_source: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, default=None
+    )
+    comparative_source_trial_balance_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, default=None
+    )
+    comparative_source_year_end_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, default=None
+    )
+    comparative_source_draft_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, default=None
+    )
+    comparative_source_sha256: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

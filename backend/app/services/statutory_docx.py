@@ -239,6 +239,9 @@ def _write_composed(
                 _write_signature(document, signature)
             continue
         if kind == "notes":
+            period_note = section.get("period_note")
+            if isinstance(period_note, str) and period_note:
+                add_paragraph(escape_export_text(period_note))
             columns = _strings(section.get("columns"), "columns")
             for note in _mappings(section.get("notes"), "notes"):
                 title = _required_text(note, "title").strip()

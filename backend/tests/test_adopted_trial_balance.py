@@ -391,10 +391,11 @@ async def test_adopted_golden_keeps_engine_figures_without_a_statutory_copy(
         f"/year-ends/{year_end_id}/prior-year",
         headers=headers,
         json={
+            "matches_filed_accounts": True,
             "lines": [
-                {"canonical_line": "FA_PLANT_COST", "amount": "111400.00"},
+                {"canonical_line": "CASH", "amount": "322062.00"},
                 {"canonical_line": "RETAINED_EARNINGS", "amount": "-322062.00"},
-            ]
+            ],
         },
     )
     assert prior.status_code == 200, prior.text
@@ -1730,7 +1731,11 @@ async def _ready_golden(
         f"/year-ends/{year_end_id}/prior-year",
         headers=headers,
         json={
-            "lines": [{"canonical_line": "RETAINED_EARNINGS", "amount": "-322062.00"}]
+            "matches_filed_accounts": True,
+            "lines": [
+                {"canonical_line": "CASH", "amount": "322062.00"},
+                {"canonical_line": "RETAINED_EARNINGS", "amount": "-322062.00"},
+            ],
         },
     )
     assert prior.status_code == 200, prior.text

@@ -137,7 +137,7 @@ _FIXES: dict[str, CheckPresentation] = {
     "V-NOTE-003": CheckPresentation("Disclosures", CheckFix("notes")),
     "V-GATE-001": CheckPresentation(
         "Comparatives",
-        CheckFix("review", anchor="statutory-first-period-gate"),
+        CheckFix("prior-year"),
     ),
     "V-CMP-001": CheckPresentation("Comparatives", CheckFix("sofp")),
     "V-CMP-002": CheckPresentation("Comparatives", CheckFix("sofp")),

@@ -1,4 +1,4 @@
-"""Revision y1z2a3b4c5 adds the comparative source. The model does not map it."""
+"""Revision y1z2a3b4c5 adds the comparative source. The model maps it."""
 
 from __future__ import annotations
 
@@ -35,8 +35,8 @@ def test_migration_adds_the_source_without_a_read_or_grant_all() -> None:
     for name in _COLUMNS:
         assert f"ADD COLUMN {name} " in source
         assert f"DROP COLUMN IF EXISTS {name}" in source
-        assert name not in YearEnd.__table__.columns
-        assert name not in model
+        assert name in YearEnd.__table__.columns
+        assert f"{name}:" in model
     assert "findraft_table_privileges.sql" in source
     assert "findraft_year_ends_comparative_source_check" in source
     assert "'product1_tb', 'first_period', 'manual', 'final_snapshot'" in source
@@ -49,7 +49,7 @@ def test_migration_adds_the_source_without_a_read_or_grant_all() -> None:
 
 
 def test_code_head_is_the_prior_year_source_revision() -> None:
-    assert code_heads() == ("y1z2a3b4c5",)
+    assert code_heads() == ("z2a3b4c5d6",)
 
 
 def test_columns_are_nullable_with_no_server_default() -> None:

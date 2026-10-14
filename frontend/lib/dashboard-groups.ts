@@ -146,7 +146,7 @@ const FIXES: Record<string, { area: string; fix: CheckFix }> = {
   "V-NOTE-003": { area: "Disclosures", fix: { section: "notes" } },
   "V-GATE-001": {
     area: "Comparatives",
-    fix: { section: "review", anchor: "statutory-first-period-gate" },
+    fix: { section: "prior-year" },
   },
   "V-CMP-001": { area: "Comparatives", fix: { section: "sofp" } },
   "V-CMP-002": { area: "Comparatives", fix: { section: "sofp" } },

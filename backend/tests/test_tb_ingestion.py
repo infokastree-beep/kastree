@@ -268,11 +268,20 @@ async def test_prior_year_gate_blocks_until_manual_entry_or_first_period(
     confirmed = await api_client.post(
         f"/year-ends/{year_end_id}/prior-year",
         headers=headers,
-        json={"lines": [{"canonical_line": "CASH", "amount": "10.00"}]},
+        json={
+            "matches_filed_accounts": True,
+            "lines": [
+                {"canonical_line": "CASH", "amount": "10.00"},
+                {"canonical_line": "SHARE_CAPITAL", "amount": "-10.00"},
+            ],
+        },
     )
     assert confirmed.status_code == 200, confirmed.text
     assert confirmed.json()["prior_year_validated"] is True
-    assert confirmed.json()["lines"] == [{"canonical_line": "CASH", "amount": "10.00"}]
+    assert confirmed.json()["lines"] == [
+        {"canonical_line": "CASH", "amount": "10.00"},
+        {"canonical_line": "SHARE_CAPITAL", "amount": "-10.00"},
+    ]
 
     opened = await api_client.get(
         f"/year-ends/{year_end_id}/reconciliation-gate",
@@ -284,9 +293,19 @@ async def test_prior_year_gate_blocks_until_manual_entry_or_first_period(
     again = await api_client.post(
         f"/year-ends/{year_end_id}/prior-year",
         headers=headers,
-        json={"lines": [{"canonical_line": "CASH", "amount": "11.00"}]},
+        json={
+            "matches_filed_accounts": True,
+            "lines": [
+                {"canonical_line": "CASH", "amount": "11.00"},
+                {"canonical_line": "SHARE_CAPITAL", "amount": "-11.00"},
+            ],
+        },
     )
-    assert again.status_code == 409, again.text
+    assert again.status_code == 200, again.text
+    assert again.json()["lines"] == [
+        {"canonical_line": "CASH", "amount": "11.00"},
+        {"canonical_line": "SHARE_CAPITAL", "amount": "-11.00"},
+    ]
 
 
 @pytest.mark.asyncio

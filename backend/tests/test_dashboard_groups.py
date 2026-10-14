@@ -53,7 +53,8 @@ def test_fix_targets_match_the_review_pages() -> None:
         assert shown.fix.section == "review"
         assert shown.fix.anchor == "audit-exemption-conditions"
     assert present_check("V-DISC-001").fix.section == "disclosures"
-    assert present_check("V-GATE-001").fix.anchor == "statutory-first-period-gate"
+    assert present_check("V-GATE-001").fix.section == "prior-year"
+    assert present_check("V-GATE-001").fix.anchor is None
     assert present_check("V-CMP-001").fix.section == "sofp"
     assert present_check("V-SEC-006").fix.section == "sections-setup"
     assert present_check("V-SEC-007").fix.section == "report-setup"

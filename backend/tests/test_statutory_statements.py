@@ -81,6 +81,7 @@ def _golden(
     note_library: object | None = None,
     audit_exemption_claimed: bool | None = None,
     note_particulars: NoteParticulars | None = None,
+    first_financial_period: bool = False,
 ) -> StatutoryStatements:
     return build_statutory_statements(
         prior_year_validated=True,
@@ -101,6 +102,7 @@ def _golden(
         note_library=note_library,
         audit_exemption_claimed=audit_exemption_claimed,
         note_particulars=note_particulars,
+        first_financial_period=first_financial_period,
     )
 
 
@@ -424,10 +426,11 @@ async def _ready_golden(
         f"/year-ends/{year_end_id}/prior-year",
         headers=headers,
         json={
+            "matches_filed_accounts": True,
             "lines": [
-                {"canonical_line": "FA_PLANT_COST", "amount": "111400.00"},
+                {"canonical_line": "CASH", "amount": "322062.00"},
                 {"canonical_line": "RETAINED_EARNINGS", "amount": "-322062.00"},
-            ]
+            ],
         },
     )
     assert prior.status_code == 200, prior.text

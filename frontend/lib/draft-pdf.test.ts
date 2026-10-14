@@ -36,7 +36,7 @@ describe("pdfBlockReason", () => {
           },
         ],
       }),
-      "Mark the first financial period first",
+      "Choose comparative figures or mark the first financial period",
     );
     assert.equal(
       pdfBlockReason({
