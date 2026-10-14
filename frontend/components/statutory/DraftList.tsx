@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
+import { StartNextYear } from "@/components/statutory/StartNextYear";
 
 type DraftRow = {
   draft_id: string;
@@ -36,7 +37,13 @@ function marks(row: DraftRow): string {
   return parts.length > 0 ? parts.join(", ") : "—";
 }
 
-export function DraftList({ yearEndId }: { yearEndId: string }) {
+export function DraftList({
+  yearEndId,
+  canStartNextYear,
+}: {
+  yearEndId: string;
+  canStartNextYear: boolean;
+}) {
   const { getToken } = useAuth();
   const page = useQuery({
     queryKey: ["draft-list", yearEndId],
@@ -55,6 +62,7 @@ export function DraftList({ yearEndId }: { yearEndId: string }) {
     );
   }
   const rows = page.data.drafts;
+  const hasFinal = rows.some((row) => row.status === "final");
 
   return (
     <section className="space-y-4" data-testid="draft-list">
@@ -64,6 +72,9 @@ export function DraftList({ yearEndId }: { yearEndId: string }) {
           Versions for this year end. Opening a draft stays on the workspace.
         </p>
       </header>
+      {hasFinal ? (
+        <StartNextYear yearEndId={yearEndId} canStart={canStartNextYear} />
+      ) : null}
       {rows.length === 0 ? (
         <p className="text-sm text-ink">This year end has no draft versions yet.</p>
       ) : (

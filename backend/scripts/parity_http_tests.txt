@@ -17,6 +17,7 @@ tests/test_directors_report_items.py
 tests/test_particulars.py
 tests/test_prior_year_comparatives.py
 tests/test_drafts_list.py
+tests/test_start_next_year.py
 tests/test_contact_api.py
 tests/test_country_of_incorporation.py
 tests/test_draft_locking.py

@@ -71,6 +71,8 @@ from app.schemas.year_end import (
     PriorYearCheckOut,
     PriorYearConfirmRequest,
     PriorYearFinalRequest,
+    StartNextYearRequest,
+    StartNextYearResponse,
     PriorYearLineOut,
     PriorYearPageResponse,
     PriorYearResponse,
@@ -142,6 +144,7 @@ from app.services.prior_year import (
     mark_first_financial_period,
     read_prior_year,
     reconciliation_gate,
+    start_next_year,
     undo_first_financial_period,
 )
 from app.services.adopted_trial_balance import (
@@ -1609,6 +1612,42 @@ async def confirm_prior_year_from_final(
     except PriorYearRejected as exc:
         _raise_prior_year(exc)
     return _prior_year_page(view)
+
+
+@router.post(
+    "/{year_end_id}/start-next-year",
+    response_model=StartNextYearResponse,
+)
+async def post_start_next_year(
+    year_end_id: uuid.UUID,
+    body: StartNextYearRequest,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> StartNextYearResponse:
+    """Create the next period from a final draft. Confirm false writes nothing."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        opened = await start_next_year(
+            session,
+            org_id=auth.org_id,
+            user_id=auth.user_id,
+            year_end=year_end,
+            confirm=body.confirm,
+        )
+    except PriorYearRejected as exc:
+        _raise_prior_year(exc)
+    return StartNextYearResponse(
+        carries_over=list(opened.carries_over),
+        preparer_must=list(opened.preparer_must),
+        period_start=opened.period_start,
+        period_end=opened.period_end,
+        source_draft_id=opened.source_draft_id,
+        year_end_id=opened.year_end_id,
+        draft_id=opened.draft_id,
+    )
 
 
 @router.post(
