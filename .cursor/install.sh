@@ -28,6 +28,20 @@ cd "$REPO_ROOT"
 
 echo "==> [1/7] Installing system packages"
 export DEBIAN_FRONTEND=noninteractive
+# Port 80 to the Ubuntu archives accepts the TCP connection and then sends no
+# bytes in Cloud Agent VMs. HTTPS to the same hosts responds, so rewrite the
+# distro sources before update. Idempotent if they are already https.
+if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+  sudo sed -i \
+    -e 's|http://archive.ubuntu.com|https://archive.ubuntu.com|g' \
+    -e 's|http://security.ubuntu.com|https://security.ubuntu.com|g' \
+    /etc/apt/sources.list.d/ubuntu.sources
+fi
+sudo tee /etc/apt/apt.conf.d/99-findraft-timeouts >/dev/null <<'EOF'
+Acquire::http::Timeout "30";
+Acquire::https::Timeout "30";
+Acquire::Retries "3";
+EOF
 sudo apt-get update -qq
 sudo apt-get install -y -qq \
   postgresql postgresql-contrib \
