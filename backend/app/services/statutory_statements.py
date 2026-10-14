@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import aset_rls_org_id
 from app.models.company import Company
 from app.models.organisation import Organisation
+from app.services.directors_report import dividend_note_paragraphs
 from app.services.draft_inputs import adjusted_for_draft, latest_draft
 from app.services.statutory_display import (
     as_at_phrase,
@@ -1393,6 +1394,37 @@ def _compose_notes(
     return tuple(notes), tuple(flags), numbers
 
 
+def _with_dividend_note(
+    notes: tuple[StatementNote, ...],
+    note_numbers: dict[str, int],
+    *,
+    interim: Decimal | None,
+    recommended: Decimal | None,
+    currency: str,
+) -> tuple[tuple[StatementNote, ...], dict[str, int]]:
+    """Append 1AD.35 when both recorded amounts exist. A blank stays off the note."""
+    paragraphs = dividend_note_paragraphs(interim, recommended, currency=currency)
+    if paragraphs is None:
+        return notes, note_numbers
+    number = len(notes) + 1
+    code = "N10_DIVIDENDS"
+    numbered = dict(note_numbers)
+    numbered[code] = number
+    return (
+        notes
+        + (
+            StatementNote(
+                code=code,
+                title=f"{number}. Dividends",
+                body="\n\n".join(paragraphs),
+                lines=(),
+                fa_rows=(),
+            ),
+        ),
+        numbered,
+    )
+
+
 def _note_view(note: StatementNote, *, comparative: bool) -> dict[str, object]:
     """Heading, intro, and a short table are marked so the PDF keeps them together."""
     lines = [
@@ -1716,6 +1748,8 @@ def _render_draft(
     compilation_signatory: str = "",
     note_particulars: NoteParticulars | None = None,
     prior_retained_earnings: Decimal = Decimal("0"),
+    interim_dividend: Decimal | None = None,
+    recommended_dividend: Decimal | None = None,
 ) -> StatutoryStatements:
     directory = (
         pack_dir(pack_id, pack_version)
@@ -1752,7 +1786,7 @@ def _render_draft(
     policies = _policy_blocks(_load_policies(directory), ctx, library)
     sofp_rows = _statement_rows(sofp)
     income_rows = _statement_rows(income)
-    notes, flags, note_numbers = _compose_notes(
+    composed_notes, flags, note_numbers = _compose_notes(
         templates=templates,
         selected=selected,
         context=_note_context(entity, policies),
@@ -1766,6 +1800,13 @@ def _render_draft(
         share_classes=share_classes,
         library=library,
         particulars=note_particulars,
+    )
+    notes, note_numbers = _with_dividend_note(
+        composed_notes,
+        note_numbers,
+        interim=interim_dividend,
+        recommended=recommended_dividend,
+        currency=entity.currency,
     )
     omitted_blocks, added_blocks = effective_ids(ctx, library)
     checks = tuple(report.checks) + library_notices(ctx, library)
@@ -1917,6 +1958,8 @@ def build_statutory_statements(
     compilation_date: str = "",
     compilation_signatory: str = "",
     note_particulars: NoteParticulars | None = None,
+    interim_dividend: Decimal | None = None,
+    recommended_dividend: Decimal | None = None,
 ) -> StatutoryStatements:
     """Render a DRAFT only when every critical check has passed.
 
@@ -1968,6 +2011,8 @@ def build_statutory_statements(
             compilation_signatory=compilation_signatory,
             note_particulars=note_particulars,
             prior_retained_earnings=prior_retained_earnings,
+            interim_dividend=interim_dividend,
+            recommended_dividend=recommended_dividend,
         )
     except (OSError, ValueError, KeyError) as exc:
         return _withheld(report, build_error=str(exc))
@@ -2075,6 +2120,8 @@ async def statements_for_version(
         note_particulars=note_particulars_from_year_end(year_end),
         note_library=None if draft is None else draft.note_library,
         audit_exemption_claimed=year_end.audit_exemption_claimed,
+        interim_dividend=year_end.interim_dividend,
+        recommended_dividend=year_end.recommended_dividend,
     )
 
 
@@ -2182,4 +2229,6 @@ async def statements_for_adopted(
         note_particulars=note_particulars_from_year_end(year_end),
         note_library=None if draft is None else draft.note_library,
         audit_exemption_claimed=year_end.audit_exemption_claimed,
+        interim_dividend=year_end.interim_dividend,
+        recommended_dividend=year_end.recommended_dividend,
     )

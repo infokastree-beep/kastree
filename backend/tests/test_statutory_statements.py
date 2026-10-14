@@ -82,6 +82,8 @@ def _golden(
     audit_exemption_claimed: bool | None = None,
     note_particulars: NoteParticulars | None = None,
     first_financial_period: bool = False,
+    interim_dividend: Decimal | None = None,
+    recommended_dividend: Decimal | None = None,
 ) -> StatutoryStatements:
     return build_statutory_statements(
         prior_year_validated=True,
@@ -103,6 +105,8 @@ def _golden(
         audit_exemption_claimed=audit_exemption_claimed,
         note_particulars=note_particulars,
         first_financial_period=first_financial_period,
+        interim_dividend=interim_dividend,
+        recommended_dividend=recommended_dividend,
     )
 
 
@@ -827,3 +831,80 @@ def test_golden_omits_retained_earnings_when_share_capital_changed() -> None:
     assert "Statement of income and retained earnings" not in document.html
     assert document.net_assets == Decimal("455812.00")
     assert document.profit == Decimal("157650.00")
+
+
+def test_dividend_note_uses_recorded_amounts_not_the_trial_balance_line() -> None:
+    """1AD.35 prints a recorded nil or the recorded amounts. No new total."""
+    from dataclasses import replace
+    from datetime import date
+
+    from app.services.beta import WORDING_BANNER
+    from app.services.statutory_compose import compose_pdf_html, docx_presentation
+
+    blank = _golden()
+    assert "N10_DIVIDENDS" not in {note.code for note in blank.notes}
+    half = _golden(interim_dividend=Decimal("1000.00"))
+    assert "N10_DIVIDENDS" not in {note.code for note in half.notes}
+
+    nil = _golden(
+        interim_dividend=Decimal("0.00"),
+        recommended_dividend=Decimal("0.00"),
+    )
+    nil_note = next(note for note in nil.notes if note.code == "N10_DIVIDENDS")
+    assert nil_note.title == f"{len(nil.notes)}. Dividends"
+    assert nil_note.body == (
+        "No dividend was paid during the financial year and the directors "
+        "do not recommend a dividend."
+    )
+    assert "24,000" not in nil_note.body
+    assert "1AD" not in nil_note.body
+    assert nil.net_assets == Decimal("455812.00")
+    assert nil.profit == Decimal("157650.00")
+    assert nil.retained_earnings == ()
+
+    paid = _golden(
+        interim_dividend=Decimal("1000.50"),
+        recommended_dividend=Decimal("-10.00"),
+    )
+    paid_note = next(note for note in paid.notes if note.code == "N10_DIVIDENDS")
+    assert (
+        "An interim dividend of €1,000.50 was paid during the financial year."
+        in paid_note.body
+    )
+    assert "A dividend of (€10.00) is recommended." in paid_note.body
+    assert "24,000" not in paid_note.body
+    assert "1AD" not in paid_note.body
+    assert paid.net_assets == Decimal("455812.00")
+    assert paid.profit == Decimal("157650.00")
+
+    one_nil = _golden(
+        interim_dividend=Decimal("0"),
+        recommended_dividend=Decimal("250.00"),
+    )
+    one_nil_note = next(note for note in one_nil.notes if note.code == "N10_DIVIDENDS")
+    assert (
+        "No interim dividend was paid during the financial year." in one_nil_note.body
+    )
+    assert "A dividend of €250.00 is recommended." in one_nil_note.body
+    assert "24,000" not in one_nil_note.body
+
+    composed = compose_pdf_html(
+        paid,
+        report_setup=None,
+        period_start=date(2025, 1, 1),
+        period_end=date(2025, 12, 31),
+        first_financial_period=False,
+        currency="EUR",
+    )
+    assert "€1,000.50" in composed
+    assert "optional for a small entity" not in composed
+    header, _signature = docx_presentation(
+        replace(paid, watermark="FINAL"),
+        report_setup=None,
+        approval_date=None,
+        signing_directors=[],
+    )
+    assert header == f"DRAFT {WORDING_BANNER}"
+    assert WORDING_BANNER == (
+        "Statutory wording not yet reviewed by a qualified reviewer"
+    )
