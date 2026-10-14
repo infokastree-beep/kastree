@@ -49,7 +49,7 @@ def test_migration_adds_the_source_without_a_read_or_grant_all() -> None:
 
 
 def test_code_head_is_the_prior_year_source_revision() -> None:
-    assert code_heads() == ("z2a3b4c5d6",)
+    assert code_heads() == ("n0o1p2q3r4",)
 
 
 def test_columns_are_nullable_with_no_server_default() -> None:
