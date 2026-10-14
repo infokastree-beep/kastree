@@ -153,8 +153,7 @@ script's `findraft` URLs:
 - `DATABASE_URL` — `postgresql+asyncpg://findraft:…`
 - `DATABASE_URL_SYNC` — `postgresql://findraft:…`
 
-Keep the original `postgres` superuser URL in a separate secret (e.g.
-`DATABASE_SUPERUSER_URL`) for one-off admin only: Stripe RLS bootstrap,
+Keep the original `postgres` superuser URL for one-off admin only: Stripe RLS bootstrap,
 Alembic migrations, and re-running this provision script. **Never** point the
 running app at the superuser connection.
 
@@ -195,7 +194,7 @@ If the script tag loads (`clerk.kastree.ie`) but `/sign-in` never hydrates, the 
 
 For **Vercel preview** deployments (`*.vercel.app`), use **development** Clerk keys (`pk_test_` / `sk_test_`) per Clerk’s [preview environment guide](https://clerk.com/docs/guides/development/deployment/vercel) — or use a subdomain of your production domain. To auth across a completely different domain (not a subdomain), Clerk requires [satellite domains](https://clerk.com/docs/guides/dashboard/dns-domains/satellite-domains) — overkill for this setup.
 
-Vercel env vars for the frontend (Production):
+Frontend variables (Production):
 
 | Variable | Notes |
 |----------|--------|
@@ -243,13 +242,12 @@ fix is deployed:
 
 # Automated on every push to GitHub main (.github/workflows/verify-production-frontend.yml):
 # polls www.kastree.ie for <meta name="kastree-git-sha"> matching the pushed SHA.
-# Optional repo secret VERCEL_DEPLOY_HOOK_URL triggers a Production redeploy first.
+# The deploy hook secret triggers a Production redeploy first.
 # Manual equivalent:
 #   ./scripts/verify_production_frontend_sha.sh "$(git rev-parse HEAD)"
 
 # If Vercel production is stale after github is in sync (marker 404 / wrong SHA),
-# trigger a redeploy:
-#   export VERCEL_DEPLOY_HOOK_URL='...'   # Vercel → Settings → Git → Deploy Hooks
+# trigger a redeploy with the deploy hook secret:
 #   ./scripts/trigger_vercel_deploy.sh
 # Or: Vercel dashboard → Deployments → latest → Redeploy → clear build cache.
 
@@ -274,8 +272,8 @@ not sufficient on its own. Two checks:
 1. **Automated (every push to GitHub main):**
    `.github/workflows/verify-production-frontend.yml` polls
    `https://www.kastree.ie` for `<meta name="kastree-git-sha">` and **fails the
-   workflow** if it does not match `github.sha` within ~15 minutes. Set repo
-   secret `VERCEL_DEPLOY_HOOK_URL` so the workflow can kick a Production
+   workflow** if it does not match `github.sha` within ~15 minutes. Provide the
+   deploy hook secret so the workflow can kick a Production
    redeploy before polling. Manual:
    `./scripts/verify_production_frontend_sha.sh "$(git rev-parse HEAD)"`.
 2. **Marker smoke (optional):** `verify_vercel_deploy_marker.sh` for a specific

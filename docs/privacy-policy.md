@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **Last updated:** 7 September 2026  
-**Contact:** [infokastree@gmail.com](mailto:infokastree@gmail.com)
+**Contact:** the practice owner
 
 This policy describes how Kastree handles data on kastree.ie and in the Kastree
 product as it works today. It is not legal advice. If anything here becomes
@@ -126,7 +126,7 @@ Depending on applicable law (including UK/EU GDPR), you may have rights to
 access, correct, or delete personal data, to object to or restrict certain
 processing, and to complain to a supervisory authority (in Ireland, the
 [Data Protection Commission](https://www.dataprotection.ie/en/individuals/exercising-your-rights/raising-concern-commission)).
-Email [infokastree@gmail.com](mailto:infokastree@gmail.com).
+Email the practice owner.
 
 Clerk and the logged-in product may use cookies or similar storage that are
 necessary for authentication and app function. Those are separate from the

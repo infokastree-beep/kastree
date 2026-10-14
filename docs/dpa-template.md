@@ -19,7 +19,7 @@ This Data Processing Agreement (“**DPA**”) is entered into between:
 1. **Customer** — the accounting practice or other organisation that uses
    Kastree and determines the purposes and means of processing Client Personal
    Data (the “**Controller**”); and  
-2. **Kastree** — contact: [infokastree@gmail.com](mailto:infokastree@gmail.com)
+2. **Kastree** — contact: the practice owner
    (the “**Processor**”).
 
 (Collectively, the “**Parties**”.)
@@ -253,7 +253,7 @@ Protection Law requires otherwise for specific provisions.
 
 ## 13. Contact
 
-**Processor privacy / DPA contact:** [infokastree@gmail.com](mailto:infokastree@gmail.com)
+**Processor privacy / DPA contact:** the practice owner
 
 ---
 
@@ -266,7 +266,7 @@ Protection Law requires otherwise for specific provisions.
 | Title | | |
 | Date | | |
 | Entity name | | Kastree |
-| Email | | infokastree@gmail.com |
+| Email | | the practice owner |
 
 ---
 

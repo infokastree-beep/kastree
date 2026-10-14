@@ -8,7 +8,7 @@
 
 **Draft version:** 0.1  
 **Draft date:** 7 September 2026  
-**Intended contact:** [infokastree@gmail.com](mailto:infokastree@gmail.com)  
+**Intended contact:** the practice owner  
 **Intended site:** https://www.kastree.ie  
 
 ---
@@ -260,7 +260,7 @@ wording for EU/UK practice customers.
 ## 12. Contact
 
 Questions about these Terms:  
-**Email:** [infokastree@gmail.com](mailto:infokastree@gmail.com)  
+**Email:** the practice owner  
 **Service:** https://www.kastree.ie  
 
 ---
