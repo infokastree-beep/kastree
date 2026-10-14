@@ -132,6 +132,37 @@ def test_taxation_note_is_optional_and_defaults_off() -> None:
         )
 
 
+def test_stocks_carrying_amount_is_optional_and_defaults_off() -> None:
+    from app.services.note_library import (
+        LibraryRejected,
+        NoteLibrary,
+        _catalogue,
+        _reason,
+        _sentence,
+        apply_library_action,
+    )
+
+    spec = next(row for row in _catalogue() if row.block_id == "stocks_carrying_amount")
+    assert spec.title == "Stocks carrying amount"
+    assert spec.row_kind == "Policy"
+    empty = NoteLibrary((), ())
+    sentence = _sentence(spec, "disclosure_no", {})
+    assert "optional for a small entity" in sentence
+    assert "stocks_carrying_amount" not in sentence
+    added = apply_library_action(
+        empty, block_id="stocks_carrying_amount", action="add", ctx=_ANSWERED_NO
+    )
+    assert added.added == ("stocks_carrying_amount",)
+    assert _reason(spec, _ANSWERED_NO, added, parent_pending=False) == "added"
+    with pytest.raises(LibraryRejected, match="this block is not included"):
+        apply_library_action(
+            empty,
+            block_id="stocks_carrying_amount",
+            action="omit",
+            ctx=_ANSWERED_NO,
+        )
+
+
 def test_null_library_keeps_the_golden_notes_and_figures() -> None:
     document = _golden()
     assert document.net_assets == Decimal("455812.00")

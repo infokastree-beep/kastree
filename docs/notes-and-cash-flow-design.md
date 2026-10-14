@@ -3,7 +3,9 @@
 Status: approved, with the amendments in this note. Dividends (rank 1) is
 built from the recorded interim and recommended amounts. Taxation (rank 2)
 is built, optional for a small entity, and left out until the practice
-adds it. The other rows in this note are not built. Wording drawn from a
+adds it. Stocks (rank 3) is built the same way: one line under the
+existing policy, left out until the practice adds it. The other rows
+in this note are not built. Wording drawn from a
 public source stays "researched (public source)".
 That is not a reviewer sign-off. The workspace label stays "source not
 confirmed". The banner stays "Statutory wording not yet reviewed by a
