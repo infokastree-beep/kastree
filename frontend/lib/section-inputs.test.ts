@@ -12,6 +12,7 @@ import {
   directorsReportChildren,
   directorsReportWrite,
   interestsComplete,
+  notesParticularChildren,
   otherMattersComplete,
   recordsComplete,
   sidebarInputChildren,
@@ -82,8 +83,6 @@ describe("section input Fix links", () => {
       "V-CO-032":
         "/year-ends/year-1/draft?section=directors-report&note=share-interests",
       "V-CO-033":
-        "/year-ends/year-1/draft?section=directors-report&note=other-matters",
-      "V-CO-034":
         "/year-ends/year-1/draft?section=directors-report&note=other-matters",
       "V-CO-035":
         "/year-ends/year-1/draft?section=directors-report&note=other-matters",
@@ -173,6 +172,50 @@ describe("section input completeness", () => {
     assert.equal(children.compilation?.at(-1)?.id, "compilation-date");
     assert.equal(children.compilation?.[0]?.id, "approval");
     assert.equal(children["directors-report"]?.[0]?.anchor, "accounting-records");
+  });
+});
+
+describe("notes particulars rows", () => {
+  it("marks a Yes with an empty slot missing and a recorded class complete", () => {
+    const questions = [
+      {
+        flag_name: "RPT_EXISTS",
+        question: "Were there related-party transactions?",
+        group: "Related parties",
+        note: "N7_RPT",
+        answer: "yes" as const,
+      },
+      {
+        flag_name: "DIRECTORS_EXIST",
+        question: "Did any directors serve?",
+        group: "Other",
+        note: "N0_ENTITY",
+        answer: "no" as const,
+      },
+    ];
+    const rows = notesParticularChildren(
+      {
+        related_party_particulars: null,
+        directors_remuneration_particulars: null,
+        loan_terms_particulars: null,
+        guarantee_particulars: null,
+        subsequent_events_particulars: "A lease was signed.",
+        share_classes: [
+          {
+            class_name: "Ordinary",
+            authorised_number: null,
+            issued_number: 7,
+            nominal_value: "1.50",
+          },
+        ],
+      },
+      questions,
+    );
+    const byId = Object.fromEntries(rows.map((row) => [row.id, row.status]));
+    assert.equal(byId["share-capital"], "complete");
+    assert.equal(byId["related-parties"], "missing");
+    assert.equal(byId["directors-remuneration"], "complete");
+    assert.equal(byId["subsequent-events"], "complete");
   });
 });
 

@@ -50,6 +50,10 @@ export type CompanyDetails = {
   signing_directors: string[];
   compilation_date?: string | null;
   compilation_signatory?: string | null;
+  related_party_particulars?: string | null;
+  directors_remuneration_particulars?: string | null;
+  loan_terms_particulars?: string | null;
+  guarantee_particulars?: string | null;
 } & DirectorsReportFacts;
 
 export type CompanyDetailsWrite = {

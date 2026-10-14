@@ -25,6 +25,7 @@ const GROUP_ORDER = [
   "Practice letterhead",
   "Compilation report",
   "Disclosures",
+  "Notes",
   "Comparatives",
   "Sections",
   "Setup",
@@ -84,8 +85,24 @@ const FIXES: Record<string, { area: string; fix: CheckFix }> = {
     fix: { section: "directors-report", note: "other-matters" },
   },
   "V-CO-034": {
-    area: "Company details",
-    fix: { section: "directors-report", note: "other-matters" },
+    area: "Notes",
+    fix: { section: "notes", note: "subsequent-events" },
+  },
+  "V-CO-040": {
+    area: "Notes",
+    fix: { section: "notes", note: "related-parties" },
+  },
+  "V-CO-041": {
+    area: "Notes",
+    fix: { section: "notes", note: "directors-remuneration" },
+  },
+  "V-CO-042": {
+    area: "Notes",
+    fix: { section: "notes", note: "loans-and-credit" },
+  },
+  "V-CO-043": {
+    area: "Notes",
+    fix: { section: "notes", note: "guarantees" },
   },
   "V-CO-035": {
     area: "Company details",
@@ -169,6 +186,10 @@ const COMPANY_BLOCKING = new Set([
   "V-CO-036",
   "V-CO-038",
   "V-CO-039",
+  "V-CO-040",
+  "V-CO-041",
+  "V-CO-042",
+  "V-CO-043",
 ]);
 
 export function presentCheck(check: ReviewCheck): { area: string; fix: CheckFix } {

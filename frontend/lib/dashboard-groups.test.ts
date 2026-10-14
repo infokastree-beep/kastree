@@ -141,6 +141,11 @@ describe("review groups", () => {
     assert.equal(stopsFinalise(failed("V-CO-029", "WARNING")), true);
     assert.equal(stopsFinalise(failed("V-CO-037", "WARNING")), true);
     assert.equal(stopsFinalise(failed("V-CO-039", "WARNING")), true);
+    assert.equal(stopsFinalise(failed("V-CO-040", "WARNING")), true);
+    assert.equal(
+      fixHref("year-1", presentCheck(failed("V-CO-040", "WARNING")).fix),
+      "/year-ends/year-1/draft?section=notes&note=related-parties",
+    );
     assert.equal(severityTag(failed("V-CO-039", "WARNING")), "Blocker");
     assert.equal(severityTag(failed("V-CO-012", "NOTICE")), "Notice");
     assert.equal(severityTag(failed("V-DISC-001", "CRITICAL")), "Blocker");

@@ -164,6 +164,20 @@ class YearEnd(Base):
     subsequent_events_particulars: Mapped[str | None] = mapped_column(
         Text, nullable=True, default=None
     )
+    # Preparer particulars. NULL is not recorded. The note engine does not
+    # calculate them. Revision x0y1z2a3b4.
+    related_party_particulars: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
+    directors_remuneration_particulars: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
+    loan_terms_particulars: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
+    guarantee_particulars: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
     research_development_relevant: Mapped[bool | None] = mapped_column(
         Boolean, nullable=True, default=None
     )

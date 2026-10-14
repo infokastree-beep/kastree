@@ -83,6 +83,19 @@ class ApprovalWrite(BaseModel):
     signing_directors: list[str] = Field(default_factory=list)
 
 
+class ParticularsWrite(BaseModel):
+    """Typed note particulars. A blank stays not recorded. Share classes are inputs only."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    related_party_particulars: str | None = None
+    directors_remuneration_particulars: str | None = None
+    loan_terms_particulars: str | None = None
+    guarantee_particulars: str | None = None
+    subsequent_events_particulars: str | None = None
+    share_classes: list[ShareClassWrite] = Field(default_factory=list)
+
+
 class CompilationWrite(BaseModel):
     """Practice compilation date and signatory. Not the directors' approval."""
 
@@ -202,3 +215,8 @@ class CompanyDetailsResponse(BaseModel):
     # Optional so a final snapshot saved before these facts still validates.
     compilation_date: date | None = None
     compilation_signatory: str | None = None
+    # Optional so a final snapshot saved before these slots still validates.
+    related_party_particulars: str | None = None
+    directors_remuneration_particulars: str | None = None
+    loan_terms_particulars: str | None = None
+    guarantee_particulars: str | None = None

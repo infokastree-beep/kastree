@@ -16,6 +16,7 @@ from app.main import app
 from app.services.fa_import_worker import process_fa_version
 from app.services.source_storage import LocalPracticeStorage, get_source_storage
 from app.services.statutory_statements import (
+    NoteParticulars,
     StatementEntity,
     ShareClassFact,
     StatementRow,
@@ -79,6 +80,7 @@ def _golden(
     share_classes: tuple[ShareClassFact, ...] = (),
     note_library: object | None = None,
     audit_exemption_claimed: bool | None = None,
+    note_particulars: NoteParticulars | None = None,
 ) -> StatutoryStatements:
     return build_statutory_statements(
         prior_year_validated=True,
@@ -98,6 +100,7 @@ def _golden(
         share_classes=share_classes,
         note_library=note_library,
         audit_exemption_claimed=audit_exemption_claimed,
+        note_particulars=note_particulars,
     )
 
 
