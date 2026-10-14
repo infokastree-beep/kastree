@@ -171,9 +171,19 @@ async def test_start_next_year_asks_then_copies_the_final_column(
 
 
 def test_teardown_does_not_leave_findraft_delete_on_archived_records() -> None:
-    """Runs after a provisioned-org teardown in this file's other test."""
+    """The parity login has no DELETE. The backend job's findraft is a superuser."""
     _print_role()
     with SyncSessionLocal() as session:
+        superuser = session.execute(
+            text(
+                "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = 'findraft'"
+            )
+        ).scalar_one()
+        if superuser:
+            pytest.skip(
+                "This job's findraft login is a superuser. "
+                "The parity job checks the grant."
+            )
         allowed = session.execute(
             text(
                 "SELECT has_table_privilege("
