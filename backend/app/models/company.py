@@ -65,6 +65,8 @@ class Company(Base):
     country_of_incorporation: Mapped[str | None] = mapped_column(
         String(2), nullable=True
     )
+    # No server default. Existing rows stay NULL until a person records a form.
+    legal_form: Mapped[str | None] = mapped_column(String(64), nullable=True)
     industry: Mapped[str | None] = mapped_column(String, nullable=True)
     # Letterhead. industry stays the Product 1 field and is not reused here.
     business_address: Mapped[str | None] = mapped_column(String, nullable=True)

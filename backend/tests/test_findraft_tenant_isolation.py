@@ -228,7 +228,7 @@ def _provision(suffix: str) -> dict:
         session.flush()
         company = Company(
             client_id=client.id,
-            name=f"Company {suffix}",
+            name=f"Company {suffix} Limited",
             functional_currency="EUR",
         )
         session.add(company)
@@ -725,6 +725,176 @@ def test_app_role_sees_only_its_practice(
             assert answer_orgs == [first["org_id"]]
             assert operation_orgs == [first["org_id"]]
             assert second["year_end_id"] not in year_ids
+        finally:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+
+
+def test_app_role_writes_size_inputs_only_inside_its_practice(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        try:
+            _as_app_role(session)
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(first["org_id"])},
+            )
+            employees = session.execute(
+                text(
+                    """
+                    UPDATE findraft_year_ends
+                    SET size_current_turnover = 100000.00,
+                        size_current_balance_sheet = 35000.00,
+                        size_current_employees = 677
+                    WHERE id = :id
+                    RETURNING size_current_employees
+                    """
+                ),
+                {"id": str(first["year_end_id"])},
+            ).scalar_one()
+            assert employees == 677
+            crossed = session.execute(
+                text(
+                    """
+                    UPDATE findraft_year_ends
+                    SET size_current_employees = 1
+                    WHERE id = :id
+                    """
+                ),
+                {"id": str(second["year_end_id"])},
+            )
+            assert crossed.rowcount == 0
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(second["org_id"])},
+            )
+            hidden = session.execute(
+                text(
+                    """
+                    SELECT size_current_turnover
+                    FROM findraft_year_ends
+                    WHERE id = :id
+                    """
+                ),
+                {"id": str(first["year_end_id"])},
+            ).first()
+            assert hidden is None
+        finally:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+
+
+def test_app_role_writes_the_audit_exemption_only_inside_its_practice(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        try:
+            _as_app_role(session)
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(first["org_id"])},
+            )
+            claimed = session.execute(
+                text(
+                    """
+                    UPDATE findraft_year_ends
+                    SET audit_exemption_claimed = FALSE
+                    WHERE id = :id
+                    RETURNING audit_exemption_claimed
+                    """
+                ),
+                {"id": str(first["year_end_id"])},
+            ).scalar_one()
+            assert claimed is False
+            crossed = session.execute(
+                text(
+                    """
+                    UPDATE findraft_year_ends
+                    SET audit_exemption_claimed = TRUE
+                    WHERE id = :id
+                    """
+                ),
+                {"id": str(second["year_end_id"])},
+            )
+            assert crossed.rowcount == 0
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(second["org_id"])},
+            )
+            hidden = session.execute(
+                text(
+                    """
+                    SELECT audit_exemption_claimed
+                    FROM findraft_year_ends
+                    WHERE id = :id
+                    """
+                ),
+                {"id": str(first["year_end_id"])},
+            ).first()
+            assert hidden is None
+        finally:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+
+
+def test_app_role_writes_the_audit_exemption_conditions_only_inside_its_practice(
+    two_practices: tuple[dict, dict],
+) -> None:
+    first, second = two_practices
+    with SyncSessionLocal() as session:
+        try:
+            _as_app_role(session)
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(first["org_id"])},
+            )
+            recorded = session.execute(
+                text(
+                    """
+                    UPDATE findraft_year_ends
+                    SET audit_exemption_not_excluded = TRUE,
+                        audit_exemption_no_member_notice = TRUE,
+                        audit_exemption_returns_not_late = FALSE
+                    WHERE id = :id
+                    RETURNING audit_exemption_not_excluded,
+                              audit_exemption_no_member_notice,
+                              audit_exemption_returns_not_late
+                    """
+                ),
+                {"id": str(first["year_end_id"])},
+            ).one()
+            assert recorded.audit_exemption_not_excluded is True
+            assert recorded.audit_exemption_no_member_notice is True
+            assert recorded.audit_exemption_returns_not_late is False
+            crossed = session.execute(
+                text(
+                    """
+                    UPDATE findraft_year_ends
+                    SET audit_exemption_not_excluded = FALSE
+                    WHERE id = :id
+                    """
+                ),
+                {"id": str(second["year_end_id"])},
+            )
+            assert crossed.rowcount == 0
+            session.execute(
+                text("SELECT set_config('app.current_org_id', :org, true)"),
+                {"org": str(second["org_id"])},
+            )
+            hidden = session.execute(
+                text(
+                    """
+                    SELECT audit_exemption_not_excluded
+                    FROM findraft_year_ends
+                    WHERE id = :id
+                    """
+                ),
+                {"id": str(first["year_end_id"])},
+            ).first()
+            assert hidden is None
         finally:
             session.rollback()
             session.execute(text("RESET ROLE"))

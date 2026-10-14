@@ -72,12 +72,46 @@ export function pageStartsOn(
   return section.new_page === true;
 }
 
-/** Every catalogue row, including a pack section the practice has switched off. */
+/** Navigator rows. A section that is off or not built stays out of the list. */
 export function navigatorSections(
   sections: readonly WorkspaceSection[],
 ): WorkspaceSection[] {
-  return [...sections];
+  return sections.filter(
+    (section) => section.built !== false && section.enabled !== false,
+  );
 }
+
+export function setupSections(
+  sections: readonly WorkspaceSection[],
+): WorkspaceSection[] {
+  return sections.filter(
+    (section) =>
+      section.group === "sections" &&
+      section.id !== "sections-setup" &&
+      section.built !== false,
+  );
+}
+
+const FINAL_OUTPUT_LABELS: Readonly<Record<string, string>> = {
+  "draft-pdf": "Final PDF",
+  "draft-word": "Final Word",
+};
+
+/** PDF and Word use the final label only when the draft is final. */
+export function sidebarSections(
+  sections: readonly WorkspaceSection[],
+  status: string | undefined,
+): WorkspaceSection[] {
+  return navigatorSections(sections).map((section) => {
+    const finalLabel = FINAL_OUTPUT_LABELS[section.id];
+    if (status !== "final" || finalLabel == null) {
+      return section;
+    }
+    return { ...section, label: finalLabel };
+  });
+}
+
+export const UNBUILT_NOTICE_KEY = "kastree.unbuilt-flags-notice.v1";
 
 export function activeSection(
   sections: readonly WorkspaceSection[],

@@ -360,6 +360,16 @@ async def test_week10_lock_adjust_and_freeze_final(
         },
     )
     assert approved.status_code == 200, approved.text
+    from tests.directors_report_http import save_nil_directors_report
+    from tests.evidence_exemption import record_evidenced_exemption
+
+    await save_nil_directors_report(
+        api_client, headers, year_end_id, directors=["Ada Lovelace"]
+    )
+    record_evidenced_exemption(provisioned_org["org_id"], year_end_id)
+    from tests.compilation_http import save_compilation_report
+
+    await save_compilation_report(api_client, headers, year_end_id)
     ready = await api_client.get(
         _draft_path(year_end_id, draft_id, "dashboard"), headers=headers
     )

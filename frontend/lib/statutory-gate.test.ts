@@ -191,14 +191,13 @@ describe("standing wording notice", () => {
       "utf8",
     );
     assert.match(continuation, /place="statutory-tab"/);
-    assert.match(continuation, /place="downloads"/);
+    assert.equal(continuation.includes('place="downloads"'), false);
     assert.match(workspace, /place="workspace-header"/);
     assert.equal(workspace.includes('place="review-dashboard"'), false);
-    assert.match(workspace, /place="downloads"/);
-    const downloads = workspace.indexOf('place="downloads"');
+    assert.equal(workspace.includes('place="downloads"'), false);
     const pdf = workspace.indexOf('data-testid="statutory-download"');
     const word = workspace.indexOf('data-testid="statutory-download-word"');
-    assert.ok(downloads > 0 && downloads < pdf && pdf < word);
+    assert.ok(pdf > 0 && pdf < word);
   });
 });
 

@@ -8,7 +8,7 @@ from app.services.dashboard_groups import (
     blocking_failure_count,
     present_check,
 )
-from app.services.draft_workflow import Dashboard, _dashboard_dict
+from app.services.draft_workflow import Dashboard, _dashboard_dict, present_status
 from app.services.reconciliation import ReconciliationCheck
 
 
@@ -21,6 +21,37 @@ def _check(code: str, severity: str, passed: bool = False) -> ReconciliationChec
 def test_fix_targets_match_the_review_pages() -> None:
     assert present_check("V-CO-008").area == "Company details"
     assert present_check("V-CO-008").fix.section == "company-details"
+    assert present_check("V-CO-010").fix.section == "company-details"
+    assert present_check("V-CO-025").fix.section == "company-details"
+    assert present_check("V-CO-026").fix.section == "company-details"
+    assert present_check("V-CO-011").fix.section == "company-details"
+    assert present_check("V-CO-004").fix.section == "directors-report"
+    assert present_check("V-CO-004").fix.note == "principal-activity"
+    assert present_check("V-CO-005").fix.section == "signatories"
+    assert present_check("V-CO-006").fix.section == "signatories"
+    assert present_check("V-CO-029").fix.note == "accounting-records"
+    assert present_check("V-CO-032").fix.note == "share-interests"
+    assert present_check("V-CO-033").fix.note == "other-matters"
+    assert present_check("V-CO-036").fix.section == "directors-report"
+    assert present_check("V-CO-037").area == "Comparatives"
+    assert present_check("V-CO-037").fix.section == "review"
+    assert present_check("V-CO-037").fix.anchor == "statutory-first-period-gate"
+    assert present_check("V-CO-018").area == "Figures"
+    assert present_check("V-CO-018").fix.section == "income"
+    assert present_check("V-CO-019").area == "Disclosures"
+    assert present_check("V-CO-019").fix.section == "disclosures"
+    assert present_check("V-CO-039").area == "Compilation report"
+    assert present_check("V-CO-039").fix.section == "compilation"
+    assert present_check("V-CO-039").fix.note == "compilation-date"
+    assert present_check("V-CO-020").area == "Review"
+    assert present_check("V-CO-020").fix.section == "review"
+    assert present_check("V-CO-020").fix.anchor == "audit-exemption-claim"
+    assert present_check("V-CO-021").fix.section == "review"
+    for code in ("V-CO-022", "V-CO-023", "V-CO-024"):
+        shown = present_check(code)
+        assert shown.area == "Review"
+        assert shown.fix.section == "review"
+        assert shown.fix.anchor == "audit-exemption-conditions"
     assert present_check("V-DISC-001").fix.section == "disclosures"
     assert present_check("V-GATE-001").fix.anchor == "statutory-first-period-gate"
     assert present_check("V-CMP-001").fix.section == "sofp"
@@ -32,16 +63,37 @@ def test_fix_targets_match_the_review_pages() -> None:
     assert present_check("V-TB-001").area == "Figures"
 
 
+def test_present_status_is_one_lifecycle() -> None:
+    assert present_status(status="draft", can_finalise=False, blocking_count=3) == {
+        "lifecycle": "Draft",
+        "readiness": "3 blockers",
+    }
+    assert present_status(status="draft", can_finalise=False, blocking_count=1) == {
+        "lifecycle": "Draft",
+        "readiness": "1 blocker",
+    }
+    assert present_status(status="locked", can_finalise=True, blocking_count=0) == {
+        "lifecycle": "Draft",
+        "readiness": "Ready to finalise",
+    }
+    assert present_status(status="final", can_finalise=False, blocking_count=4) == {
+        "lifecycle": "Final",
+        "readiness": None,
+    }
+
+
 def test_blocking_count_skips_notices_that_do_not_stop_finalise() -> None:
     checks = (
         _check("V-DISC-001", "CRITICAL"),
         _check("V-CO-008", "NOTICE"),
+        _check("V-CO-010", "WARNING"),
+        _check("V-CO-012", "NOTICE"),
         _check("V-CO-007", "NOTICE"),
         _check("V-SEC-007", "NOTICE"),
         _check("V-FA-001", "WARNING"),
         _check("V-CO-001", "WARNING", passed=True),
     )
-    assert blocking_failure_count(checks) == 2
+    assert blocking_failure_count(checks) == 3
 
 
 def test_dashboard_payload_keeps_the_engine_disclosure_message() -> None:
@@ -66,6 +118,10 @@ def test_dashboard_payload_keeps_the_engine_disclosure_message() -> None:
     payload = _dashboard_dict(board)
     assert payload["unanswered_count"] == 1
     assert payload["blocking_count"] == 1
+    assert payload["status"] == "draft"
+    assert payload["traffic"] == "red"
+    assert payload["can_finalise"] is False
+    assert payload["status_view"] == {"lifecycle": "Draft", "readiness": "1 blocker"}
     checks = payload["checks"]
     assert isinstance(checks, list)
     row = checks[0]

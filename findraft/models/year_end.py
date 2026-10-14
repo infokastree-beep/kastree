@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
@@ -13,6 +14,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -81,6 +83,55 @@ class YearEnd(Base):
     size_checked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Figures accepted by the size check. NULL until that check is stored.
+    size_current_turnover: Mapped[Decimal | None] = mapped_column(
+        Numeric(19, 2), nullable=True
+    )
+    size_current_balance_sheet: Mapped[Decimal | None] = mapped_column(
+        Numeric(19, 2), nullable=True
+    )
+    size_current_employees: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    size_preceding_turnover: Mapped[Decimal | None] = mapped_column(
+        Numeric(19, 2), nullable=True
+    )
+    size_preceding_balance_sheet: Mapped[Decimal | None] = mapped_column(
+        Numeric(19, 2), nullable=True
+    )
+    size_preceding_employees: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    # NULL until an owner or admin records the position. True is claimed.
+    # False is not claimed. There is no server default.
+    audit_exemption_claimed: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
+    audit_exemption_claimed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    audit_exemption_claimed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # NULL until an owner or admin records the three directors' confirmations.
+    # There is no server default. One who and when covers the set.
+    audit_exemption_not_excluded: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
+    audit_exemption_no_member_notice: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
+    audit_exemption_returns_not_late: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
+    audit_exemption_conditions_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    audit_exemption_conditions_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     pack_id: Mapped[str] = mapped_column(String(64), nullable=False)
     pack_version: Mapped[str] = mapped_column(String(16), nullable=False)
     adopted_trial_balance_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -92,6 +143,45 @@ class YearEnd(Base):
     report_setup: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     approval_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     signing_directors: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    # Directors' report facts. NULL is not recorded. There is no server default.
+    # Companies Act 2014, sections 326, 328 and 329. Section 288 uses the
+    # period-change flag for the length notice only.
+    accounting_records_location: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
+    interim_dividend: Mapped[Decimal | None] = mapped_column(
+        Numeric(19, 2), nullable=True, default=None
+    )
+    recommended_dividend: Mapped[Decimal | None] = mapped_column(
+        Numeric(19, 2), nullable=True, default=None
+    )
+    share_interests: Mapped[list[dict[str, object]] | None] = mapped_column(
+        JSONB, nullable=True, default=None
+    )
+    own_shares_particulars: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
+    subsequent_events_particulars: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
+    research_development_relevant: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True, default=None
+    )
+    research_development_detail: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
+    political_donations_relevant: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True, default=None
+    )
+    political_donations_detail: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
+    accounting_period_change_filed: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True, default=None
+    )
+    # Practice compilation report. Not the directors' approval of the statements.
+    compilation_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    compilation_signatory: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Acknowledgement that this year end reports in the company currency.
     # A later change of companies.functional_currency no longer matches.
     currency_confirmed_code: Mapped[str | None] = mapped_column(

@@ -111,11 +111,18 @@ def test_pages_keep_engine_figures_and_leave_gaps() -> None:
     )
     compilation = _page(document, "Compilation report")
     assert "The practice name has not been recorded." in compilation
+    assert "The practice legal name has not been recorded." in compilation
+    assert "The practice address has not been recorded." in compilation
+    assert "The practice contact has not been recorded." in compilation
+    assert "ISRS 4410 (Revised)" in compilation
+    assert "pending the professional body's illustrative text" in compilation
     named = _golden(practice_name="Harbour Practice")
     named_compilation = _page(named, "Compilation report")
-    assert named_compilation.startswith(
+    assert (
         "Harbour Practice compiled these financial statements for Northwind Limited"
+        in named_compilation
     )
+    assert "The practice address has not been recorded." in named_compilation
     assert named.net_assets == document.net_assets
     assert named.profit == document.profit
     assert "not an audit" in compilation
@@ -133,7 +140,9 @@ def test_pages_keep_engine_figures_and_leave_gaps() -> None:
     assert "Principal activities have not been recorded." in report
     assert "Profit for the financial year is €157,650." in report
     assert "does not include a business review" in report
-    assert "A dividend has not been recorded on this draft." in report
+    assert "A dividend has been recorded for the financial year." in report
+    assert "A dividend has not been recorded on this draft." not in report
+    assert "[dividend not recorded]" not in report
     approval = _page(document, "Approval of the financial statements")
     assert "Approval date has not been recorded." in approval
     assert "A signatory has not been separately recorded." in approval
@@ -511,6 +520,16 @@ async def test_final_docx_reads_the_snapshot(
         },
     )
     assert approved.status_code == 200, approved.text
+    from tests.directors_report_http import save_nil_directors_report
+    from tests.evidence_exemption import record_evidenced_exemption
+
+    await save_nil_directors_report(
+        api_client, headers, year_end_id, directors=["Ada Lovelace"]
+    )
+    record_evidenced_exemption(provisioned_org["org_id"], year_end_id)
+    from tests.compilation_http import save_compilation_report
+
+    await save_compilation_report(api_client, headers, year_end_id)
     finalised = await api_client.post(
         _draft_path(year_end_id, draft_id, "finalise"),
         headers={**headers, "Idempotency-Key": "week11-final"},

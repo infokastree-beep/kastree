@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
 import { downloadDraftPdf, pdfBlockReason } from "@/lib/draft-pdf";
 import { formatCurrency } from "@/lib/currency";
+import { severityTag } from "@/lib/dashboard-groups";
 import { statutoryWorkspaceOpen, type StatutoryUser } from "@/lib/statutory-gate";
 import { StatutoryOptIn } from "@/components/statutory/StatutoryOptIn";
 import { confidenceBadgeClass, formatConfidence } from "@/lib/utils";
@@ -705,9 +706,7 @@ export function StatutoryWorkbench() {
       {pack ? (
         <section className="space-y-4 rounded border border-stone-200 bg-white p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-800">
-              {pack.watermark} statutory pack
-            </h2>
+            <h2 className="text-sm font-semibold text-stone-900">Statements</h2>
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
@@ -757,7 +756,7 @@ export function StatutoryWorkbench() {
                 .filter((check) => !check.passed)
                 .map((check) => (
                   <li key={check.code}>
-                    {check.severity} {check.code}: {check.message}
+                    {severityTag(check)} {check.message}
                   </li>
                 ))}
             </ul>

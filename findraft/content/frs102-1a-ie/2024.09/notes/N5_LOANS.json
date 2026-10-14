@@ -1,5 +1,6 @@
 {
   "title": "5. Loans",
+  "class": "creditors",
   "sourceRef": [
     "1AD.40",
     "1AD.41",
@@ -26,6 +27,10 @@
     ],
     "needsInput": true
   },
-  "directorLoansClause": "Advances and credits to directors and officers, and guarantees entered into on their behalf, are disclosed in accordance with Schedule 3A to the Companies Act 2014.",
+  "directorLoansClause": "Advances and credits to directors and officers, and guarantees entered into on their behalf, are disclosed in accordance with sections 305 and 306 of the Companies Act 2014.",
+  "directorsDisclosureCitation": {
+    "source_status": "researched (public source)",
+    "provision": "Companies Act 2014, sections 305 and 306; FRS 102 (September 2024) paragraph 1AD.38"
+  },
   "needsInput": true
 }

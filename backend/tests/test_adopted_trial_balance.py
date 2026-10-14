@@ -6,6 +6,8 @@ created, and account_mappings are not copied into findraft_confirmed_mappings.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import shutil
 import subprocess
 import tempfile
@@ -1149,7 +1151,10 @@ def _answer_all_no(*, org_id: uuid.UUID, company_id: uuid.UUID, draft_id: str) -
 
 
 async def _record_letterhead(
-    api_client: AsyncClient, headers: dict[str, str], year_end_id: str
+    api_client: AsyncClient,
+    headers: dict[str, str],
+    year_end_id: str,
+    org_id: uuid.UUID,
 ) -> None:
     saved = await api_client.put(
         f"/year-ends/{year_end_id}/company-details",
@@ -1157,10 +1162,16 @@ async def _record_letterhead(
         json={
             "registered_office": "1 Harbour Street, Dublin",
             "company_number": "AB123456",
+            "principal_activity": "Software",
             "directors": [{"name": "Ada Lovelace"}],
         },
     )
     assert saved.status_code == 200, saved.text
+    from tests.directors_report_http import save_nil_directors_report
+
+    await save_nil_directors_report(
+        api_client, headers, year_end_id, directors=["Ada Lovelace"]
+    )
     approved = await api_client.put(
         f"/year-ends/{year_end_id}/approval",
         headers=headers,
@@ -1170,6 +1181,12 @@ async def _record_letterhead(
         },
     )
     assert approved.status_code == 200, approved.text
+    from tests.evidence_exemption import record_evidenced_exemption
+
+    record_evidenced_exemption(org_id, year_end_id)
+    from tests.compilation_http import save_compilation_report
+
+    await save_compilation_report(api_client, headers, year_end_id)
 
 
 async def _open_adopted(
@@ -1720,7 +1737,9 @@ async def _ready_golden(
     draft = await api_client.get(f"/year-ends/{year_end_id}/draft", headers=headers)
     assert draft.status_code == 200, draft.text
     draft_id = draft.json()["draft_id"]
-    await _record_letterhead(api_client, headers, year_end_id)
+    await _record_letterhead(
+        api_client, headers, year_end_id, provisioned_org["org_id"]
+    )
     _answer_all_no(
         org_id=provisioned_org["org_id"],
         company_id=provisioned_org["company_id"],
@@ -1873,10 +1892,8 @@ async def test_finalised_adopted_draft_ignores_a_later_mapping_edit(
     assert "DRAFT" in cover_header
     assert WORDING_BANNER in cover_header
     assert "FINAL" not in cover_header
-    assert all(
-        "DRAFT" in header and WORDING_BANNER in header and "FINAL" not in header
-        for header in header_parts
-    )
+    assert sum(WORDING_BANNER in header for header in header_parts) == 1
+    assert all("DRAFT" in header and "FINAL" not in header for header in header_parts)
     assert "284,912" in xml
 
     monkeypatch.setattr("app.services.beta.WORDING_SIGNED_OFF", True)
@@ -1933,9 +1950,8 @@ async def test_finalised_adopted_draft_ignores_a_later_mapping_edit(
         kept_cover = archive.read("word/header1.xml").decode()
     assert "DRAFT" in kept_cover and WORDING_BANNER in kept_cover
     assert "FINAL" not in kept_cover
-    assert all(
-        WORDING_BANNER in header and "FINAL" not in header for header in kept_headers
-    )
+    assert sum(WORDING_BANNER in header for header in kept_headers) == 1
+    assert all("FINAL" not in header for header in kept_headers)
 
 
 @pytest.mark.asyncio
@@ -2185,3 +2201,649 @@ async def test_carried_disclosure_answers_need_an_acknowledgement(
     assert isinstance(recorded, dict)
     assert recorded["reviewed"] is True
     assert "HAS_EMPLOYEES" in recorded["flag_names"]
+
+
+def _login_role() -> tuple[str, bool, bool]:
+    with SyncSessionLocal() as session:
+        row = session.execute(
+            text(
+                """
+                SELECT current_user, r.rolsuper, r.rolbypassrls
+                FROM pg_roles AS r
+                WHERE r.rolname = current_user
+                """
+            )
+        ).one()
+    print(
+        f"executing_role={row[0]} rolsuper={row[1]} rolbypassrls={row[2]}",
+        flush=True,
+    )
+    return str(row[0]), bool(row[1]), bool(row[2])
+
+
+@pytest.mark.asyncio
+async def test_parity_finalises_the_golden_adopted_draft(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Finalise the golden adopted draft over HTTP as the login role.
+
+    The backend job's login is a superuser, so this test skips there.
+    The parity job logs in as non-superuser findraft and runs it.
+    """
+    role, superuser, bypass = _login_role()
+    if superuser or bypass:
+        pytest.skip(f"{role} bypasses row security. The parity job runs this test.")
+    from app.config import settings
+    from app.services.beta import WORDING_BANNER
+
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "platform_admin_emails", "")
+    headers = auth_headers(provisioned_org["token"])
+    acknowledged = await api_client.post(
+        "/beta/acknowledgement",
+        headers=headers,
+        json={"accepted": True},
+    )
+    assert acknowledged.status_code == 200, acknowledged.text
+    year_end_id, draft_id, headers = await _ready_golden(api_client, provisioned_org)
+    board = await api_client.get(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/dashboard",
+        headers=headers,
+    )
+    assert board.status_code == 200, board.text
+    assert board.json()["can_finalise"] is True
+    finalised = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/finalise",
+        headers={**headers, "Idempotency-Key": "parity-golden-finalise"},
+        json={"row_version": board.json()["row_version"]},
+    )
+    assert finalised.status_code == 200, finalised.text
+    assert finalised.json()["status"] == "final"
+    stored = _snapshot(draft_id, provisioned_org["org_id"])
+    assert stored is not None
+    statement = stored["statement"]
+    assert isinstance(statement, dict)
+    assert statement["net_assets"] == "455812.00"
+    assert statement["profit"] == "157650.00"
+    assert stored["wording_signed_off"] is False
+    assert stored["wording_banner"] == WORDING_BANNER
+    assert "note_library" in stored
+    evidence = stored["evidence"]
+    assert isinstance(evidence, dict)
+    documents = evidence["documents"]
+    assert isinstance(documents, list) and documents[0]["file_hash"] == _FILE_HASH
+
+
+@pytest.mark.asyncio
+async def test_live_draft_may_freeze_and_finalise_in_one_update(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """The status guard allows a live draft to set is_frozen and final together."""
+    _year_end_id, draft_id, _headers = await _open_adopted(
+        api_client, provisioned_org, rows=_CASH_PAIR
+    )
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
+        updated = session.execute(
+            text(
+                """
+                UPDATE findraft_draft_versions
+                SET is_frozen = true,
+                    status = 'final',
+                    snapshot = '{"watermark": "FINAL"}'::jsonb,
+                    inputs_sha256 = :inputs,
+                    engine_sha = :engine
+                WHERE id = :id
+                  AND is_frozen = false
+                  AND status = 'draft'
+                """
+            ),
+            {"id": draft_id, "inputs": "a" * 64, "engine": "b" * 64},
+        )
+        assert updated.rowcount == 1
+        session.commit()
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
+        row = session.execute(
+            text(
+                "SELECT status, is_frozen FROM findraft_draft_versions WHERE id = :id"
+            ),
+            {"id": draft_id},
+        ).one()
+    assert row[0] == "final"
+    assert row[1] is True
+
+
+@pytest.mark.asyncio
+async def test_unexpected_finalise_error_returns_a_reference(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A database failure is quoted with the Postgres sentence and a reference."""
+    from psycopg2.errors import InsufficientPrivilege
+    from sqlalchemy.exc import ProgrammingError
+
+    year_end_id, draft_id, headers = await _open_adopted(
+        api_client, provisioned_org, rows=_CASH_PAIR
+    )
+
+    async def _denied(*_args: object, **_kwargs: object) -> None:
+        raise ProgrammingError(
+            "UPDATE findraft_draft_versions",
+            {},
+            InsufficientPrivilege("permission denied for table audit_logs"),
+        )
+
+    monkeypatch.setattr("app.routers.year_ends.finalise_draft", _denied)
+    failed = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/finalise",
+        headers={**headers, "Idempotency-Key": "finalise-reference"},
+        json={"row_version": _draft_version(draft_id, provisioned_org["org_id"])},
+    )
+    assert failed.status_code == 500, failed.text
+    detail = failed.json()["detail"]
+    assert isinstance(detail, dict)
+    assert detail["message"] == "permission denied for table audit_logs"
+    assert isinstance(detail["request_id"], str) and detail["request_id"]
+
+
+@pytest.mark.asyncio
+async def test_malformed_report_setup_is_a_finalise_message(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """Compose errors stay a 409 the dialog can show. The dashboard stays ready."""
+    year_end_id, draft_id, headers = await _ready_golden(api_client, provisioned_org)
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, provisioned_org["org_id"])
+        session.execute(
+            text(
+                """
+                UPDATE findraft_year_ends
+                SET report_setup = '{"sections": {"cover": "yes"}}'::jsonb
+                WHERE id = :id
+                """
+            ),
+            {"id": year_end_id},
+        )
+        session.commit()
+    board = await api_client.get(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/dashboard",
+        headers=headers,
+    )
+    assert board.status_code == 200, board.text
+    assert board.json()["can_finalise"] is True
+    failed = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/finalise",
+        headers={**headers, "Idempotency-Key": "malformed-setup"},
+        json={"row_version": board.json()["row_version"]},
+    )
+    assert failed.status_code == 409, failed.text
+    assert failed.json()["detail"] == "report setup sections are malformed"
+
+
+def _sha256(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _word_bytes(
+    *,
+    org_id: uuid.UUID,
+    job_id: str,
+    storage: object,
+) -> bytes:
+    with SyncSessionLocal() as session:
+        processed = process_render_job(
+            session,
+            org_id=org_id,
+            job_id=uuid.UUID(job_id),
+            storage=storage,  # type: ignore[arg-type]
+        )
+    if processed is None:
+        with SyncSessionLocal() as session:
+            set_rls_org_id(session, org_id)
+            stored_job = session.execute(
+                text(
+                    "SELECT status, storage_key, error_message "
+                    "FROM findraft_render_jobs WHERE id = :id"
+                ),
+                {"id": job_id},
+            ).one()
+        assert stored_job[0] == "ready", stored_job[2]
+        assert stored_job[1] is not None
+        getter = getattr(storage, "get")
+        content = getter(key=stored_job[1])
+    else:
+        assert processed.status == "ready", processed.error_message
+        assert processed.storage_key is not None
+        getter = getattr(storage, "get")
+        content = getter(key=processed.storage_key)
+    assert isinstance(content, bytes)
+    return content
+
+
+_FINAL_PLAIN = "This draft is final. It cannot be changed."
+_AUDIT_PLAIN = "This draft is final. The audit position cannot be changed."
+_DRAFT_PLAIN = "draft is final; writes are refused"
+_NEVER = "FINAL output is never recomputed"
+
+
+@pytest.mark.asyncio
+async def test_final_pdf_and_word_stay_byte_stable(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+    stored_files: object,
+) -> None:
+    """Finalise the golden draft, refuse every write, and download again.
+
+    The login is findraft on both jobs. This file is on the parity list.
+    """
+    with SyncSessionLocal() as session:
+        role = session.execute(text("SELECT current_user")).scalar_one()
+    print(f"executing_role={role}", flush=True)
+    assert role == "findraft"
+    year_end_id, draft_id, headers = await _ready_golden(api_client, provisioned_org)
+    org_id = provisioned_org["org_id"]
+    finalised = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/finalise",
+        headers={**headers, "Idempotency-Key": "byte-stable-finalise"},
+        json={"row_version": _draft_version(draft_id, org_id)},
+    )
+    assert finalised.status_code == 200, finalised.text
+    stored = _snapshot(draft_id, org_id)
+    assert stored is not None
+    workspace = stored.get("workspace")
+    assert isinstance(workspace, dict)
+    recorded = workspace.get("year_end")
+    assert isinstance(recorded, dict)
+    assert recorded["audit_exemption_claimed"] is True
+    snapshot_hash = _sha256(json.dumps(stored, sort_keys=True, default=str).encode())
+    pdf = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
+        headers=headers,
+    )
+    assert pdf.status_code == 200, pdf.text
+    pdf_hash = _sha256(pdf.content)
+    queued = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/document.docx",
+        headers={**headers, "Idempotency-Key": "byte-stable-word"},
+    )
+    assert queued.status_code == 202, queued.text
+    word_hash = _sha256(
+        _word_bytes(org_id=org_id, job_id=queued.json()["job_id"], storage=stored_files)
+    )
+    print(f"pdf_sha256={pdf_hash}", flush=True)
+    print(f"word_sha256={word_hash}", flush=True)
+    print(f"snapshot_sha256={snapshot_hash}", flush=True)
+    row_version = _draft_version(draft_id, org_id)
+    fake = str(uuid.uuid4())
+    journal = {
+        "row_version": row_version,
+        "narration": "A later journal",
+        "lines": [
+            {
+                "nominal_code": "1000",
+                "account_name": "Cash",
+                "canonical_line": "CASH",
+                "debit": "1.00",
+                "credit": "0.00",
+            },
+            {
+                "nominal_code": "4000",
+                "account_name": "Sales",
+                "canonical_line": "REVENUE",
+                "debit": "0.00",
+                "credit": "1.00",
+            },
+        ],
+    }
+    setup = {
+        "rounding": "thousands",
+        "statement_type": "compilation",
+        "face_dates": {},
+        "column_headers": {
+            "as_at_current": "2026",
+            "as_at_prior": "2025",
+            "ended_current": "2026",
+            "ended_prior": "2025",
+        },
+    }
+    attempts: tuple[tuple[str, str, object, str], ...] = (
+        ("PUT", f"/year-ends/{year_end_id}/report-setup", setup, _FINAL_PLAIN),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/report-setup/reset",
+            {"scope": "display"},
+            _FINAL_PLAIN,
+        ),
+        (
+            "PUT",
+            f"/year-ends/{year_end_id}/company-details",
+            {"registered_office": "A later office"},
+            _FINAL_PLAIN,
+        ),
+        ("POST", f"/year-ends/{year_end_id}/currency-confirmation", None, _FINAL_PLAIN),
+        (
+            "PUT",
+            f"/year-ends/{year_end_id}/approval",
+            {"approval_date": "2027-04-01", "signing_directors": ["Ada Lovelace"]},
+            _FINAL_PLAIN,
+        ),
+        (
+            "PUT",
+            f"/year-ends/{year_end_id}/directors-report",
+            {
+                "accounting_records_location": "1 Harbour Street, Dublin",
+                "interim_dividend": "0.00",
+                "recommended_dividend": "0.00",
+            },
+            _FINAL_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/adopt-trial-balance",
+            {"trial_balance_id": fake},
+            _FINAL_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/adopted-trial-balance/sub-lines",
+            {"lines": []},
+            _FINAL_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/trial-balance-versions",
+            {"source_document_id": fake},
+            _FINAL_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/prior-year",
+            {"lines": [{"canonical_line": "RETAINED_EARNINGS", "amount": "1.00"}]},
+            _FINAL_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/first-financial-period",
+            None,
+            _FINAL_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/trial-balance-versions/{fake}/mappings",
+            {"lines": []},
+            _FINAL_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/fixed-asset-versions",
+            {"source_document_id": fake},
+            _FINAL_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/size-eligibility",
+            {
+                "current": {
+                    "turnover": "1.00",
+                    "balance_sheet_total": "1.00",
+                    "employees": 1,
+                }
+            },
+            _AUDIT_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/audit-exemption",
+            {"claimed": False},
+            _AUDIT_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/audit-exemption-conditions",
+            {
+                "not_excluded": False,
+                "no_member_notice": False,
+                "returns_not_late": False,
+            },
+            _AUDIT_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/drafts/{draft_id}/adjustments",
+            journal,
+            _DRAFT_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/drafts/{draft_id}/disclosures",
+            {"row_version": row_version, "flag_name": "HAS_EMPLOYEES", "answer": "yes"},
+            _DRAFT_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/drafts/{draft_id}/disclosures/mark-remaining-no",
+            {"row_version": row_version, "confirm": True},
+            _DRAFT_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/drafts/{draft_id}/notes/library",
+            {"row_version": row_version, "block_id": "N1_POLICIES", "action": "omit"},
+            _DRAFT_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/drafts/{draft_id}/lock",
+            {"row_version": row_version},
+            _DRAFT_PLAIN,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/drafts/{draft_id}/recompute",
+            {"row_version": row_version},
+            _NEVER,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/drafts/{draft_id}/finalise",
+            {"row_version": row_version},
+            _NEVER,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/drafts/{draft_id}/new-version",
+            {"row_version": row_version},
+            "a new version starts from a locked draft",
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/drafts/{draft_id}/acknowledge-mappings",
+            {"row_version": row_version},
+            _NEVER,
+        ),
+        (
+            "POST",
+            f"/year-ends/{year_end_id}/drafts/{draft_id}/new-report",
+            {"row_version": row_version},
+            _NEVER,
+        ),
+    )
+    for index, (method, path, body, expected) in enumerate(attempts):
+        extra = {**headers, "Idempotency-Key": f"byte-stable-{index}"}
+        if method == "PUT":
+            refused = await api_client.put(path, headers=extra, json=body)
+        else:
+            refused = await api_client.post(path, headers=extra, json=body)
+        assert refused.status_code == 409, f"{method} {path} {refused.text}"
+        assert refused.json()["detail"] == expected, f"{method} {path} {refused.text}"
+    again_pdf = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
+        headers=headers,
+    )
+    assert again_pdf.status_code == 200, again_pdf.text
+    assert _sha256(again_pdf.content) == pdf_hash
+    again_word = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/document.docx",
+        headers={**headers, "Idempotency-Key": "byte-stable-word-again"},
+    )
+    assert again_word.status_code == 202, again_word.text
+    assert (
+        _sha256(
+            _word_bytes(
+                org_id=org_id,
+                job_id=again_word.json()["job_id"],
+                storage=stored_files,
+            )
+        )
+        == word_hash
+    )
+    assert _snapshot(draft_id, org_id) == stored
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        session.execute(
+            text(
+                """
+                UPDATE findraft_year_ends
+                SET audit_exemption_claimed = FALSE
+                WHERE id = :id
+                """
+            ),
+            {"id": year_end_id},
+        )
+        session.execute(
+            text(
+                "UPDATE companies SET registered_office = 'A drifted office' "
+                "WHERE id = :id"
+            ),
+            {"id": str(provisioned_org["company_id"])},
+        )
+        session.execute(
+            text(
+                """
+                UPDATE findraft_year_ends
+                SET report_setup = '{"rounding": "thousands"}'::jsonb
+                WHERE id = :id
+                """
+            ),
+            {"id": year_end_id},
+        )
+        session.commit()
+    shown = await api_client.get(f"/year-ends/{year_end_id}", headers=headers)
+    assert shown.status_code == 200, shown.text
+    assert shown.json()["audit_exemption_claimed"] is True
+    letterhead = await api_client.get(
+        f"/year-ends/{year_end_id}/company-details", headers=headers
+    )
+    assert letterhead.status_code == 200, letterhead.text
+    assert letterhead.json()["registered_office"] == "1 Harbour Street, Dublin"
+    display = await api_client.get(
+        f"/year-ends/{year_end_id}/report-setup", headers=headers
+    )
+    assert display.status_code == 200, display.text
+    assert display.json()["rounding"] == "unit"
+    kept_pdf = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
+        headers=headers,
+    )
+    assert kept_pdf.status_code == 200, kept_pdf.text
+    assert _sha256(kept_pdf.content) == pdf_hash
+    kept = _snapshot(draft_id, org_id)
+    assert kept == stored
+    assert (
+        _sha256(json.dumps(kept, sort_keys=True, default=str).encode()) == snapshot_hash
+    )
+
+
+@pytest.mark.asyncio
+async def test_product1_mapping_confirm_after_final_leaves_the_pdf(
+    api_client: AsyncClient,
+    provisioned_org: dict,
+) -> None:
+    """POST /trial-balances/{id}/mapping/confirm after FINAL does not change the file.
+
+    This file is already on the parity list. The login is findraft on both jobs.
+    """
+    with SyncSessionLocal() as session:
+        role = session.execute(text("SELECT current_user")).scalar_one()
+    print(f"executing_role={role}", flush=True)
+    assert role == "findraft"
+    org_id = provisioned_org["org_id"]
+    year_end_id, draft_id, headers = await _ready_golden(api_client, provisioned_org)
+    finalised = await api_client.post(
+        f"/year-ends/{year_end_id}/drafts/{draft_id}/finalise",
+        headers={**headers, "Idempotency-Key": "mapping-confirm-after-final"},
+        json={"row_version": _draft_version(draft_id, org_id)},
+    )
+    assert finalised.status_code == 200, finalised.text
+    stored = _snapshot(draft_id, org_id)
+    assert stored is not None
+    pdf = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
+        headers=headers,
+    )
+    assert pdf.status_code == 200, pdf.text
+    pdf_hash = _sha256(pdf.content)
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        tb_id = session.execute(
+            text(
+                "SELECT adopted_trial_balance_id FROM findraft_year_ends WHERE id = :id"
+            ),
+            {"id": year_end_id},
+        ).scalar_one()
+        rows = session.execute(
+            text(
+                """
+                SELECT id::text, source_code, canonical_line
+                FROM account_mappings
+                WHERE company_id = :company
+                ORDER BY source_code
+                """
+            ),
+            {"company": str(provisioned_org["company_id"])},
+        ).all()
+    assert tb_id is not None
+    assert rows
+    mappings = [
+        {
+            "id": row.id,
+            "canonical_line": (
+                "other_receivables" if row.source_code == "2130" else row.canonical_line
+            ),
+            "is_confirmed": True,
+            "is_ignored": False,
+        }
+        for row in rows
+    ]
+    confirm = await api_client.post(
+        f"/trial-balances/{tb_id}/mapping/confirm",
+        headers=headers,
+        json={"mappings": mappings},
+    )
+    assert confirm.status_code == 200, confirm.text
+    assert confirm.json()["confirmed_count"] == len(mappings)
+    with SyncSessionLocal() as session:
+        set_rls_org_id(session, org_id)
+        moved = session.execute(
+            text(
+                """
+                SELECT canonical_line FROM account_mappings
+                WHERE company_id = :company AND source_code = '2130'
+                """
+            ),
+            {"company": str(provisioned_org["company_id"])},
+        ).scalar_one()
+    assert moved == "other_receivables"
+    again = await api_client.get(
+        f"/year-ends/{year_end_id}/adopted-trial-balance/statements.pdf",
+        headers=headers,
+    )
+    assert again.status_code == 200, again.text
+    assert _sha256(again.content) == pdf_hash
+    assert _snapshot(draft_id, org_id) == stored

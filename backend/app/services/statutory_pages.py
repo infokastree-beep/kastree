@@ -2,12 +2,14 @@
 
 Python fills these from the entity record and from the profit figure the
 statement engine already produced. A missing fact stays missing. This module
-does not declare a section 335 audit exemption, invent an approval date, or
-attach an auditor's report.
+does not invent an approval date or attach an auditor's report. When the
+audit exemption is claimed, the audit-exemption page is an explanatory note.
+The statement itself is pack text printed on the balance sheet.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -19,16 +21,148 @@ from app.services.statutory_display import (
 )
 
 
+_DIVIDEND_UNANSWERED = "[dividend not recorded]"
+_DIVIDEND_NONE = "No dividend has been recorded for the financial year."
+_DIVIDEND_RECORDED = "A dividend has been recorded for the financial year."
+_DIVIDEND_TOLERANCE = Decimal("0.01")
+
+
 @dataclass(frozen=True)
 class StatutoryPage:
     heading: str
     paragraphs: tuple[str, ...]
 
 
+_AUDIT_EXEMPTION_KEYS = frozenset(
+    {
+        "source",
+        "provision",
+        "source_status",
+        "paragraphs",
+        "explanatory_note",
+        "abridgement_note",
+    }
+)
+_RESEARCHED = "researched (public source)"
+
+
+def audit_exemption_pack(manifest: object) -> tuple[tuple[str, ...], str, str]:
+    """CRO sample, the page note, and the unused abridgement note.
+
+    ``source_status`` is researched from a public source. It is not a
+    reviewer sign-off.
+    """
+    if not isinstance(manifest, Mapping):
+        raise ValueError("Pinned pack has no audit-exemption statements")
+    block = manifest.get("audit_exemption_statements")
+    if not isinstance(block, Mapping) or set(block) != _AUDIT_EXEMPTION_KEYS:
+        raise ValueError("Pinned pack has no audit-exemption statements")
+    provision = block.get("provision")
+    paragraphs = block.get("paragraphs")
+    note = block.get("explanatory_note")
+    abridgement = block.get("abridgement_note")
+    if (
+        block.get("source") != "CRO"
+        or block.get("source_status") != _RESEARCHED
+        or not isinstance(provision, str)
+        or "335" not in provision
+        or not isinstance(paragraphs, list)
+        or not paragraphs
+        or not isinstance(note, str)
+        or not isinstance(abridgement, str)
+    ):
+        raise ValueError(
+            "Pinned pack audit-exemption statements are not researched (public source)"
+        )
+    cleaned: list[str] = []
+    for item in paragraphs:
+        if not isinstance(item, str) or not item or item != item.strip():
+            raise ValueError("Pinned pack audit-exemption statements are unusable")
+        cleaned.append(item)
+    if (
+        not note
+        or note != note.strip()
+        or not abridgement
+        or abridgement != abridgement.strip()
+    ):
+        raise ValueError("Pinned pack audit-exemption explanatory note is unusable")
+    if "352" not in abridgement or "353" not in abridgement:
+        raise ValueError(
+            "Pinned pack abridgement note does not name sections 352 and 353"
+        )
+    if "separate recorded claim" not in abridgement:
+        raise ValueError(
+            "Pinned pack abridgement note does not require a separate claim"
+        )
+    return (tuple(cleaned), note, abridgement)
+
+
+def audit_exemption_statements(manifest: object) -> tuple[str, ...]:
+    """CRO sample, kept as the source. A document does not print it raw."""
+    paragraphs, _note, _abridgement = audit_exemption_pack(manifest)
+    return paragraphs
+
+
+def balance_sheet_audit_exemption(
+    paragraphs: tuple[str, ...],
+    company_name: str,
+) -> tuple[str, ...]:
+    """Directors' statement for the balance sheet.
+
+    The pack keeps the CRO sample. A document prints sections (a) to (d)
+    only, with the recorded company name. Item (e) is the abridgement
+    exemption and stays unused until a separate claim is recorded.
+    """
+    recorded = company_name.strip() or "the company (name not recorded)"
+    printed: list[str] = []
+    for paragraph in paragraphs:
+        if _omit_from_balance_sheet(paragraph):
+            continue
+        text = paragraph.replace("(company name)", recorded)
+        if (
+            not text
+            or "(company name)" in text
+            or text.startswith("(*")
+            or text.startswith("(e)")
+            or "s.352" in text
+            or "s.353" in text
+        ):
+            raise ValueError("Audit exemption statement still has a template note")
+        printed.append(text)
+    if [item[:3] for item in printed[1:]] != ["(a)", "(b)", "(c)", "(d)"]:
+        raise ValueError("Audit exemption statement is not sections (a) to (d)")
+    return tuple(printed)
+
+
+def _omit_from_balance_sheet(paragraph: str) -> bool:
+    """Template notes and the unused s.352 abridgement clause."""
+    return (
+        paragraph.startswith("(*")
+        or "use sections (a)" in paragraph
+        or paragraph.startswith("*(e)")
+        or paragraph.startswith("(e)")
+        or paragraph.startswith("has done so on the grounds")
+    )
+
+
+def audit_exemption_note(manifest: object) -> str:
+    """Explanatory note. It is not the statement on the balance sheet."""
+    _paragraphs, note, _abridgement = audit_exemption_pack(manifest)
+    return note
+
+
+def audit_exemption_abridgement_note(manifest: object) -> str:
+    """Why item (e) stays in the pack and is not printed."""
+    _paragraphs, _note, abridgement = audit_exemption_pack(manifest)
+    return abridgement
+
+
 def build_statutory_pages(
     *,
     company_name: str,
     practice_name: str,
+    practice_address: str = "",
+    practice_contact: str = "",
     period_end: str,
     directors: str,
     secretary: str,
@@ -39,10 +173,22 @@ def build_statutory_pages(
     period_start: str = "",
     approval_date: str = "",
     signing_directors: str = "",
+    dividends: Decimal | None = None,
+    audit_exemption_claimed: bool | None = None,
+    audit_note: str = "",
+    compilation_date: str = "",
+    compilation_signatory: str = "",
 ) -> tuple[StatutoryPage, ...]:
     """Compilation, directors' report, approval, then audit exemption."""
     return (
-        _compilation(company_name=company_name, practice_name=practice_name),
+        _compilation(
+            company_name=company_name,
+            practice_name=practice_name,
+            practice_address=practice_address,
+            practice_contact=practice_contact,
+            compilation_date=compilation_date,
+            compilation_signatory=compilation_signatory,
+        ),
         _directors_report(
             period_end=period_end,
             period_start=period_start,
@@ -51,13 +197,18 @@ def build_statutory_pages(
             principal_activity=principal_activity,
             currency=currency,
             profit=profit,
+            dividends=dividends,
         ),
         _approval(
             directors=directors,
             approval_date=approval_date,
             signing_directors=signing_directors,
         ),
-        _audit_exemption(size_eligible=size_eligible),
+        _audit_exemption(
+            size_eligible=size_eligible,
+            claimed=audit_exemption_claimed,
+            explanatory_note=audit_note,
+        ),
     )
 
 
@@ -65,7 +216,41 @@ def _present(value: str) -> str:
     return value.strip()
 
 
-def _compilation(*, company_name: str, practice_name: str) -> StatutoryPage:
+# ISRS 4410 (Revised), Compilation Engagements. The standard's name is
+# researched (public source). The professional body's illustrative report
+# is not copied here. The printed wording stays reviewer-to-confirm until
+# that text is supplied. This is not a reviewer sign-off.
+_COMPILATION_STANDARD = "ISRS 4410 (Revised)"
+_COMPILATION_PENDING = (
+    "The wording of this compilation report is pending the professional "
+    "body's illustrative text."
+)
+
+
+def _letterhead_lines(name: str, address: str, contact: str) -> tuple[str, ...]:
+    lines = [
+        _present(name) or "The practice legal name has not been recorded.",
+    ]
+    recorded_address = _present(address)
+    if recorded_address:
+        lines.extend(
+            part.strip() for part in recorded_address.split("\n") if part.strip()
+        )
+    else:
+        lines.append("The practice address has not been recorded.")
+    lines.append(_present(contact) or "The practice contact has not been recorded.")
+    return tuple(lines)
+
+
+def _compilation(
+    *,
+    company_name: str,
+    practice_name: str,
+    practice_address: str = "",
+    practice_contact: str = "",
+    compilation_date: str = "",
+    compilation_signatory: str = "",
+) -> StatutoryPage:
     company = _present(company_name) or "the company (name not recorded)"
     practice = _present(practice_name)
     if practice:
@@ -79,12 +264,31 @@ def _compilation(*, company_name: str, practice_name: str) -> StatutoryPage:
             f"statements for {company} were compiled from information "
             "supplied by the directors."
         )
+    engagement = (
+        f"This compilation engagement is conducted under {_COMPILATION_STANDARD}. "
+        "This compilation is not an audit and it is not a review. "
+        "No audit opinion and no review conclusion is expressed. "
+        "The directors remain responsible for the financial statements."
+    )
+    recorded_date = _present(compilation_date)
+    if recorded_date:
+        date_line = f"Compilation date: {format_iso_date(recorded_date)}."
+    else:
+        date_line = "The compilation date has not been recorded."
+    recorded_signatory = _present(compilation_signatory)
+    if recorded_signatory:
+        signatory_line = f"Compilation signatory: {recorded_signatory}."
+    else:
+        signatory_line = "The compilation signatory has not been recorded."
     return StatutoryPage(
         heading="Compilation report",
         paragraphs=(
-            opening + " This compilation is not an audit and it is not a review. "
-            "No audit opinion and no review conclusion is expressed. "
-            "The directors remain responsible for the financial statements.",
+            *_letterhead_lines(practice_name, practice_address, practice_contact),
+            date_line,
+            signatory_line,
+            opening,
+            engagement,
+            _COMPILATION_PENDING,
         ),
     )
 
@@ -98,6 +302,7 @@ def _directors_report(
     principal_activity: str,
     currency: str,
     profit: Decimal,
+    dividends: Decimal | None = None,
 ) -> StatutoryPage:
     end = parse_iso_date(period_end)
     start = parse_iso_date(period_start)
@@ -151,9 +356,23 @@ def _directors_report(
             profit_line,
             "This is a small-company directors' report. "
             "It does not include a business review.",
-            "A dividend has not been recorded on this draft.",
+            _dividend_line(dividends),
         ),
     )
+
+
+def _dividend_line(dividends: Decimal | None) -> str:
+    """Placeholder until the trial balance answers the dividend question.
+
+    ``None`` means the question is unanswered. Zero means no dividend was
+    recorded. Any other amount means one was. The sentence does not repeat
+    the amount.
+    """
+    if dividends is None:
+        return _DIVIDEND_UNANSWERED
+    if abs(dividends) <= _DIVIDEND_TOLERANCE:
+        return _DIVIDEND_NONE
+    return _DIVIDEND_RECORDED
 
 
 def _approval(
@@ -162,8 +381,7 @@ def _approval(
     approved = _present(approval_date)
     if approved:
         date_line = (
-            "The financial statements were approved on "
-            f"{format_iso_date(approved)}."
+            "The financial statements were approved on " f"{format_iso_date(approved)}."
         )
     else:
         date_line = "Approval date has not been recorded."
@@ -184,7 +402,17 @@ def _approval(
     )
 
 
-def _audit_exemption(*, size_eligible: bool | None) -> StatutoryPage:
+def _audit_exemption(
+    *,
+    size_eligible: bool | None,
+    claimed: bool | None = None,
+    explanatory_note: str = "",
+) -> StatutoryPage:
+    if claimed is True:
+        note = explanatory_note.strip()
+        if not note:
+            raise ValueError("Audit exemption explanatory note is missing")
+        return StatutoryPage(heading="Audit exemption", paragraphs=(note,))
     if size_eligible is True:
         body = (
             "The recorded size test meets the pack's small-company conditions. "

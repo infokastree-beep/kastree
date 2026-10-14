@@ -3,11 +3,32 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+
+
+def size_amount_text(value: Decimal | None) -> str | None:
+    """Exact cent text. A Decimal from the year-end row is not sent as a float."""
+    if value is None:
+        return None
+    return format(value, "f")
+
+
+def decimal_text(value: object) -> str | None:
+    """Exact cent text. A Decimal from the year-end row is not sent as a float."""
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return size_amount_text(value)
+    if isinstance(value, str):
+        return value
+    raise ValueError("A size amount must be decimal text")
+
+
+SizeAmountOut = Annotated[str | None, BeforeValidator(decimal_text)]
 
 
 class YearEndCreateRequest(BaseModel):
@@ -49,6 +70,70 @@ class YearEndResponse(BaseModel):
     prior_year_validated: bool
     first_financial_period: bool
     adopted_trial_balance_id: uuid.UUID | None = None
+    size_current_turnover: SizeAmountOut = None
+    size_current_balance_sheet: SizeAmountOut = None
+    size_current_employees: int | None = None
+    size_preceding_turnover: SizeAmountOut = None
+    size_preceding_balance_sheet: SizeAmountOut = None
+    size_preceding_employees: int | None = None
+    size_message: str | None = None
+    audit_exemption_claimed: bool | None = None
+    audit_exemption_claimed_by_user_id: uuid.UUID | None = None
+    audit_exemption_claimed_at: datetime | None = None
+    audit_exemption_not_excluded: bool | None = None
+    audit_exemption_no_member_notice: bool | None = None
+    audit_exemption_returns_not_late: bool | None = None
+    audit_exemption_conditions_by_user_id: uuid.UUID | None = None
+    audit_exemption_conditions_at: datetime | None = None
+
+
+class AuditExemptionRequest(BaseModel):
+    """True is claimed, false is not claimed, null clears the position."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    claimed: bool | None
+
+
+class AuditExemptionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    year_end_id: uuid.UUID
+    claimed: bool | None
+    claimed_by_user_id: uuid.UUID | None
+    claimed_at: datetime | None
+
+
+class AuditExemptionConditionsRequest(BaseModel):
+    """The three directors' confirmations, recorded together or cleared together."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    not_excluded: bool | None
+    no_member_notice: bool | None
+    returns_not_late: bool | None
+
+    @model_validator(mode="after")
+    def recorded_together(self) -> AuditExemptionConditionsRequest:
+        values = (self.not_excluded, self.no_member_notice, self.returns_not_late)
+        if any(item is None for item in values) and any(
+            item is not None for item in values
+        ):
+            raise ValueError(
+                "Record all three directors' confirmations together, or clear them together."
+            )
+        return self
+
+
+class AuditExemptionConditionsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    year_end_id: uuid.UUID
+    not_excluded: bool | None
+    no_member_notice: bool | None
+    returns_not_late: bool | None
+    conditions_by_user_id: uuid.UUID | None
+    conditions_at: datetime | None
 
 
 class TrialBalanceVersionCreate(BaseModel):
@@ -365,6 +450,8 @@ class StatementResponse(BaseModel):
     rounding_flags: list[RoundingFlagOut]
     company_name: str = ""
     pages: list[StatutoryPageOut] = Field(default_factory=list)
+    engine_turnover: str | None = None
+    engine_balance_sheet_total: str | None = None
     omitted_blocks: list[str] = Field(default_factory=list)
     added_blocks: list[str] = Field(default_factory=list)
 
@@ -377,6 +464,12 @@ class SizeEligibilityResponse(BaseModel):
     current_conditions_met: int
     preceding_conditions_met: int | None
     message: str
+    size_current_turnover: SizeAmountOut = None
+    size_current_balance_sheet: SizeAmountOut = None
+    size_current_employees: int | None = None
+    size_preceding_turnover: SizeAmountOut = None
+    size_preceding_balance_sheet: SizeAmountOut = None
+    size_preceding_employees: int | None = None
 
 
 class DashboardFixOut(BaseModel):
@@ -408,6 +501,15 @@ class DisclosureQuestionOut(BaseModel):
     answer: Literal["yes", "no", "unanswered"]
 
 
+class DraftStatusView(BaseModel):
+    """Lifecycle is Draft or Final. Readiness is present only while Draft."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    lifecycle: Literal["Draft", "Final"]
+    readiness: str | None = None
+
+
 class DashboardResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -416,6 +518,7 @@ class DashboardResponse(BaseModel):
     row_version: int
     traffic: Literal["red", "amber", "green"]
     can_finalise: bool
+    status_view: DraftStatusView
     unanswered_disclosures: list[str]
     unanswered_count: int = 0
     blocking_count: int = 0
@@ -503,6 +606,9 @@ class NoteLibraryRowOut(BaseModel):
     can_restore: bool
     can_add: bool
     can_remove: bool
+    kind: Literal["Note", "Policy"]
+    note_class: str
+    note_class_label: str
 
 
 class NoteLibraryResponse(BaseModel):
@@ -610,6 +716,20 @@ class AdoptableTrialBalanceList(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[AdoptableTrialBalanceOut]
+
+
+class TrialBalancePageResponse(BaseModel):
+    """Read-only Inputs page. ``file_name`` stays null until a name is stored."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    trial_balance_id: uuid.UUID | None
+    period_start: date | None
+    period_end: date | None
+    uploaded_at: datetime | None
+    account_count: int | None
+    currency: str | None
+    file_name: str | None
 
 
 class AdoptTrialBalanceRequest(BaseModel):

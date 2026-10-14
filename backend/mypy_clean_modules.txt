@@ -69,6 +69,8 @@ app/services/beta.py
 app/services/clerk_users.py
 app/services/commentary.py
 app/services/company_details.py
+app/services/directors_report.py
+app/services/countries.py
 app/services/comparative_statements.py
 app/services/copilot_evidence.py
 app/services/copilot_glossary.py
@@ -95,6 +97,7 @@ app/services/prior_year.py
 app/services/rate_limit.py
 app/services/reconciliation.py
 app/services/dashboard_groups.py
+app/services/legal_forms.py
 app/services/disclosure_groups.py
 app/services/note_library.py
 app/services/schema_revision.py

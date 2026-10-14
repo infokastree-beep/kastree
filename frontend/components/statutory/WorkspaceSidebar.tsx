@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { PreviewChild } from "@/lib/section-preview";
+import { useEffect, useState, type ReactElement } from "react";
+import {
+  NOTE_CLASS_ORDER,
+  sidebarNoteGroups,
+  type PreviewChild,
+} from "@/lib/section-preview";
 import {
   groupIsOpen,
   readClosedGroups,
@@ -70,12 +74,86 @@ export function WorkspaceSidebar({
     });
   }
 
+  function visibleGroupIds(): string[] {
+    const ids = groupsFrom(sections).map((group) => group.id);
+    for (const noteGroup of sidebarNoteGroups(
+      childrenBySection.notes ?? [],
+      NOTE_CLASS_ORDER,
+    )) {
+      ids.push(`notes:${noteGroup.id}`);
+    }
+    return ids;
+  }
+
+  function expandAll(): void {
+    setClosed({});
+    writeClosedGroups({});
+  }
+
+  function collapseAll(): void {
+    const next: Record<string, boolean> = {};
+    for (const id of visibleGroupIds()) {
+      next[id] = false;
+    }
+    setClosed(next);
+    writeClosedGroups(next);
+  }
+
+  function renderChild(child: PreviewChild, sectionId: string): ReactElement {
+    const current = sectionId === activeId && child.id === activeChildId;
+    return (
+      <li key={child.id}>
+        <button
+          type="button"
+          data-testid={`statutory-child-${child.anchor}`}
+          aria-current={current ? "true" : undefined}
+          onClick={() => onSelectChild?.(sectionId, child.id)}
+          className={`w-full rounded-md px-3 py-1.5 text-left text-xs ${
+            current
+              ? "bg-accent font-semibold text-accent-foreground"
+              : "text-ink-secondary hover:bg-surface-elevated"
+          }`}
+        >
+          <span className="block">
+            {child.number != null ? `${child.number}. ${child.label}` : child.label}
+          </span>
+          {child.status ? (
+            <span
+              className="block text-[10px] uppercase tracking-[0.08em]"
+              data-testid={`statutory-child-status-${child.anchor}`}
+            >
+              {child.status === "complete" ? "Complete" : "Missing"}
+            </span>
+          ) : null}
+        </button>
+      </li>
+    );
+  }
+
   return (
     <nav
       aria-label="Draft sections"
       data-testid="statutory-sidebar"
       className="w-56 shrink-0"
     >
+      <div className="flex gap-2 px-3 pt-3">
+        <button
+          type="button"
+          data-testid="statutory-expand-all"
+          onClick={expandAll}
+          className="text-xs font-semibold text-ink-secondary underline"
+        >
+          Expand all
+        </button>
+        <button
+          type="button"
+          data-testid="statutory-collapse-all"
+          onClick={collapseAll}
+          className="text-xs font-semibold text-ink-secondary underline"
+        >
+          Collapse all
+        </button>
+      </div>
       {groupsFrom(sections).map((group) => {
         const open = groupIsOpen(closed, group.id);
         return (
@@ -94,11 +172,10 @@ export function WorkspaceSidebar({
               <ul className="space-y-1">
                 {group.sections.map((section) => {
                   const active = section.id === activeId;
-                  const off = section.enabled === false;
                   const children = childrenBySection[section.id] ?? [];
                   const childrenOpen = collapsedChildren[section.id] !== true;
                   return (
-                    <li key={section.id} className={off ? "opacity-60" : undefined}>
+                    <li key={section.id}>
                       <div className="flex items-start gap-1">
                         {children.length > 0 ? (
                           <button
@@ -133,43 +210,45 @@ export function WorkspaceSidebar({
                           {section.lock === "locked" ? (
                             <span className="ml-2 text-[10px] font-semibold uppercase tracking-[0.08em] opacity-70">lock</span>
                           ) : null}
-                          {off ? (
-                            <span className="ml-2 text-[10px] font-semibold uppercase tracking-[0.08em] opacity-70">off</span>
-                          ) : null}
-                          {section.built === false ? (
-                            <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.08em] opacity-70">
-                              not built
-                            </span>
-                          ) : null}
                         </button>
                       </div>
-                      {childrenOpen && children.length > 0 ? (
-                        <ul className="mb-1 space-y-0.5 pl-7">
-                          {children.map((child) => {
-                            const current =
-                              active && child.id === activeChildId;
-                            return (
-                              <li key={child.id}>
-                                <button
-                                  type="button"
-                                  data-testid={`statutory-child-${child.anchor}`}
-                                  aria-current={current ? "true" : undefined}
-                                  onClick={() =>
-                                    onSelectChild?.(section.id, child.id)
-                                  }
-                                  className={`w-full rounded-md px-3 py-1.5 text-left text-xs ${
-                                    current
-                                      ? "bg-accent font-semibold text-accent-foreground"
-                                      : "text-ink-secondary hover:bg-surface-elevated"
-                                  }`}
+                      {childrenOpen && children.length > 0 && section.id === "notes" ? (
+                        <div className="mb-1 space-y-1 pl-7">
+                          {sidebarNoteGroups(children, NOTE_CLASS_ORDER).map(
+                            (noteGroup) => {
+                              const noteKey = `notes:${noteGroup.id}`;
+                              const noteOpen = groupIsOpen(closed, noteKey);
+                              return (
+                                <div
+                                  key={noteGroup.id}
+                                  data-testid={`statutory-note-class-${noteGroup.id}`}
                                 >
-                                  {child.number != null
-                                    ? `${child.number}. ${child.label}`
-                                    : child.label}
-                                </button>
-                              </li>
-                            );
-                          })}
+                                  <button
+                                    type="button"
+                                    aria-expanded={noteOpen}
+                                    data-testid={`statutory-note-class-toggle-${noteGroup.id}`}
+                                    onClick={() => toggleGroup(noteKey)}
+                                    className="flex w-full items-center justify-between py-1 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-soft"
+                                  >
+                                    <span>{noteGroup.label}</span>
+                                    <span aria-hidden="true">{noteOpen ? "▾" : "▸"}</span>
+                                  </button>
+                                  {noteOpen ? (
+                                    <ul className="space-y-0.5">
+                                      {noteGroup.items.map((child) =>
+                                        renderChild(child, section.id),
+                                      )}
+                                    </ul>
+                                  ) : null}
+                                </div>
+                              );
+                            },
+                          )}
+                        </div>
+                      ) : null}
+                      {childrenOpen && children.length > 0 && section.id !== "notes" ? (
+                        <ul className="mb-1 space-y-0.5 pl-7">
+                          {children.map((child) => renderChild(child, section.id))}
                         </ul>
                       ) : null}
                     </li>

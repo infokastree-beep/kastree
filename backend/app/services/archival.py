@@ -75,6 +75,7 @@ def company_snapshot(company: Company) -> dict[str, Any]:
         "name": company.name,
         "company_number": company.company_number,
         "country_of_incorporation": company.country_of_incorporation,
+        "legal_form": company.legal_form,
         "industry": company.industry,
         "company_type": company.company_type,
         "materiality_suggestion_dismissed_at": (

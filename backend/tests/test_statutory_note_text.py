@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from decimal import Decimal
 from pathlib import Path
@@ -91,6 +92,45 @@ _COMMITMENT_FLAGS = (
 )
 
 
+_CITATION = "sections 305 and 306 of the Companies Act 2014"
+_NOTES = (
+    Path(__file__).resolve().parents[2]
+    / "findraft"
+    / "content"
+    / "frs102-1a-ie"
+    / "2024.09"
+    / "notes"
+)
+
+
+def test_directors_disclosure_cites_sections_305_and_306() -> None:
+    loans = json.loads((_NOTES / "N5_LOANS.json").read_text())
+    related = json.loads((_NOTES / "N7_RPT.json").read_text())
+    for template in (loans, related):
+        citation = template["directorsDisclosureCitation"]
+        assert citation["source_status"] == "researched (public source)"
+        assert "sections 305 and 306" in citation["provision"]
+        assert "1AD.38" in citation["provision"]
+        assert citation["source_status"] != "confirmed"
+    assert _CITATION in loans["directorLoansClause"]
+    assert "1AD.38" not in loans["directorLoansClause"]
+    assert "Schedule 3A" not in loans["directorLoansClause"]
+    assert _CITATION in related["bodyTemplate"]
+    assert "1AD.38" not in related["bodyTemplate"]
+    assert "Schedule 3A" not in related["bodyTemplate"]
+    document = _golden(disclosure_flags={"RPT_EXISTS": True})
+    assert document.net_assets == Decimal("455812.00")
+    assert document.profit == Decimal("157650.00")
+    loans_note = next(note for note in document.notes if note.code == "N5_LOANS")
+    related_note = next(note for note in document.notes if note.code == "N7_RPT")
+    assert _CITATION in loans_note.body
+    assert _CITATION in related_note.body
+    assert "1AD.38" not in loans_note.body
+    assert "1AD.38" not in related_note.body
+    assert "Schedule 3A" not in loans_note.body
+    assert "Schedule 3A" not in related_note.body
+
+
 def test_unanswered_related_party_and_commitment_notes_are_one_line() -> None:
     document = _golden()
     assert document.net_assets == Decimal("455812.00")
@@ -146,7 +186,9 @@ def test_unanswered_related_party_and_commitment_notes_are_one_line() -> None:
     assert answered.profit == document.profit
     capital = next(note for note in answered.notes if note.code == "N9_COMMITMENTS")
     assert capital.title
-    assert "1AD.31" in capital.body
+    assert "Capital commitments" in capital.body
+    assert "1AD.31" not in capital.body
+    assert "1AD." not in capital.body
     assert "[capital commitments not recorded]" in capital.body
     for placeholder in (
         "[retirement benefit commitments not recorded]",

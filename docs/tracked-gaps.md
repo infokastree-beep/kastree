@@ -14,6 +14,58 @@ A trial-balance upload whose start-to-end span is longer than 18 months is refus
 
 The 18-month number is the limit in that block until an accountant confirms it. Do not change the number, and do not turn the block back into a warning, without that confirmation.
 
+## QA review findings
+
+External review of a draft statutory PDF and Word file for one fictional first-period Irish company. The regression fixture is: name "charlie mungar buffett", company number 1111, registered office "New York, Ireland", incorporated 7 May 2025, secretary "Warren Buffet", director "warren buffett" appointed 3 July 2025, average employees 677, period 1 January 2026 to 31 December 2026 marked first financial period, no audit exemption recorded, practice name "kastree's Organization", turnover 100,000, cost of sales 40,250, administrative expenses 34,750, no tax.
+
+No new table. The checks read columns that already exist. The secretary has no appointment date, so that date is not checked. Legal form is not stored on the company. `companies.company_type` is only `trading` or `holding`, and it chooses the materiality suggestion. It is not a Companies Act form. `companies.name` is free text. The Irish pack `data_checks.legal_form` is the pack-level label `private-company-limited-by-shares`. The suffix check therefore uses Limited, Ltd, Teoranta, and Teo for every company on that pack. A name ending in DAC fails V-CO-010. Company name is edited on the company record. The Fix link opens company details, which is the draft page that can hold the other letterhead facts.
+
+Revision `t6u7v8w9x0` adds `companies.legal_form`, `VARCHAR(64)`, nullable, with no server default and no value constraint. Existing rows stay NULL. Nothing maps, reads, or writes it yet. It is not `company_type`. NULL is not guessed as a private company or as a designated activity company, and DAC suffixes are not added for every company. Until someone records the form, the Limited / Ltd / Teoranta / Teo rule stays in force. The suffix lists, once the column is recorded, use `source_status` `researched (public source)` and name the Companies Act 2014. That status is not a reviewer sign-off. A private company limited by shares uses Limited, Ltd, Teoranta, Teo. A designated activity company uses DAC, Designated Activity Company, and Cuideachta Ghníomhaíochta Ainmnithe. Owner or admin will edit it. The change will be audited. Grants stay least-privilege. The Fix target stays company details.
+
+A first financial period with no incorporation date is V-CO-011. The message is "The date of incorporation has not been recorded. A first financial period has to start on that date." It blocks FINAL. The dashboard row has that sentence and a Fix link to company details (`company-incorporated-on`). A company that is not on its first financial period does not get V-CO-011, so there is no empty blocking check. The directors' information page prints "Date of incorporation: not recorded".
+
+| Id | Finding | Status |
+| --- | --- | --- |
+| F1 | Audit position unresolved | An owner or admin records the claim on the review page. NULL asks for the position to be recorded and blocks FINAL. False says an audit is required and an auditor's report is out of scope, and blocks FINAL. True requires a recorded size test. A size test that does not meet the stored decision blocks FINAL. A two-of-three pass with a failed condition is an evidenced exemption: FINAL is not blocked for that reason, and notice V-CO-021 repeats the reviewer-to-confirm size message. When the claim is true, FINAL also stays blocked until the three directors' confirmations are true. Each one that is missing or recorded as not met is its own Review check with a Fix link. The audit row `audit_exemption_claimed` stores who, when, and the value. It does not store amounts. The balance-sheet statement is the sample on the CRO Audit Exemption Statement page, copied with the page's apostrophe and dash, including the abridgement sentence and the page's parenthetical instruction. `(company name)` is printed as on that page. The CRO sample's "On behalf of the board" / "TYPED Name of Signatory" lines are the directors' signature block already printed underneath, and they are not printed again. Pack `audit_exemption_statements.source` is `CRO`, `provision` is `Companies Act 2014, section 335`, and `source_status` is `researched (public source)`. That status is not a reviewer sign-off. The workspace label stays source not confirmed. The banner stays "Statutory wording not yet reviewed by a qualified reviewer". The statement prints on the balance sheet immediately above the directors' signatures only when the claim is true. The audit-exemption page is an explanatory note in that case. It does not repeat the statement. |
+| F2 | Period does not match incorporation | Partial. V-CO-011 blocks FINAL when a first financial period does not start on the incorporation date, the date is missing, or the period is longer than the pack cap. Comparatives and the pre-2026 gate stay in design D2. |
+| F3 | Wrong accounting edition for a period starting before 2026 | Open. Design D2. |
+| F4 | Registered office invalid | Shipped as notice V-CO-012. It does not block FINAL. |
+| F5 | Company name has no legal-form suffix | Shipped as V-CO-010 for the pack's private-company suffixes. It blocks FINAL. Revision `t6u7v8w9x0` adds `companies.legal_form`. Nothing maps it yet, so a designated activity company still uses the private-company suffixes. |
+| F6 | Employees implausible and above 50 | Shipped as notices V-CO-016 and V-CO-017. They do not block FINAL. |
+| F7 | Responsibilities statement incomplete | Open. Design D3. |
+| F8 | Directors' report thin | Open. Design D3. |
+| F9 | Compilation report uses the platform default practice name and has no address, date, or signatory | Open. Design D4. |
+| F10 | Share capital analysis not recorded | Open. Design D5. |
+| F11 | Related-party, directors' remuneration, and director-loan disclosures not recorded | Open. Design D5. |
+| F12 | Post-balance-sheet events not addressed | Partial. An unanswered question is notice V-CO-019 and does not block FINAL. Particulars for a Yes answer stay in design D5. |
+| F13 | Director appointed after incorporation | Shipped as notice V-CO-014. Directors only. |
+| F14 | Name spelling inconsistent | Shipped as notice V-CO-015. |
+| F15 | Company number implausible | Shipped as notice V-CO-013. |
+| F16 | No tax charge or liability | Shipped as notice V-CO-018. It does not block FINAL. |
+| F17 | Internal checklist reference printed (1AD.28) | Shipped. Printed commitment headings are the plain catalogue titles. Checklist ids stay in the pack file and are not printed. The employees note heading is the computed number and Employees. |
+| F18 | Dividend sentence is draft hygiene | Shipped. An unanswered dividend figure prints "[dividend not recorded]". Zero prints "No dividend has been recorded for the financial year." Any other amount prints "A dividend has been recorded for the financial year." The sentence does not repeat the amount. The figure is the trial-balance DIVIDENDS line. Checklist item 1AD.35 has no answer flag. |
+| F19 | Signature blocks blank | Open. Design D3. |
+| F20 | Cover shows the wording banner twice | Shipped. The wording banner is in the first-page margin once. Later pages keep DRAFT and do not repeat the banner. |
+| F21 | Page breaks split paragraphs | Shipped. Policy paragraphs and short notes use break-inside:avoid in the PDF and keepLines / keepNext in Word. |
+| F22 | Advisers not recorded | Open. |
+
+Rules marked reviewer-to-confirm, stored on the Irish pack under `data_checks`:
+
+- Legal-form suffixes for a private company limited by shares: Limited, Ltd, Teoranta, Teo. Matched as a whole word at the end of the name, case-insensitive. `Ltd` may have a trailing full stop. `Teo` does not match inside `Potato`.
+- A first financial period longer than 18 calendar months blocks FINAL. A period that ends the day before the start date plus 18 months is not longer. 1 May 2025 through 31 October 2026 does not block. Ending 1 November 2026 does.
+- A company number that is not 5 to 7 digits is a notice. This does not change the save rule, which still accepts letters and numbers up to 20 characters.
+- Average employees above 50 is a notice. 50 itself does not fire. This uses `employee_notice_above`, which matches the pack size threshold `thresholds.employees` but is a separate notice, not the size test.
+- Turnover per employee below 2,000.00 is a notice when both turnover and average employees are above zero. The floor is in the pack currency (EUR). The check does not convert a company that reports in another currency. Turnover of exactly 2,000 per employee does not fire. The rule is turnover divided by average employees, compared with `turnover_per_employee_floor`.
+- The registered-office notice is a data check, not a statutory rule. It fires when the address has neither an Eircode nor a whole-word Republic of Ireland county (including `Co.` and `County`). The word Ireland is not a county. `Corkscrew` does not match Cork. `Dublin, Ohio` passes because Dublin is a county word. A Dublin district written only as `D4`, with no Eircode and without the word Dublin, does not pass.
+
+The small-company size test stays two of three. The Irish pack records this as `thresholds.rule` `2-of-3`. The reviewer sentence is `size_rule_note`, marked `source_status` `reviewer-to-confirm`. When two conditions pass and one fails, the size message and the review dashboard name each condition as met or not met, then include that sentence. They do not say the company is eligible. The sentence says a reviewer must confirm whether the audit exemption is available (two of three versus all conditions). An employee count above 50 fails only that condition. The stored decision still needs two of the three conditions in the current year and, unless the year is a first financial period, in the preceding year as well. Revision `q3r4s5t6u7` adds nullable columns for those input figures on `findraft_year_ends`. Existing rows stay NULL until a member records the size test. `size_eligibility_recorded` stores the decision and the employee counts. It does not store the turnover or the balance-sheet total.
+
+Revision `r4s5t6u7v8` adds `audit_exemption_claimed`, `audit_exemption_claimed_by_user_id`, and `audit_exemption_claimed_at` on `findraft_year_ends`. All three are nullable and have no server default. Existing rows stay NULL. NULL means the position has not been recorded. True means claimed. False means not claimed. An owner or admin records the value. A member or a viewer cannot. `audit_exemption_claimed` stores who, when, and the value, and it does not store amounts. NULL asks for the position to be recorded. False says an audit is required and an auditor's report is out of scope. True requires the size test. FINAL stays blocked until the exemption is claimed and the size test is recorded as met. The pack object `audit_exemption_statements` is marked `source_status` `researched (public source)`. `source` is `CRO`. `provision` is `Companies Act 2014, section 335`. The workspace label stays source not confirmed. The banner stays "Statutory wording not yet reviewed by a qualified reviewer". Only a recorded reviewer sign-off may change that label or that banner. Nothing in this pack object is marked confirmed or signed off. The pack keeps the CRO sample as the source, including the preparer line, the `(company name)` placeholder, the bracketed asterisk note, and item (e). A document prints sections (a) to (d) only, immediately above the directors' signatures, and only when the claim is true. The recorded company name replaces the placeholder. The preparer line and the bracketed asterisk note do not print. Item (e) is the small-company abridgement exemption in sections 352 and 353. `abridgement_note` says it needs a separate recorded claim. It is not printed. The separate audit-exemption page is an explanatory note and does not repeat the statement.
+
+Revision `s5t6u7v8w9` adds `audit_exemption_not_excluded`, `audit_exemption_no_member_notice`, `audit_exemption_returns_not_late`, `audit_exemption_conditions_by_user_id`, and `audit_exemption_conditions_at` on `findraft_year_ends`. All five are nullable and have no server default. Existing rows stay NULL. An owner or admin records the three directors' confirmations together: the company is not an excluded class (Fifth Schedule to the Companies Act 2014), no notice under section 334 has been served, and annual returns were not filed late more than once in five years (section 363 of the Companies Act 2014, as substituted by section 22 of the Companies (Corporate Governance, Enforcement and Regulatory Provisions) Act 2024). `audit_exemption_conditions` stores who, when, and the three values. It does not store amounts. A member or a viewer cannot record them. When the audit exemption is claimed, FINAL stays blocked until all three are true. NULL and false each fail on their own dashboard check, in the Review group, with a Fix link to the confirmations. A claim that is not true does not ask for these confirmations.
+
+Reviewer notes. Rules and wording drawn from the statute, the CRO, or FRS 102 text use `source_status` `researched (public source)` and name the provision. That status records where the text was taken from. It does not record a reviewer sign-off. The workspace label `source not confirmed` and the banner `Statutory wording not yet reviewed by a qualified reviewer` stay as they are until a reviewer sign-off is recorded.
+
 ## Supersede a FINAL draft (next, design only)
 
 Not built. A practice that finalises by mistake, or finds an error after FINAL, has nothing to do in the product today.
@@ -1596,8 +1648,10 @@ Pending reviewer sign-off.
 income statement is order 7 and the statement of financial position is
 order 9, with the notes after both. The PDF prints those three in that
 declared order. The other ids in the array (cover, contents, other
-comprehensive income, changes in equity, cash flow, trading statement) are
-not built. The sidebar catalogue stays the hardcoded list. Pending reviewer
+comprehensive income, changes in equity, and the trading statement) are
+not built. The cash flow statement is an optional statement for a small
+entity (FRS 102 (September 2024) paragraph 1A.7A), not yet built, approved,
+build after item 15. Strategic report and ESG stay out. The sidebar catalogue stays the hardcoded list. Pending reviewer
 sign-off of statement order.
 
 ### Note sign convention — reviewer sign-off
@@ -2019,11 +2073,13 @@ adjustments. None of these fields recalculates a number.
    replaces that label. It does not swap which column is current or prior.
 
 **Left on the Accurri dialog, and out of this design.** Consolidation
-columns and parent columns ("Show consolidation", "Show parent"). Cash-flow
-direct versus indirect. ESG, the strategic report, and budget-versus-actual
+columns and parent columns ("Show consolidation", "Show parent"). The direct
+cash-flow method. Strategic report and ESG stay out. Budget-versus-actual
 comparison headers. "Sign statement of financial position" and any signatory
 list. XBRL. Those are separate, larger features. Consolidation, XBRL, and
-signatory management stay out of this pass.
+signatory management stay out of this pass. The indirect cash flow statement
+is an optional statement for a small entity (FRS 102 (September 2024)
+paragraph 1A.7A), not yet built, approved, build after item 15.
 
 ### Week 9 statutory evidence graph
 

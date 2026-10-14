@@ -29,18 +29,17 @@ export function wordingSignedOffFromServer(
   return access?.wording_signed_off === true;
 }
 
-export function finalStateLabel(wordingSignedOff: boolean): string {
-  if (wordingSignedOff) {
-    return FINALISED_STATE;
-  }
-  return `${FINALISED_STATE} — ${WORDING_BANNER}`;
-}
+export type DraftStatusView = {
+  lifecycle: "Draft" | "Final";
+  readiness: string | null;
+};
 
-export function shownStatus(status: string, wordingSignedOff: boolean): string {
-  if (status !== "final" || wordingSignedOff) {
-    return status;
+/** One pill. Readiness is part of the pill only while the draft is open. */
+export function statusPillLabel(view: DraftStatusView): string {
+  if (view.lifecycle === "Final" || view.readiness == null || view.readiness === "") {
+    return view.lifecycle;
   }
-  return `final — ${WORDING_BANNER}`;
+  return `${view.lifecycle} · ${view.readiness}`;
 }
 
 export const CARRIED_ACK_LABEL =
@@ -69,38 +68,96 @@ export function carriedAcknowledgementRequired(names: readonly string[]): boolea
   return names.length > 0;
 }
 
-export function pdfDownloadLabel(
-  status: string | undefined,
-  wordingSignedOff = false,
-): string {
+export function pdfDownloadLabel(status: string | undefined): string {
   if (status !== "final") {
     return "Download draft PDF";
   }
-  if (wordingSignedOff) {
-    return "Download final PDF";
-  }
-  return `Download final PDF — ${WORDING_BANNER}`;
+  return "Download final PDF";
 }
 
-export function wordDownloadLabel(
-  status: string | undefined,
-  wordingSignedOff = false,
-): string {
-  if (status !== "final" || wordingSignedOff) {
-    return "Download Word (.docx)";
+export function wordDownloadLabel(status?: string): string {
+  if (status === "final") {
+    return "Download final Word (.docx)";
   }
-  return `Download Word (.docx) — ${WORDING_BANNER}`;
+  return "Download Word (.docx)";
+}
+
+const GENERIC_SERVER = new Set(["Internal Server Error", "Something went wrong."]);
+
+export function requestIdFromBody(body: unknown): string | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+  const top = (body as { request_id?: unknown }).request_id;
+  if (typeof top === "string" && top.trim().length > 0) {
+    return top.trim();
+  }
+  const detail = (body as { detail?: unknown }).detail;
+  if (typeof detail === "object" && detail !== null && "request_id" in detail) {
+    const nested = (detail as { request_id?: unknown }).request_id;
+    if (typeof nested === "string" && nested.trim().length > 0) {
+      return nested.trim();
+    }
+  }
+  return null;
+}
+
+export type FinaliseFailurePart =
+  | { kind: "text"; text: string }
+  | { kind: "link"; text: string; href: string };
+
+const FAILURE_LINK =
+  /\[([^\]]+)\]\((\/year-ends\/[0-9a-fA-F-]{36}\/draft\?section=[a-z0-9-]+)\)/g;
+
+/** Split a finalise refusal into text and draft-page links. Other URLs stay text. */
+export function finaliseFailureParts(message: string): FinaliseFailurePart[] {
+  const parts: FinaliseFailurePart[] = [];
+  const pattern = new RegExp(FAILURE_LINK.source, "g");
+  let last = 0;
+  let match = pattern.exec(message);
+  while (match !== null) {
+    const index = match.index;
+    if (index > last) {
+      parts.push({ kind: "text", text: message.slice(last, index) });
+    }
+    parts.push({ kind: "link", text: match[1] ?? "", href: match[2] ?? "" });
+    last = index + match[0].length;
+    match = pattern.exec(message);
+  }
+  if (last < message.length) {
+    parts.push({ kind: "text", text: message.slice(last) });
+  }
+  if (parts.length === 0) {
+    parts.push({ kind: "text", text: message });
+  }
+  return parts;
 }
 
 export function finaliseFailureMessage(
   status: number,
   detail: string | null,
+  requestId: string | null = null,
 ): string {
   if (status === 403) {
     return "You don't have permission to access this resource.";
   }
   const text = detail?.trim() ?? "";
-  if (status === 409 && text.length > 0) {
+  const useful =
+    text.length > 0 && !GENERIC_SERVER.has(text) && !/^API \d+$/.test(text);
+  const reference = requestId?.trim() ?? "";
+  if (status >= 500) {
+    if (useful && reference.length > 0) {
+      return `${text} Quote reference ${reference}.`;
+    }
+    if (useful) {
+      return text;
+    }
+    if (reference.length > 0) {
+      return `Something went wrong while finalising this draft. Quote reference ${reference}.`;
+    }
+    return "Something went wrong while finalising this draft.";
+  }
+  if (useful) {
     return text;
   }
   return "This draft could not be finalised.";

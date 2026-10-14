@@ -84,6 +84,24 @@ def _note_body(document: object, code: str) -> str:
     return str(note.body)
 
 
+def test_catalogue_disambiguates_policy_blocks_from_notes() -> None:
+    from app.services.note_library import _catalogue
+
+    rows = list(_catalogue())
+    entity = next(row for row in rows if row.block_id == "N0_ENTITY")
+    assert entity.title == "Company information"
+    assert entity.row_kind == "Note"
+    debtors = {(row.row_kind, row.note_class) for row in rows if row.title == "Debtors"}
+    creditors = {
+        (row.row_kind, row.note_class) for row in rows if row.title == "Creditors"
+    }
+    assert debtors == {("Policy", "policies"), ("Note", "current assets")}
+    assert creditors == {("Policy", "policies"), ("Note", "creditors")}
+    for row in rows:
+        assert row.title != row.block_id
+        assert "N0_" not in row.title
+
+
 def test_null_library_keeps_the_golden_notes_and_figures() -> None:
     document = _golden()
     assert document.net_assets == Decimal("455812.00")
@@ -103,7 +121,8 @@ def test_force_included_pension_prints_the_placeholder_and_a_notice() -> None:
     assert document.net_assets == Decimal("455812.00")
     assert document.profit == Decimal("157650.00")
     body = _note_body(document, "N9_COMMITMENTS")
-    assert "1AD.32" in body
+    assert "Retirement benefit commitments" in body
+    assert "1AD.32" not in body
     assert _PENSION_PLACEHOLDER in body
     assert "[capital commitments not recorded]" not in body
     assert document.added_blocks == ("pension_commitments",)
@@ -168,7 +187,21 @@ async def test_library_routes_reject_bad_blocks_and_keep_golden_figures(
     assert _library_column(draft_id, org_id) is None
     assert listed.json()["row_version"] == _draft_version(draft_id, org_id)
     rows = {row["block_id"]: row for row in listed.json()["rows"]}
+    assert rows["N0_ENTITY"]["title"] == "Company information"
+    assert rows["N0_ENTITY"]["kind"] == "Note"
+    assert rows["N0_ENTITY"]["note_class"] == "other"
     assert rows["N0_ENTITY"]["sentence"] == "This note is always included."
+    assert rows["DEBTORS"]["title"] == "Debtors"
+    assert rows["DEBTORS"]["kind"] == "Policy"
+    assert rows["DEBTORS"]["note_class"] == "policies"
+    assert rows["N3_DEBTORS"]["title"] == "Debtors"
+    assert rows["N3_DEBTORS"]["kind"] == "Note"
+    assert rows["N3_DEBTORS"]["note_class"] == "current assets"
+    assert rows["CREDITORS"]["kind"] == "Policy"
+    assert rows["N4_CREDITORS"]["kind"] == "Note"
+    for row in listed.json()["rows"]:
+        assert row["title"] != row["block_id"]
+        assert "N0_" not in row["title"]
     assert (
         rows["N2_FA"]["sentence"]
         == "Included because Tangible fixed assets has a balance."
@@ -266,10 +299,13 @@ async def test_library_routes_reject_bad_blocks_and_keep_golden_figures(
     body = statements.json()
     assert body["net_assets"] == "455812.00"
     assert body["profit"] == "157650.00"
-    commitments = next(note for note in body["notes"] if note["code"] == "N9_COMMITMENTS")
+    commitments = next(
+        note for note in body["notes"] if note["code"] == "N9_COMMITMENTS"
+    )
     assert commitments["title"]
     assert _PENSION_PLACEHOLDER in commitments["body"]
-    assert "1AD.32" in commitments["body"]
+    assert "Retirement benefit commitments" in commitments["body"]
+    assert "1AD.32" not in commitments["body"]
     assert body["added_blocks"] == ["pension_commitments"]
     codes = {check["code"] for check in body["checks"]}
     assert "V-NOTE-002" in codes
@@ -310,7 +346,9 @@ async def test_library_routes_reject_bad_blocks_and_keep_golden_figures(
         f"/year-ends/{year_end_id}/adopted-trial-balance/statements",
         headers=headers,
     )
-    policies = next(note for note in after.json()["notes"] if note["code"] == "N1_POLICIES")
+    policies = next(
+        note for note in after.json()["notes"] if note["code"] == "N1_POLICIES"
+    )
     assert "Transactions in foreign currencies" not in policies["body"]
     assert "Revenue is recognised" in policies["body"]
     assert after.json()["net_assets"] == "455812.00"

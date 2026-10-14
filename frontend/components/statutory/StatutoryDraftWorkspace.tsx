@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
@@ -10,11 +10,19 @@ import { downloadDraftPdf, pdfBlockReason } from "@/lib/draft-pdf";
 import { WORD_PROGRESS_LABEL, downloadDraftWord } from "@/lib/draft-word";
 import { messageFromPdfBody } from "@/lib/workspace-load-error";
 import {
+  ApprovalDetailsForm,
   CompanyDetailsForm,
   type ApprovalWrite,
   type CompanyDetails,
   type CompanyDetailsWrite,
 } from "@/components/statutory/CompanyDetailsForm";
+import { CompilationDetailsForm } from "@/components/statutory/CompilationDetailsForm";
+import { DirectorsResponsibilitiesPanel } from "@/components/statutory/DirectorsResponsibilitiesPanel";
+import {
+  DirectorsReportForm,
+  PrincipalActivityPanel,
+  type DirectorsReportWrite,
+} from "@/components/statutory/DirectorsReportForm";
 import {
   ReportSetupForm,
   type ReportSetup,
@@ -25,21 +33,27 @@ import { NotesLibrary } from "@/components/statutory/NotesLibrary";
 import type { NoteLibraryRow } from "@/lib/note-library";
 import { FinaliseDraft } from "@/components/statutory/FinaliseDraft";
 import { ReviewChecks } from "@/components/statutory/ReviewChecks";
-import { blockingFailureCount } from "@/lib/dashboard-groups";
+import { blockingFailureCount, severityTag } from "@/lib/dashboard-groups";
 import type { DisclosureQuestion } from "@/lib/disclosure-groups";
 import {
   currencyCodeFromNotice,
-  finalStateLabel,
   finaliseFailureMessage,
-  finaliseStatusLine,
   pdfDownloadLabel,
-  shownStatus,
+  requestIdFromBody,
+  statusPillLabel,
   wordDownloadLabel,
-  wordingSignedOffFromServer,
+  type DraftStatusView,
 } from "@/lib/finalise-status";
 import { SectionPreview } from "@/components/statutory/SectionPreview";
 import { SectionsSetup } from "@/components/statutory/SectionsSetup";
 import { StatutoryLoadError } from "@/components/statutory/StatutoryLoadError";
+import {
+  AuditExemptionClaim,
+  type DirectorsConfirmations,
+} from "@/components/statutory/AuditExemptionClaim";
+import { SizeInputs } from "@/components/statutory/SizeInputs";
+import { TrialBalancePanel } from "@/components/statutory/TrialBalancePanel";
+import type { TrialBalancePage } from "@/lib/trial-balance-page";
 import { StatutorySublineReview } from "@/components/statutory/StatutorySublineReview";
 import { WorkspaceSidebar } from "@/components/statutory/WorkspaceSidebar";
 import {
@@ -53,11 +67,19 @@ import { StandingWordingNotice } from "@/components/statutory/StandingWordingNot
 import { StatutoryOptIn } from "@/components/statutory/StatutoryOptIn";
 import {
   activeSection,
-  navigatorSections,
   sectionIsOn,
   sectionsForFramework,
+  sidebarSections,
+  UNBUILT_NOTICE_KEY,
   type ReportingFramework,
 } from "@/lib/workspace-sections";
+import {
+  directorsReportNote,
+  directorsReportPart,
+  showCompilationForm,
+  sidebarInputChildren,
+  withSignatories,
+} from "@/lib/section-inputs";
 
 type YearEnd = {
   id: string;
@@ -69,6 +91,21 @@ type YearEnd = {
   prior_year_validated: boolean;
   first_financial_period: boolean;
   adopted_trial_balance_id: string | null;
+  size_current_turnover: string | null;
+  size_current_balance_sheet: string | null;
+  size_current_employees: number | null;
+  size_preceding_turnover: string | null;
+  size_preceding_balance_sheet: string | null;
+  size_preceding_employees: number | null;
+  size_message: string | null;
+  audit_exemption_claimed: boolean | null;
+  audit_exemption_claimed_by_user_id: string | null;
+  audit_exemption_claimed_at: string | null;
+  audit_exemption_not_excluded: boolean | null;
+  audit_exemption_no_member_notice: boolean | null;
+  audit_exemption_returns_not_late: boolean | null;
+  audit_exemption_conditions_by_user_id: string | null;
+  audit_exemption_conditions_at: string | null;
 };
 
 type WorkingDraft = {
@@ -96,6 +133,7 @@ type DraftDashboard = {
   row_version: number;
   traffic: "red" | "amber" | "green";
   can_finalise: boolean;
+  status_view?: DraftStatusView;
   unanswered_disclosures: string[];
   unanswered_count?: number;
   blocking_count?: number;
@@ -121,6 +159,8 @@ type StatementPack = {
   company_name: string;
   sofp: StatementRow[];
   income: StatementRow[];
+  engine_turnover?: string | null;
+  engine_balance_sheet_total?: string | null;
 };
 
 type AdjustmentLine = {
@@ -165,14 +205,38 @@ function flagLabel(flag: string): string {
     .join(" ");
 }
 
-function trafficClass(traffic: DraftDashboard["traffic"]): string {
-  if (traffic === "green") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-950";
+function statusViewFor(dashboard: DraftDashboard): DraftStatusView {
+  if (dashboard.status_view != null) {
+    return dashboard.status_view;
   }
-  if (traffic === "amber") {
-    return "border-amber-200 bg-amber-50 text-amber-950";
+  if (dashboard.status === "final") {
+    return { lifecycle: "Final", readiness: null };
   }
-  return "border-red-200 bg-red-50 text-red-950";
+  const blockers = dashboard.blocking_count ?? blockingFailureCount(dashboard.checks);
+  return {
+    lifecycle: "Draft",
+    readiness: dashboard.can_finalise
+      ? "Ready to finalise"
+      : blockers === 1
+        ? "1 blocker"
+        : `${blockers} blockers`,
+  };
+}
+
+function auditLockLabel(draft: WorkingDraft | null): string | null {
+  if (draft == null) {
+    return null;
+  }
+  if (draft.status === "final") {
+    return "Locked: this draft is final";
+  }
+  if (draft.status === "locked") {
+    return "Locked: this draft is locked";
+  }
+  if (draft.frozen) {
+    return "Locked: this draft is frozen";
+  }
+  return null;
 }
 
 async function absentOn404<T>(path: string, getToken: () => Promise<string | null>): Promise<T | null> {
@@ -199,6 +263,13 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
   const [companySaved, setCompanySaved] = useState<string | null>(null);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [approvalSaved, setApprovalSaved] = useState<string | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [reportSaved, setReportSaved] = useState<string | null>(null);
+  const [compilationError, setCompilationError] = useState<string | null>(null);
+  const [compilationSaved, setCompilationSaved] = useState<string | null>(null);
+  const [sizeError, setSizeError] = useState<string | null>(null);
+  const [claimError, setClaimError] = useState<string | null>(null);
+  const [conditionsError, setConditionsError] = useState<string | null>(null);
   const [narration, setNarration] = useState("");
   const [lines, setLines] = useState<AdjustmentLine[]>([
     { ...EMPTY_LINE },
@@ -214,6 +285,15 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     queryKey: ["year-end", yearEndId],
     queryFn: () => apiFetch<YearEnd>(`/year-ends/${yearEndId}`, { getToken }),
     enabled: isSignedIn && statutoryWorkspaceOpen(meQuery.data),
+  });
+  const companyCurrencyQuery = useQuery({
+    queryKey: ["company-currency", yearEndQuery.data?.company_id],
+    queryFn: () =>
+      apiFetch<{ functional_currency: string }>(
+        `/companies/${yearEndQuery.data?.company_id}`,
+        { getToken },
+      ),
+    enabled: Boolean(yearEndQuery.data?.company_id),
   });
   const draftQuery = useQuery({
     queryKey: ["working-draft", yearEndId],
@@ -237,9 +317,6 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       apiFetch<{ lines: string[] }>("/year-ends/canonical-lines", { getToken }),
     enabled: draft !== null && draft.status === "draft",
   });
-  const wordingSignedOff = wordingSignedOffFromServer(
-    meQuery.data?.product2_access,
-  );
   const yearEnd = yearEndQuery.data;
   const statementsPath =
     yearEnd?.adopted_trial_balance_id != null
@@ -275,13 +352,15 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     enabled: yearEndQuery.isSuccess,
   });
   const savedFlags = setupQuery.data?.sections ?? null;
-  const catalogue = sectionsForFramework(
-    frameworksQuery.data?.frameworks ?? [],
-    yearEndQuery.data?.pack_id ?? "",
-  ).map((section) =>
-    section.lock
-      ? { ...section, enabled: sectionIsOn(section, savedFlags) }
-      : section,
+  const catalogue = withSignatories(
+    sectionsForFramework(
+      frameworksQuery.data?.frameworks ?? [],
+      yearEndQuery.data?.pack_id ?? "",
+    ).map((section) =>
+      section.lock
+        ? { ...section, enabled: sectionIsOn(section, savedFlags) }
+        : section,
+    ),
   );
   const openSectionId = activeSection(catalogue, searchParams.get("section"));
   const openMeta = catalogue.find((section) => section.id === openSectionId);
@@ -311,6 +390,33 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
 
   const forbidden = meQuery.isSuccess && !statutoryWorkspaceOpen(meQuery.data);
   const dashboard = dashboardQuery.data;
+  const unbuiltMessage =
+    dashboard?.checks.find(
+      (check) => check.code === "V-SEC-005" && check.passed === false,
+    )?.message ?? null;
+  const [showUnbuiltNotice, setShowUnbuiltNotice] = useState(false);
+  useEffect(() => {
+    if (unbuiltMessage == null) {
+      return;
+    }
+    try {
+      if (window.localStorage.getItem(UNBUILT_NOTICE_KEY) === "shown") {
+        return;
+      }
+      window.localStorage.setItem(UNBUILT_NOTICE_KEY, "shown");
+    } catch {
+      // A private-mode browser still shows the notice for this visit.
+    }
+    setShowUnbuiltNotice(true);
+  }, [unbuiltMessage]);
+  const trialBalanceQuery = useQuery({
+    queryKey: ["trial-balance-page", yearEndId],
+    queryFn: () =>
+      apiFetch<TrialBalancePage>(`/year-ends/${yearEndId}/trial-balance`, {
+        getToken,
+      }),
+    enabled: openSectionId === "trial-balance" && yearEndQuery.isSuccess,
+  });
   const notesQuery = useQuery({
     queryKey: ["draft-notes", yearEndId, draft?.draft_id],
     queryFn: () =>
@@ -330,6 +436,8 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
     meQuery.data?.role === "owner" ||
     meQuery.data?.role === "admin" ||
     meQuery.data?.role === "member";
+  const canRecordClaim =
+    meQuery.data?.role === "owner" || meQuery.data?.role === "admin";
 
   async function saveCompany(next: CompanyDetailsWrite): Promise<void> {
     setCompanyError(null);
@@ -376,6 +484,65 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
     } catch (caught) {
       setApprovalError(saveMessage(caught, "Approval details could not be saved."));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveReport(next: DirectorsReportWrite): Promise<void> {
+    setReportError(null);
+    setReportSaved(null);
+    setBusy("Saving the directors' report…");
+    try {
+      const saved = await apiFetch<CompanyDetails>(
+        `/year-ends/${yearEndId}/directors-report`,
+        {
+          method: "PUT",
+          getToken,
+          body: JSON.stringify(next),
+        },
+      );
+      queryClient.setQueryData(["company-details", yearEndId], saved);
+      setReportSaved("Directors' report saved.");
+      await queryClient.invalidateQueries({ queryKey: ["statutory-pack"] });
+      await queryClient.invalidateQueries({ queryKey: ["statutory-preview", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
+    } catch (caught) {
+      setReportError(saveMessage(caught, "The directors' report could not be saved."));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveCompilation(next: {
+    compilation_date: string | null;
+    compilation_signatory: string | null;
+  }): Promise<void> {
+    setCompilationError(null);
+    setCompilationSaved(null);
+    setBusy("Saving the compilation report…");
+    try {
+      const saved = await apiFetch<CompanyDetails>(
+        `/year-ends/${yearEndId}/compilation-report`,
+        {
+          method: "PUT",
+          getToken,
+          body: JSON.stringify(next),
+        },
+      );
+      queryClient.setQueryData(["company-details", yearEndId], saved);
+      setCompilationSaved("Compilation report saved.");
+      await queryClient.invalidateQueries({ queryKey: ["statutory-pack"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["statutory-preview", yearEndId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["draft-dashboard", yearEndId],
+      });
+    } catch (caught) {
+      setCompilationError(
+        saveMessage(caught, "The compilation report could not be saved."),
+      );
     } finally {
       setBusy(null);
     }
@@ -724,9 +891,79 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       return null;
     } catch (caught) {
       if (caught instanceof ApiError) {
-        return finaliseFailureMessage(caught.status, messageFromPdfBody(caught.body));
+        return finaliseFailureMessage(
+          caught.status,
+          messageFromPdfBody(caught.body),
+          requestIdFromBody(caught.body),
+        );
       }
       return finaliseFailureMessage(0, null);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function recordSize(body: {
+    current: { turnover: string; balance_sheet_total: string; employees: number };
+    preceding: {
+      turnover: string;
+      balance_sheet_total: string;
+      employees: number;
+    } | null;
+  }): Promise<void> {
+    setSizeError(null);
+    setBusy("Recording the size test…");
+    try {
+      await apiFetch(`/year-ends/${yearEndId}/size-eligibility`, {
+        method: "POST",
+        getToken,
+        body: JSON.stringify(body),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["year-end", yearEndId] });
+    } catch (caught) {
+      setSizeError(saveMessage(caught, "The size test could not be recorded."));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function recordClaim(claimed: boolean | null): Promise<void> {
+    setClaimError(null);
+    setBusy("Recording the audit exemption…");
+    try {
+      await apiFetch(`/year-ends/${yearEndId}/audit-exemption`, {
+        method: "POST",
+        getToken,
+        body: JSON.stringify({ claimed }),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["year-end", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["statutory-preview", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["statutory-pack"] });
+    } catch (caught) {
+      setClaimError(saveMessage(caught, "The audit exemption could not be recorded."));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function recordConditions(body: DirectorsConfirmations): Promise<void> {
+    setConditionsError(null);
+    setBusy("Recording the directors' confirmations…");
+    try {
+      await apiFetch(`/year-ends/${yearEndId}/audit-exemption-conditions`, {
+        method: "POST",
+        getToken,
+        body: JSON.stringify(body),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["year-end", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["draft-dashboard", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["statutory-preview", yearEndId] });
+      await queryClient.invalidateQueries({ queryKey: ["statutory-pack"] });
+    } catch (caught) {
+      setConditionsError(
+        saveMessage(caught, "The directors' confirmations could not be recorded."),
+      );
     } finally {
       setBusy(null);
     }
@@ -840,9 +1077,19 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
   const outlineChildren = Object.fromEntries(
     (outlineQuery.data?.sections ?? []).map((item) => [item.id, item.children]),
   );
+  const failedCodes = (dashboard?.checks ?? [])
+    .filter((check) => !check.passed)
+    .map((check) => check.code);
+  const inputChildren = sidebarInputChildren(
+    outlineChildren,
+    detailsQuery.data ?? null,
+    failedCodes,
+  );
   const previewChildren =
     outlineChildren[sectionId] ?? previewQuery.data?.children ?? [];
   const scrollAnchor = scrollAnchorFor(noteId, previewChildren);
+  const reportNote = directorsReportNote(noteId);
+  const reportPart = directorsReportPart(noteId);
   const previewFrame = previewQuery.data ? (
     <div className="space-y-2">
       {showsPageNumberNote(sectionId) ? (
@@ -867,10 +1114,16 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
   return (
     <div className="flex items-start gap-6" data-testid="statutory-draft-workspace">
       <WorkspaceSidebar
-        sections={navigatorSections(sections)}
+        sections={sidebarSections(sections, dashboard?.status)}
         activeId={sectionId}
-        childrenBySection={outlineChildren}
-        activeChildId={noteId}
+        childrenBySection={inputChildren}
+        activeChildId={
+          sectionId === "directors-report"
+            ? reportNote
+            : sectionId === "compilation" && showCompilationForm(noteId)
+              ? "compilation-date"
+              : noteId
+        }
         onSelect={selectSection}
         onSelectChild={(parentId, childId) => {
           router.replace(
@@ -881,6 +1134,14 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       <div className="min-w-0 flex-1 space-y-6">
       <div className="space-y-3">
       <StandingWordingNotice place="workspace-header" />
+      {showUnbuiltNotice && unbuiltMessage ? (
+        <p
+          className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          data-testid="statutory-unbuilt-notice"
+        >
+          {unbuiltMessage}
+        </p>
+      ) : null}
       {dashboard?.checks
         .filter(
           (check) =>
@@ -1018,14 +1279,8 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       {sectionId === "draft-pdf" ? (
         <section className="space-y-3" data-testid="statutory-outputs">
           <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-soft">
-            Outputs
+            PDF
           </h2>
-          {dashboard?.status === "final" ? (
-            <p className="text-sm font-semibold text-ink" data-testid="statutory-outputs-state">
-              {finalStateLabel(wordingSignedOff)}
-            </p>
-          ) : null}
-          <StandingWordingNotice place="downloads" />
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
@@ -1038,7 +1293,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               onClick={() => void downloadPdf()}
               className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {pdfDownloadLabel(dashboard?.status, wordingSignedOff)}
+              {pdfDownloadLabel(dashboard?.status)}
             </button>
             {pdfReason !== null ? (
               <p className="text-sm text-ink-secondary" data-testid="statutory-download-reason">
@@ -1046,10 +1301,15 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               </p>
             ) : null}
           </div>
-          <div
-            className="flex flex-wrap items-center gap-3"
-            data-testid="statutory-word-row"
-          >
+        </section>
+      ) : null}
+
+      {sectionId === "draft-word" ? (
+        <section className="space-y-3" data-testid="statutory-word-row">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-soft">
+            Word
+          </h2>
+          <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
               data-testid="statutory-download-word"
@@ -1063,7 +1323,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               onClick={() => void downloadWord()}
               className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {wordDownloadLabel(dashboard?.status, wordingSignedOff)}
+              {wordDownloadLabel(dashboard?.status)}
             </button>
             {wordPreparing ? (
               <p className="text-sm text-ink-secondary" data-testid="statutory-word-progress">
@@ -1112,8 +1372,53 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
             <p className="text-sm text-ink-secondary">
               [NOT BUILT: this pack does not build this statement]
             </p>
+          ) : sectionId === "directors-report" || sectionId === "compilation" ? (
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div>
+                {sectionId === "directors-report" && detailsQuery.isLoading ? (
+                  <p className="text-sm text-soft">Loading the directors&apos; report…</p>
+                ) : null}
+                {sectionId === "directors-report" && detailsQuery.data ? (
+                  reportPart === "principal-activity" ? (
+                    <PrincipalActivityPanel
+                      activity={detailsQuery.data.principal_activity}
+                      yearEndId={yearEndId}
+                    />
+                  ) : (
+                    <DirectorsReportForm
+                      key={`${reportPart}-${JSON.stringify(detailsQuery.data)}`}
+                      part={reportPart}
+                      details={detailsQuery.data}
+                      canEdit={canEditDetails}
+                      busy={busy !== null}
+                      error={reportError}
+                      saved={reportSaved}
+                      onSave={(next) => void saveReport(next)}
+                    />
+                  )
+                ) : null}
+                {sectionId === "compilation" && showCompilationForm(noteId) && detailsQuery.data ? (
+                  <CompilationDetailsForm
+                    key={JSON.stringify(detailsQuery.data)}
+                    compilationDate={detailsQuery.data.compilation_date}
+                    compilationSignatory={detailsQuery.data.compilation_signatory}
+                    canEdit={canEditDetails}
+                    busy={busy !== null}
+                    error={compilationError}
+                    saved={compilationSaved}
+                    onSave={(next) => void saveCompilation(next)}
+                  />
+                ) : null}
+              </div>
+              {previewFrame}
+            </div>
           ) : (
-            previewFrame
+            <>
+              {sectionId === "directors-responsibilities" ? (
+                <DirectorsResponsibilitiesPanel />
+              ) : null}
+              {previewFrame}
+            </>
           )}
         </section>
       ) : null}
@@ -1137,7 +1442,30 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
         />
       ) : null}
 
-      {sectionId === "company-details" && detailsQuery.error ? (
+      {sectionId === "trial-balance" && trialBalanceQuery.isLoading ? (
+        <p className="text-sm text-soft">Loading the trial balance…</p>
+      ) : null}
+
+      {sectionId === "trial-balance" && trialBalanceQuery.error ? (
+        <StatutoryLoadError
+          testId="statutory-trial-balance-error"
+          message={saveMessage(
+            trialBalanceQuery.error,
+            "The trial balance could not be loaded.",
+          )}
+          onReview={() => undefined}
+        />
+      ) : null}
+
+      {sectionId === "trial-balance" && trialBalanceQuery.data ? (
+        <TrialBalancePanel page={trialBalanceQuery.data} />
+      ) : null}
+
+      {(sectionId === "company-details" ||
+        sectionId === "signatories" ||
+        sectionId === "directors-report" ||
+        sectionId === "compilation") &&
+      detailsQuery.error ? (
         <StatutoryLoadError
           testId="statutory-company-load-error"
           message={saveMessage(
@@ -1151,54 +1479,60 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       {sectionId === "company-details" && detailsQuery.data ? (
         <CompanyDetailsForm
           key={JSON.stringify(detailsQuery.data)}
+          yearEndId={yearEndId}
           details={detailsQuery.data}
           canEdit={canEditDetails}
+          canRecordLegalForm={canRecordClaim}
           busy={busy !== null}
           companyError={companyError}
           companySaved={companySaved}
+          onSaveCompany={(next) => void saveCompany(next)}
+        />
+      ) : null}
+
+      {sectionId === "signatories" && detailsQuery.data ? (
+        <ApprovalDetailsForm
+          key={JSON.stringify(detailsQuery.data)}
+          details={detailsQuery.data}
+          canEdit={canEditDetails}
+          busy={busy !== null}
           approvalError={approvalError}
           approvalSaved={approvalSaved}
-          onSaveCompany={(next) => void saveCompany(next)}
           onSaveApproval={(next) => void saveApproval(next)}
         />
       ) : null}
 
       {sectionId === "review" && dashboard ? (
         <section
-          className={`rounded-md border px-4 py-3 ${trafficClass(dashboard.traffic)}`}
+          className="rounded-md border border-line px-4 py-3"
           data-testid="statutory-review-dashboard"
         >
           <p className="text-xs font-semibold uppercase tracking-[0.12em]">
             Review dashboard
           </p>
-          <p className="mt-1 text-lg font-semibold capitalize" data-testid="statutory-traffic">
-            {dashboard.traffic}
+          <p className="mt-2" data-testid="statutory-status">
+            <span
+              className="inline-flex rounded-full border border-line bg-surface-elevated px-3 py-1 text-sm font-semibold text-ink"
+              data-testid="statutory-status-pill"
+            >
+              {statusPillLabel(statusViewFor(dashboard))}
+            </span>
           </p>
-          <p className="mt-1 text-sm">
-            Draft version {draft?.version_number}. Status{" "}
-            {shownStatus(dashboard.status, wordingSignedOff)}.
-            {finaliseStatusLine({
-              canFinalise: dashboard.can_finalise,
-              tbVersionId: draft?.tb_version_id ?? null,
-            })}
-            {dashboard.checks.some(
-              (check) => check.code === "V-SEC-006" || check.code === "V-SEC-007",
-            ) ? (
-              <span data-testid="statutory-setup-notices">
-                {" "}
-                {dashboard.checks
-                  .filter(
-                    (check) =>
-                      check.code === "V-SEC-006" || check.code === "V-SEC-007",
-                  )
-                  .map((check) => check.message)
-                  .join(" ")}
-              </span>
-            ) : null}
-          </p>
+          {dashboard.checks.some(
+            (check) => check.code === "V-SEC-006" || check.code === "V-SEC-007",
+          ) ? (
+            <p className="mt-2 text-sm" data-testid="statutory-setup-notices">
+              {dashboard.checks
+                .filter(
+                  (check) => check.code === "V-SEC-006" || check.code === "V-SEC-007",
+                )
+                .map((check) => check.message)
+                .join(" ")}
+            </p>
+          ) : null}
           <ReviewChecks
             yearEndId={yearEndId}
-            checks={dashboard.checks}
+            checks={dashboard.checks.filter((check) => check.code !== "V-SEC-005")}
             unansweredCount={
               dashboard.unanswered_count ?? dashboard.unanswered_disclosures.length
             }
@@ -1224,6 +1558,51 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               ) : null
             }
           />
+          {yearEnd ? (
+            <>
+              <SizeInputs
+                firstPeriod={yearEnd.first_financial_period}
+                currency={companyCurrencyQuery.data?.functional_currency ?? null}
+                inputs={yearEnd}
+                message={yearEnd.size_message}
+                canEdit={canEditDetails}
+                lockLabel={auditLockLabel(draft)}
+                busy={busy !== null}
+                error={sizeError}
+                suggestion={{
+                  turnover: statementsQuery.data?.engine_turnover ?? null,
+                  balanceSheet: statementsQuery.data?.engine_balance_sheet_total ?? null,
+                  employees: detailsQuery.data?.average_employees ?? null,
+                }}
+                onRecord={(body) => void recordSize(body)}
+              />
+              <AuditExemptionClaim
+                claimed={yearEnd.audit_exemption_claimed}
+                companyName={statementsQuery.data?.company_name ?? ""}
+                approvalDate={detailsQuery.data?.approval_date ?? null}
+                signingDirectors={detailsQuery.data?.signing_directors ?? []}
+                notExcluded={yearEnd.audit_exemption_not_excluded}
+                noMemberNotice={yearEnd.audit_exemption_no_member_notice}
+                returnsNotLate={yearEnd.audit_exemption_returns_not_late}
+                canRecord={canRecordClaim}
+                lockLabel={auditLockLabel(draft)}
+                busy={busy !== null}
+                positionMessage={
+                  dashboard.checks.find((check) => check.code === "V-CO-020")
+                    ?.message ?? null
+                }
+                noticeMessage={
+                  dashboard.checks.find(
+                    (check) => check.code === "V-CO-021" && !check.passed,
+                  )?.message ?? null
+                }
+                error={claimError}
+                conditionsError={conditionsError}
+                onRecord={(claimed) => void recordClaim(claimed)}
+                onRecordConditions={(body) => void recordConditions(body)}
+              />
+            </>
+          ) : null}
           <FinaliseDraft
             role={meQuery.data?.role}
             status={dashboard.status}
@@ -1232,7 +1611,6 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               dashboard.blocking_count ?? blockingFailureCount(dashboard.checks)
             }
             carriedDisclosures={dashboard.carried_disclosures ?? []}
-            wordingSignedOff={wordingSignedOff}
             busy={busy !== null}
             onConfirm={finaliseDraft}
           />
@@ -1413,9 +1791,6 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
 
       {statementsQuery.data ? (
         <section className="space-y-4" data-testid="statutory-draft-pack">
-          <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-amber-800">
-            {statementsQuery.data.watermark} statutory pack
-          </h2>
           <p className="text-sm text-ink-secondary">
             Net assets {statementsQuery.data.net_assets ?? "—"}. Profit{" "}
             {statementsQuery.data.profit ?? "—"}.
@@ -1430,7 +1805,7 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
                 .filter((check) => !check.passed)
                 .map((check) => (
                   <li key={check.code}>
-                    {check.severity} {check.code}: {check.message}
+                    {severityTag(check)} {check.message}
                   </li>
                 ))}
             </ul>

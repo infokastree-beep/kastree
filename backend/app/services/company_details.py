@@ -14,6 +14,7 @@ from app.schemas.company_details import (
     AdviserRecord,
     ApprovalWrite,
     CompanyDetailsResponse,
+    CompilationWrite,
     CompanyDetailsWrite,
     CurrencyConfirmationResponse,
     DirectorRecord,
@@ -21,17 +22,108 @@ from app.schemas.company_details import (
     ShareClassWrite,
 )
 from app.services.audit import append_audit_log
+from app.services.directors_report import (
+    directors_report_checks,
+    money_text,
+    share_interests_out,
+)
+from app.services.legal_forms import record_legal_form_change
+from app.services.countries import country_label
 from app.services.reconciliation import ReconciliationCheck
 from findraft.models.year_end import YearEnd
 
 _BLOCKING = frozenset(
-    {"V-CO-001", "V-CO-002", "V-CO-005", "V-CO-006", "V-CO-008", "V-CO-009"}
+    {
+        "V-CO-001",
+        "V-CO-002",
+        "V-CO-004",
+        "V-CO-005",
+        "V-CO-006",
+        "V-CO-008",
+        "V-CO-009",
+        "V-CO-010",
+        "V-CO-011",
+        "V-CO-037",
+        "V-CO-020",
+        "V-CO-022",
+        "V-CO-023",
+        "V-CO-024",
+        "V-CO-029",
+        "V-CO-030",
+        "V-CO-031",
+        "V-CO-032",
+        "V-CO-033",
+        "V-CO-034",
+        "V-CO-035",
+        "V-CO-036",
+        "V-CO-038",
+        "V-CO-039",
+    }
+)
+_AUDIT_NOT_RECORDED = (
+    "The audit position has not been recorded. "
+    "Record whether the audit exemption is claimed."
+)
+_AUDIT_REQUIRED = "An audit is required. An auditor's report is out of scope."
+_AUDIT_SIZE_MISSING = (
+    "The size test has not been recorded. "
+    "Record it before the audit exemption can be evidenced."
+)
+_AUDIT_NOT_EVIDENCED = (
+    "The recorded size test does not evidence the audit exemption. "
+    "An audit is required. An auditor's report is out of scope."
+)
+_AUDIT_CLAIMED = "The audit exemption is claimed and the size test is recorded."
+_EXCLUDED_MISSING = (
+    "Record the directors' confirmation that the company is not an excluded class "
+    "(Fifth Schedule to the Companies Act 2014)."
+)
+_EXCLUDED_REFUSED = (
+    "The company is recorded as an excluded class. "
+    "The audit exemption is not available."
+)
+_EXCLUDED_RECORDED = (
+    "The directors have recorded that the company is not an excluded class."
+)
+_NOTICE_MISSING = (
+    "Record the directors' confirmation that no notice under section 334 "
+    "of the Companies Act 2014 has been served."
+)
+_NOTICE_REFUSED = (
+    "A notice under section 334 is recorded. The audit exemption is not available."
+)
+_NOTICE_RECORDED = (
+    "The directors have recorded that no notice under section 334 has been served."
+)
+_RETURNS_MISSING = (
+    "Record the directors' confirmation that annual returns were not filed late "
+    "more than once in five years (section 363 of the Companies Act 2014, "
+    "as substituted by section 22 of the Companies (Corporate Governance, "
+    "Enforcement and Regulatory Provisions) Act 2024)."
+)
+_RETURNS_REFUSED = (
+    "Annual returns are recorded as filed late more than once in five years. "
+    "The audit exemption is not available."
+)
+_RETURNS_RECORDED = (
+    "The directors have recorded that annual returns were not filed late "
+    "more than once in five years."
 )
 MISSING_INCORPORATION = "Country of incorporation not recorded"
-FOREIGN_PACK_MESSAGE = (
-    "This pack is for a company incorporated in Ireland. "
-    "No other country's pack is available."
-)
+
+
+def foreign_pack_message(country: str | None) -> str:
+    """Name the stored country. A code with no English name stays as stored."""
+    recorded = country_label(country)
+    if recorded == "":
+        recorded = "not recorded"
+    return (
+        "This pack is for a company incorporated in Ireland. "
+        f"Country of incorporation is recorded as {recorded}. "
+        "No other country's pack is available."
+    )
+
+
 _IRISH_PACK = "frs102-1a-ie"
 
 
@@ -70,7 +162,7 @@ def incorporation_output_message(
     """
     gate = incorporation_gate(country, pack_id)
     if gate == "foreign":
-        return FOREIGN_PACK_MESSAGE
+        return foreign_pack_message(country)
     if gate == "missing" and final:
         return MISSING_INCORPORATION
     return None
@@ -87,9 +179,7 @@ async def incorporation_output_message_for_year_end(
     country = None
     if company is not None and company.org_id == org_id and not company.is_deleted:
         country = company.country_of_incorporation
-    return incorporation_output_message(
-        country, year_end.pack_id, final=final
-    )
+    return incorporation_output_message(country, year_end.pack_id, final=final)
 
 
 def _blank(value: str | None) -> str | None:
@@ -250,6 +340,37 @@ def _issued_amount(nominal_value: str, issued_number: int) -> str:
     return format(amount, "f")
 
 
+_ONE_SIGNATORY = "A signing director is recorded."
+_TWO_SIGNATORIES = "Two signing directors are recorded."
+_NO_SIGNATORY = "A signing director has not been recorded."
+_TWO_REQUIRED = (
+    "Two directors must sign the balance sheet and the directors' report. "
+    "Companies Act 2014, sections 324 and 332."
+)
+_RESIGNED_SIGNATORY = "The signing director has to be a director still in office."
+
+
+def current_director_names(value: object) -> tuple[str, ...]:
+    """Directors still in office. A resigned director does not sign."""
+    if not isinstance(value, list):
+        return ()
+    names: list[str] = []
+    for item in value:
+        if isinstance(item, str) and item.strip():
+            names.append(item.strip())
+            continue
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        if not isinstance(name, str) or not name.strip():
+            continue
+        resigned = item.get("resigned_on")
+        if isinstance(resigned, str) and resigned.strip():
+            continue
+        names.append(name.strip())
+    return tuple(names)
+
+
 def director_names(value: object) -> tuple[str, ...]:
     if not isinstance(value, list):
         return ()
@@ -404,6 +525,8 @@ def company_details_response(
     company: Company, year_end: YearEnd
 ) -> CompanyDetailsResponse:
     return CompanyDetailsResponse(
+        country_of_incorporation=company.country_of_incorporation,
+        legal_form=company.legal_form,
         registered_office=company.registered_office,
         business_address=company.business_address,
         company_number=company.company_number,
@@ -416,11 +539,26 @@ def company_details_response(
         share_classes=_read_share_classes(company.share_classes),
         approval_date=year_end.approval_date,
         signing_directors=_read_signing(year_end.signing_directors),
+        accounting_records_location=year_end.accounting_records_location,
+        interim_dividend=money_text(year_end.interim_dividend),
+        recommended_dividend=money_text(year_end.recommended_dividend),
+        share_interests=share_interests_out(year_end.share_interests),
+        own_shares_particulars=year_end.own_shares_particulars,
+        subsequent_events_particulars=year_end.subsequent_events_particulars,
+        research_development_relevant=year_end.research_development_relevant,
+        research_development_detail=year_end.research_development_detail,
+        political_donations_relevant=year_end.political_donations_relevant,
+        political_donations_detail=year_end.political_donations_detail,
+        accounting_period_change_filed=year_end.accounting_period_change_filed,
+        compilation_date=year_end.compilation_date,
+        compilation_signatory=year_end.compilation_signatory,
     )
 
 
 def _company_snapshot(company: Company) -> dict[str, object]:
     return {
+        "country_of_incorporation": company.country_of_incorporation,
+        "legal_form": company.legal_form,
         "registered_office": company.registered_office,
         "business_address": company.business_address,
         "company_number": company.company_number,
@@ -450,11 +588,22 @@ async def save_company_details(
     *,
     org_id: uuid.UUID,
     user_id: uuid.UUID | None,
+    role: str,
     company: Company,
     year_end: YearEnd,
     body: CompanyDetailsWrite,
 ) -> CompanyDetailsResponse:
     previous = _company_snapshot(company)
+    previous_form = company.legal_form
+    if "country_of_incorporation" in body.model_fields_set:
+        company.country_of_incorporation = body.country_of_incorporation
+    if "legal_form" in body.model_fields_set:
+        if body.legal_form != company.legal_form and role not in {"owner", "admin"}:
+            raise CompanyDetailsRejected(
+                "Only an owner or an administrator can change the legal form.",
+                status_code=403,
+            )
+        company.legal_form = body.legal_form
     company.registered_office = _single_line(
         body.registered_office, label="Registered office", limit=500
     )
@@ -478,6 +627,14 @@ async def save_company_details(
         entity_id=company.id,
         old_value=previous,
         new_value=_company_snapshot(company),
+    )
+    await record_legal_form_change(
+        session,
+        org_id=org_id,
+        user_id=user_id,
+        company_id=company.id,
+        previous=previous_form,
+        current=company.legal_form,
     )
     return company_details_response(company, year_end)
 
@@ -505,6 +662,42 @@ async def save_approval_details(
         entity_id=year_end.id,
         old_value=previous,
         new_value=_approval_snapshot(year_end),
+    )
+    return company_details_response(company, year_end)
+
+
+def _compilation_snapshot(year_end: YearEnd) -> dict[str, object]:
+    recorded = year_end.compilation_date
+    return {
+        "compilation_date": None if recorded is None else recorded.isoformat(),
+        "compilation_signatory": year_end.compilation_signatory,
+    }
+
+
+async def save_compilation_report(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    user_id: uuid.UUID | None,
+    company: Company,
+    year_end: YearEnd,
+    body: CompilationWrite,
+) -> CompanyDetailsResponse:
+    """Store the practice compilation date and signatory. Amounts stay out."""
+    previous = _compilation_snapshot(year_end)
+    year_end.compilation_date = body.compilation_date
+    year_end.compilation_signatory = _single_line(
+        body.compilation_signatory, label="Compilation signatory", limit=200
+    )
+    await append_audit_log(
+        session,
+        org_id=org_id,
+        user_id=user_id,
+        action="compilation_report_saved",
+        entity_type="year_end",
+        entity_id=year_end.id,
+        old_value=previous,
+        new_value=_compilation_snapshot(year_end),
     )
     return company_details_response(company, year_end)
 
@@ -557,14 +750,107 @@ async def confirm_currency(
     )
 
 
+def _signature_check(directors: object, signing_value: object) -> ReconciliationCheck:
+    """One signature for a sole director. Two when two or more are in office.
+
+    Sections 324 and 332 of the Companies Act 2014. The citation is researched
+    from the public Act and is not a reviewer sign-off.
+    """
+    signing = _read_signing(signing_value)
+    allowed = set(director_names(directors))
+    stranger = next((name for name in signing if name not in allowed), None)
+    if stranger is not None:
+        return _check(
+            "V-CO-006",
+            "WARNING",
+            False,
+            f"Signing director '{stranger}' is not one of the directors on the company.",
+        )
+    current = set(current_director_names(directors))
+    qualifying = [name for name in signing if name in current]
+    required = 2 if len(current) >= 2 else 1
+    if len(qualifying) >= required:
+        recorded = _TWO_SIGNATORIES if required == 2 else _ONE_SIGNATORY
+        return _check("V-CO-006", "WARNING", True, recorded)
+    if required == 2:
+        return _check("V-CO-006", "WARNING", False, _TWO_REQUIRED)
+    if signing:
+        return _check("V-CO-006", "WARNING", False, _RESIGNED_SIGNATORY)
+    return _check("V-CO-006", "WARNING", False, _NO_SIGNATORY)
+
+
 def _check(code: str, severity: str, passed: bool, message: str) -> ReconciliationCheck:
     return ReconciliationCheck(
         code=code, severity=severity, passed=passed, message=message
     )
 
 
+def _practice_letterhead_check(
+    name: str | None,
+    address: str | None,
+    contact: str | None,
+) -> ReconciliationCheck:
+    missing = [
+        label
+        for label, value in (
+            ("legal name", name),
+            ("address", address),
+            ("contact", contact),
+        )
+        if _blank(value) is None
+    ]
+    if not missing:
+        return _check(
+            "V-CO-038",
+            "WARNING",
+            True,
+            "The practice letterhead is recorded.",
+        )
+    if len(missing) == 3:
+        sentence = (
+            "The practice legal name, address, and contact have not been recorded."
+        )
+    elif len(missing) == 2:
+        sentence = f"The practice {missing[0]} and {missing[1]} have not been recorded."
+    else:
+        sentence = f"The practice {missing[0]} has not been recorded."
+    return _check("V-CO-038", "WARNING", False, sentence)
+
+
+def _compilation_check(year_end: YearEnd) -> ReconciliationCheck:
+    """Both facts are one blocker. A blank signatory is the same as a missing one."""
+    date_missing = year_end.compilation_date is None
+    signatory_missing = _blank(year_end.compilation_signatory) is None
+    if not date_missing and not signatory_missing:
+        return _check(
+            "V-CO-039",
+            "WARNING",
+            True,
+            "The compilation date and signatory are recorded.",
+        )
+    if date_missing and signatory_missing:
+        message = "The compilation date and signatory have not been recorded."
+    elif date_missing:
+        message = "The compilation date has not been recorded."
+    else:
+        message = "The compilation signatory has not been recorded."
+    return _check("V-CO-039", "WARNING", False, message)
+
+
 def company_detail_checks(
-    company: Company, year_end: YearEnd
+    company: Company,
+    year_end: YearEnd,
+    *,
+    turnover: Decimal | None = None,
+    profit_before_tax: Decimal | None = None,
+    tax_charge: Decimal | None = None,
+    corporation_tax: Decimal | None = None,
+    subsequent_events_answered: bool | None = None,
+    own_shares_held: bool | None = None,
+    subsequent_events_yes: bool | None = None,
+    practice_name: str | None = None,
+    practice_address: str | None = None,
+    practice_contact: str | None = None,
 ) -> tuple[ReconciliationCheck, ...]:
     """Dashboard facts. A missing value is not filled in."""
     names = director_names(company.directors)
@@ -598,30 +884,7 @@ def company_detail_checks(
             False,
             "Company number has not been recorded.",
         )
-    signing = _read_signing(year_end.signing_directors)
-    allowed = set(names)
-    stranger = next((name for name in signing if name not in allowed), None)
-    if stranger is not None:
-        signature = _check(
-            "V-CO-006",
-            "WARNING",
-            False,
-            f"Signing director '{stranger}' is not one of the directors on the company.",
-        )
-    elif signing:
-        signature = _check(
-            "V-CO-006",
-            "WARNING",
-            True,
-            "A signing director is recorded.",
-        )
-    else:
-        signature = _check(
-            "V-CO-006",
-            "WARNING",
-            False,
-            "A signing director has not been recorded.",
-        )
+    signature = _signature_check(company.directors, year_end.signing_directors)
     currency = _currency_notice(company, year_end)
     checks = [
         _check(
@@ -641,11 +904,14 @@ def company_detail_checks(
         ),
         _check(
             "V-CO-004",
-            "NOTICE",
+            "WARNING",
             _blank(company.principal_activity) is not None,
             "Principal activity is recorded."
             if _blank(company.principal_activity)
-            else "Principal activity has not been recorded.",
+            else (
+                "Principal activities have not been recorded. "
+                "Companies Act 2014, section 326."
+            ),
         ),
         _check(
             "V-CO-005",
@@ -661,12 +927,240 @@ def company_detail_checks(
         checks.append(currency)
     gate = incorporation_gate(company.country_of_incorporation, year_end.pack_id)
     if gate == "missing":
-        checks.append(
-            _check("V-CO-008", "NOTICE", False, MISSING_INCORPORATION)
-        )
+        checks.append(_check("V-CO-008", "NOTICE", False, MISSING_INCORPORATION))
     elif gate == "foreign":
-        checks.append(_check("V-CO-009", "BLOCKED", False, FOREIGN_PACK_MESSAGE))
+        checks.append(
+            _check(
+                "V-CO-009",
+                "BLOCKED",
+                False,
+                foreign_pack_message(company.country_of_incorporation),
+            )
+        )
+    from app.services.company_data_checks import company_data_checks
+
+    checks.extend(
+        company_data_checks(
+            company,
+            year_end,
+            turnover=turnover,
+            profit_before_tax=profit_before_tax,
+            tax_charge=tax_charge,
+            corporation_tax=corporation_tax,
+            subsequent_events_answered=subsequent_events_answered,
+        )
+    )
+    checks.extend(
+        directors_report_checks(
+            company,
+            year_end,
+            own_shares_held=own_shares_held,
+            subsequent_events_yes=subsequent_events_yes,
+        )
+    )
+    checks.extend(audit_position_checks(year_end))
+    checks.append(
+        _practice_letterhead_check(practice_name, practice_address, practice_contact)
+    )
+    checks.append(_compilation_check(year_end))
     return tuple(checks)
+
+
+def _claim_snapshot(year_end: YearEnd) -> dict[str, object]:
+    """Who, when, and the three-state value. Amounts stay off this log."""
+    actor = year_end.audit_exemption_claimed_by_user_id
+    claimed_at = year_end.audit_exemption_claimed_at
+    return {
+        "claimed": year_end.audit_exemption_claimed,
+        "claimed_by_user_id": None if actor is None else str(actor),
+        "claimed_at": None if claimed_at is None else claimed_at.isoformat(),
+    }
+
+
+def _claim_never_recorded(year_end: YearEnd) -> bool:
+    return (
+        year_end.audit_exemption_claimed is None
+        and year_end.audit_exemption_claimed_by_user_id is None
+        and year_end.audit_exemption_claimed_at is None
+    )
+
+
+async def record_audit_exemption(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    user_id: uuid.UUID,
+    year_end: YearEnd,
+    claimed: bool | None,
+) -> YearEnd:
+    """Store claimed, not claimed, or clear the position back to not recorded."""
+    previous = None if _claim_never_recorded(year_end) else _claim_snapshot(year_end)
+    if claimed is None:
+        year_end.audit_exemption_claimed = None
+        year_end.audit_exemption_claimed_by_user_id = None
+        year_end.audit_exemption_claimed_at = None
+    else:
+        year_end.audit_exemption_claimed = claimed
+        year_end.audit_exemption_claimed_by_user_id = user_id
+        year_end.audit_exemption_claimed_at = datetime.now(UTC)
+    await append_audit_log(
+        session,
+        org_id=org_id,
+        user_id=user_id,
+        action="audit_exemption_claimed",
+        entity_type="year_end",
+        entity_id=year_end.id,
+        old_value=previous,
+        new_value=_claim_snapshot(year_end),
+    )
+    await session.flush()
+    return year_end
+
+
+def _conditions_snapshot(year_end: YearEnd) -> dict[str, object]:
+    """Who, when, and the three confirmations. Amounts stay off this log."""
+    actor = year_end.audit_exemption_conditions_by_user_id
+    recorded_at = year_end.audit_exemption_conditions_at
+    return {
+        "not_excluded": year_end.audit_exemption_not_excluded,
+        "no_member_notice": year_end.audit_exemption_no_member_notice,
+        "returns_not_late": year_end.audit_exemption_returns_not_late,
+        "conditions_by_user_id": None if actor is None else str(actor),
+        "conditions_at": None if recorded_at is None else recorded_at.isoformat(),
+    }
+
+
+def _conditions_never_recorded(year_end: YearEnd) -> bool:
+    return (
+        year_end.audit_exemption_not_excluded is None
+        and year_end.audit_exemption_no_member_notice is None
+        and year_end.audit_exemption_returns_not_late is None
+        and year_end.audit_exemption_conditions_by_user_id is None
+        and year_end.audit_exemption_conditions_at is None
+    )
+
+
+async def record_audit_exemption_conditions(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    user_id: uuid.UUID,
+    year_end: YearEnd,
+    not_excluded: bool | None,
+    no_member_notice: bool | None,
+    returns_not_late: bool | None,
+) -> YearEnd:
+    """Store the three directors' confirmations, or clear them back to not recorded."""
+    values = (not_excluded, no_member_notice, returns_not_late)
+    if any(item is None for item in values) and any(
+        item is not None for item in values
+    ):
+        raise CompanyDetailsRejected(
+            "Record all three directors' confirmations together, or clear them together."
+        )
+    previous = (
+        None if _conditions_never_recorded(year_end) else _conditions_snapshot(year_end)
+    )
+    if not_excluded is None:
+        year_end.audit_exemption_not_excluded = None
+        year_end.audit_exemption_no_member_notice = None
+        year_end.audit_exemption_returns_not_late = None
+        year_end.audit_exemption_conditions_by_user_id = None
+        year_end.audit_exemption_conditions_at = None
+    else:
+        year_end.audit_exemption_not_excluded = not_excluded
+        year_end.audit_exemption_no_member_notice = no_member_notice
+        year_end.audit_exemption_returns_not_late = returns_not_late
+        year_end.audit_exemption_conditions_by_user_id = user_id
+        year_end.audit_exemption_conditions_at = datetime.now(UTC)
+    await append_audit_log(
+        session,
+        org_id=org_id,
+        user_id=user_id,
+        action="audit_exemption_conditions",
+        entity_type="year_end",
+        entity_id=year_end.id,
+        old_value=previous,
+        new_value=_conditions_snapshot(year_end),
+    )
+    await session.flush()
+    return year_end
+
+
+def _confirmation_check(
+    code: str,
+    value: bool | None,
+    missing: str,
+    refused: str,
+    recorded: str,
+) -> ReconciliationCheck:
+    if value is True:
+        return _check(code, "WARNING", True, recorded)
+    if value is False:
+        return _check(code, "WARNING", False, refused)
+    return _check(code, "WARNING", False, missing)
+
+
+def _confirmation_checks(year_end: YearEnd) -> tuple[ReconciliationCheck, ...]:
+    """Each directors' confirmation is its own check. NULL and false both fail."""
+    return (
+        _confirmation_check(
+            "V-CO-022",
+            year_end.audit_exemption_not_excluded,
+            _EXCLUDED_MISSING,
+            _EXCLUDED_REFUSED,
+            _EXCLUDED_RECORDED,
+        ),
+        _confirmation_check(
+            "V-CO-023",
+            year_end.audit_exemption_no_member_notice,
+            _NOTICE_MISSING,
+            _NOTICE_REFUSED,
+            _NOTICE_RECORDED,
+        ),
+        _confirmation_check(
+            "V-CO-024",
+            year_end.audit_exemption_returns_not_late,
+            _RETURNS_MISSING,
+            _RETURNS_REFUSED,
+            _RETURNS_RECORDED,
+        ),
+    )
+
+
+def audit_position_checks(year_end: YearEnd) -> tuple[ReconciliationCheck, ...]:
+    """NULL, false, and true are different. A notice does not block FINAL."""
+    claimed = year_end.audit_exemption_claimed
+    if claimed is None:
+        position: tuple[ReconciliationCheck, ...] = (
+            _check("V-CO-020", "WARNING", False, _AUDIT_NOT_RECORDED),
+        )
+    elif claimed is False:
+        position = (_check("V-CO-020", "WARNING", False, _AUDIT_REQUIRED),)
+    elif year_end.size_checked_at is None:
+        position = (_check("V-CO-020", "WARNING", False, _AUDIT_SIZE_MISSING),)
+    elif year_end.size_eligible is not True:
+        position = (_check("V-CO-020", "WARNING", False, _AUDIT_NOT_EVIDENCED),)
+    else:
+        checks = [_check("V-CO-020", "WARNING", True, _AUDIT_CLAIMED)]
+        condition_failed = (
+            year_end.size_current_met is not None and year_end.size_current_met < 3
+        ) or (
+            year_end.size_preceding_met is not None and year_end.size_preceding_met < 3
+        )
+        if condition_failed:
+            checks.append(
+                _check(
+                    "V-CO-021",
+                    "NOTICE",
+                    False,
+                    year_end.size_message or "",
+                )
+            )
+        position = tuple(checks)
+    if claimed is True:
+        return position + _confirmation_checks(year_end)
+    return position
 
 
 def _currency_notice(company: Company, year_end: YearEnd) -> ReconciliationCheck | None:

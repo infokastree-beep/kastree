@@ -21,6 +21,7 @@ from app.models.account_mapping import AccountMapping
 from app.models.client import Client
 from app.models.company import Company
 from app.models.organisation import Organisation
+from app.services.legal_forms import record_legal_form_change
 from app.schemas.audit import ErasureResponse
 from app.schemas.client import (
     ClientCreateRequest,
@@ -226,10 +227,19 @@ async def create_company_for_client(
         industry=body.industry,
         company_type=body.company_type or "trading",
         functional_currency=currency,
+        legal_form=body.legal_form,
     )
     session.add(company)
     await session.flush()
     await session.refresh(company)
+    await record_legal_form_change(
+        session,
+        org_id=auth.org_id,
+        user_id=auth.user_id,
+        company_id=company.id,
+        previous=None,
+        current=company.legal_form,
+    )
     return company
 
 

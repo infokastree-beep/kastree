@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
 from app.models.company import Company
+from app.models.organisation import Organisation
 from app.services.audit import append_audit_log
 from app.services.beta import final_page_presentation
 from app.services.disclosure_groups import (
@@ -118,12 +119,46 @@ class Dashboard:
     disclosure_questions: tuple[DisclosureQuestion, ...] = ()
 
 
+ENGINE_FILES_MISSING = (
+    "The accounts calculation files are missing from the server. "
+    "Finalise cannot run until the application is updated."
+)
+
+
+def engine_directory(start: Path | None = None) -> Path | None:
+    """Directory that holds the pure engine modules.
+
+    The repository keeps that directory beside ``backend``. The production
+    image copies ``backend`` onto ``/app`` and the engine to
+    ``/app/findraft/engine``. Counting a fixed number of parents from this
+    file then looks above the image and finds nothing, even though the
+    modules were copied and can be imported.
+    """
+    origin = Path(__file__).resolve() if start is None else start
+    for parent in origin.parents:
+        candidate = parent / "findraft" / "engine"
+        if any(candidate.glob("*.py")):
+            return candidate
+    return None
+
+
+def engine_files_missing_message(year_end_id: uuid.UUID) -> str:
+    """Plain sentence. The two links are pages that do not hold the files."""
+    trial = f"/year-ends/{year_end_id}/draft?section=trial-balance"
+    company = f"/year-ends/{year_end_id}/draft?section=company-details"
+    return (
+        f"{ENGINE_FILES_MISSING} "
+        f"Check the [Trial balance page]({trial}) and "
+        f"[Company details]({company}); they do not hold these files."
+    )
+
+
 def engine_sha() -> str:
     """Hash of the pure engine sources. FINAL records this and does not rerun."""
-    engine = Path(__file__).resolve().parents[3] / "findraft" / "engine"
+    engine = engine_directory()
+    if engine is None:
+        raise DraftRejected(ENGINE_FILES_MISSING)
     paths = sorted(engine.glob("*.py"))
-    if not paths:
-        raise DraftRejected("engine sources are missing")
     digest = hashlib.sha256()
     for path in paths:
         digest.update(path.name.encode())
@@ -236,6 +271,47 @@ def _refuse_frozen(draft: DraftVersion) -> None:
         raise DraftRejected("draft is frozen; writes are refused", 409)
 
 
+def closed_draft_message(draft: DraftVersion) -> str | None:
+    """Final, locked, and frozen drafts do not take a further change."""
+    if draft.status == "final":
+        return "This draft is final. It cannot be changed."
+    if draft.status == "locked":
+        return "This draft is locked. It cannot be changed."
+    if draft.is_frozen:
+        return "This draft is frozen. It cannot be changed."
+    return None
+
+
+def audit_position_write_refusal(draft: DraftVersion) -> str | None:
+    """Size inputs, the claim, and the confirmations stay as finalised.
+
+    A later draft version is the working copy. The latest draft is the one
+    that decides. Final, locked, and frozen each refuse the write.
+    """
+    if draft.status == "final":
+        return "This draft is final. The audit position cannot be changed."
+    if draft.status == "locked":
+        return "This draft is locked. The audit position cannot be changed."
+    if draft.is_frozen:
+        return "This draft is frozen. The audit position cannot be changed."
+    return None
+
+
+def present_status(
+    *, status: str, can_finalise: bool, blocking_count: int
+) -> dict[str, str | None]:
+    """One lifecycle. Readiness exists only while the draft is not final."""
+    if status == "final":
+        return {"lifecycle": "Final", "readiness": None}
+    if can_finalise:
+        readiness = "Ready to finalise"
+    elif blocking_count == 1:
+        readiness = "1 blocker"
+    else:
+        readiness = f"{blocking_count} blockers"
+    return {"lifecycle": "Draft", "readiness": readiness}
+
+
 async def _replay(
     session: AsyncSession,
     *,
@@ -338,6 +414,51 @@ async def _disclosure_check(
     )
 
 
+def _company_detail_checks(
+    company: Company,
+    year_end: YearEnd,
+    document: StatutoryStatements,
+    flags: dict[str, bool],
+    *,
+    practice_name: str,
+    practice_address: str,
+    practice_contact: str,
+) -> tuple[ReconciliationCheck, ...]:
+    from app.services.company_details import company_detail_checks
+
+    return company_detail_checks(
+        company,
+        year_end,
+        turnover=document.turnover,
+        profit_before_tax=document.profit_before_tax,
+        tax_charge=document.tax_charge,
+        corporation_tax=document.corporation_tax,
+        subsequent_events_answered="SUBSEQUENT_EVENTS" in flags,
+        own_shares_held=(
+            flags["OWN_SHARES_HELD"] if "OWN_SHARES_HELD" in flags else None
+        ),
+        subsequent_events_yes=(
+            flags["SUBSEQUENT_EVENTS"] if "SUBSEQUENT_EVENTS" in flags else None
+        ),
+        practice_name=practice_name,
+        practice_address=practice_address,
+        practice_contact=practice_contact,
+    )
+
+
+def _letterhead_from(organisation: object | None) -> tuple[str, str, str]:
+    if organisation is None:
+        return "", "", ""
+    name = getattr(organisation, "name", None)
+    address = getattr(organisation, "letterhead_address", None)
+    contact = getattr(organisation, "letterhead_contact", None)
+    return (
+        "" if name is None else str(name),
+        "" if address is None else str(address),
+        "" if contact is None else str(contact),
+    )
+
+
 async def dashboard_for_draft(
     session: AsyncSession,
     *,
@@ -349,9 +470,8 @@ async def dashboard_for_draft(
     draft = await session.get(DraftVersion, draft_id)
     if draft is None or draft.org_id != org_id or draft.year_end_id != year_end.id:
         raise DraftRejected("Draft not found", 404)
-    questions = present_disclosure_questions(
-        await disclosure_flags(session, org_id=org_id, draft_id=draft.id)
-    )
+    flags = await disclosure_flags(session, org_id=org_id, draft_id=draft.id)
+    questions = present_disclosure_questions(flags)
     if draft.status == "final" and isinstance(draft.snapshot, dict):
         stored_checks = draft.snapshot.get("statement")
         checks: list[ReconciliationCheck] = []
@@ -428,9 +548,20 @@ async def dashboard_for_draft(
     )
     currency = "GBP"
     if company is not None and not company.is_deleted:
-        from app.services.company_details import company_detail_checks
-
-        checks.extend(company_detail_checks(company, year_end))
+        practice_name, practice_address, practice_contact = _letterhead_from(
+            await session.get(Organisation, org_id)
+        )
+        checks.extend(
+            _company_detail_checks(
+                company,
+                year_end,
+                document,
+                flags,
+                practice_name=practice_name,
+                practice_address=practice_address,
+                practice_contact=practice_contact,
+            )
+        )
         currency = company.functional_currency or "GBP"
     checks.extend(unbuilt_section_notices(year_end))
     checks.extend(pack_display_notices(year_end, currency))
@@ -685,6 +816,9 @@ def _library_row_payload(row: LibraryRow) -> dict[str, object]:
         "can_restore": row.can_restore,
         "can_add": row.can_add,
         "can_remove": row.can_remove,
+        "kind": row.kind,
+        "note_class": row.note_class,
+        "note_class_label": row.note_class_label,
     }
 
 
@@ -731,14 +865,16 @@ async def notes_for_draft(
     draft = await session.get(DraftVersion, draft_id)
     if draft is None or draft.org_id != org_id or draft.year_end_id != year_end.id:
         raise DraftRejected("Draft not found", 404)
+    library_source: object = draft.note_library
+    if draft.status == "final" and isinstance(draft.snapshot, dict):
+        if "note_library" in draft.snapshot:
+            library_source = draft.snapshot.get("note_library")
     try:
-        library = parse_note_library(draft.note_library)
+        library = parse_note_library(library_source)
     except LibraryRejected as exc:
         raise DraftRejected(exc.detail) from exc
     rows = present_rows(
-        await _library_context(
-            session, org_id=org_id, year_end=year_end, draft=draft
-        ),
+        await _library_context(session, org_id=org_id, year_end=year_end, draft=draft),
         library,
     )
     return {
@@ -998,7 +1134,9 @@ async def acknowledge_mappings(
         raise DraftRejected("This draft does not read Product 1 mappings", 409)
     if draft.status == "final":
         raise DraftRejected("FINAL output is never recomputed", 409)
-    _refuse_frozen(draft)
+    refusal = closed_draft_message(draft)
+    if refusal is not None:
+        raise DraftRejected(refusal, 409)
     try:
         fingerprint = await current_mapping_fingerprint(
             session, org_id=org_id, year_end=year_end
@@ -1043,6 +1181,8 @@ async def start_new_report(
         raise DraftRejected("A new statutory report starts from the adopted draft", 409)
     if draft.status == "final":
         raise DraftRejected("FINAL output is never recomputed", 409)
+    if draft.status == "locked":
+        raise DraftRejected("This draft is locked. It cannot be changed.", 409)
     current = (
         await session.scalar(
             select(func.max(DraftVersion.version_number)).where(
@@ -1116,6 +1256,9 @@ async def recompute_draft(
     _expect_version(draft, row_version)
     if draft.status == "final":
         raise DraftRejected("FINAL output is never recomputed", 409)
+    refusal = closed_draft_message(draft)
+    if refusal is not None:
+        raise DraftRejected(refusal, 409)
     draft.row_version = row_version + 1
     draft.updated_at = datetime.now(UTC)
     await session.flush()
@@ -1297,9 +1440,21 @@ async def finalise_draft(
         )
     company = await session.get(Company, year_end.company_id)
     if company is not None and company.org_id == org_id and not company.is_deleted:
-        from app.services.company_details import company_detail_checks
-
-        checks.extend(company_detail_checks(company, year_end))
+        flags = await disclosure_flags(session, org_id=org_id, draft_id=draft.id)
+        practice_name, practice_address, practice_contact = _letterhead_from(
+            await session.get(Organisation, org_id)
+        )
+        checks.extend(
+            _company_detail_checks(
+                company,
+                year_end,
+                document,
+                flags,
+                practice_name=practice_name,
+                practice_address=practice_address,
+                practice_contact=practice_contact,
+            )
+        )
     light = _traffic(
         tuple(checks), blocked=document.blocked, renderable=document.renderable
     )
@@ -1370,6 +1525,8 @@ async def finalise_draft(
             html=document.html,
             pages=document.pages,
             company_name=document.company_name,
+            turnover=document.turnover,
+            balance_sheet_total=document.balance_sheet_total,
         )
     ).model_dump(mode="json")
     evidence = evidence_response(graph).model_dump(mode="json")
@@ -1402,28 +1559,41 @@ async def finalise_draft(
         if company is not None and company.org_id == org_id and not company.is_deleted
         else None
     )
-    composed_html, sections = compose_year_end_parts(
-        document, year_end, company=letterhead
-    )
-    page_header, signature = docx_presentation_for_year_end(document, year_end)
-    composed_docx = payload_from_composed(
-        watermark=document.watermark,
-        company_name=document.company_name,
-        sections=sections,
-        page_header=page_header,
-        signature=signature,
-    )
+    try:
+        composed_html, sections = compose_year_end_parts(
+            document,
+            year_end,
+            company=letterhead,
+            disclosure_flags=adjusted.flags,
+        )
+        page_header, signature = docx_presentation_for_year_end(document, year_end)
+        composed_docx = payload_from_composed(
+            watermark=document.watermark,
+            company_name=document.company_name,
+            sections=sections,
+            page_header=page_header,
+            signature=signature,
+        )
+        current = canonical_current(adjusted.tb_lines, adjusted.mappings)
+    except ValueError as exc:
+        raise DraftRejected(str(exc), 409) from exc
     copied_sections = _json_copy(sections)
     copied_docx = _json_copy(composed_docx)
     if not isinstance(copied_sections, list) or not isinstance(copied_docx, dict):
         raise DraftRejected("composed snapshot is unreadable")
-    current = canonical_current(adjusted.tb_lines, adjusted.mappings)
-    digest = engine_sha()
+    try:
+        digest = engine_sha()
+    except DraftRejected as exc:
+        if exc.detail == ENGINE_FILES_MISSING:
+            raise DraftRejected(engine_files_missing_message(year_end.id)) from exc
+        raise
     draft.inputs_sha256 = inputs
     draft.engine_sha = digest
     draft.finalised_by_user_id = user_id
     draft.status = "final"
     presentation = final_page_presentation(document.watermark)
+    from app.services.final_workspace import workspace_snapshot
+
     draft.snapshot = {
         "watermark": "FINAL",
         "wording_signed_off": presentation.wording_signed_off,
@@ -1440,6 +1610,7 @@ async def finalise_draft(
         "evidence": evidence,
         "traffic": light,
         "note_library": _copied_library(draft.note_library),
+        "workspace": workspace_snapshot(year_end, letterhead),
     }
     if carried:
         await append_audit_log(
@@ -1541,15 +1712,21 @@ def _dashboard_dict(board: Dashboard) -> dict[str, object]:
                 },
             }
         )
+    blocking_count = blocking_failure_count(board.checks)
     return {
         "draft_id": str(board.draft_id),
         "status": board.status,
         "row_version": board.row_version,
         "traffic": board.traffic,
         "can_finalise": board.can_finalise,
+        "status_view": present_status(
+            status=board.status,
+            can_finalise=board.can_finalise,
+            blocking_count=blocking_count,
+        ),
         "unanswered_disclosures": list(board.unanswered_disclosures),
         "unanswered_count": len(board.unanswered_disclosures),
-        "blocking_count": blocking_failure_count(board.checks),
+        "blocking_count": blocking_count,
         "carried_disclosures": list(board.carried_disclosures),
         "disclosure_questions": [
             {

@@ -57,31 +57,37 @@ def test_sidebar_sections_follow_the_reporting_framework() -> None:
         "Supplementary trading statement",
     ]
 
-    assert labels[:6] == [
+    assert labels[:8] == [
         "Review dashboard",
         "Report setup",
+        "Sections setup",
+        "Trial balance",
         "Mapping",
         "Adjustments",
         "Disclosures",
         "Company details",
     ]
-    assert labels[6] == "Sections setup"
-    assert labels[7:-1] == pack_labels
-    assert labels[-1] == "Draft PDF"
+    assert labels[8:-2] == pack_labels
+    assert labels[-2:] == ["PDF", "Word"]
+    assert "History" not in labels
     assert [section.group for section in frs] == [
         "overview",
+        "report-options",
         "report-options",
         "inputs",
         "inputs",
         "inputs",
         "inputs",
-        *["sections"] * (len(pack_labels) + 1),
+        "inputs",
+        *["sections"] * len(pack_labels),
+        "outputs",
         "outputs",
     ]
     setup = next(section for section in frs if section.id == "sections-setup")
+    assert setup.group == "report-options"
     assert setup.lock is None
     assert setup.built is None
-    assert setup.order == 7
+    assert setup.order == 3
     from pydantic import ValidationError
 
     from app.schemas.report_setup import ReportSetupWrite
@@ -479,6 +485,10 @@ async def test_framework_catalogue_is_not_a_single_frs_list(
     assert by_id["cash-flow"]["built"] is False
     assert by_id["trading"]["built"] is False
     assert by_id["draft-pdf"]["built"] is None
+    assert by_id["draft-pdf"]["group"] == "outputs"
+    assert by_id["draft-word"]["label"] == "Word"
+    assert by_id["draft-word"]["group"] == "outputs"
+    assert by_id["draft-word"]["built"] is None
 
 
 def test_engine_sources_have_no_report_setup_import() -> None:

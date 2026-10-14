@@ -3,12 +3,17 @@
 tests/test_api.py
 tests/test_admin_api.py
 tests/test_adopted_trial_balance.py
+tests/test_small_adopted_finalise.py
 tests/test_audit_gdpr.py
+tests/test_audit_exemption_claim.py
 tests/test_beta_practice.py
 tests/test_clerk_user_email.py
 tests/test_client_limits.py
 tests/test_clients_api.py
 tests/test_company_details.py
+tests/test_compilation_report.py
+tests/test_company_legal_form.py
+tests/test_directors_report_items.py
 tests/test_contact_api.py
 tests/test_country_of_incorporation.py
 tests/test_draft_locking.py

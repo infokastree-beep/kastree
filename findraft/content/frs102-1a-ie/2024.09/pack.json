@@ -15,6 +15,172 @@
     "balance_sheet": "7500000.00",
     "employees": 50
   },
+  "size_rule_note": {
+    "source_status": "reviewer-to-confirm",
+    "text": "A reviewer must confirm whether the audit exemption is available (two of three versus all conditions)."
+  },
+  "audit_exemption_statements": {
+    "source": "CRO",
+    "provision": "Companies Act 2014, section 335",
+    "source_status": "researched (public source)",
+    "paragraphs": [
+      "I/We, as director(s) of (company name), state that:",
+      "(a) the company is availing itself of the exemption provided for by Chapter 15 of Part 6 of the Companies Act 2014,",
+      "(b) the company is availing itself of the exemption on the grounds that the conditions specified in s.358 are satisfied,",
+      "(c) the shareholders of the company have not served a notice on the company under s.334(1) in accordance with s.334(2),",
+      "(d) we acknowledge the company’s obligations under the Companies Act 2014, to keep adequate accounting records and prepare Financial Statements which give a true and fair view of the assets, liabilities and financial position of the company at the end of its financial year and of its profit or loss for such a year and to otherwise comply with the provisions of Companies Act 2014 relating to Financial Statements so far as they are applicable to the company,",
+      "*(e) the company has relied on the specified exemption contained in s.352 Companies Act 2014;",
+      "has done so on the grounds that the company is entitled to the benefit of that exemption as a small company and the abridged Financial Statements have been properly prepared in accordance with s.353 Companies Act 2014.",
+      "(*In the above statement, use sections (a) – (d) if claiming audit exemption and add section (e) if claiming the small company/abridgement exemption. A small company can claim either or both exemptions in their Financial Statements if they qualify.)"
+    ],
+    "explanatory_note": "This page is an explanatory note. The audit exemption statement is printed on the balance sheet, immediately above the directors' signatures, as section 335 of the Companies Act 2014 requires.",
+    "abridgement_note": "Item (e), and the sentence that follows it, is the small-company abridgement exemption in sections 352 and 353 of the Companies Act 2014. The CRO sample adds it only when the company also claims that exemption. It needs a separate recorded claim. It is not printed."
+  },
+  "data_checks": {
+    "source_status": "reviewer-to-confirm",
+    "legal_form": "private-company-limited-by-shares",
+    "legal_form_suffixes": ["Limited", "Ltd", "Teoranta", "Teo"],
+    "first_period_max_months": 18,
+    "company_number_min_digits": 5,
+    "company_number_max_digits": 7,
+    "employee_notice_above": 50,
+    "turnover_per_employee_floor": "2000.00"
+  },
+  "first_period_length": {
+    "source_status": "researched (public source)",
+    "provision": "Companies Act 2014, section 288(1)",
+    "max_months": 18
+  },
+  "company_legal_forms": {
+    "source_status": "researched (public source)",
+    "source": "Companies Act 2014",
+    "forms": [
+      {
+        "code": "ltd",
+        "name": "Private company limited by shares",
+        "provision": "Companies Act 2014, section 26",
+        "suffixes": ["Limited", "Ltd", "Teoranta", "Teo"],
+        "missing_suffix": "blocker"
+      },
+      {
+        "code": "dac",
+        "name": "Designated activity company",
+        "provision": "Companies Act 2014, section 969",
+        "suffixes": [
+          "Designated Activity Company",
+          "Cuideachta Ghníomhaíochta Ainmnithe",
+          "d.a.c.",
+          "DAC",
+          "c.g.a.",
+          "CGA"
+        ],
+        "missing_suffix": "notice",
+        "notice_provision": "Companies Act 2014, section 971",
+        "directors_provision": "Companies Act 2014, section 985",
+        "minimum_directors": 2
+      },
+      {
+        "code": "plc",
+        "name": "Public limited company",
+        "provision": "Companies Act 2014, section 1008",
+        "suffixes": [
+          "public limited company",
+          "cuideachta phoiblí theoranta",
+          "p.l.c.",
+          "plc",
+          "c.p.t.",
+          "cpt"
+        ],
+        "missing_suffix": "blocker"
+      },
+      {
+        "code": "clg",
+        "name": "Company limited by guarantee",
+        "provision": "Companies Act 2014, section 1178",
+        "suffixes": [
+          "company limited by guarantee",
+          "cuideachta faoi theorainn ráthaíochta",
+          "c.l.g.",
+          "clg",
+          "c.t.r.",
+          "ctr"
+        ],
+        "missing_suffix": "blocker"
+      },
+      {
+        "code": "ulc",
+        "name": "Private unlimited company",
+        "provision": "Companies Act 2014, sections 1228 and 1237",
+        "suffixes": [
+          "unlimited company",
+          "cuideachta neamhtheoranta",
+          "u.c.",
+          "uc",
+          "c.n.",
+          "cn"
+        ],
+        "missing_suffix": "blocker"
+      },
+      {
+        "code": "puc",
+        "name": "Public unlimited company",
+        "provision": "Companies Act 2014, sections 1228 and 1237",
+        "suffixes": [
+          "unlimited company",
+          "cuideachta neamhtheoranta",
+          "u.c.",
+          "uc",
+          "c.n.",
+          "cn"
+        ],
+        "missing_suffix": "blocker"
+      },
+      {
+        "code": "pulc",
+        "name": "Public unlimited company with no share capital",
+        "provision": "Companies Act 2014, sections 1228 and 1237",
+        "suffixes": [
+          "unlimited company",
+          "cuideachta neamhtheoranta",
+          "u.c.",
+          "uc",
+          "c.n.",
+          "cn"
+        ],
+        "missing_suffix": "blocker"
+      }
+    ]
+  },
+  "board_signatures": {
+    "source_status": "researched (public source)",
+    "source": "Companies Act 2014",
+    "directors_report_provision": "Companies Act 2014, section 324",
+    "balance_sheet_provision": "Companies Act 2014, section 332",
+    "sole_director": 1,
+    "two_or_more_directors": 2
+  },
+  "directors_report_items": {
+    "source_status": "researched (public source)",
+    "source": "Companies Act 2014",
+    "directors_and_activities": "Companies Act 2014, section 326(1)",
+    "accounting_records": "Companies Act 2014, section 326(1)(c)",
+    "dividends": "Companies Act 2014, section 326(1)(d)",
+    "own_shares": "Companies Act 2014, section 328",
+    "share_interests": "Companies Act 2014, section 329",
+    "subsequent_events": "Companies Act 2014, section 326(2)(a)",
+    "research_development": "Companies Act 2014, section 326(2)(b)",
+    "political_donations": "Companies Act 2014, section 326(2)(d)",
+    "business_review_optional": "Companies Act 2014, sections 325(1A) and 327(1A)",
+    "subsequent_year_length": "Companies Act 2014, section 288"
+  },
+  "note_classes": [
+    "policies",
+    "fixed assets",
+    "current assets",
+    "creditors",
+    "equity",
+    "other"
+  ],
   "sections": [
     {"id": "cover", "order": 1, "label": "Cover", "group": "usually-required", "default": "on", "lock": "user", "source_status": "pending-reviewer-signoff", "new_page": "yes"},
     {"id": "contents", "order": 2, "label": "Contents", "group": "usually-required", "default": "on", "lock": "user", "source_status": "pending-reviewer-signoff", "new_page": "yes"},

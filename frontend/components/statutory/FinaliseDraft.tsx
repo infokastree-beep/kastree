@@ -7,7 +7,7 @@ import {
   FINALISE_LOCK_NOTE,
   canOfferFinalise,
   carriedAcknowledgementRequired,
-  finalStateLabel,
+  finaliseFailureParts,
 } from "@/lib/finalise-status";
 
 export function FinaliseDraft({
@@ -16,7 +16,6 @@ export function FinaliseDraft({
   canFinalise,
   blockingCount = 0,
   carriedDisclosures,
-  wordingSignedOff = false,
   busy,
   onConfirm,
 }: {
@@ -25,7 +24,6 @@ export function FinaliseDraft({
   canFinalise: boolean;
   blockingCount?: number;
   carriedDisclosures: readonly string[];
-  wordingSignedOff?: boolean;
   busy?: boolean;
   onConfirm: (reviewedCarriedDisclosures: boolean) => Promise<string | null>;
 }) {
@@ -35,11 +33,7 @@ export function FinaliseDraft({
   const needsAck = carriedAcknowledgementRequired(carriedDisclosures);
 
   if (status === "final") {
-    return (
-      <p className="mt-2 text-sm font-semibold" data-testid="statutory-final-state">
-        {finalStateLabel(wordingSignedOff)}
-      </p>
-    );
+    return null;
   }
   if (!canOfferFinalise(role, status)) {
     return null;
@@ -111,7 +105,20 @@ export function FinaliseDraft({
       ) : null}
       {error ? (
         <p className="text-sm text-red-800" data-testid="statutory-finalise-error">
-          {error}
+          {finaliseFailureParts(error).map((part, index) =>
+            part.kind === "link" ? (
+              <a
+                key={`${part.href}-${index}`}
+                href={part.href}
+                className="underline"
+                data-testid="statutory-finalise-fix"
+              >
+                {part.text}
+              </a>
+            ) : (
+              <span key={`text-${index}`}>{part.text}</span>
+            ),
+          )}
         </p>
       ) : null}
       <div className="flex flex-wrap gap-2">

@@ -57,10 +57,14 @@ _WORKSPACE_BEFORE: tuple[WorkspaceSection, ...] = (
     WorkspaceSection(
         "report-setup", "Report setup", "report-options", "Report options", 2
     ),
-    WorkspaceSection("sub-lines", "Mapping", "inputs", "Inputs", 3),
-    WorkspaceSection("adjustments", "Adjustments", "inputs", "Inputs", 4),
-    WorkspaceSection("disclosures", "Disclosures", "inputs", "Inputs", 5),
-    WorkspaceSection("company-details", "Company details", "inputs", "Inputs", 6),
+    WorkspaceSection(
+        "sections-setup", "Sections setup", "report-options", "Report options", 3
+    ),
+    WorkspaceSection("trial-balance", "Trial balance", "inputs", "Inputs", 4),
+    WorkspaceSection("sub-lines", "Mapping", "inputs", "Inputs", 5),
+    WorkspaceSection("adjustments", "Adjustments", "inputs", "Inputs", 6),
+    WorkspaceSection("disclosures", "Disclosures", "inputs", "Inputs", 7),
+    WorkspaceSection("company-details", "Company details", "inputs", "Inputs", 8),
 )
 
 
@@ -104,16 +108,8 @@ def _pack_sidebar() -> tuple[WorkspaceSection, ...]:
     raw = loaded.get("sections")
     if not isinstance(raw, list):
         raise ValueError("pack sections are missing")
-    rows: list[WorkspaceSection] = [
-        WorkspaceSection(
-            id="sections-setup",
-            label="Sections setup",
-            group="sections",
-            group_label="Sections",
-            order=len(_WORKSPACE_BEFORE) + 1,
-        )
-    ]
-    order = len(_WORKSPACE_BEFORE) + 2
+    rows: list[WorkspaceSection] = []
+    order = len(_WORKSPACE_BEFORE) + 1
     for item in raw:
         if not isinstance(item, dict):
             raise ValueError("pack section is malformed")
@@ -139,10 +135,19 @@ def _pack_sidebar() -> tuple[WorkspaceSection, ...]:
     rows.append(
         WorkspaceSection(
             id="draft-pdf",
-            label="Draft PDF",
+            label="PDF",
             group="outputs",
             group_label="Outputs",
             order=order,
+        )
+    )
+    rows.append(
+        WorkspaceSection(
+            id="draft-word",
+            label="Word",
+            group="outputs",
+            group_label="Outputs",
+            order=order + 1,
         )
     )
     return tuple(rows)
@@ -314,6 +319,13 @@ def section_id_for_label(label: str) -> str | None:
     return None
 
 
+class _LiveSetup:
+    """Sentinel: read the year-end row, not a snapshot copy."""
+
+
+_LIVE_SETUP = _LiveSetup()
+
+
 def _stored_setup(year_end: YearEnd, currency: str) -> ReportSetupWrite:
     raw = year_end.report_setup
     if raw is None:
@@ -321,9 +333,19 @@ def _stored_setup(year_end: YearEnd, currency: str) -> ReportSetupWrite:
     return ReportSetupWrite.model_validate(raw)
 
 
-def report_setup_response(year_end: YearEnd, currency: str) -> ReportSetupResponse:
+def report_setup_response(
+    year_end: YearEnd,
+    currency: str,
+    *,
+    stored: object = _LIVE_SETUP,
+) -> ReportSetupResponse:
     cleaned = currency.strip().upper() or "GBP"
-    setup = _stored_setup(year_end, cleaned)
+    if stored is _LIVE_SETUP:
+        setup = _stored_setup(year_end, cleaned)
+    elif stored is None:
+        setup = default_report_setup(year_end, cleaned)
+    else:
+        setup = ReportSetupWrite.model_validate(stored)
     unit_label, thousands_label = rounding_labels(cleaned)
     return ReportSetupResponse(
         basis_id=year_end.pack_id,

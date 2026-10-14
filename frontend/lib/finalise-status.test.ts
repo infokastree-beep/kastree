@@ -3,21 +3,24 @@
  * Run: node --experimental-strip-types --test lib/finalise-status.test.ts
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   CARRIED_ACK_LABEL,
   FINALISED_409,
   FINALISE_LOCK_NOTE,
-  FINALISED_STATE,
   WORDING_BANNER,
   canOfferFinalise,
   carriedAcknowledgementRequired,
   currencyCodeFromNotice,
-  finalStateLabel,
   finaliseFailureMessage,
+  finaliseFailureParts,
+  requestIdFromBody,
   finaliseStatusLine,
   pdfDownloadLabel,
-  shownStatus,
+  statusPillLabel,
   wordDownloadLabel,
   wordingSignedOffFromServer,
 } from "./finalise-status.ts";
@@ -83,29 +86,34 @@ describe("finalise offer", () => {
     );
   });
 
-  it("names the FINAL state and the PDF that belongs to it", () => {
-    assert.equal(FINALISED_STATE, "FINAL");
+  it("names one status pill and keeps the wording caveat off the buttons", () => {
     assert.equal(WORDING_BANNER, "Statutory wording not yet reviewed by a qualified reviewer");
     assert.equal(wordingSignedOffFromServer(undefined), false);
     assert.equal(wordingSignedOffFromServer({}), false);
     assert.equal(wordingSignedOffFromServer({ wording_signed_off: false }), false);
     assert.equal(wordingSignedOffFromServer({ wording_signed_off: true }), true);
-    assert.equal(finalStateLabel(false), `FINAL — ${WORDING_BANNER}`);
-    assert.equal(finalStateLabel(true), "FINAL");
-    assert.equal(shownStatus("final", false), `final — ${WORDING_BANNER}`);
-    assert.equal(shownStatus("final", true), "final");
-    assert.equal(shownStatus("draft", false), "draft");
-    assert.equal(pdfDownloadLabel("final"), `Download final PDF — ${WORDING_BANNER}`);
-    assert.equal(pdfDownloadLabel("final", false), `Download final PDF — ${WORDING_BANNER}`);
-    assert.equal(pdfDownloadLabel("final", true), "Download final PDF");
+    assert.equal(
+      statusPillLabel({ lifecycle: "Draft", readiness: "3 blockers" }),
+      "Draft · 3 blockers",
+    );
+    assert.equal(
+      statusPillLabel({ lifecycle: "Draft", readiness: "Ready to finalise" }),
+      "Draft · Ready to finalise",
+    );
+    assert.equal(statusPillLabel({ lifecycle: "Final", readiness: null }), "Final");
+    assert.equal(pdfDownloadLabel("final"), "Download final PDF");
     assert.equal(pdfDownloadLabel("draft"), "Download draft PDF");
     assert.equal(pdfDownloadLabel(undefined), "Download draft PDF");
-    assert.equal(
-      wordDownloadLabel("final", false),
-      `Download Word (.docx) — ${WORDING_BANNER}`,
+    assert.equal(wordDownloadLabel(), "Download Word (.docx)");
+    assert.equal(wordDownloadLabel("final"), "Download final Word (.docx)");
+    const workspace = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../components/statutory/StatutoryDraftWorkspace.tsx"),
+      "utf8",
     );
-    assert.equal(wordDownloadLabel("final", true), "Download Word (.docx)");
-    assert.equal(wordDownloadLabel("draft", false), "Download Word (.docx)");
+    assert.equal(workspace.includes(WORDING_BANNER), false);
+    assert.equal(workspace.includes("FINAL statutory pack"), false);
+    assert.equal(workspace.includes("statutory-traffic"), false);
+    assert.equal(workspace.includes("statutory-status-pill"), true);
   });
 
   it("shows each finalise refusal in the server's own words", () => {
@@ -121,8 +129,71 @@ describe("finalise offer", () => {
       "This draft could not be finalised.",
     );
     assert.equal(
-      finaliseFailureMessage(500, "FINAL output is never recomputed"),
-      "This draft could not be finalised.",
+      finaliseFailureMessage(400, "report setup is malformed"),
+      "report setup is malformed",
     );
+    assert.equal(
+      finaliseFailureMessage(422, "Idempotency-Key is required"),
+      "Idempotency-Key is required",
+    );
+    assert.equal(
+      finaliseFailureMessage(500, "permission denied for table audit_logs"),
+      "permission denied for table audit_logs",
+    );
+    assert.equal(
+      finaliseFailureMessage(
+        500,
+        "permission denied for table audit_logs",
+        "4f2a9c10-1111-4222-8333-abcdef012345",
+      ),
+      "permission denied for table audit_logs Quote reference 4f2a9c10-1111-4222-8333-abcdef012345.",
+    );
+    assert.equal(
+      finaliseFailureMessage(500, "Something went wrong.", "ref-1"),
+      "Something went wrong while finalising this draft. Quote reference ref-1.",
+    );
+    assert.equal(
+      finaliseFailureMessage(500, "Internal Server Error", null),
+      "Something went wrong while finalising this draft.",
+    );
+    assert.equal(
+      finaliseFailureMessage(500, "FINAL output is never recomputed"),
+      "FINAL output is never recomputed",
+    );
+    assert.equal(
+      requestIdFromBody({
+        detail: { message: "Something went wrong.", request_id: "ref-9" },
+      }),
+      "ref-9",
+    );
+    assert.equal(requestIdFromBody({ detail: "Directors have not been recorded." }), null);
+    const missing =
+      "The accounts calculation files are missing from the server. " +
+      "Finalise cannot run until the application is updated. " +
+      "Check the [Trial balance page](/year-ends/11111111-1111-4111-8111-111111111111/draft?section=trial-balance) " +
+      "and [Company details](/year-ends/11111111-1111-4111-8111-111111111111/draft?section=company-details); " +
+      "they do not hold these files.";
+    assert.equal(finaliseFailureMessage(400, missing), missing);
+    assert.notEqual(finaliseFailureMessage(400, missing), "This draft could not be finalised.");
+    assert.deepEqual(finaliseFailureParts(missing), [
+      {
+        kind: "text",
+        text:
+          "The accounts calculation files are missing from the server. " +
+          "Finalise cannot run until the application is updated. Check the ",
+      },
+      {
+        kind: "link",
+        text: "Trial balance page",
+        href: "/year-ends/11111111-1111-4111-8111-111111111111/draft?section=trial-balance",
+      },
+      { kind: "text", text: " and " },
+      {
+        kind: "link",
+        text: "Company details",
+        href: "/year-ends/11111111-1111-4111-8111-111111111111/draft?section=company-details",
+      },
+      { kind: "text", text: "; they do not hold these files." },
+    ]);
   });
 });

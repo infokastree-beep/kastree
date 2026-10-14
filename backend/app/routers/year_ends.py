@@ -10,6 +10,7 @@ import uuid
 from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
+import structlog
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -41,7 +42,9 @@ from app.schemas.company_details import (
     ApprovalWrite,
     CompanyDetailsResponse,
     CompanyDetailsWrite,
+    CompilationWrite,
     CurrencyConfirmationResponse,
+    DirectorsReportWrite,
 )
 from app.schemas.report_setup import (
     ReportingFrameworkList,
@@ -73,9 +76,12 @@ from app.schemas.year_end import (
     StatementResponse,
     SizeEligibilityRequest,
     SizeEligibilityResponse,
+    amount_text,
+    size_amount_text,
     AdoptedTrialBalanceResponse,
     AdoptableTrialBalanceList,
     AdoptableTrialBalanceOut,
+    TrialBalancePageResponse,
     AdoptTrialBalanceRequest,
     CanonicalLinesResponse,
     CarriedMappingOut,
@@ -86,6 +92,10 @@ from app.schemas.year_end import (
     TrialBalanceLinesResponse,
     TrialBalanceVersionCreate,
     TrialBalanceVersionResponse,
+    AuditExemptionRequest,
+    AuditExemptionResponse,
+    AuditExemptionConditionsRequest,
+    AuditExemptionConditionsResponse,
     YearEndCreateRequest,
     YearEndResponse,
     AdjustmentPostRequest,
@@ -105,7 +115,6 @@ from app.schemas.year_end import (
     FinaliseResponse,
     NewDraftVersionResponse,
     RenderJobResponse,
-    amount_text,
 )
 from app.services.ownership import get_owned_company
 from app.services.size_eligibility import (
@@ -128,7 +137,9 @@ from app.services.adopted_trial_balance import (
     confirm_statutory_sublines,
     final_adopted_snapshot,
     list_adoptable_trial_balances,
+    read_trial_balance_page,
     mapping_notice_for,
+    active_adopted_draft,
     reconcile_adopted,
     review_statutory_sublines,
 )
@@ -144,6 +155,8 @@ from app.services.draft_workflow import (
     DraftRejected,
     PostedLine,
     acknowledge_mappings,
+    audit_position_write_refusal,
+    closed_draft_message,
     dashboard_for_draft,
     finalise_draft,
     frozen_snapshot,
@@ -168,14 +181,29 @@ from app.services.render_jobs import (
 )
 from app.services.source_storage import SourceObjectStorage, get_source_storage
 from app.services.tb_import_worker import run_tb_import_job
+from app.services.final_workspace import (
+    company_details_from_workspace,
+    display_workspace,
+    latest_final_snapshot,
+    overlay_year_end,
+    size_from_workspace,
+)
 from app.services.company_details import (
     CompanyDetailsRejected,
     confirm_currency,
     company_details_response,
     incorporation_output_message_for_year_end,
+    record_audit_exemption,
+    record_audit_exemption_conditions,
     save_approval_details,
     save_company_details,
+    save_compilation_report,
 )
+from app.services.directors_report import (
+    DirectorsReportRejected,
+    save_directors_report,
+)
+from app.services.draft_inputs import disclosure_flags, latest_draft
 from app.services.report_setup import (
     framework_list,
     report_setup_response,
@@ -205,6 +233,8 @@ from findraft.engine.pack import load_manifest, pack_dir, pin_pack_version
 from findraft.models.draft_version import DraftVersion
 from findraft.models.render_job import RenderJob
 from findraft.models.year_end import YearEnd
+
+logger = structlog.get_logger()
 
 router = APIRouter(
     prefix="/year-ends",
@@ -243,6 +273,46 @@ async def _owned_year_end(
     if year_end is None or year_end.org_id != org_id:
         raise HTTPException(status_code=404, detail="Year end not found")
     return year_end
+
+
+async def _refuse_audit_position_write(
+    session: AsyncSession, *, org_id: uuid.UUID, year_end: YearEnd
+) -> None:
+    """The latest draft decides. An open draft may still record the position."""
+    draft = await _latest_year_end_draft(session, org_id=org_id, year_end=year_end)
+    if draft is None:
+        return
+    message = audit_position_write_refusal(draft)
+    if message is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=message)
+
+
+async def _latest_year_end_draft(
+    session: AsyncSession, *, org_id: uuid.UUID, year_end: YearEnd
+) -> DraftVersion | None:
+    return (
+        await session.scalars(
+            select(DraftVersion)
+            .where(
+                DraftVersion.org_id == org_id,
+                DraftVersion.year_end_id == year_end.id,
+            )
+            .order_by(DraftVersion.version_number.desc())
+            .limit(1)
+        )
+    ).first()
+
+
+async def _refuse_closed_year_end(
+    session: AsyncSession, *, org_id: uuid.UUID, year_end: YearEnd
+) -> None:
+    """The latest draft decides. An open draft may still be changed."""
+    draft = await _latest_year_end_draft(session, org_id=org_id, year_end=year_end)
+    if draft is None:
+        return
+    message = closed_draft_message(draft)
+    if message is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=message)
 
 
 def _version_response(
@@ -373,6 +443,15 @@ async def get_report_setup(
     currency = await _currency_for_year_end(
         session, year_end=year_end, org_id=auth.org_id
     )
+    snapshot = await latest_final_snapshot(
+        session, org_id=auth.org_id, year_end=year_end
+    )
+    if snapshot is not None:
+        view = display_workspace(snapshot)
+        if "report_setup" in view:
+            return report_setup_response(
+                year_end, currency, stored=view.get("report_setup")
+            )
     return report_setup_response(year_end, currency)
 
 
@@ -388,6 +467,7 @@ async def put_report_setup(
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
+    await _refuse_closed_year_end(session, org_id=auth.org_id, year_end=year_end)
     currency = await _currency_for_year_end(
         session, year_end=year_end, org_id=auth.org_id
     )
@@ -413,6 +493,7 @@ async def post_report_setup_reset(
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
+    await _refuse_closed_year_end(session, org_id=auth.org_id, year_end=year_end)
     currency = await _currency_for_year_end(
         session, year_end=year_end, org_id=auth.org_id
     )
@@ -455,6 +536,13 @@ async def get_company_details(
     company = await _company_for_year_end(
         session, year_end=year_end, org_id=auth.org_id
     )
+    snapshot = await latest_final_snapshot(
+        session, org_id=auth.org_id, year_end=year_end
+    )
+    if snapshot is not None:
+        stored = company_details_from_workspace(display_workspace(snapshot))
+        if stored is not None:
+            return stored
     return company_details_response(company, year_end)
 
 
@@ -470,6 +558,7 @@ async def put_company_details(
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
+    await _refuse_closed_year_end(session, org_id=auth.org_id, year_end=year_end)
     company = await _company_for_year_end(
         session, year_end=year_end, org_id=auth.org_id
     )
@@ -478,6 +567,7 @@ async def put_company_details(
             session,
             org_id=auth.org_id,
             user_id=auth.user_id,
+            role=auth.role,
             company=company,
             year_end=year_end,
             body=body,
@@ -500,6 +590,7 @@ async def post_currency_confirmation(
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
+    await _refuse_closed_year_end(session, org_id=auth.org_id, year_end=year_end)
     company = await _company_for_year_end(
         session, year_end=year_end, org_id=auth.org_id
     )
@@ -527,6 +618,7 @@ async def put_approval_details(
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
+    await _refuse_closed_year_end(session, org_id=auth.org_id, year_end=year_end)
     company = await _company_for_year_end(
         session, year_end=year_end, org_id=auth.org_id
     )
@@ -543,15 +635,84 @@ async def put_approval_details(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
+@router.put("/{year_end_id}/directors-report", response_model=CompanyDetailsResponse)
+async def put_directors_report(
+    year_end_id: uuid.UUID,
+    body: DirectorsReportWrite,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> CompanyDetailsResponse:
+    """Save this year's directors' report facts. A viewer cannot."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    await _refuse_closed_year_end(session, org_id=auth.org_id, year_end=year_end)
+    company = await _company_for_year_end(
+        session, year_end=year_end, org_id=auth.org_id
+    )
+    try:
+        await save_directors_report(
+            session,
+            org_id=auth.org_id,
+            user_id=auth.user_id,
+            year_end=year_end,
+            body=body,
+        )
+    except DirectorsReportRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    return company_details_response(company, year_end)
+
+
+@router.put("/{year_end_id}/compilation-report", response_model=CompanyDetailsResponse)
+async def put_compilation_report(
+    year_end_id: uuid.UUID,
+    body: CompilationWrite,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> CompanyDetailsResponse:
+    """Save this year's compilation date and signatory. A viewer cannot."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    await _refuse_closed_year_end(session, org_id=auth.org_id, year_end=year_end)
+    company = await _company_for_year_end(
+        session, year_end=year_end, org_id=auth.org_id
+    )
+    try:
+        return await save_compilation_report(
+            session,
+            org_id=auth.org_id,
+            user_id=auth.user_id,
+            company=company,
+            year_end=year_end,
+            body=body,
+        )
+    except CompanyDetailsRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+
 @router.get("/{year_end_id}", response_model=YearEndResponse)
 async def get_year_end(
     year_end_id: uuid.UUID,
     auth: Annotated[AuthContext, Depends(require_reader)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
-) -> YearEnd:
-    """Reload one year end. The draft workspace uses this address later."""
+) -> YearEndResponse:
+    """Reload one year end. A final draft returns the snapshot, not later edits."""
     await aset_rls_org_id(session, auth.org_id)
-    return await _owned_year_end(session, year_end_id=year_end_id, org_id=auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    payload = YearEndResponse.model_validate(year_end).model_dump(mode="json")
+    snapshot = await latest_final_snapshot(
+        session, org_id=auth.org_id, year_end=year_end
+    )
+    if snapshot is None:
+        return YearEndResponse.model_validate(payload)
+    return YearEndResponse.model_validate(
+        overlay_year_end(payload, display_workspace(snapshot))
+    )
 
 
 @router.get("/{year_end_id}/draft", response_model=WorkingDraftResponse)
@@ -581,12 +742,15 @@ async def get_working_draft(
             status_code=404,
             detail="This year end has no working draft yet",
         )
-    try:
-        notice = await mapping_notice_for(
-            session, org_id=auth.org_id, year_end=year_end, draft=draft
-        )
-    except ReconciliationRejected as exc:
-        raise _adoption_error(exc) from exc
+    if draft.status == "final":
+        notice = None
+    else:
+        try:
+            notice = await mapping_notice_for(
+                session, org_id=auth.org_id, year_end=year_end, draft=draft
+            )
+        except ReconciliationRejected as exc:
+            raise _adoption_error(exc) from exc
     return WorkingDraftResponse(
         draft_id=draft.id,
         version_number=draft.version_number,
@@ -622,6 +786,37 @@ def _subline_response(
 
 def _adoption_error(exc: ReconciliationRejected) -> HTTPException:
     return HTTPException(status_code=exc.status_code, detail=exc.detail)
+
+
+@router.get(
+    "/{year_end_id}/trial-balance",
+    response_model=TrialBalancePageResponse,
+)
+async def get_trial_balance_page(
+    year_end_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> TrialBalancePageResponse:
+    """Read-only adopted trial balance. This route does not adopt or delete."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        facts = await read_trial_balance_page(
+            session, org_id=auth.org_id, year_end=year_end
+        )
+    except ReconciliationRejected as exc:
+        raise _adoption_error(exc) from exc
+    return TrialBalancePageResponse(
+        trial_balance_id=facts.trial_balance_id,
+        period_start=facts.period_start,
+        period_end=facts.period_end,
+        uploaded_at=facts.uploaded_at,
+        account_count=facts.account_count,
+        currency=facts.currency,
+        file_name=None,
+    )
 
 
 @router.get(
@@ -669,6 +864,7 @@ async def post_adopt_trial_balance(
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
+    await _refuse_closed_year_end(session, org_id=auth.org_id, year_end=year_end)
     try:
         carried = await adopt_confirmed_trial_balance(
             session,
@@ -800,6 +996,7 @@ async def post_adopted_sublines(
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
+    await _refuse_closed_year_end(session, org_id=auth.org_id, year_end=year_end)
     try:
         rows = await confirm_statutory_sublines(
             session,
@@ -827,6 +1024,8 @@ def _preview_children(children: tuple[PreviewChild, ...]) -> list[PreviewChildOu
             number=child.number,
             label=child.label,
             anchor=child.anchor,
+            note_class=child.note_class,
+            note_class_label=child.note_class_label,
         )
         for child in children
     ]
@@ -916,6 +1115,8 @@ async def get_statutory_preview(
                 number=child.number,
                 label=child.label,
                 anchor=child.anchor,
+                note_class=child.note_class,
+                note_class_label=child.note_class_label,
             )
             for child in preview.children
         ],
@@ -961,7 +1162,17 @@ async def get_adopted_statement_pdf(
         company = await _company_for_year_end(
             session, year_end=year_end, org_id=auth.org_id
         )
-        html = compose_year_end_pdf(document, year_end, company=company)
+        draft = await active_adopted_draft(
+            session, org_id=auth.org_id, year_end=year_end
+        )
+        flags = (
+            None
+            if draft is None
+            else await disclosure_flags(session, org_id=auth.org_id, draft_id=draft.id)
+        )
+        html = compose_year_end_pdf(
+            document, year_end, company=company, disclosure_flags=flags
+        )
         filename = "statutory-statements-draft.pdf"
     pdf = write_statement_pdf(html)
     return Response(
@@ -990,6 +1201,7 @@ async def create_trial_balance_version(
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
+    await _refuse_closed_year_end(session, org_id=auth.org_id, year_end=year_end)
     existing = (
         await session.execute(
             select(TrialBalanceVersion).where(
@@ -1164,6 +1376,7 @@ async def confirm_prior_year_route(
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
+    await _refuse_closed_year_end(session, org_id=auth.org_id, year_end=year_end)
     try:
         stored = await confirm_prior_year(
             session,
@@ -1201,6 +1414,7 @@ async def first_financial_period(
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
+    await _refuse_closed_year_end(session, org_id=auth.org_id, year_end=year_end)
     try:
         return await mark_first_financial_period(
             session, org_id=auth.org_id, year_end=year_end
@@ -1278,6 +1492,7 @@ async def confirm_trial_balance_mappings(
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
+    await _refuse_closed_year_end(session, org_id=auth.org_id, year_end=year_end)
     version = await _owned_tb_version(
         session, year_end=year_end, version_id=version_id, org_id=auth.org_id
     )
@@ -1341,6 +1556,28 @@ def _pence(value: str) -> Decimal:
 
 def _draft_error(exc: DraftRejected) -> HTTPException:
     return HTTPException(status_code=exc.status_code, detail=exc.detail)
+
+
+def _finalise_error_message(exc: Exception) -> str:
+    """The database sentence, when Postgres raised one. Otherwise a plain line."""
+    if isinstance(exc, DBAPIError):
+        orig = getattr(exc, "orig", None)
+        text_value = "" if orig is None else str(orig).split("\n", 1)[0].strip()
+        if text_value and len(text_value) <= 300:
+            return text_value
+    return "Something went wrong."
+
+
+def _unexpected_finalise_error(exc: Exception) -> HTTPException:
+    reference = str(uuid.uuid4())
+    logger.exception("draft_finalise_failed", request_id=reference)
+    return HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail={
+            "message": _finalise_error_message(exc),
+            "request_id": reference,
+        },
+    )
 
 
 def _dashboard_response(board: Dashboard) -> DashboardResponse:
@@ -1469,7 +1706,17 @@ async def get_statement_pdf(
         company = await _company_for_year_end(
             session, year_end=year_end, org_id=auth.org_id
         )
-        html = compose_year_end_pdf(document, year_end, company=company)
+        draft = await latest_draft(
+            session, org_id=auth.org_id, tb_version_id=version_id
+        )
+        flags = (
+            None
+            if draft is None
+            else await disclosure_flags(session, org_id=auth.org_id, draft_id=draft.id)
+        )
+        html = compose_year_end_pdf(
+            document, year_end, company=company, disclosure_flags=flags
+        )
         filename = "statutory-statements-draft.pdf"
     pdf = write_statement_pdf(html)
     return Response(
@@ -1622,6 +1869,7 @@ async def create_fixed_asset_version(
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
+    await _refuse_closed_year_end(session, org_id=auth.org_id, year_end=year_end)
     existing = (
         await session.execute(
             select(FixedAssetVersion).where(
@@ -1726,6 +1974,16 @@ def _size_response(year_end: YearEnd) -> SizeEligibilityResponse:
         current_conditions_met=year_end.size_current_met,
         preceding_conditions_met=year_end.size_preceding_met,
         message=year_end.size_message,
+        size_current_turnover=size_amount_text(year_end.size_current_turnover),
+        size_current_balance_sheet=size_amount_text(
+            year_end.size_current_balance_sheet
+        ),
+        size_current_employees=year_end.size_current_employees,
+        size_preceding_turnover=size_amount_text(year_end.size_preceding_turnover),
+        size_preceding_balance_sheet=size_amount_text(
+            year_end.size_preceding_balance_sheet
+        ),
+        size_preceding_employees=year_end.size_preceding_employees,
     )
 
 
@@ -1746,33 +2004,40 @@ async def check_size_eligibility(
     company = await session.get(Company, year_end.company_id)
     if company is None or company.org_id != auth.org_id:
         raise HTTPException(status_code=404, detail="Company not found")
+    await _refuse_audit_position_write(session, org_id=auth.org_id, year_end=year_end)
     try:
         manifest = load_manifest(
             pack_dir(year_end.pack_id, year_end.pack_version) / "pack.json"
         )
+        current = YearSize(
+            turnover=exact_amount(body.current.turnover),
+            balance_sheet_total=exact_amount(body.current.balance_sheet_total),
+            employees=body.current.employees,
+        )
+        preceding = (
+            None
+            if body.preceding is None
+            else YearSize(
+                turnover=exact_amount(body.preceding.turnover),
+                balance_sheet_total=exact_amount(body.preceding.balance_sheet_total),
+                employees=body.preceding.employees,
+            )
+        )
         assessment = assess_size(
             manifest,
             company_currency=company.functional_currency,
-            current=YearSize(
-                turnover=exact_amount(body.current.turnover),
-                balance_sheet_total=exact_amount(body.current.balance_sheet_total),
-                employees=body.current.employees,
-            ),
-            preceding=(
-                None
-                if body.preceding is None
-                else YearSize(
-                    turnover=exact_amount(body.preceding.turnover),
-                    balance_sheet_total=exact_amount(
-                        body.preceding.balance_sheet_total
-                    ),
-                    employees=body.preceding.employees,
-                )
-            ),
+            current=current,
+            preceding=preceding,
             first_financial_period=year_end.first_financial_period,
         )
         await record_size_assessment(
-            session, org_id=auth.org_id, year_end=year_end, assessment=assessment
+            session,
+            org_id=auth.org_id,
+            user_id=auth.user_id,
+            year_end=year_end,
+            assessment=assessment,
+            current=current,
+            preceding=preceding,
         )
     except SizeEligibilityRejected as exc:
         raise HTTPException(status_code=400, detail=exc.detail) from exc
@@ -1794,7 +2059,89 @@ async def get_size_eligibility(
     year_end = await _owned_year_end(
         session, year_end_id=year_end_id, org_id=auth.org_id
     )
+    snapshot = await latest_final_snapshot(
+        session, org_id=auth.org_id, year_end=year_end
+    )
+    if snapshot is not None:
+        stored = size_from_workspace(
+            display_workspace(snapshot), year_end_id=year_end.id
+        )
+        if stored is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Size eligibility has not been checked",
+            )
+        return stored
     return _size_response(year_end)
+
+
+@router.post(
+    "/{year_end_id}/audit-exemption",
+    response_model=AuditExemptionResponse,
+)
+async def post_audit_exemption(
+    year_end_id: uuid.UUID,
+    body: AuditExemptionRequest,
+    auth: Annotated[AuthContext, Depends(require_client_admin)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> AuditExemptionResponse:
+    """Owner or admin records claimed, not claimed, or clears the position."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    await _refuse_audit_position_write(session, org_id=auth.org_id, year_end=year_end)
+    await record_audit_exemption(
+        session,
+        org_id=auth.org_id,
+        user_id=auth.user_id,
+        year_end=year_end,
+        claimed=body.claimed,
+    )
+    return AuditExemptionResponse(
+        year_end_id=year_end.id,
+        claimed=year_end.audit_exemption_claimed,
+        claimed_by_user_id=year_end.audit_exemption_claimed_by_user_id,
+        claimed_at=year_end.audit_exemption_claimed_at,
+    )
+
+
+@router.post(
+    "/{year_end_id}/audit-exemption-conditions",
+    response_model=AuditExemptionConditionsResponse,
+)
+async def post_audit_exemption_conditions(
+    year_end_id: uuid.UUID,
+    body: AuditExemptionConditionsRequest,
+    auth: Annotated[AuthContext, Depends(require_client_admin)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> AuditExemptionConditionsResponse:
+    """Owner or admin records the three directors' confirmations, or clears them."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    await _refuse_audit_position_write(session, org_id=auth.org_id, year_end=year_end)
+    try:
+        await record_audit_exemption_conditions(
+            session,
+            org_id=auth.org_id,
+            user_id=auth.user_id,
+            year_end=year_end,
+            not_excluded=body.not_excluded,
+            no_member_notice=body.no_member_notice,
+            returns_not_late=body.returns_not_late,
+        )
+    except CompanyDetailsRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    return AuditExemptionConditionsResponse(
+        year_end_id=year_end.id,
+        not_excluded=year_end.audit_exemption_not_excluded,
+        no_member_notice=year_end.audit_exemption_no_member_notice,
+        returns_not_late=year_end.audit_exemption_returns_not_late,
+        conditions_by_user_id=year_end.audit_exemption_conditions_by_user_id,
+        conditions_at=year_end.audit_exemption_conditions_at,
+    )
 
 
 @router.get(
@@ -2069,6 +2416,8 @@ async def post_draft_finalise(
         )
     except DraftRejected as exc:
         raise _draft_error(exc) from exc
+    except Exception as exc:
+        raise _unexpected_finalise_error(exc) from exc
     return FinaliseResponse.model_validate(stored)
 
 

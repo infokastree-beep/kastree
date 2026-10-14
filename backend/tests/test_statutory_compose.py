@@ -370,11 +370,19 @@ def test_directors_responsibilities_cite_no_act_section() -> None:
         / "frontend"
         / "components"
         / "statutory"
+        / "DirectorsResponsibilitiesPanel.tsx"
+    ).read_text(encoding="utf-8")
+    company = (
+        _ROOT.parent
+        / "frontend"
+        / "components"
+        / "statutory"
         / "CompanyDetailsForm.tsx"
     ).read_text(encoding="utf-8")
     assert 'data-testid="directors-responsibilities-source"' in workspace
     assert "source not confirmed" in workspace
     assert DIRECTORS_RESPONSIBILITIES in workspace
+    assert 'data-testid="directors-responsibilities-source"' not in company
     pack = (_ROOT.parent / "findraft/content/frs102-1a-ie/2024.09/pack.json").read_text(
         encoding="utf-8"
     )
@@ -421,28 +429,36 @@ def test_advisers_print_on_the_directors_page() -> None:
     assert document.profit == Decimal("157650.00")
 
 
-def test_an_enabled_unbuilt_section_is_one_page_without_figures() -> None:
+def test_a_missing_incorporation_date_is_not_a_blank_line() -> None:
+    document = _golden()
+    html = compose_pdf_html(
+        document,
+        report_setup=_setup(),
+        period_start=date(2025, 1, 1),
+        period_end=date(2025, 12, 31),
+        first_financial_period=False,
+        letterhead=CompanyLetterhead(incorporated_on=None),
+    )
+    assert "Date of incorporation: not recorded" in html
+    assert "Date of incorporation: <" not in html
+    assert "Date of incorporation:\n" not in html
+    assert document.net_assets == Decimal("455812.00")
+    assert document.profit == Decimal("157650.00")
+
+
+def test_a_saved_unbuilt_section_is_left_out_of_the_document() -> None:
     document = _golden()
     html = _compose(
         document,
         _setup(sections={"cash-flow": True, "oci": True, "trading": False}),
     )
-    assert ">Cash flow statement</h2>" in html
-    assert ">Statement of comprehensive income</h2>" in html
+    assert ">Cash flow statement</h2>" not in html
+    assert ">Statement of comprehensive income</h2>" not in html
     assert ">Supplementary trading statement</h2>" not in html
-    assert html.count(NOT_BUILT_LINE) == 2
-    assert 'data-section="cash-flow"' in html
-    assert "page-break-before: always" in html
-    assert html.index(">Income statement</h2>") < html.index(
-        ">Statement of comprehensive income</h2>"
-    )
-    assert html.index(">Statement of comprehensive income</h2>") < html.index(
-        ">Statement of financial position</h2>"
-    )
-    assert html.index(">Statement of financial position</h2>") < html.index(
-        ">Cash flow statement</h2>"
-    )
-    assert html.index(">Cash flow statement</h2>") < html.index(">Notes</h2>")
+    assert NOT_BUILT_LINE not in html
+    assert 'data-section="cash-flow"' not in html
+    assert ">Income statement</h2>" in html
+    assert ">Notes</h2>" in html
     assert document.net_assets == Decimal("455812.00")
     assert document.profit == Decimal("157650.00")
     assert "455812.00" not in html
@@ -560,8 +576,10 @@ def test_a_finalised_document_keeps_final_and_does_not_say_compilation(
 
     html = _compose(final, _setup(statement_type="compilation"))
     printed = f"DRAFT {WORDING_BANNER}"
-    assert f'<p class="watermark">{printed}</p>' in html
-    assert html.count(f'content: "{printed}"') >= 2
+    assert f'<p class="watermark">{printed}</p>' not in html
+    assert '<p class="watermark">DRAFT</p>' in html
+    assert html.count(f'content: "{printed}";') == 1
+    assert 'content: "DRAFT";' in html
     assert "@page :first" in html
     assert "COMPILATION" not in html
     assert "FINAL" not in html
@@ -573,9 +591,11 @@ def test_a_finalised_document_keeps_final_and_does_not_say_compilation(
     joined = "\n".join(pages)
     assert "455,812" in joined
     assert "157,650" in joined
-    for page in pages:
+    assert WORDING_BANNER in pages[0]
+    assert pages[0].count(WORDING_BANNER) == 1
+    for page in pages[1:]:
         assert "DRAFT" in page
-        assert WORDING_BANNER in page
+        assert WORDING_BANNER not in page
         assert "FINAL" not in page
     assert "455,812" in html
     assert "157,650" in html
@@ -653,6 +673,48 @@ def test_thousands_prints_a_rounding_difference_when_lines_do_not_foot() -> None
     assert document.net_assets == Decimal("1200.00")
 
 
+def test_note_children_use_pack_classes_and_pdf_numbers() -> None:
+    from app.services.note_classes import classes_by_code, note_class_order
+    from app.services.statutory_compose import _note_children
+
+    document = _golden()
+    children = _note_children(
+        {
+            "kind": "notes",
+            "notes": [
+                {"code": note.code, "title": note.title} for note in document.notes
+            ],
+        }
+    )
+    html = _compose(document, _setup())
+    classes = classes_by_code()
+    assert note_class_order() == (
+        "policies",
+        "fixed assets",
+        "current assets",
+        "creditors",
+        "equity",
+        "other",
+    )
+    assert len(children) == len(document.notes)
+    for child, note in zip(children, document.notes, strict=True):
+        assert child.note_class == classes[note.code]
+        assert child.note_class_label == (
+            child.note_class[:1].upper() + child.note_class[1:]
+            if child.note_class
+            else ""
+        )
+        assert child.id == note.code
+        assert child.number is not None
+        assert child.id not in child.label
+        assert f"{child.number}. {child.label}" == note.title
+        assert f'<h3 class="note-title">{child.number}. {child.label}</h3>' in html
+    assert classes["N0_ENTITY"] == "other"
+    assert any(child.label == "Company information" for child in children)
+    assert document.net_assets == Decimal("455812.00")
+    assert document.profit == Decimal("157650.00")
+
+
 def test_unbuilt_section_notice_does_not_block_final() -> None:
     quiet = YearEnd()
     quiet.report_setup = None
@@ -669,6 +731,7 @@ def test_unbuilt_section_notice_does_not_block_final() -> None:
     assert "Cash flow statement" in notices[0].message
     assert "Statement of comprehensive income" in notices[0].message
     assert "does not build" in notices[0].message
+    assert "ignored" in notices[0].message
     assert _can_finalise("amber", renderable=True, blocked=False, checks=notices)
 
 
@@ -782,8 +845,8 @@ async def test_downloaded_pdf_follows_the_include_list(
     )
     assert second.status_code == 200, second.text
     assert "Directors&#39; report" not in captured[1]
-    assert ">Cash flow statement</h2>" in captured[1]
-    assert NOT_BUILT_LINE in captured[1]
+    assert ">Cash flow statement</h2>" not in captured[1]
+    assert NOT_BUILT_LINE not in captured[1]
     assert ">Income statement</h2>" in captured[1]
     after = await api_client.get(
         f"/year-ends/{year_end_id}/adopted-trial-balance/statements",

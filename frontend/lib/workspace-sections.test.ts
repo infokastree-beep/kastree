@@ -3,10 +3,16 @@
  * Run: node --experimental-strip-types --test lib/workspace-sections.test.ts
  */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import {
+  groupByNoteClass,
+  NOTE_CLASS_ORDER,
+  sidebarNoteGroups,
+  type PreviewChild,
+} from "./section-preview.ts";
 import {
   activeSection,
   groupIsOpen,
@@ -15,6 +21,8 @@ import {
   pageStartsOn,
   sectionIsOn,
   sectionsForFramework,
+  setupSections,
+  sidebarSections,
   SIDEBAR_GROUPS_KEY,
   type ReportingFramework,
   type WorkspaceSection,
@@ -38,12 +46,13 @@ const frameworks: ReportingFramework[] = [
     sections: [
       section("review", "Review dashboard", "overview", "Overview", 1),
       section("report-setup", "Report setup", "report-options", "Report options", 2),
-      section("sub-lines", "Mapping", "inputs", "Inputs", 3),
-      section("adjustments", "Adjustments", "inputs", "Inputs", 4),
-      section("disclosures", "Disclosures", "inputs", "Inputs", 5),
-      section("company-details", "Company details", "inputs", "Inputs", 6),
-      section("income", "Income statement", "sections", "Sections", 7),
-      section("sofp", "Statement of financial position", "sections", "Sections", 8),
+      section("trial-balance", "Trial balance", "inputs", "Inputs", 3),
+      section("sub-lines", "Mapping", "inputs", "Inputs", 4),
+      section("adjustments", "Adjustments", "inputs", "Inputs", 5),
+      section("disclosures", "Disclosures", "inputs", "Inputs", 6),
+      section("company-details", "Company details", "inputs", "Inputs", 7),
+      section("income", "Income statement", "sections", "Sections", 8),
+      section("sofp", "Statement of financial position", "sections", "Sections", 9),
     ],
   },
   {
@@ -124,12 +133,18 @@ describe("sectionsForFramework", () => {
     assert.equal(source.includes('section.lock === "user"'), false);
     assert.equal(source.includes("statutory-toggle-"), false);
     assert.equal(source.includes('type="checkbox"'), false);
-    assert.equal(source.includes("section.built === false"), true);
-    assert.equal(source.includes("section.enabled === false"), true);
+    assert.equal(source.includes("section.built === false"), false);
+    assert.equal(source.includes("section.enabled === false"), false);
     assert.equal(source.includes('section.lock === "locked"'), true);
-    assert.equal(source.includes(">off<"), true);
+    assert.equal(source.includes(">off<"), false);
     assert.equal(source.includes(">lock<"), true);
-    assert.equal(source.includes("not built"), true);
+    assert.equal(source.includes("not built"), false);
+    assert.equal(source.includes("Expand all"), true);
+    assert.equal(source.includes("Collapse all"), true);
+    assert.equal(source.includes("sidebarNoteGroups"), true);
+    assert.equal(source.includes("NOTE_CLASS_ORDER"), true);
+    assert.equal(source.includes("N0_ENTITY"), false);
+    assert.equal(source.includes("N0_"), false);
     for (const word of [
       "Signatories",
       "Events log",
@@ -149,7 +164,8 @@ describe("sectionsForFramework", () => {
     assert.equal(setup.includes("statutory-toggle-"), true);
     assert.equal(setup.includes("statutory-page-start-"), true);
     assert.equal(setup.includes("New page"), true);
-    assert.equal(setup.includes("not built"), true);
+    assert.equal(setup.includes("not built"), false);
+    assert.equal(setup.includes("setupSections"), true);
     assert.equal(setup.includes("locked"), true);
     assert.equal(setup.includes("Reset to pack defaults"), false);
     assert.equal(setup.includes("ResetDefaultsDialog"), true);
@@ -160,7 +176,8 @@ describe("sectionsForFramework", () => {
       join(here, "../components/statutory/StatutoryDraftWorkspace.tsx"),
       "utf8",
     );
-    assert.equal(workspace.includes("navigatorSections(sections)"), true);
+    assert.equal(workspace.includes("sidebarSections("), true);
+    assert.equal(workspace.includes("statutory-unbuilt-notice"), true);
     assert.equal(workspace.includes("section-outline"), true);
     assert.equal(
       workspace.includes(
@@ -172,7 +189,7 @@ describe("sectionsForFramework", () => {
     assert.equal(workspace.includes("statutory-turn-on"), true);
     assert.equal(workspace.includes("<SectionsSetup"), true);
     assert.equal(workspace.includes("statutory-setup-notices"), true);
-    assert.equal(workspace.includes("finaliseStatusLine"), true);
+    assert.equal(workspace.includes("statusPillLabel"), true);
     assert.equal(workspace.includes("statutory-confirm-currency"), true);
     assert.equal(workspace.includes("Ready to finalise."), false);
     assert.equal(workspace.includes("<FinaliseDraft"), true);
@@ -182,12 +199,11 @@ describe("sectionsForFramework", () => {
     );
     assert.equal(finalise.includes("FINALISE_LOCK_NOTE"), true);
     assert.equal(finalise.includes("statutory-finalise-lock"), true);
-    assert.equal(workspace.includes("statutory-outputs-state"), true);
+    assert.equal(workspace.includes("statutory-outputs-state"), false);
     assert.equal(workspace.includes("pdfDownloadLabel"), true);
-    assert.equal(workspace.includes("finalStateLabel"), true);
     assert.equal(workspace.includes("wordDownloadLabel"), true);
-    assert.equal(workspace.includes("wordingSignedOffFromServer"), true);
-    assert.equal(workspace.includes("shownStatus"), true);
+    assert.equal(workspace.includes("statutory-status-pill"), true);
+    assert.equal(workspace.includes("Locked: this draft is final"), true);
     assert.equal(workspace.includes("canOfferFinalise"), false);
     const form = readFileSync(
       join(here, "../components/statutory/ReportSetupForm.tsx"),
@@ -240,13 +256,12 @@ describe("navigatorSections", () => {
     },
   ];
 
-  it("lists every pack section in order with its on or off state", () => {
+  it("hides a section that is off or not built", () => {
     assert.deepEqual(
       navigatorSections(rows).map((item) => [item.id, item.enabled ?? null]),
       [
         ["review", null],
         ["sections-setup", null],
-        ["cover", false],
         ["income", true],
         ["draft-pdf", null],
       ],
@@ -277,10 +292,8 @@ describe("navigatorSections", () => {
         item.built,
       ]),
       [
-        ["cover", false, "user", undefined],
         ["contents", true, "user", undefined],
         ["income", true, "locked", undefined],
-        ["cash-flow", false, "user", false],
       ],
     );
   });
@@ -289,6 +302,123 @@ describe("navigatorSections", () => {
     assert.equal(activeSection(rows, "cover"), "cover");
     assert.equal(activeSection(rows, "income"), "income");
     assert.equal(activeSection(rows, "review"), "review");
+  });
+});
+
+describe("note classes and outputs", () => {
+  it("uses the pack class list and keeps the PDF number on each note", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const pack = JSON.parse(
+      readFileSync(
+        join(here, "../../findraft/content/frs102-1a-ie/2024.09/pack.json"),
+        "utf8",
+      ),
+    ) as { note_classes: string[] };
+    assert.deepEqual([...NOTE_CLASS_ORDER], pack.note_classes);
+    const notesDir = join(
+      here,
+      "../../findraft/content/frs102-1a-ie/2024.09/notes",
+    );
+    for (const file of readdirSync(notesDir)) {
+      const note = JSON.parse(
+        readFileSync(join(notesDir, file), "utf8"),
+      ) as { class?: string; title?: string };
+      assert.equal(pack.note_classes.includes(note.class ?? ""), true, file);
+      assert.equal(JSON.stringify(note).includes("N0_ENTITY"), false, file);
+    }
+    const children: PreviewChild[] = [
+      {
+        id: "entity",
+        number: 1,
+        label: "Company information",
+        anchor: "note-entity",
+        note_class: "other",
+        note_class_label: "Other",
+      },
+      {
+        id: "policies",
+        number: 2,
+        label: "Accounting policies",
+        anchor: "note-policies",
+        note_class: "policies",
+        note_class_label: "Policies",
+      },
+      {
+        id: "debtors",
+        number: 4,
+        label: "Debtors",
+        anchor: "note-debtors",
+        note_class: "current assets",
+        note_class_label: "Current assets",
+      },
+      {
+        id: "loose",
+        number: 9,
+        label: "Unclassified",
+        anchor: "note-loose",
+      },
+    ];
+    const groups = groupByNoteClass(children, NOTE_CLASS_ORDER);
+    assert.deepEqual(
+      groups.map((group) => [group.id, group.items.map((item) => item.number)]),
+      [
+        ["policies", [2]],
+        ["current assets", [4]],
+        ["other", [1, 9]],
+      ],
+    );
+    assert.equal(groups.at(-1)?.items[0]?.label, "Company information");
+    const sidebar = sidebarNoteGroups(children, NOTE_CLASS_ORDER);
+    assert.deepEqual(
+      sidebar.map((group) => [group.label, group.items.map((item) => item.number)]),
+      [
+        ["General", [1, 2]],
+        ["Current assets", [4]],
+        ["Other", [9]],
+      ],
+    );
+    assert.deepEqual(
+      sidebar[0]?.items.map((item) => item.label),
+      ["Company information", "Accounting policies"],
+    );
+    const visible = sidebarSections(
+      [
+        section("draft-pdf", "PDF", "outputs", "Outputs", 1),
+        section("draft-word", "Word", "outputs", "Outputs", 2),
+        {
+          ...section("cash-flow", "Cash flow statement", "sections", "Sections", 3),
+          built: false,
+          enabled: true,
+        },
+      ],
+      "final",
+    );
+    assert.deepEqual(
+      visible.map((item) => item.label),
+      ["Final PDF", "Final Word"],
+    );
+    assert.deepEqual(
+      sidebarSections(
+        [
+          section("draft-pdf", "PDF", "outputs", "Outputs", 1),
+          section("draft-word", "Word", "outputs", "Outputs", 2),
+        ],
+        "draft",
+      ).map((item) => item.label),
+      ["PDF", "Word"],
+    );
+    const setup = setupSections([
+      section("cover", "Cover", "sections", "Sections", 1),
+      {
+        ...section("oci", "Statement of comprehensive income", "sections", "Sections", 2),
+        built: false,
+      },
+      section("report-setup", "Report setup", "report-options", "Report options", 3),
+    ]);
+    assert.deepEqual(
+      setup.map((item) => item.id),
+      ["cover"],
+    );
   });
 });
 

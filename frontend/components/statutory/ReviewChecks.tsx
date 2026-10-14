@@ -6,6 +6,7 @@ import {
   fixHref,
   groupFailedChecks,
   presentCheck,
+  severityTag,
   type ReviewCheck,
 } from "@/lib/dashboard-groups";
 
@@ -34,6 +35,12 @@ export function ReviewChecks({
               const fix = presentCheck(check).fix;
               return (
                 <li key={`${check.code}-${index}`}>
+                  <span
+                    className="mr-2 inline-flex rounded-full border border-line px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]"
+                    data-testid={`statutory-severity-${check.code}`}
+                  >
+                    {severityTag(check)}
+                  </span>
                   <span>{checkLine(check, unansweredCount)}</span>{" "}
                   <Link
                     href={fixHref(yearEndId, fix)}

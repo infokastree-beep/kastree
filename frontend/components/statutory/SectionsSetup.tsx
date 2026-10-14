@@ -3,6 +3,7 @@
 import { ResetDefaultsDialog } from "@/components/statutory/ResetDefaultsDialog";
 import {
   pageStartsOn,
+  setupSections,
   type WorkspaceSection,
 } from "@/lib/workspace-sections";
 
@@ -25,9 +26,7 @@ export function SectionsSetup({
   canReset: boolean;
   onReset: () => void;
 }) {
-  const rows = sections.filter(
-    (section) => section.group === "sections" && section.id !== "sections-setup",
-  );
+  const rows = setupSections(sections);
   return (
     <section className="space-y-3" data-testid="statutory-sections-setup">
       <h2 className="text-sm font-semibold text-ink">{title}</h2>
@@ -39,11 +38,6 @@ export function SectionsSetup({
           >
             <span className="text-sm text-ink">
               {section.label}
-              {section.built === false ? (
-                <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.08em] opacity-70">
-                  not built
-                </span>
-              ) : null}
             </span>
             <label className="flex items-center gap-2 text-xs text-soft">
               <input

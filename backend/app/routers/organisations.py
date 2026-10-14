@@ -48,13 +48,61 @@ _BILLING_FIELDS_NOT_UPDATABLE_HERE = frozenset(
         "stripe_subscription_id",
     }
 )
-_ORG_UPDATABLE_FIELDS = frozenset({"name", "functional_currency", "jurisdiction"})
+_ORG_UPDATABLE_FIELDS = frozenset(
+    {
+        "name",
+        "functional_currency",
+        "jurisdiction",
+        "letterhead_address",
+        "letterhead_contact",
+    }
+)
+_LETTERHEAD_FIELDS = frozenset({"name", "letterhead_address", "letterhead_contact"})
+_OWNER_ONLY_FIELDS = frozenset({"functional_currency"})
 
 INVITES_SCHEMA_GAP_DETAIL = (
     "No invites table exists in Product Spec §9.1 DDL. Invite was not persisted. "
     "Add an invites migration before enabling real pending-invite storage; "
     "email delivery via Resend is post-MVP."
 )
+
+
+def _letterhead_address(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
+        return None
+    if any(ord(char) < 32 and char != "\n" for char in text):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Practice address contains a character that cannot be stored.",
+        )
+    if len(text) > 2000:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Practice address is too long.",
+        )
+    return text
+
+
+def _letterhead_contact(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if any(ord(char) < 32 for char in text):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Practice contact cannot include a line break.",
+        )
+    if len(text) > 500:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Practice contact is too long.",
+        )
+    return text
 
 
 async def _load_caller_org(
@@ -92,18 +140,48 @@ async def update_my_organisation(
     for forbidden in _BILLING_FIELDS_NOT_UPDATABLE_HERE:
         raw.pop(forbidden, None)
     updates = {key: value for key, value in raw.items() if key in _ORG_UPDATABLE_FIELDS}
-    if auth.role != "owner" and any(key != "jurisdiction" for key in updates):
+    if auth.role != "owner" and _OWNER_ONLY_FIELDS.intersection(updates):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have permission to access this resource.",
         )
     if "name" in updates and updates["name"] is not None:
         updates["name"] = str(updates["name"]).strip()
+        if not updates["name"]:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Legal name is required.",
+            )
+    if "letterhead_address" in updates:
+        updates["letterhead_address"] = _letterhead_address(updates["letterhead_address"])
+    if "letterhead_contact" in updates:
+        updates["letterhead_contact"] = _letterhead_contact(updates["letterhead_contact"])
     if "functional_currency" in updates and updates["functional_currency"] is not None:
         updates["functional_currency"] = str(updates["functional_currency"]).upper()
     previous_jurisdiction = org.jurisdiction
+    previous_letterhead: dict[str, object] = {
+        "name": org.name,
+        "letterhead_address": org.letterhead_address,
+        "letterhead_contact": org.letterhead_contact,
+    }
     for field, value in updates.items():
         setattr(org, field, value)
+    if _LETTERHEAD_FIELDS.intersection(updates):
+        recorded_letterhead: dict[str, object] = {
+            "name": org.name,
+            "letterhead_address": org.letterhead_address,
+            "letterhead_contact": org.letterhead_contact,
+        }
+        await append_audit_log(
+            session,
+            org_id=org.id,
+            user_id=auth.user_id,
+            action="practice_letterhead_saved",
+            entity_type="organisation",
+            entity_id=org.id,
+            old_value=previous_letterhead,
+            new_value=recorded_letterhead,
+        )
     if (
         "jurisdiction" in updates
         and org.jurisdiction != previous_jurisdiction

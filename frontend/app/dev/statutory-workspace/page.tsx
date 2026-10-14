@@ -6,11 +6,15 @@
  */
 
 import { useState } from "react";
+import { AuditExemptionClaim } from "@/components/statutory/AuditExemptionClaim";
 import { FinaliseDraft } from "@/components/statutory/FinaliseDraft";
+import { SizeInputs } from "@/components/statutory/SizeInputs";
+import { TrialBalancePanel } from "@/components/statutory/TrialBalancePanel";
 import { ReportSetupForm, type ReportSetupWrite } from "@/components/statutory/ReportSetupForm";
+import { AUDIT_POSITION_FINAL_LOCK } from "@/lib/audit-exemption";
 import {
-  finalStateLabel,
   pdfDownloadLabel,
+  statusPillLabel,
   wordDownloadLabel,
 } from "@/lib/finalise-status";
 import { SectionPreview } from "@/components/statutory/SectionPreview";
@@ -55,17 +59,18 @@ const FRAMEWORKS: ReportingFramework[] = [
     sections: [
       section("review", "Review dashboard", "overview", "Overview", 1),
       section("report-setup", "Report setup", "report-options", "Report options", 2),
-      section("sub-lines", "Mapping", "inputs", "Inputs", 3),
-      section("adjustments", "Adjustments", "inputs", "Inputs", 4),
-      section("disclosures", "Disclosures", "inputs", "Inputs", 5),
-      section("company-details", "Company details", "inputs", "Inputs", 6),
-      section("sections-setup", "Sections setup", "sections", "Sections", 7),
+      section("trial-balance", "Trial balance", "inputs", "Inputs", 3),
+      section("sub-lines", "Mapping", "inputs", "Inputs", 4),
+      section("adjustments", "Adjustments", "inputs", "Inputs", 5),
+      section("disclosures", "Disclosures", "inputs", "Inputs", 6),
+      section("company-details", "Company details", "inputs", "Inputs", 7),
+      section("sections-setup", "Sections setup", "sections", "Sections", 8),
       {
         id: "income",
         label: "Income statement",
         group: "sections",
         group_label: "Sections",
-        order: 8,
+        order: 9,
         lock: "locked",
         default: "on",
         built: true,
@@ -76,7 +81,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Statement of financial position",
         group: "sections",
         group_label: "Sections",
-        order: 9,
+        order: 10,
         lock: "locked",
         default: "on",
         built: true,
@@ -87,7 +92,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Contents",
         group: "sections",
         group_label: "Sections",
-        order: 10,
+        order: 11,
         lock: "user",
         default: "on",
         built: true,
@@ -98,7 +103,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Notes",
         group: "sections",
         group_label: "Sections",
-        order: 11,
+        order: 12,
         lock: "locked",
         default: "on",
         built: true,
@@ -109,7 +114,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Compilation report",
         group: "sections",
         group_label: "Sections",
-        order: 12,
+        order: 13,
         lock: "user",
         default: "on",
         built: true,
@@ -120,7 +125,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Cover",
         group: "sections",
         group_label: "Sections",
-        order: 13,
+        order: 14,
         lock: "user",
         default: "on",
         built: true,
@@ -131,7 +136,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Statement of comprehensive income",
         group: "sections",
         group_label: "Sections",
-        order: 14,
+        order: 15,
         lock: "user",
         default: "engine",
         built: false,
@@ -141,7 +146,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Statement of changes in equity",
         group: "sections",
         group_label: "Sections",
-        order: 15,
+        order: 16,
         lock: "user",
         default: "engine",
         built: false,
@@ -151,7 +156,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Supplementary trading statement",
         group: "sections",
         group_label: "Sections",
-        order: 16,
+        order: 17,
         lock: "user",
         default: "off",
         built: false,
@@ -161,7 +166,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Cash flow statement",
         group: "sections",
         group_label: "Sections",
-        order: 17,
+        order: 18,
         lock: "user",
         default: "off",
         built: false,
@@ -171,7 +176,7 @@ const FRAMEWORKS: ReportingFramework[] = [
         label: "Draft PDF",
         group: "outputs",
         group_label: "Outputs",
-        order: 18,
+        order: 19,
       },
     ],
   },
@@ -353,6 +358,32 @@ export default function StatutoryWorkspacePreviewPage() {
             }}
           />
         ) : null}
+        {sectionId === "trial-balance" ? (
+          <div className="space-y-8">
+            <TrialBalancePanel
+              page={{
+                trial_balance_id: null,
+                period_start: null,
+                period_end: null,
+                uploaded_at: null,
+                account_count: null,
+                currency: null,
+                file_name: null,
+              }}
+            />
+            <TrialBalancePanel
+              page={{
+                trial_balance_id: "11111111-1111-1111-1111-111111111111",
+                period_start: "2026-01-01",
+                period_end: "2026-12-31",
+                uploaded_at: "2026-03-02T10:15:00Z",
+                account_count: 24,
+                currency: "EUR",
+                file_name: null,
+              }}
+            />
+          </div>
+        ) : null}
         {sectionId === "review" ? (
           <section
             className="space-y-3 rounded-md border border-line bg-surface-elevated px-4 py-3"
@@ -393,12 +424,62 @@ export default function StatutoryWorkspacePreviewPage() {
               />
               Preview a refusal
             </label>
+            <p className="mt-2" data-testid="statutory-status">
+              <span
+                className="inline-flex rounded-full border border-line bg-surface-elevated px-3 py-1 text-sm font-semibold text-ink"
+                data-testid="statutory-status-pill"
+              >
+                {statusPillLabel(
+                  draftStatus === "final"
+                    ? { lifecycle: "Final", readiness: null }
+                    : {
+                        lifecycle: "Draft",
+                        readiness: previewRefusal ? "3 blockers" : "Ready to finalise",
+                      },
+                )}
+              </span>
+            </p>
+            <SizeInputs
+              firstPeriod
+              currency="EUR"
+              inputs={{
+                size_current_turnover: "100000.00",
+                size_current_balance_sheet: "35000.00",
+                size_current_employees: 677,
+                size_preceding_turnover: null,
+                size_preceding_balance_sheet: null,
+                size_preceding_employees: null,
+              }}
+              message={null}
+              canEdit={previewRole === "owner" || previewRole === "admin"}
+              lockLabel={draftStatus === "final" ? AUDIT_POSITION_FINAL_LOCK : null}
+              busy={false}
+              error={null}
+              onRecord={() => undefined}
+            />
+            <AuditExemptionClaim
+              claimed
+              companyName="charlie mungar buffett"
+              approvalDate="2027-03-17"
+              signingDirectors={["warren buffett"]}
+              notExcluded
+              noMemberNotice
+              returnsNotLate
+              canRecord={previewRole === "owner" || previewRole === "admin"}
+              lockLabel={draftStatus === "final" ? AUDIT_POSITION_FINAL_LOCK : null}
+              busy={false}
+              positionMessage={null}
+              noticeMessage={null}
+              error={null}
+              conditionsError={null}
+              onRecord={() => undefined}
+              onRecordConditions={() => undefined}
+            />
             <FinaliseDraft
               role={previewRole}
               status={draftStatus}
               canFinalise={!previewRefusal}
               blockingCount={previewRefusal ? 3 : 0}
-              wordingSignedOff={false}
               carriedDisclosures={showCarried ? ["HAS_EMPLOYEES"] : []}
               onConfirm={async () => {
                 if (previewRefusal) {
@@ -415,18 +496,13 @@ export default function StatutoryWorkspacePreviewPage() {
             <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-soft">
               Outputs
             </h2>
-            {draftStatus === "final" ? (
-              <p className="text-sm font-semibold text-ink" data-testid="statutory-outputs-state">
-                {finalStateLabel(false)}
-              </p>
-            ) : null}
             <button
               type="button"
               data-testid="statutory-download"
               disabled
               className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {pdfDownloadLabel(draftStatus, false)}
+              {pdfDownloadLabel(draftStatus)}
             </button>
             <p className="text-sm text-ink-secondary" data-testid="statutory-download-reason">
               This preview does not call the API.
@@ -438,7 +514,7 @@ export default function StatutoryWorkspacePreviewPage() {
                 disabled
                 className="rounded-md border border-line bg-surface-elevated px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {wordDownloadLabel(draftStatus, false)}
+                {wordDownloadLabel()}
               </button>
             </div>
           </section>

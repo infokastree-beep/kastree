@@ -9,12 +9,14 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.services.countries import country_names
+from app.services.legal_forms import legal_form_code
 
 CompanyType = Literal["trading", "holding"]
 
 
 def country_of_incorporation_code(value: object) -> str | None:
-    """Two uppercase letters, or none when the field is blank."""
+    """A listed ISO country code, or none when the field is blank."""
     if value is None:
         return None
     if not isinstance(value, str):
@@ -24,6 +26,8 @@ def country_of_incorporation_code(value: object) -> str | None:
         return None
     if len(text) != 2 or not text.isalpha():
         raise ValueError("Country of incorporation must be a two-letter code.")
+    if text not in country_names():
+        raise ValueError(f"{text} is not a recognised country of incorporation.")
     return text
 
 
@@ -36,11 +40,17 @@ class CompanyCreateRequest(BaseModel):
     company_type: CompanyType | None = None
     functional_currency: str | None = Field(default=None, min_length=3, max_length=3)
     country_of_incorporation: str | None = None
+    legal_form: str | None = None
 
     @field_validator("country_of_incorporation", mode="before")
     @classmethod
     def _country(cls, value: object) -> str | None:
         return country_of_incorporation_code(value)
+
+    @field_validator("legal_form", mode="before")
+    @classmethod
+    def _legal_form(cls, value: object) -> str | None:
+        return legal_form_code(value)
 
 
 class CompanyUpdateRequest(BaseModel):
@@ -52,6 +62,7 @@ class CompanyUpdateRequest(BaseModel):
     company_type: CompanyType | None = None
     functional_currency: str | None = Field(default=None, min_length=3, max_length=3)
     country_of_incorporation: str | None = None
+    legal_form: str | None = None
     # Required only when functional_currency changes and trial balances exist.
     # Amounts are never converted.
     acknowledge_currency_change: bool = False
@@ -63,6 +74,11 @@ class CompanyUpdateRequest(BaseModel):
     def _country(cls, value: object) -> str | None:
         return country_of_incorporation_code(value)
 
+    @field_validator("legal_form", mode="before")
+    @classmethod
+    def _legal_form(cls, value: object) -> str | None:
+        return legal_form_code(value)
+
 
 class CompanyResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", from_attributes=True)
@@ -72,6 +88,7 @@ class CompanyResponse(BaseModel):
     name: str
     company_number: str | None
     country_of_incorporation: str | None
+    legal_form: str | None = None
     industry: str | None
     company_type: CompanyType
     functional_currency: str

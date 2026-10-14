@@ -7,6 +7,8 @@ export interface IOrganisation {
   subscription_status: string;
   functional_currency: string;
   jurisdiction: string | null;
+  letterhead_address: string | null;
+  letterhead_contact: string | null;
   created_at: string;
 }
 
@@ -37,6 +39,7 @@ export interface ICompany {
   name: string;
   company_number: string | null;
   country_of_incorporation: string | null;
+  legal_form: string | null;
   industry: string | null;
   company_type: "trading" | "holding";
   functional_currency: string;
@@ -53,6 +56,7 @@ export interface CompanyCreateRequest {
   name: string;
   company_number?: string | null;
   country_of_incorporation?: string | null;
+  legal_form?: string | null;
   industry?: string | null;
   company_type?: "trading" | "holding";
   functional_currency?: string;
@@ -62,6 +66,7 @@ export interface CompanyUpdateRequest {
   name?: string;
   company_number?: string | null;
   country_of_incorporation?: string | null;
+  legal_form?: string | null;
   industry?: string | null;
   company_type?: "trading" | "holding";
   functional_currency?: string;

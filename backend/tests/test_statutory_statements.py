@@ -78,6 +78,7 @@ def _golden(
     practice_name: str = "",
     share_classes: tuple[ShareClassFact, ...] = (),
     note_library: object | None = None,
+    audit_exemption_claimed: bool | None = None,
 ) -> StatutoryStatements:
     return build_statutory_statements(
         prior_year_validated=True,
@@ -96,6 +97,7 @@ def _golden(
         practice_name=practice_name,
         share_classes=share_classes,
         note_library=note_library,
+        audit_exemption_claimed=audit_exemption_claimed,
     )
 
 
@@ -456,12 +458,14 @@ async def _ready_golden(
         session.execute(
             text(
                 "UPDATE companies SET registered_office = :office, "
-                "company_number = :number, directors = CAST(:directors AS jsonb) "
+                "company_number = :number, principal_activity = :activity, "
+                "directors = CAST(:directors AS jsonb) "
                 "WHERE id = :id"
             ),
             {
                 "office": _OFFICE,
                 "number": "654321",
+                "activity": "Software",
                 "directors": '[{"name": "Ada Lovelace"}]',
                 "id": str(provisioned_org["company_id"]),
             },

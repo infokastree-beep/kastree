@@ -15,6 +15,7 @@ import {
 } from "@/lib/statutory-gate";
 import { StandingWordingNotice } from "@/components/statutory/StandingWordingNotice";
 import { StatutoryOptIn } from "@/components/statutory/StatutoryOptIn";
+import { severityTag } from "@/lib/dashboard-groups";
 import { formatDate } from "@/lib/utils";
 
 const FRAMEWORKS = [
@@ -360,11 +361,8 @@ export function StatutoryContinuation({
       {pack ? (
         <section className="space-y-4" data-testid="statutory-pack">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-amber-800">
-              {pack.watermark} statutory pack
-            </h3>
+            <h3 className="text-sm font-semibold text-ink">Statements</h3>
             <div className="flex flex-wrap items-center gap-3">
-              {forbidden ? null : <StandingWordingNotice place="downloads" />}
               <button
                 type="button"
                 data-testid="statutory-download"
@@ -395,7 +393,7 @@ export function StatutoryContinuation({
                 .filter((check) => !check.passed)
                 .map((check) => (
                   <li key={check.code}>
-                    {check.severity} {check.code}: {check.message}
+                    {severityTag(check)} {check.message}
                   </li>
                 ))}
             </ul>

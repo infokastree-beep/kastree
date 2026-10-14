@@ -1,4 +1,5 @@
 import { PracticeJurisdictionForm } from "@/components/settings/PracticeJurisdictionForm";
+import { PracticeLetterheadForm } from "@/components/settings/PracticeLetterheadForm";
 
 export default function SettingsPage() {
   return (
@@ -6,6 +7,7 @@ export default function SettingsPage() {
       <h1 className="text-xl font-semibold">Settings</h1>
       <div className="mt-6">
         <PracticeJurisdictionForm />
+        <PracticeLetterheadForm />
       </div>
     </main>
   );

@@ -195,6 +195,8 @@ def provisioned_org() -> Iterator[dict]:
             role="owner",
         )
         set_rls_org_id(session, provisioned.organisation.id)
+        provisioned.organisation.letterhead_address = "1 Practice Quay\nDublin"
+        provisioned.organisation.letterhead_contact = "01 555 0100"
         client = Client(
             org_id=provisioned.organisation.id,
             name=f"Client {suffix}",
@@ -203,7 +205,7 @@ def provisioned_org() -> Iterator[dict]:
         session.flush()
         company = Company(
             client_id=client.id,
-            name=f"Company {suffix}",
+            name=f"Company {suffix} Limited",
             functional_currency="GBP",
             # The shared fixture is an Irish company so the Irish pack tests
             # stay on today's path. A company created without this field is NULL.

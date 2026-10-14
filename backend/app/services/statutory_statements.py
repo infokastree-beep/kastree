@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import re
 import uuid
 from dataclasses import dataclass
@@ -41,7 +42,13 @@ from app.services.statutory_display import (
     parse_iso_date,
     statement_period_phrase,
 )
-from app.services.statutory_pages import StatutoryPage, build_statutory_pages
+from app.services.statutory_pages import (
+    StatutoryPage,
+    audit_exemption_note,
+    audit_exemption_statements,
+    balance_sheet_audit_exemption,
+    build_statutory_pages,
+)
 from app.models.tb_version import TrialBalanceVersion
 from app.services.adopted_trial_balance import (
     active_adopted_draft,
@@ -135,7 +142,7 @@ _DOCUMENT = """<!DOCTYPE html>
   {% if cover_first %}
   @page :first {
     @top-left {
-      content: "{{ page_header }}";
+      content: "{{ first_header }}";
       font-family: sans-serif;
       font-size: 9pt;
       font-weight: 700;
@@ -143,6 +150,16 @@ _DOCUMENT = """<!DOCTYPE html>
     }
     @bottom-left { content: none; }
     @bottom-right { content: none; }
+  }
+  {% elif first_header != page_header %}
+  @page :first {
+    @top-left {
+      content: "{{ first_header }}";
+      font-family: sans-serif;
+      font-size: 9pt;
+      font-weight: 700;
+      color: #9a3412;
+    }
   }
   {% endif %}
   h2 { string-set: notes_line ""; }
@@ -173,6 +190,17 @@ _DOCUMENT = """<!DOCTYPE html>
       color: #333;
     }
   }
+  {% if first_header != page_header %}
+  @page :first {
+    @top-left {
+      content: "{{ first_header }}";
+      font-family: sans-serif;
+      font-size: 9pt;
+      font-weight: 700;
+      color: #9a3412;
+    }
+  }
+  {% endif %}
   section[data-section="sofp"],
   section[data-section="income"] {
     break-before: page;
@@ -186,6 +214,15 @@ _DOCUMENT = """<!DOCTYPE html>
   .note-title, .note-intro {
     break-after: avoid;
     page-break-after: avoid;
+  }
+  .note-paragraph, .policy-paragraph {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    white-space: pre-wrap;
+  }
+  .note-block.short-note {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
   table.note-table {
     break-inside: avoid;
@@ -219,6 +256,20 @@ _DOCUMENT = """<!DOCTYPE html>
 {% for paragraph in section.paragraphs %}
 <p>{{ paragraph }}</p>
 {% endfor %}
+{% if section.anchor == "directors-report" or section.anchor == "directors'-report" %}
+<section class="signature">
+<p>Approved by the board and signed on its behalf by</p>
+<p>{{ signature.date_line }}</p>
+{% for name in signature.names %}
+<p class="sign-rule">______________________________</p>
+<p>{{ name }}<br>Director</p>
+{% else %}
+<p>A signatory has not been recorded.</p>
+<p class="sign-rule">______________________________</p>
+<p>Director</p>
+{% endfor %}
+</section>
+{% endif %}
 {% elif section.kind == "contents" %}
 <h2{% if composed %} id="{{ section.anchor }}"{% endif %}>{{ section.heading }}</h2>
 <ul>
@@ -242,6 +293,9 @@ _DOCUMENT = """<!DOCTYPE html>
 </table>
 {% if section.anchor == "sofp" %}
 <p class="notes-line">The notes form part of these financial statements.</p>
+{% for paragraph in section.exemption_statements|default([]) %}
+<p>{{ paragraph }}</p>
+{% endfor -%}
 <section class="signature">
 <p>Approved by the board and signed on its behalf by</p>
 <p>{{ signature.date_line }}</p>
@@ -258,10 +312,14 @@ _DOCUMENT = """<!DOCTYPE html>
 {% elif section.kind == "notes" %}
 <h2{% if composed %} id="{{ section.anchor }}"{% endif %}>{{ section.heading }}</h2>
 {% for note in section.notes %}
-<section class="note-block">
+<section class="note-block{% if note.short %} short-note{% endif %}">
 <a id="note-{{ note.code }}"></a>
 <h3 class="note-title">{{ note.title }}</h3>
-<div class="note-body note-intro">{{ note.body }}</div>
+{% for paragraph in note.paragraphs %}
+<p class="note-paragraph{% if loop.first %} note-intro{% endif %}{% if note.policy %} policy-paragraph{% endif %}">{{ paragraph }}</p>
+{% else %}
+<p class="note-paragraph note-intro">{{ note.body }}</p>
+{% endfor %}
 {% if note.lines %}
 <table{% if note.lines_compact %} class="note-table"{% endif %}>
 <thead><tr><th>Line</th>{% for column in section.columns %}<th class="amount">{{ column }}</th>{% endfor %}</tr></thead>
@@ -380,6 +438,12 @@ class StatutoryStatements:
     company_name: str = ""
     omitted_blocks: tuple[str, ...] = ()
     added_blocks: tuple[str, ...] = ()
+    turnover: Decimal | None = None
+    balance_sheet_total: Decimal | None = None
+    profit_before_tax: Decimal | None = None
+    tax_charge: Decimal | None = None
+    corporation_tax: Decimal | None = None
+    audit_exemption_statements: tuple[str, ...] = ()
 
 
 class _ExternalFetchRefused(BaseException):
@@ -416,10 +480,19 @@ def _abort_on_fetch(
         raise _ExternalFetchRefused(url) from exc
 
 
+_PDF_SOURCE_DATE_EPOCH = "1767225600"
+
+
 def write_statement_pdf(html: str) -> bytes:
-    """Render HTML that must not pull in a remote or file resource."""
+    """Render HTML that must not pull in a remote or file resource.
+
+    Embedded fonts take a clock unless SOURCE_DATE_EPOCH is set. The same
+    HTML then renders to the same bytes, so a final download does not change
+    between requests.
+    """
     from weasyprint import HTML  # type: ignore[import-untyped]
 
+    os.environ.setdefault("SOURCE_DATE_EPOCH", _PDF_SOURCE_DATE_EPOCH)
     try:
         document = HTML(string=html, url_fetcher=_abort_on_fetch).write_pdf()
     except _ExternalFetchRefused as exc:
@@ -430,6 +503,10 @@ def write_statement_pdf(html: str) -> bytes:
 
 
 _TITLE_NUMBER = re.compile(r"^\d+\.\s*")
+_CHECKLIST_PREFIX = re.compile(
+    r"^(?:1AD\.\d+(?:/1AD\.\d+)*)\s*[—–-]\s*",
+    re.IGNORECASE,
+)
 _CREDITORS_CROSS_REF = "Amounts due after more than one year are analysed in Note 4."
 _ABSENT_STATEMENTS = (
     "statement of changes in retained earnings",
@@ -508,11 +585,37 @@ _PARTICULARS = {
 
 
 def _human_title(code: str, raw: object) -> str:
+    """Plain heading. A leading note number or checklist id is not printed."""
     if isinstance(raw, str):
-        stripped = _TITLE_NUMBER.sub("", raw.strip())
+        text = _CHECKLIST_PREFIX.sub("", raw.strip())
+        stripped = _TITLE_NUMBER.sub("", text).strip()
         if stripped:
             return stripped
     return _FALLBACK_TITLES.get(code, "Note")
+
+
+def note_keep_together(
+    code: str,
+    body: str,
+    *,
+    line_count: int,
+    fa_count: int,
+) -> dict[str, object]:
+    """Paragraphs that should stay on one page, and whether the note is short.
+
+    Accounting-policy paragraphs stay together one at a time. A short note
+    stays together as a whole. A long policy note may still break between
+    paragraphs.
+    """
+    paragraphs = [part.strip() for part in body.split("\n\n") if part.strip()]
+    policy = code == "N1_POLICIES"
+    short = (
+        not policy
+        and len(paragraphs) <= 4
+        and line_count <= _SHORT_NOTE_TABLE_ROWS
+        and fa_count <= _SHORT_NOTE_TABLE_ROWS
+    )
+    return {"paragraphs": paragraphs, "policy": policy, "short": short}
 
 
 def _line_label(name: str) -> str:
@@ -852,7 +955,11 @@ def _policy_blocks(
     for policy in policies:
         policy_id = policy.get("id")
         condition = policy.get("appliesWhen")
-        if not isinstance(policy_id, str) or not isinstance(condition, str) or not condition:
+        if (
+            not isinstance(policy_id, str)
+            or not isinstance(condition, str)
+            or not condition
+        ):
             raise ValueError(f"policy {policy_id} has no appliesWhen")
         try:
             applies = include_policy(policy_id, condition, ctx, library)
@@ -1105,9 +1212,7 @@ def _compose_notes(
         if isinstance(commitment_template, dict)
         else None
     )
-    chosen = _chosen_notes(
-        templates, selected, disclosure_ctx, stored, commitments
-    )
+    chosen = _chosen_notes(templates, selected, disclosure_ctx, stored, commitments)
     numbers = {code: index for index, code in enumerate(chosen, start=1)}
     notes: list[StatementNote] = []
     flags: list[RoundingFlag] = []
@@ -1224,10 +1329,19 @@ def _note_view(note: StatementNote, *, comparative: bool) -> dict[str, object]:
         {"asset_class": row.asset_class, "nbv_close": format_whole(row.nbv_close)}
         for row in note.fa_rows
     ]
+    kept = note_keep_together(
+        note.code,
+        note.body,
+        line_count=len(lines),
+        fa_count=len(fa_rows),
+    )
     return {
         "code": note.code,
         "title": note.title or "",
         "body": note.body,
+        "paragraphs": kept["paragraphs"],
+        "policy": kept["policy"],
+        "short": kept["short"],
         "lines": lines,
         "lines_compact": 0 < len(lines) <= _SHORT_NOTE_TABLE_ROWS,
         "fa_rows": fa_rows,
@@ -1251,6 +1365,7 @@ def _render_html(
     approval_date: str = "",
     signing_directors: str = "",
     statement_order: tuple[str, ...] = ("income", "sofp", "notes"),
+    exemption_statements: tuple[str, ...] = (),
 ) -> str:
     """Build the section list the template walks. The engine rows stay intact."""
     start = parse_iso_date(period_start)
@@ -1290,6 +1405,7 @@ def _render_html(
             "columns": columns,
             "rows": sofp_rows,
             "show_notes": any(bool(row.get("note")) for row in sofp_rows),
+            "exemption_statements": list(exemption_statements),
         },
         "income": {
             "kind": "statement",
@@ -1333,18 +1449,20 @@ def render_statutory_html(
 ) -> str:
     """Fill the document template. Callers supply the section list.
 
-    ``page_header`` is the watermark, with an optional second label beside
-    it. A compilation draft stays ``DRAFT Compilation``. It does not become
-    ``COMPILATION``. An unsigned FINAL prints DRAFT and the wording banner
-    in the margin boxes, including the cover's first page. ``composed``
-    selects the PDF furniture. The engine render leaves it false. Figures
-    are unchanged.
+    ``page_header`` is the short label in the body and on later pages.
+    ``first_header`` is that label plus the wording banner, and it is
+    printed once, in the first-page margin. A compilation draft stays
+    ``DRAFT Compilation``. It does not become ``COMPILATION``. An unsigned
+    FINAL prints DRAFT on later pages. ``composed`` selects the PDF
+    furniture. The engine render leaves it false. Figures are unchanged.
     """
     from app.services.beta import final_page_presentation
 
     label = statement_label.strip()
     raw_header = f"{watermark} {label}" if label else watermark
-    page_header = final_page_presentation(raw_header).printed_header
+    presentation = final_page_presentation(raw_header)
+    page_header = presentation.page_label
+    first_header = presentation.printed_header
     cover_first = composed and bool(sections) and sections[0].get("cover_page") is True
     return _HTML.from_string(_DOCUMENT).render(
         company_name=company_name,
@@ -1352,9 +1470,44 @@ def render_statutory_html(
         signature=_signature_view(approval_date, signing_directors),
         watermark=watermark,
         page_header=page_header,
+        first_header=first_header,
         composed=composed,
         cover_first=cover_first,
     )
+
+
+def _income_figures(
+    income: dict[str, object], aggregated: dict[str, Decimal]
+) -> tuple[Decimal | None, Decimal | None, Decimal | None, Decimal | None]:
+    """Turnover, profit before tax, tax charge, and the corporation-tax balance.
+
+    The tax face line is the charge with its sign flipped. Corporation tax
+    stays debit-positive, so a creditor is a negative balance.
+    """
+    from findraft.engine.money import money
+
+    turnover = _face_amount(income, "Turnover")
+    profit_before_tax = _face_amount(income, "Profit before tax")
+    displayed_tax = _face_amount(income, "Tax on profit")
+    tax_charge = None if displayed_tax is None else money(-displayed_tax)
+    raw_creditor = aggregated.get("CORP_TAX", Decimal("0"))
+    creditor = money(raw_creditor) if isinstance(raw_creditor, Decimal) else None
+    return turnover, profit_before_tax, tax_charge, creditor
+
+
+def _face_amount(statement: dict[str, object], label: str) -> Decimal | None:
+    rows = statement.get("rows")
+    if not isinstance(rows, list):
+        return None
+    for row in rows:
+        if (
+            isinstance(row, tuple)
+            and len(row) >= 2
+            and row[0] == label
+            and isinstance(row[1], Decimal)
+        ):
+            return row[1]
+    return None
 
 
 def _render_draft(
@@ -1370,6 +1523,8 @@ def _render_draft(
     disclosure_flags: dict[str, bool] | None = None,
     watermark: str = WATERMARK,
     practice_name: str = "",
+    practice_address: str = "",
+    practice_contact: str = "",
     period_end: str = "",
     period_start: str = "",
     first_financial_period: bool = False,
@@ -1378,6 +1533,9 @@ def _render_draft(
     signing_directors: str = "",
     share_classes: tuple[ShareClassFact, ...] = (),
     note_library: object | None = None,
+    audit_exemption_claimed: bool | None = None,
+    compilation_date: str = "",
+    compilation_signatory: str = "",
 ) -> StatutoryStatements:
     directory = (
         pack_dir(pack_id, pack_version)
@@ -1430,9 +1588,25 @@ def _render_draft(
     )
     omitted_blocks, added_blocks = effective_ids(ctx, library)
     checks = tuple(report.checks) + library_notices(ctx, library)
+    from findraft.engine.money import money
+
+    exemption = (
+        balance_sheet_audit_exemption(
+            audit_exemption_statements(manifest),
+            entity.name,
+        )
+        if audit_exemption_claimed is True
+        else ()
+    )
+    exemption_note = (
+        audit_exemption_note(manifest) if audit_exemption_claimed is True else ""
+    )
+    dividend_amount = aggregated.get("DIVIDENDS", Decimal("0"))
     pages = build_statutory_pages(
         company_name=entity.name,
         practice_name=practice_name,
+        practice_address=practice_address,
+        practice_contact=practice_contact,
         period_end=period_end,
         period_start=period_start,
         directors=entity.directors_list,
@@ -1443,7 +1617,17 @@ def _render_draft(
         size_eligible=size_eligible,
         approval_date=approval_date,
         signing_directors=signing_directors,
+        compilation_date=compilation_date,
+        compilation_signatory=compilation_signatory,
+        dividends=money(dividend_amount)
+        if isinstance(dividend_amount, Decimal)
+        else None,
+        audit_exemption_claimed=audit_exemption_claimed,
+        audit_note=exemption_note,
     )
+    figures = _income_figures(income, aggregated)
+    total_assets = sofp.get("TOTAL_ASSETS")
+    balance_sheet_total = total_assets if isinstance(total_assets, Decimal) else None
     html = _render_html(
         entity=entity,
         compliance=compliance,
@@ -1459,6 +1643,7 @@ def _render_draft(
         approval_date=approval_date,
         signing_directors=signing_directors,
         statement_order=_statement_order(manifest),
+        exemption_statements=exemption,
     )
     return StatutoryStatements(
         watermark=watermark,
@@ -1478,6 +1663,12 @@ def _render_draft(
         html=html,
         pages=pages,
         company_name=entity.name,
+        turnover=figures[0],
+        balance_sheet_total=balance_sheet_total,
+        profit_before_tax=figures[1],
+        tax_charge=figures[2],
+        corporation_tax=figures[3],
+        audit_exemption_statements=exemption,
     )
 
 
@@ -1518,6 +1709,8 @@ def build_statutory_statements(
     disclosure_flags: dict[str, bool] | None = None,
     watermark: str = WATERMARK,
     practice_name: str = "",
+    practice_address: str = "",
+    practice_contact: str = "",
     period_end: str = "",
     period_start: str = "",
     first_financial_period: bool = False,
@@ -1526,6 +1719,9 @@ def build_statutory_statements(
     signing_directors: str = "",
     share_classes: tuple[ShareClassFact, ...] = (),
     note_library: object | None = None,
+    audit_exemption_claimed: bool | None = None,
+    compilation_date: str = "",
+    compilation_signatory: str = "",
 ) -> StatutoryStatements:
     """Render a DRAFT only when every critical check has passed.
 
@@ -1562,6 +1758,8 @@ def build_statutory_statements(
             disclosure_flags=disclosure_flags,
             watermark=watermark,
             practice_name=practice_name,
+            practice_address=practice_address,
+            practice_contact=practice_contact,
             period_end=period_end,
             period_start=period_start,
             first_financial_period=first_financial_period,
@@ -1570,6 +1768,9 @@ def build_statutory_statements(
             signing_directors=signing_directors,
             share_classes=share_classes,
             note_library=note_library,
+            audit_exemption_claimed=audit_exemption_claimed,
+            compilation_date=compilation_date,
+            compilation_signatory=compilation_signatory,
         )
     except (OSError, ValueError, KeyError) as exc:
         return _withheld(report, build_error=str(exc))
@@ -1651,6 +1852,12 @@ async def statements_for_version(
         disclosure_flags=flags,
         watermark=watermark,
         practice_name="" if organisation is None else organisation.name,
+        practice_address=""
+        if organisation is None or organisation.letterhead_address is None
+        else organisation.letterhead_address,
+        practice_contact=""
+        if organisation is None or organisation.letterhead_contact is None
+        else organisation.letterhead_contact,
         period_end=year_end.period_end.isoformat(),
         period_start=""
         if year_end.period_start is None
@@ -1661,8 +1868,15 @@ async def statements_for_version(
         if year_end.approval_date is None
         else year_end.approval_date.isoformat(),
         signing_directors=_signing_phrase(year_end.signing_directors),
+        compilation_date=""
+        if year_end.compilation_date is None
+        else year_end.compilation_date.isoformat(),
+        compilation_signatory=""
+        if year_end.compilation_signatory is None
+        else year_end.compilation_signatory,
         share_classes=share_classes_from_company(company),
         note_library=None if draft is None else draft.note_library,
+        audit_exemption_claimed=year_end.audit_exemption_claimed,
     )
 
 
@@ -1744,6 +1958,12 @@ async def statements_for_adopted(
         disclosure_flags=flags,
         watermark=watermark,
         practice_name="" if organisation is None else organisation.name,
+        practice_address=""
+        if organisation is None or organisation.letterhead_address is None
+        else organisation.letterhead_address,
+        practice_contact=""
+        if organisation is None or organisation.letterhead_contact is None
+        else organisation.letterhead_contact,
         period_end=year_end.period_end.isoformat(),
         period_start=""
         if year_end.period_start is None
@@ -1754,6 +1974,13 @@ async def statements_for_adopted(
         if year_end.approval_date is None
         else year_end.approval_date.isoformat(),
         signing_directors=_signing_phrase(year_end.signing_directors),
+        compilation_date=""
+        if year_end.compilation_date is None
+        else year_end.compilation_date.isoformat(),
+        compilation_signatory=""
+        if year_end.compilation_signatory is None
+        else year_end.compilation_signatory,
         share_classes=share_classes_from_company(company),
         note_library=None if draft is None else draft.note_library,
+        audit_exemption_claimed=year_end.audit_exemption_claimed,
     )

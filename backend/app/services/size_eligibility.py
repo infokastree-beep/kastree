@@ -16,6 +16,7 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import aset_rls_org_id
+from app.services.audit import append_audit_log
 from findraft.engine.money import D, money
 from findraft.models.year_end import YearEnd
 
@@ -97,14 +98,39 @@ def _limits(manifest: dict[str, object]) -> _Limits:
     )
 
 
-def _met(year: YearSize, limits: _Limits) -> int:
-    return sum(
-        (
-            year.turnover <= limits.turnover,
-            year.balance_sheet_total <= limits.balance_sheet,
-            year.employees <= limits.employees,
-        )
+def _outcomes(year: YearSize, limits: _Limits) -> tuple[tuple[str, bool], ...]:
+    return (
+        ("turnover", year.turnover <= limits.turnover),
+        ("balance sheet total", year.balance_sheet_total <= limits.balance_sheet),
+        ("employees", year.employees <= limits.employees),
     )
+
+
+def _met(year: YearSize, limits: _Limits) -> int:
+    return sum(int(met) for _name, met in _outcomes(year, limits))
+
+
+def _year_clause(label: str, year: YearSize, limits: _Limits) -> str:
+    parts = [
+        f"{name} {'met' if met else 'not met'}" for name, met in _outcomes(year, limits)
+    ]
+    return f"{label}: {'; '.join(parts)}."
+
+
+def _size_rule_note(manifest: dict[str, object]) -> str:
+    """Reviewer-to-confirm pack sentence. It is not invented here."""
+    note = manifest.get("size_rule_note")
+    if not isinstance(note, dict) or set(note) != {"source_status", "text"}:
+        raise SizeEligibilityRejected("Pinned pack has no size-rule note")
+    text = note.get("text")
+    if note.get("source_status") != "reviewer-to-confirm" or not isinstance(text, str):
+        raise SizeEligibilityRejected(
+            "Pinned pack size-rule note is not marked reviewer-to-confirm"
+        )
+    cleaned = text.strip()
+    if not cleaned or "eligible" in cleaned.casefold():
+        raise SizeEligibilityRejected("Pinned pack size-rule note is unusable")
+    return cleaned
 
 
 def assess_size(
@@ -130,17 +156,19 @@ def assess_size(
     current_met = _met(current, limits)
     preceding_met = None if preceding is None else _met(preceding, limits)
     eligible = current_met >= 2 and (preceding_met is None or preceding_met >= 2)
+    parts = [_year_clause("Current year", current, limits)]
     if first_financial_period:
-        message = (
-            f"Current year meets {current_met} of 3 small-company conditions. "
+        parts.append(
             "This year end is a first financial period, so there is no preceding year."
         )
-    else:
-        message = (
-            f"Current year meets {current_met} of 3 small-company conditions. "
-            f"Preceding year meets {preceding_met} of 3. "
-            "The pack requires 2 of 3 in both years."
-        )
+    elif preceding is not None:
+        parts.append(_year_clause("Preceding year", preceding, limits))
+    failed_a_condition = current_met < 3 or (
+        preceding_met is not None and preceding_met < 3
+    )
+    if eligible and failed_a_condition:
+        parts.append(_size_rule_note(manifest))
+    message = " ".join(parts)
     return SizeAssessment(
         eligible=eligible,
         current_conditions_met=current_met,
@@ -149,18 +177,55 @@ def assess_size(
     )
 
 
+def size_audit_value(year_end: YearEnd) -> dict[str, object]:
+    """Decision and headcount only. Turnover and balance-sheet amounts stay off the log."""
+    return {
+        "eligible": year_end.size_eligible,
+        "current_conditions_met": year_end.size_current_met,
+        "preceding_conditions_met": year_end.size_preceding_met,
+        "current_employees": year_end.size_current_employees,
+        "preceding_employees": year_end.size_preceding_employees,
+        "confirmed": True,
+    }
+
+
 async def record_size_assessment(
     session: AsyncSession,
     *,
     org_id: uuid.UUID,
+    user_id: uuid.UUID | None,
     year_end: YearEnd,
     assessment: SizeAssessment,
+    current: YearSize,
+    preceding: YearSize | None,
 ) -> YearEnd:
     await aset_rls_org_id(session, org_id)
+    previous = None if year_end.size_checked_at is None else size_audit_value(year_end)
+    year_end.size_current_turnover = current.turnover
+    year_end.size_current_balance_sheet = current.balance_sheet_total
+    year_end.size_current_employees = current.employees
+    if preceding is None:
+        year_end.size_preceding_turnover = None
+        year_end.size_preceding_balance_sheet = None
+        year_end.size_preceding_employees = None
+    else:
+        year_end.size_preceding_turnover = preceding.turnover
+        year_end.size_preceding_balance_sheet = preceding.balance_sheet_total
+        year_end.size_preceding_employees = preceding.employees
     year_end.size_eligible = assessment.eligible
     year_end.size_message = assessment.message
     year_end.size_current_met = assessment.current_conditions_met
     year_end.size_preceding_met = assessment.preceding_conditions_met
     year_end.size_checked_at = datetime.now(timezone.utc)
+    await append_audit_log(
+        session,
+        org_id=org_id,
+        user_id=user_id,
+        action="size_eligibility_recorded",
+        entity_type="year_end",
+        entity_id=year_end.id,
+        old_value=previous,
+        new_value=size_audit_value(year_end),
+    )
     await session.flush()
     return year_end

@@ -8,7 +8,7 @@ printed. It does not sum a trial balance.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -16,6 +16,7 @@ from decimal import Decimal
 from pydantic import ValidationError
 
 from app.models.company import Company
+from app.services.directors_report import directors_report_paragraphs
 from app.schemas.report_setup import (
     ColumnHeaders,
     FaceDates,
@@ -48,6 +49,7 @@ from app.services.statutory_statements import (
     _signature_view,
     _signing_phrase,
     _with_note_column,
+    note_keep_together,
     render_statutory_html,
 )
 from findraft.engine.pack import load_manifest
@@ -152,9 +154,15 @@ def compose_year_end_pdf(
     year_end: YearEnd,
     *,
     company: Company | None = None,
+    disclosure_flags: Mapping[str, bool] | None = None,
 ) -> str:
     """PDF HTML for one year end. A blank report setup still prints the pack pages."""
-    html, _sections = compose_year_end_parts(document, year_end, company=company)
+    html, _sections = compose_year_end_parts(
+        document,
+        year_end,
+        company=company,
+        disclosure_flags=disclosure_flags,
+    )
     return html
 
 
@@ -163,6 +171,7 @@ def compose_year_end_parts(
     year_end: YearEnd,
     *,
     company: Company | None = None,
+    disclosure_flags: Mapping[str, bool] | None = None,
 ) -> tuple[str, list[dict[str, object]]]:
     """PDF HTML plus the section dicts. Callers slice one section from the HTML."""
     currency = "GBP"
@@ -170,6 +179,12 @@ def compose_year_end_parts(
     if company is not None:
         currency = company.functional_currency or "GBP"
         letterhead = letterhead_from_company(company)
+    extra = directors_report_paragraphs(
+        year_end,
+        company,
+        currency=currency,
+        disclosure_flags=disclosure_flags,
+    )
     return compose_pdf_parts(
         document,
         report_setup=year_end.report_setup,
@@ -180,6 +195,7 @@ def compose_year_end_parts(
         signing_directors=year_end.signing_directors,
         currency=currency,
         letterhead=letterhead,
+        directors_report_extra=tuple(extra),
     )
 
 
@@ -194,6 +210,7 @@ def compose_pdf_html(
     signing_directors: object = None,
     currency: str = "EUR",
     letterhead: CompanyLetterhead | None = None,
+    directors_report_extra: tuple[str, ...] = (),
 ) -> str:
     """Filter and label a copy. ``document`` and its Decimals stay put."""
     html, _sections = compose_pdf_parts(
@@ -206,6 +223,7 @@ def compose_pdf_html(
         signing_directors=signing_directors,
         currency=currency,
         letterhead=letterhead,
+        directors_report_extra=directors_report_extra,
     )
     return html
 
@@ -221,6 +239,7 @@ def compose_pdf_parts(
     signing_directors: object = None,
     currency: str = "EUR",
     letterhead: CompanyLetterhead | None = None,
+    directors_report_extra: tuple[str, ...] = (),
 ) -> tuple[str, list[dict[str, object]]]:
     """The PDF HTML and the section dicts that produced it."""
     if document.html is None:
@@ -283,6 +302,7 @@ def compose_pdf_parts(
             compliance=document.compliance_statement or "",
             columns=as_at_columns,
             rows=sofp_rows,
+            exemption_statements=document.audit_exemption_statements,
         ),
         "notes": {
             "kind": "notes",
@@ -306,6 +326,7 @@ def compose_pdf_parts(
         period_phrase=statement_period_phrase(start, end),
         period_note=period_note,
     )
+    _append_directors_report(sections, directors_report_extra)
     approved = "" if approval_date is None else approval_date.isoformat()
     html = render_statutory_html(
         company_name=document.company_name,
@@ -341,6 +362,8 @@ class PreviewChild:
     number: int | None
     label: str
     anchor: str
+    note_class: str | None = None
+    note_class_label: str | None = None
 
 
 def extract_section_html(html: str, anchor: str) -> str | None:
@@ -424,6 +447,8 @@ def children_of(
 
 
 def _note_children(section: dict[str, object]) -> tuple[PreviewChild, ...]:
+    from app.services.note_classes import class_label, note_class_for
+
     notes = section.get("notes")
     if not isinstance(notes, list):
         return ()
@@ -437,12 +462,15 @@ def _note_children(section: dict[str, object]) -> tuple[PreviewChild, ...]:
             continue
         number_text, separator, label = title.partition(". ")
         number = int(number_text) if separator and number_text.isdigit() else None
+        note_class = note_class_for(code)
         children.append(
             PreviewChild(
                 id=code,
                 number=number,
                 label=label if number is not None else title,
                 anchor=f"note-{code}",
+                note_class=note_class,
+                note_class_label=class_label(note_class),
             )
         )
     return tuple(children)
@@ -457,18 +485,19 @@ def unbuilt_section_notices(year_end: YearEnd) -> tuple[ReconciliationCheck, ...
     labels = [
         catalogue[section_id]["label"]
         for section_id in _UNBUILT
-        if _section_included(section_id, saved, catalogue)
+        if saved.get(section_id) is True
     ]
     if not labels:
         return ()
     if len(labels) == 1:
         message = (
-            f"{labels[0]} is switched on. " "This pack does not build this statement."
+            f"{labels[0]} is switched on in saved report options. "
+            "This pack does not build this statement, so that choice is ignored."
         )
     else:
         message = (
-            f"{', '.join(labels)} are switched on. "
-            "This pack does not build these statements."
+            f"{', '.join(labels)} are switched on in saved report options. "
+            "This pack does not build these statements, so those choices are ignored."
         )
     return (
         ReconciliationCheck(
@@ -580,6 +609,8 @@ def _section_included(
     saved: dict[str, bool] | None,
     catalogue: dict[str, dict[str, str]],
 ) -> bool:
+    if section_id in _UNBUILT:
+        return False
     rule = catalogue[section_id]
     if rule["lock"] == "locked":
         return True
@@ -856,6 +887,21 @@ def _composed_sections(
     return sections
 
 
+def _append_directors_report(
+    sections: list[dict[str, object]], extra: tuple[str, ...]
+) -> None:
+    """Placeholders and recorded facts. The engine paragraphs stay first."""
+    if not extra:
+        return
+    for section in sections:
+        if section.get("anchor") != "directors-report":
+            continue
+        paragraphs = section.get("paragraphs")
+        if isinstance(paragraphs, list):
+            paragraphs.extend(extra)
+        return
+
+
 def _not_built(section_id: str, label: str) -> dict[str, object]:
     return {
         "kind": "prose",
@@ -874,6 +920,7 @@ def _statement_section(
     compliance: str,
     columns: list[str],
     rows: list[dict[str, object]],
+    exemption_statements: tuple[str, ...] = (),
 ) -> dict[str, object]:
     section: dict[str, object] = {
         "kind": "statement",
@@ -884,6 +931,7 @@ def _statement_section(
         "columns": columns,
         "rows": rows,
         "show_notes": any(bool(row.get("note")) for row in rows),
+        "exemption_statements": list(exemption_statements),
     }
     if period_note:
         section["period_note"] = period_note
@@ -1070,10 +1118,19 @@ def _note_section(
         }
         for row in note.fa_rows
     ]
+    kept = note_keep_together(
+        note.code,
+        note.body,
+        line_count=len(lines),
+        fa_count=len(fa_rows),
+    )
     return {
         "code": note.code,
         "title": note.title or "",
         "body": note.body,
+        "paragraphs": kept["paragraphs"],
+        "policy": kept["policy"],
+        "short": kept["short"],
         "lines": lines,
         "lines_compact": 0 < len(lines) <= _SHORT_NOTE_TABLE_ROWS,
         "fa_rows": fa_rows,

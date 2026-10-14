@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, func, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -49,6 +49,10 @@ class Organisation(Base):
     # NULL until a practice sets it. Never backfilled, and never copied onto
     # companies that already exist.
     jurisdiction: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    # Practice letterhead for the compilation report. NULL until an owner or
+    # admin records it. The legal name is organisations.name.
+    letterhead_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    letterhead_contact: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Current Product 2 acknowledgement. Null means the practice has not
     # acknowledged. History stays in audit_logs; these two columns are the switch.
     product2_acknowledged_at: Mapped[datetime | None] = mapped_column(

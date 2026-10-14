@@ -7,6 +7,7 @@ import {
   type CompanyEntityFormValues,
   type CompanyEntityInitialValues,
 } from "@/lib/company-form";
+import { LEGAL_FORM_CHOICES } from "@/lib/legal-forms";
 
 export type { CompanyEntityFormValues } from "@/lib/company-form";
 export { DEFAULT_MATERIALITY_PCT, DEFAULT_MATERIALITY_ABS } from "@/lib/company-form";
@@ -56,6 +57,7 @@ export function CompanyEntityForm({
   const [countryOfIncorporation, setCountryOfIncorporation] = useState(
     initialValues?.countryOfIncorporation ?? defaultCountryOfIncorporation,
   );
+  const [legalForm, setLegalForm] = useState(initialValues?.legalForm ?? "");
   const [companyNumber, setCompanyNumber] = useState(
     initialValues?.companyNumber ?? "",
   );
@@ -86,6 +88,7 @@ export function CompanyEntityForm({
           name: name.trim(),
           functionalCurrency,
           countryOfIncorporation,
+          legalForm,
           companyNumber,
           industry,
           companyType,
@@ -150,6 +153,23 @@ export function CompanyEntityForm({
           </label>
         </div>
       ) : null}
+
+      <label className="block text-sm">
+        <span className="mb-1 block text-stone-600">Legal form</span>
+        <select
+          className="w-full rounded border border-stone-300 bg-white px-3 py-2"
+          value={legalForm}
+          onChange={(event) => setLegalForm(event.target.value)}
+          data-testid="company-form-legal-form"
+        >
+          <option value="">Not recorded</option>
+          {LEGAL_FORM_CHOICES.map((row) => (
+            <option key={row.code} value={row.code}>
+              {row.name}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <label className="block text-sm">
         <span className="mb-1 block text-stone-600">Country of incorporation</span>

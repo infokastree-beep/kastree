@@ -29,12 +29,92 @@ _FIXES: dict[str, CheckPresentation] = {
     "V-CO-001": CheckPresentation("Company details", CheckFix("company-details")),
     "V-CO-002": CheckPresentation("Company details", CheckFix("company-details")),
     "V-CO-003": CheckPresentation("Company details", CheckFix("company-details")),
-    "V-CO-004": CheckPresentation("Company details", CheckFix("company-details")),
-    "V-CO-005": CheckPresentation("Company details", CheckFix("company-details")),
-    "V-CO-006": CheckPresentation("Company details", CheckFix("company-details")),
+    "V-CO-004": CheckPresentation(
+        "Company details",
+        CheckFix("directors-report", note="principal-activity"),
+    ),
+    "V-CO-005": CheckPresentation("Company details", CheckFix("signatories")),
+    "V-CO-006": CheckPresentation("Company details", CheckFix("signatories")),
     "V-CO-007": CheckPresentation("Company details", CheckFix("company-details")),
     "V-CO-008": CheckPresentation("Company details", CheckFix("company-details")),
     "V-CO-009": CheckPresentation("Company details", CheckFix("company-details")),
+    "V-CO-010": CheckPresentation("Company details", CheckFix("company-details")),
+    "V-CO-025": CheckPresentation("Company details", CheckFix("company-details")),
+    "V-CO-026": CheckPresentation("Company details", CheckFix("company-details")),
+    "V-CO-011": CheckPresentation("Company details", CheckFix("company-details")),
+    "V-CO-037": CheckPresentation(
+        "Comparatives",
+        CheckFix("review", anchor="statutory-first-period-gate"),
+    ),
+    "V-CO-038": CheckPresentation(
+        "Practice letterhead",
+        CheckFix("settings", anchor="practice-letterhead"),
+    ),
+    "V-CO-039": CheckPresentation(
+        "Compilation report",
+        CheckFix("compilation", note="compilation-date"),
+    ),
+    "V-CO-027": CheckPresentation("Company details", CheckFix("company-details")),
+    "V-CO-029": CheckPresentation(
+        "Company details",
+        CheckFix("directors-report", note="accounting-records"),
+    ),
+    "V-CO-030": CheckPresentation(
+        "Company details",
+        CheckFix("directors-report", note="accounting-records"),
+    ),
+    "V-CO-031": CheckPresentation(
+        "Company details",
+        CheckFix("directors-report", note="accounting-records"),
+    ),
+    "V-CO-032": CheckPresentation(
+        "Company details",
+        CheckFix("directors-report", note="share-interests"),
+    ),
+    "V-CO-033": CheckPresentation(
+        "Company details",
+        CheckFix("directors-report", note="other-matters"),
+    ),
+    "V-CO-034": CheckPresentation(
+        "Company details",
+        CheckFix("directors-report", note="other-matters"),
+    ),
+    "V-CO-035": CheckPresentation(
+        "Company details",
+        CheckFix("directors-report", note="other-matters"),
+    ),
+    "V-CO-036": CheckPresentation(
+        "Company details",
+        CheckFix("directors-report", note="other-matters"),
+    ),
+    "V-CO-012": CheckPresentation("Company details", CheckFix("company-details")),
+    "V-CO-013": CheckPresentation("Company details", CheckFix("company-details")),
+    "V-CO-014": CheckPresentation("Company details", CheckFix("company-details")),
+    "V-CO-015": CheckPresentation("Company details", CheckFix("company-details")),
+    "V-CO-016": CheckPresentation("Company details", CheckFix("company-details")),
+    "V-CO-017": CheckPresentation("Company details", CheckFix("company-details")),
+    "V-CO-018": CheckPresentation("Figures", CheckFix("income")),
+    "V-CO-019": CheckPresentation("Disclosures", CheckFix("disclosures")),
+    "V-CO-020": CheckPresentation(
+        "Review",
+        CheckFix("review", anchor="audit-exemption-claim"),
+    ),
+    "V-CO-021": CheckPresentation(
+        "Review",
+        CheckFix("review", anchor="audit-exemption-claim"),
+    ),
+    "V-CO-022": CheckPresentation(
+        "Review",
+        CheckFix("review", anchor="audit-exemption-conditions"),
+    ),
+    "V-CO-023": CheckPresentation(
+        "Review",
+        CheckFix("review", anchor="audit-exemption-conditions"),
+    ),
+    "V-CO-024": CheckPresentation(
+        "Review",
+        CheckFix("review", anchor="audit-exemption-conditions"),
+    ),
     "V-DISC-001": CheckPresentation("Disclosures", CheckFix("disclosures")),
     "V-NOTE-001": CheckPresentation("Disclosures", CheckFix("notes")),
     "V-NOTE-002": CheckPresentation("Disclosures", CheckFix("notes")),
@@ -60,11 +140,14 @@ _OTHER = CheckPresentation("Other", CheckFix("review"))
 
 GROUP_ORDER = (
     "Company details",
+    "Practice letterhead",
+    "Compilation report",
     "Disclosures",
     "Comparatives",
     "Sections",
     "Setup",
     "Figures",
+    "Review",
     "Other",
 )
 

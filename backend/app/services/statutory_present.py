@@ -104,6 +104,12 @@ def statement_response(document: StatutoryStatements) -> StatementResponse:
             for flag in document.rounding_flags
         ],
         company_name=document.company_name,
+        engine_turnover=None
+        if document.turnover is None
+        else amount_text(document.turnover),
+        engine_balance_sheet_total=None
+        if document.balance_sheet_total is None
+        else amount_text(document.balance_sheet_total),
         omitted_blocks=list(document.omitted_blocks),
         added_blocks=list(document.added_blocks),
         pages=[
