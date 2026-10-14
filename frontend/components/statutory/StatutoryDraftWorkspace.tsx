@@ -32,8 +32,10 @@ import { DisclosureGroups } from "@/components/statutory/DisclosureGroups";
 import { NotesLibrary } from "@/components/statutory/NotesLibrary";
 import type { NoteLibraryRow } from "@/lib/note-library";
 import { FinaliseDraft } from "@/components/statutory/FinaliseDraft";
+import { KeyFiguresCard } from "@/components/statutory/KeyFiguresCard";
 import { ReviewChecks } from "@/components/statutory/ReviewChecks";
 import { blockingFailureCount, severityTag } from "@/lib/dashboard-groups";
+import { formatStoredAmount } from "@/lib/currency";
 import type { DisclosureQuestion } from "@/lib/disclosure-groups";
 import {
   currencyCodeFromNotice,
@@ -1518,6 +1520,15 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
               {statusPillLabel(statusViewFor(dashboard))}
             </span>
           </p>
+          {statementsQuery.data ? (
+            <KeyFiguresCard
+              currency={companyCurrencyQuery.data?.functional_currency ?? null}
+              netAssets={statementsQuery.data.net_assets}
+              profit={statementsQuery.data.profit}
+              turnover={statementsQuery.data.engine_turnover ?? null}
+              balanceSheetTotal={statementsQuery.data.engine_balance_sheet_total ?? null}
+            />
+          ) : null}
           {dashboard.checks.some(
             (check) => check.code === "V-SEC-006" || check.code === "V-SEC-007",
           ) ? (
@@ -1792,8 +1803,17 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       {statementsQuery.data ? (
         <section className="space-y-4" data-testid="statutory-draft-pack">
           <p className="text-sm text-ink-secondary">
-            Net assets {statementsQuery.data.net_assets ?? "—"}. Profit{" "}
-            {statementsQuery.data.profit ?? "—"}.
+            Net assets{" "}
+            {formatStoredAmount(
+              statementsQuery.data.net_assets,
+              companyCurrencyQuery.data?.functional_currency ?? null,
+            )}
+            . Profit{" "}
+            {formatStoredAmount(
+              statementsQuery.data.profit,
+              companyCurrencyQuery.data?.functional_currency ?? null,
+            )}
+            .
             {statementsQuery.data.renderable ? " Renderable." : " Not renderable."}
           </p>
           {statementsQuery.data.build_error ? (

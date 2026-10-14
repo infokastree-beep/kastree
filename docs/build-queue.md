@@ -11,11 +11,11 @@ Status of the current build queue. Wording that is drawn from a public source st
 | 5. Directors' report required items | done |
 | 6. Remuneration citation | done |
 | 7. Compilation report letterhead | done. The compilation date and signatory block FINAL until both are recorded |
-| 8. Particulars slots | waiting, after item 10, migration first |
+| 8. Particulars slots | next after this card, migration first |
 | 9. Period message | done |
-| 10. Dashboard work queue | next: formatter and key figures card |
-| 11. Prior-year comparatives | approved, build after items 10 and 8, migration first |
-| 12. Trial balance re-adopt | approved, build after item 11, migration first |
+| 10. Dashboard work queue | done. Shared formatter and the key figures card |
+| 11. Prior-year comparatives | design merged in #113. Build after items 10 and 8, migration first |
+| 12. Trial balance re-adopt | design merged in #111. Build after item 11, migration first |
 | 13. Roll forward | waiting |
 | 14. Drafts list | waiting |
 | 15. Statement of income and retained earnings | waiting |
@@ -28,4 +28,4 @@ Status of the current build queue. Wording that is drawn from a public source st
 | 18. Infrastructure | waiting |
 | Deferred: disclosures library with Excel import and export; outputs matrix with Excel; per-statement options panel; in-review state with a reviewer role; fixed assets input; density option; iXBRL; other packs; consolidation; e-signatures | deferred |
 
-Housekeeping left pull request 49 open. Its environment changes are not on main.
+Housekeeping left pull request 49 open. Its environment changes are not on main. The prior-year design is on main in pull request 113, and the trial-balance switch design is on main in pull request 111. Pull request 103 is closed.
