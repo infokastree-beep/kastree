@@ -959,6 +959,7 @@ async def _upload_map_and_statements(
         "/trial-balances/upload",
         data={
             "company_id": str(company_id),
+            "period_start": f"{period_end[:4]}-01-01",
             "period_end": period_end,
             "currency": "GBP",
         },

@@ -94,6 +94,15 @@ class DraftVersion(Base):
     )
     snapshot: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     note_library: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    adjustments_basis_trial_balance_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "trial_balances.id",
+            ondelete="SET NULL",
+            name="findraft_draft_versions_adjustments_basis_tb_fk",
+        ),
+        nullable=True,
+    )
     inputs_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     engine_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)
     finalised_by_user_id: Mapped[uuid.UUID | None] = mapped_column(

@@ -120,6 +120,7 @@ app/services/statutory_statements.py
 app/services/statutory_sublines.py
 app/services/stripe_service.py
 app/services/tb_import_worker.py
+app/services/trial_balance_readopt.py
 app/services/tier_limits.py
 app/services/upload_security.py
 app/services/validator.py

@@ -24,6 +24,7 @@ from app.db import aset_rls_org_id
 from app.models.company import Company
 from app.models.organisation import Organisation
 from app.services.audit import append_audit_log
+from app.services.trial_balance_readopt import adjustments_notice_for
 from app.services.beta import final_page_presentation
 from app.services.disclosure_groups import (
     DisclosureQuestion,
@@ -117,6 +118,7 @@ class Dashboard:
     unanswered_disclosures: tuple[str, ...]
     carried_disclosures: tuple[str, ...]
     disclosure_questions: tuple[DisclosureQuestion, ...] = ()
+    adjustments_notice: str | None = None
 
 
 ENGINE_FILES_MISSING = (
@@ -500,6 +502,7 @@ async def dashboard_for_draft(
             unanswered_disclosures=(),
             carried_disclosures=(),
             disclosure_questions=questions,
+            adjustments_notice=adjustments_notice_for(draft, year_end),
         )
     try:
         if draft.tb_version_id is None:
@@ -585,6 +588,7 @@ async def dashboard_for_draft(
         unanswered_disclosures=unanswered,
         carried_disclosures=tuple(sorted(carried)),
         disclosure_questions=questions,
+        adjustments_notice=adjustments_notice_for(draft, year_end),
     )
 
 
@@ -1740,6 +1744,7 @@ def _dashboard_dict(board: Dashboard) -> dict[str, object]:
             for row in board.disclosure_questions
         ],
         "checks": checks,
+        "adjustments_notice": board.adjustments_notice,
     }
 
 
@@ -1779,7 +1784,14 @@ def _dashboard_from_response(payload: dict[str, object]) -> Dashboard:
         unanswered_disclosures=names,
         carried_disclosures=carried,
         disclosure_questions=questions,
+        adjustments_notice=_notice_text(payload.get("adjustments_notice")),
     )
+
+
+def _notice_text(value: object) -> str | None:
+    if isinstance(value, str):
+        return value
+    return None
 
 
 def _stored_answer(value: object) -> Literal["yes", "no", "unanswered"] | None:

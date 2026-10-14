@@ -283,6 +283,7 @@ async def test_full_happy_path_upload_to_statements(
     }
     form = {
         "company_id": str(provisioned_org["company_id"]),
+        "period_start": "2026-01-01",
         "period_end": "2026-07-31",
         "currency": "GBP",
     }
@@ -497,6 +498,7 @@ async def test_cross_org_trial_balance_returns_404_not_403(
         "/trial-balances/upload",
         data={
             "company_id": str(provisioned_org["company_id"]),
+            "period_start": "2026-01-01",
             "period_end": "2026-06-30",
             "currency": "GBP",
         },
@@ -568,6 +570,7 @@ async def test_list_trial_balances_for_client(
         "/trial-balances/upload",
         data={
             "company_id": str(company_id),
+            "period_start": "2026-01-01",
             "period_end": "2026-07-31",
             "currency": "GBP",
         },
@@ -669,6 +672,7 @@ async def test_upload_stores_company_functional_currency_ignoring_form_value(
         "/trial-balances/upload",
         data={
             "company_id": company_id,
+            "period_start": "2026-01-01",
             "period_end": "2026-08-31",
             "currency": "GBP",
         },
@@ -713,6 +717,7 @@ async def test_get_statements_returns_company_functional_currency(
         "/trial-balances/upload",
         data={
             "company_id": company_id,
+            "period_start": "2026-01-01",
             "period_end": "2026-09-30",
             "currency": "EUR",
         },
@@ -803,6 +808,7 @@ async def test_failed_upload_can_be_retried_same_company_period(
         "/trial-balances/upload",
         data={
             "company_id": company_id,
+            "period_start": "2026-01-01",
             "period_end": period_end,
             "currency": "GBP",
         },
@@ -843,6 +849,7 @@ async def test_duplicate_non_failed_upload_returns_409_with_existing_tb_id(
         "/trial-balances/upload",
         data={
             "company_id": company_id,
+            "period_start": "2026-01-01",
             "period_end": period_end,
             "currency": "GBP",
         },
@@ -856,6 +863,7 @@ async def test_duplicate_non_failed_upload_returns_409_with_existing_tb_id(
         "/trial-balances/upload",
         data={
             "company_id": company_id,
+            "period_start": "2026-01-01",
             "period_end": period_end,
             "currency": "GBP",
         },

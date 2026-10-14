@@ -15,7 +15,7 @@ Status of the current build queue. Wording that is drawn from a public source st
 | 9. Period message | done |
 | 10. Dashboard work queue | done. Shared formatter and the key figures card |
 | 11. Prior-year comparatives | done. Readers merged in #153. An open draft may replace the column and undo the first period after z2a3b4c5d6 |
-| 12. Trial balance re-adopt | original_filename is shown. Migration o1p2q3r4s5 adds adjustments_basis_trial_balance_id. The model does not map it until production shows revision_matches |
+| 12. Trial balance re-adopt | done. Readers map adjustments_basis_trial_balance_id. Preview lists each journal. Final, locked, and frozen refuse. Pack date, overlap, and contiguity apply. Uploads block a span longer than 18 months |
 | 13. Roll forward | done. Start next year copies the latest final column onto the next period. The dialog lists what carries and what the preparer must do |
 | 14. Drafts list | done. Version number, status, locked or frozen. Open stays on ?section= |
 | 15. Statement of income and retained earnings | waiting |

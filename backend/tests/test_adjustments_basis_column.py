@@ -1,4 +1,4 @@
-"""Revision o1p2q3r4s5 adds the adjustments basis. The model does not map it."""
+"""Revision o1p2q3r4s5 adds the adjustments basis. The reader maps it."""
 
 from __future__ import annotations
 
@@ -37,8 +37,10 @@ def test_migration_adds_the_column_without_a_read_or_grant_all() -> None:
     assert "SET DEFAULT" not in source
     assert "SELECT" not in executable
     model = _MODEL.read_text()
-    assert "adjustments_basis_trial_balance_id" not in model
-    assert "adjustments_basis_trial_balance_id" not in DraftVersion.__table__.columns
+    assert "adjustments_basis_trial_balance_id" in model
+    column = DraftVersion.__table__.columns["adjustments_basis_trial_balance_id"]
+    assert column.nullable is True
+    assert column.server_default is None
 
 
 def test_code_head_is_the_adjustments_basis_revision() -> None:

@@ -22,6 +22,13 @@ import {
   type PeriodPreset,
 } from "@/lib/period-presets";
 import {
+  ACCOUNTING_PERIOD_SENTENCE,
+  PERIOD_TOO_LONG,
+  PRE_2026_EXPLANATION,
+  periodLongerThan18Months,
+  periodStartsBeforePack,
+} from "@/lib/upload-period";
+import {
   filterPriorTbOptions,
   readPreferredPriorTbId,
   writePreferredPriorTbId,
@@ -855,6 +862,33 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
                 onChange={(e) => setPeriodEnd(e.target.value)}
               />
             </label>
+            <p
+              className="text-sm text-stone-600 sm:col-span-2"
+              data-testid="tb-accounting-period"
+            >
+              {ACCOUNTING_PERIOD_SENTENCE}
+            </p>
+            {periodStartsBeforePack(periodStart) ? (
+              <p className="text-sm text-stone-800 sm:col-span-2" data-testid="tb-pre-2026-warning">
+                This period starts before{" "}
+                <a href="#statutory-pack-period" className="underline">
+                  1 January 2026
+                </a>
+                . The Irish statutory pack cannot use it. Management accounts remain available.
+              </p>
+            ) : null}
+            <p
+              id="statutory-pack-period"
+              className="text-sm text-stone-600 sm:col-span-2"
+              data-testid="tb-pre-2026-explanation"
+            >
+              {PRE_2026_EXPLANATION}
+            </p>
+            {periodStart && periodEnd && periodLongerThan18Months(periodStart, periodEnd) ? (
+              <p className="text-sm text-red-800 sm:col-span-2" data-testid="tb-period-too-long">
+                {PERIOD_TOO_LONG}
+              </p>
+            ) : null}
           </>
         ) : null}
         <label className="block text-sm">
@@ -1004,6 +1038,7 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
           !periodStart ||
           !periodEnd ||
           periodStart > periodEnd ||
+          (!isGlKind(uploadKind) && periodLongerThan18Months(periodStart, periodEnd)) ||
           uploadMutation.isPending ||
           extractPdfMutation.isPending ||
           convertGlMutation.isPending
@@ -1011,6 +1046,10 @@ export function UploadForm({ initialCompanyId = "" }: UploadFormProps) {
         onClick={() => {
           if (!periodStart || !periodEnd || periodStart > periodEnd) {
             setLocalError("Period start must be on or before period end.");
+            return;
+          }
+          if (!isGlKind(uploadKind) && periodLongerThan18Months(periodStart, periodEnd)) {
+            setLocalError(PERIOD_TOO_LONG);
             return;
           }
           if (uploadKind === "pdf") {

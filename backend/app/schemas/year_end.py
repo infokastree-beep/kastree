@@ -610,6 +610,7 @@ class DashboardResponse(BaseModel):
     carried_disclosures: list[str] = Field(default_factory=list)
     disclosure_questions: list[DisclosureQuestionOut] = Field(default_factory=list)
     checks: list[DashboardCheckOut]
+    adjustments_notice: str | None = None
 
 
 class AdjustmentLineIn(BaseModel):
@@ -826,7 +827,7 @@ class AdoptableTrialBalanceList(BaseModel):
 
 
 class TrialBalancePageResponse(BaseModel):
-    """Read-only Inputs page. ``file_name`` is null when the upload name was not stored."""
+    """Adopted trial balance, and whether a different file can be selected."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -837,6 +838,66 @@ class TrialBalancePageResponse(BaseModel):
     account_count: int | None
     currency: str | None
     file_name: str | None
+    can_switch: bool
+    switch_refusal: str | None
+    adjustments_notice: str | None
+    face_dates_notice: str | None
+    comparatives_notice: str | None
+
+
+class TrialBalanceCandidateOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    period_start: date
+    period_end: date
+    file_name: str | None
+    uploaded_at: datetime
+    account_count: int | None
+    currency: str | None
+    ready: bool
+    refusal: str | None
+
+
+class TrialBalanceCandidateList(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[TrialBalanceCandidateOut]
+
+
+class ReadoptTrialBalanceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    trial_balance_id: uuid.UUID
+    row_version: int = Field(ge=1)
+    confirm: bool
+
+
+class ReadoptTrialBalanceResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    year_end_id: uuid.UUID
+    trial_balance_id: uuid.UUID
+    period_start: date
+    period_end: date
+    draft_id: uuid.UUID
+    version_number: int
+    row_version: int
+    adjustments_notice: str | None
+
+
+class AdjustmentsConfirmedRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    row_version: int = Field(ge=1)
+
+
+class AdjustmentsConfirmedResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    draft_id: uuid.UUID
+    row_version: int
+    adjustments_notice: str | None = None
 
 
 class AdoptTrialBalanceRequest(BaseModel):

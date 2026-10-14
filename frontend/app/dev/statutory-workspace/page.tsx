@@ -10,6 +10,11 @@ import { AuditExemptionClaim } from "@/components/statutory/AuditExemptionClaim"
 import { FinaliseDraft } from "@/components/statutory/FinaliseDraft";
 import { SizeInputs } from "@/components/statutory/SizeInputs";
 import { TrialBalancePanel } from "@/components/statutory/TrialBalancePanel";
+import { TrialBalanceSwitch } from "@/components/statutory/TrialBalanceSwitch";
+import {
+  ACCOUNTING_PERIOD_SENTENCE,
+  PRE_2026_EXPLANATION,
+} from "@/lib/upload-period";
 import { ReportSetupForm, type ReportSetupWrite } from "@/components/statutory/ReportSetupForm";
 import { AUDIT_POSITION_FINAL_LOCK } from "@/lib/audit-exemption";
 import {
@@ -380,8 +385,48 @@ export default function StatutoryWorkspacePreviewPage() {
                 account_count: 24,
                 currency: "EUR",
                 file_name: "year-end.xlsx",
+                can_switch: true,
+                adjustments_notice:
+                  "This draft's adjustments were made against a different trial balance",
               }}
             />
+            <TrialBalanceSwitch
+              yearEndId="preview"
+              page={{
+                trial_balance_id: "11111111-1111-1111-1111-111111111111",
+                period_start: "2026-01-01",
+                period_end: "2026-12-31",
+                uploaded_at: "2026-03-02T10:15:00Z",
+                account_count: 24,
+                currency: "EUR",
+                file_name: "year-end.xlsx",
+                can_switch: true,
+                adjustments_notice:
+                  "This draft's adjustments were made against a different trial balance",
+              }}
+              canPrepare
+              rowVersion={1}
+              getToken={async () => null}
+              previewItems={[
+                {
+                  id: "22222222-2222-2222-2222-222222222222",
+                  period_start: "2027-01-01",
+                  period_end: "2027-12-31",
+                  file_name: "replaced.xlsx",
+                  uploaded_at: "2026-03-02T10:15:00Z",
+                  account_count: 24,
+                  currency: "EUR",
+                  ready: true,
+                  refusal: null,
+                },
+              ]}
+            />
+            <p className="text-sm text-ink-secondary" data-testid="tb-accounting-period">
+              {ACCOUNTING_PERIOD_SENTENCE}
+            </p>
+            <p className="text-sm text-ink-secondary" data-testid="tb-pre-2026-explanation">
+              {PRE_2026_EXPLANATION}
+            </p>
           </div>
         ) : null}
         {sectionId === "review" ? (

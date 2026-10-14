@@ -68,6 +68,7 @@ async def test_demote_to_viewer_rejects_upload_export_and_statements(
         headers=headers,
         data={
             "company_id": str(provisioned_org["company_id"]),
+            "period_start": "2026-01-01",
             "period_end": "2026-03-31",
             "currency": "GBP",
         },
@@ -91,6 +92,7 @@ async def test_demote_to_viewer_rejects_upload_export_and_statements(
             headers=headers,
             data={
                 "company_id": str(provisioned_org["company_id"]),
+                "period_start": "2026-01-01",
                 "period_end": "2026-04-30",
                 "currency": "GBP",
             },

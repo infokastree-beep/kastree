@@ -417,6 +417,26 @@ def _reject_inverted_period(period_start: date | None, period_end: date) -> None
         )
 
 
+def _reject_upload_period(period_start: date | None, period_end: date) -> None:
+    """New uploads need both dates, and a span of 18 months or less."""
+    _reject_inverted_period(period_start, period_end)
+    if period_start is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Enter a period start and period end.",
+        )
+    from app.services.trial_balance_readopt import period_longer_than_18_months
+
+    if period_longer_than_18_months(period_start, period_end):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "This period is longer than 18 months. "
+                "Statutory accounts will use these dates."
+            ),
+        )
+
+
 def _progress_for_tb(tb: TrialBalance, jobs: list[ProcessingJob]) -> tuple[int, str | None]:
     status_pct = {
         "pending": 0,
@@ -652,7 +672,7 @@ async def upload_trial_balance(
     period_start: Annotated[date | None, Form()] = None,
 ) -> UploadAcceptedResponse:
     await aset_rls_org_id(session, auth.org_id)
-    _reject_inverted_period(period_start, period_end)
+    _reject_upload_period(period_start, period_end)
     company = await get_owned_company(session, company_id=company_id, org_id=auth.org_id)
 
     filename = file.filename or "upload.xlsx"

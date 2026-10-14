@@ -62,6 +62,7 @@ import {
 } from "@/components/statutory/AuditExemptionClaim";
 import { SizeInputs } from "@/components/statutory/SizeInputs";
 import { TrialBalancePanel } from "@/components/statutory/TrialBalancePanel";
+import { TrialBalanceSwitch } from "@/components/statutory/TrialBalanceSwitch";
 import type { TrialBalancePage } from "@/lib/trial-balance-page";
 import { StatutorySublineReview } from "@/components/statutory/StatutorySublineReview";
 import { WorkspaceSidebar } from "@/components/statutory/WorkspaceSidebar";
@@ -149,6 +150,7 @@ type DraftDashboard = {
   carried_disclosures: string[];
   disclosure_questions?: DisclosureQuestion[];
   checks: DashboardCheck[];
+  adjustments_notice?: string | null;
 };
 
 type StatementRow = {
@@ -1508,7 +1510,16 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       ) : null}
 
       {sectionId === "trial-balance" && trialBalanceQuery.data ? (
-        <TrialBalancePanel page={trialBalanceQuery.data} />
+        <div className="space-y-6">
+          <TrialBalancePanel page={trialBalanceQuery.data} />
+          <TrialBalanceSwitch
+            yearEndId={yearEndId}
+            page={trialBalanceQuery.data}
+            canPrepare={canEditDetails}
+            rowVersion={draft?.row_version ?? null}
+            getToken={getToken}
+          />
+        </div>
       ) : null}
 
       {draft?.status === "final" && sectionId !== "drafts" ? (
@@ -1580,6 +1591,11 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
           <p className="text-xs font-semibold uppercase tracking-[0.12em]">
             Review dashboard
           </p>
+          {dashboard.adjustments_notice ? (
+            <p className="mt-2 text-sm text-ink" data-testid="statutory-adjustments-notice">
+              {dashboard.adjustments_notice}
+            </p>
+          ) : null}
           <p className="mt-2" data-testid="statutory-status">
             <span
               className="inline-flex rounded-full border border-line bg-surface-elevated px-3 py-1 text-sm font-semibold text-ink"

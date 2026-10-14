@@ -32,6 +32,11 @@ _PAGE_KEYS = {
     "account_count",
     "currency",
     "file_name",
+    "can_switch",
+    "switch_refusal",
+    "adjustments_notice",
+    "face_dates_notice",
+    "comparatives_notice",
 }
 
 
@@ -70,6 +75,11 @@ async def test_trial_balance_page_reads_the_adopted_file(
         "account_count": None,
         "currency": None,
         "file_name": None,
+        "can_switch": False,
+        "switch_refusal": "There is no statutory draft for this period.",
+        "adjustments_notice": None,
+        "face_dates_notice": None,
+        "comparatives_notice": None,
     }
 
     tb_id = _insert_tb(
@@ -198,6 +208,7 @@ async def test_upload_stores_the_safe_file_name(
         "/trial-balances/upload",
         data={
             "company_id": str(provisioned_org["company_id"]),
+            "period_start": "2026-01-01",
             "period_end": "2026-08-31",
             "currency": "EUR",
         },

@@ -72,6 +72,20 @@ describe("trial balance page", () => {
     assert.match(workbench, /adoptableTrialBalanceLabel/);
     assert.match(panel, /FACE_DATES_SENTENCE/);
     assert.match(panel, /Open in Statements/);
+    const upload = readFileSync(join(here, "../components/upload/UploadForm.tsx"), "utf8");
+    assert.match(upload, /ACCOUNTING_PERIOD_SENTENCE/);
+    assert.match(upload, /tb-pre-2026-explanation/);
+    assert.match(upload, /tb-period-too-long/);
+    const period = readFileSync(join(here, "./upload-period.ts"), "utf8");
+    assert.match(period, /Statutory accounts use them as the period/);
+    assert.match(period, /Management accounts remain available/);
+    assert.match(period, /longer than 18 months/);
+    const switched = readFileSync(
+      join(here, "../components/statutory/TrialBalanceSwitch.tsx"),
+      "utf8",
+    );
+    assert.match(switched, /trial-balance\/adopt/);
+    assert.match(switched, /recordedFileName/);
     assert.equal(panel.includes("method: \"POST\""), false);
     assert.equal(panel.includes("Delete"), false);
   });

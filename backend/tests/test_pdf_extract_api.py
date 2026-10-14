@@ -94,6 +94,7 @@ async def test_upload_rejects_pdf_even_when_extraction_would_succeed(
         "/trial-balances/upload",
         data={
             "company_id": str(provisioned_org["company_id"]),
+            "period_start": "2025-01-01",
             "period_end": "2025-12-31",
             "currency": "GBP",
         },
