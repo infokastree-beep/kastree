@@ -50,7 +50,7 @@ def test_migration_adds_the_columns_without_a_read_or_grant_all() -> None:
 
 
 def test_code_head_is_the_compilation_report_revision() -> None:
-    assert code_heads() == ("w9x0y1z2a3",)
+    assert code_heads() == ("x0y1z2a3b4",)
 
 
 def test_columns_are_nullable_with_no_server_default() -> None:
