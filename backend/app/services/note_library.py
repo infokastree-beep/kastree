@@ -36,6 +36,7 @@ _KEYWORDS = frozenset({"AND", "OR", "NOT", "TRUE", "FALSE"})
 _NAME = re.compile(r"\b[A-Z][A-Z0-9_]{2,}\b")
 _COMMITMENT_PARENT = "N9_COMMITMENTS"
 _RELATED_PARTY = "N7_RPT"
+_TAXATION_NOTE = "taxation_note"
 
 _COMMITMENT_SPECS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
     (
@@ -410,6 +411,13 @@ def _reason(
 
 
 def _sentence(spec: BlockSpec, reason: ReasonName, ctx: dict[str, object]) -> str:
+    if spec.block_id == _TAXATION_NOTE:
+        if reason == "added":
+            return "This note is optional for a small entity. Added by the preparer."
+        return (
+            "This note is optional for a small entity and is left out "
+            "until the practice adds it."
+        )
     if reason == "always":
         return "This note is always included."
     if reason == "trial_balance":
@@ -583,6 +591,21 @@ def _catalogue() -> tuple[BlockSpec, ...]:
                         row_kind="Note",
                     )
                 )
+    rows.append(
+        BlockSpec(
+            block_id=_TAXATION_NOTE,
+            title="Taxation",
+            kind="disclosure",
+            predicate="false",
+            question_flags=(),
+            placeholder_key=None,
+            pack_heading=None,
+            controllable=True,
+            parent=None,
+            note_class="other",
+            row_kind="Note",
+        )
+    )
     return tuple(rows)
 
 
