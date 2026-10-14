@@ -20,6 +20,7 @@ from fastapi import (
     Response,
     status,
 )
+from fastapi.responses import JSONResponse
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -91,6 +92,12 @@ from app.schemas.year_end import (
     AdoptableTrialBalanceList,
     AdoptableTrialBalanceOut,
     TrialBalancePageResponse,
+    TrialBalanceCandidateList,
+    TrialBalanceCandidateOut,
+    ReadoptTrialBalanceRequest,
+    ReadoptTrialBalanceResponse,
+    AdjustmentsConfirmedRequest,
+    AdjustmentsConfirmedResponse,
     AdoptTrialBalanceRequest,
     CanonicalLinesResponse,
     CarriedMappingOut,
@@ -159,6 +166,13 @@ from app.services.adopted_trial_balance import (
     active_adopted_draft,
     reconcile_adopted,
     review_statutory_sublines,
+)
+from app.services.trial_balance_readopt import (
+    ReadoptPreview,
+    confirm_adjustments,
+    list_readopt_candidates,
+    readopt_trial_balance,
+    switch_facts,
 )
 from app.services.reconciliation import (
     ReconciliationRejected,
@@ -890,6 +904,13 @@ async def get_trial_balance_page(
         facts = await read_trial_balance_page(
             session, org_id=auth.org_id, year_end=year_end
         )
+        switch = await switch_facts(
+            session,
+            org_id=auth.org_id,
+            year_end=year_end,
+            period_start=facts.period_start,
+            period_end=facts.period_end,
+        )
     except ReconciliationRejected as exc:
         raise _adoption_error(exc) from exc
     return TrialBalancePageResponse(
@@ -900,6 +921,122 @@ async def get_trial_balance_page(
         account_count=facts.account_count,
         currency=facts.currency,
         file_name=facts.file_name,
+        can_switch=switch.can_switch,
+        switch_refusal=switch.switch_refusal,
+        adjustments_notice=switch.adjustments_notice,
+        face_dates_notice=switch.face_dates_notice,
+        comparatives_notice=switch.comparatives_notice,
+    )
+
+
+@router.get(
+    "/{year_end_id}/trial-balance/candidates",
+    response_model=TrialBalanceCandidateList,
+)
+async def get_trial_balance_candidates(
+    year_end_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> TrialBalanceCandidateList:
+    """Other complete trial balances, with a refusal when one cannot be adopted."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        rows = await list_readopt_candidates(
+            session, org_id=auth.org_id, year_end=year_end
+        )
+    except ReconciliationRejected as exc:
+        raise _adoption_error(exc) from exc
+    return TrialBalanceCandidateList(
+        items=[
+            TrialBalanceCandidateOut(
+                id=row.id,
+                period_start=row.period_start,
+                period_end=row.period_end,
+                file_name=row.file_name,
+                uploaded_at=row.uploaded_at,
+                account_count=row.account_count,
+                currency=row.currency,
+                ready=row.ready,
+                refusal=row.refusal,
+            )
+            for row in rows
+        ]
+    )
+
+
+@router.post(
+    "/{year_end_id}/trial-balance/adopt",
+    response_model=ReadoptTrialBalanceResponse,
+)
+async def post_readopt_trial_balance(
+    year_end_id: uuid.UUID,
+    body: ReadoptTrialBalanceRequest,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> ReadoptTrialBalanceResponse | JSONResponse:
+    """Preview the journals, or switch the period when ``confirm`` is true."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        saved = await readopt_trial_balance(
+            session,
+            org_id=auth.org_id,
+            user_id=auth.user_id,
+            year_end=year_end,
+            trial_balance_id=body.trial_balance_id,
+            row_version=body.row_version,
+            confirm=body.confirm,
+        )
+    except ReadoptPreview as exc:
+        return JSONResponse(status_code=422, content=exc.body)
+    except ReconciliationRejected as exc:
+        raise _adoption_error(exc) from exc
+    return ReadoptTrialBalanceResponse(
+        year_end_id=saved.year_end_id,
+        trial_balance_id=saved.trial_balance_id,
+        period_start=saved.period_start,
+        period_end=saved.period_end,
+        draft_id=saved.draft_id,
+        version_number=saved.version_number,
+        row_version=saved.row_version,
+        adjustments_notice=saved.adjustments_notice,
+    )
+
+
+@router.post(
+    "/{year_end_id}/trial-balance/adjustments-confirmed",
+    response_model=AdjustmentsConfirmedResponse,
+)
+async def post_adjustments_confirmed(
+    year_end_id: uuid.UUID,
+    body: AdjustmentsConfirmedRequest,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> AdjustmentsConfirmedResponse:
+    """A member records that the journals were reviewed against the current file."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        saved = await confirm_adjustments(
+            session,
+            org_id=auth.org_id,
+            user_id=auth.user_id,
+            year_end=year_end,
+            row_version=body.row_version,
+        )
+    except ReconciliationRejected as exc:
+        raise _adoption_error(exc) from exc
+    return AdjustmentsConfirmedResponse(
+        draft_id=saved.draft_id,
+        row_version=saved.row_version,
+        adjustments_notice=saved.adjustments_notice,
     )
 
 

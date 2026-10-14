@@ -10,6 +10,12 @@ export const FILE_NAME_NOT_RECORDED = "File name was not recorded.";
 export const FACE_DATES_SENTENCE =
   "Report setup face dates only change the words printed on the face. They do not change this period.";
 
+export const FACE_DATES_DIFFER =
+  "The printed face dates differ from the trial balance period. Clear them in Report setup if the face should follow the trial balance.";
+
+export const COMPARATIVES_NOTICE =
+  "Comparative figures and the fixed-asset note were entered for the previous period. Review them on Prior-year comparatives, or mark the first financial period if that is still right.";
+
 const MONTHS = [
   "January",
   "February",
@@ -33,6 +39,23 @@ export type TrialBalancePage = {
   account_count: number | null;
   currency: string | null;
   file_name: string | null;
+  can_switch?: boolean;
+  switch_refusal?: string | null;
+  adjustments_notice?: string | null;
+  face_dates_notice?: string | null;
+  comparatives_notice?: string | null;
+};
+
+export type TrialBalanceCandidate = {
+  id: string;
+  period_start: string;
+  period_end: string;
+  file_name: string | null;
+  uploaded_at: string;
+  account_count: number | null;
+  currency: string | null;
+  ready: boolean;
+  refusal: string | null;
 };
 
 export function recordedFileName(fileName: string | null): string {

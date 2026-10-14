@@ -42,6 +42,7 @@ tests/test_statutory_pages.py
 tests/test_statutory_statements.py
 tests/test_tb_ingestion.py
 tests/test_trial_balance_soft_delete.py
+tests/test_trial_balance_readopt.py
 tests/test_variance_risk_api.py
 tests/test_version_endpoint.py
 tests/test_waitlist_api.py
