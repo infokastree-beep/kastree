@@ -698,7 +698,7 @@ production-ready for untrusted file intake. Likely packages on PyPI:
 ## Object storage (S3/R2) — exports confirmed working in production
 
 **Status (resolved 3 Sep 2026; confirmed working):** Cloudflare R2 bucket
-`kastree-exports` is live with Object R/W credentials on Railway. Production
+`kastree-exports` is live with Object R/W credentials configured. Production
 exports (xlsx / pdf / csv) succeed. Bucket lifecycle for `exports/` is also
 live (next section).
 
@@ -708,7 +708,7 @@ live (next section).
 ever absent: *"Object storage credentials are not configured…"*
 (commit `030b8fc`+).
 
-**Required env (now set in Railway):** `AWS_ACCESS_KEY_ID`,
+**Required env:** `AWS_ACCESS_KEY_ID`,
 `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET`, and for R2 `S3_ENDPOINT_URL`
 (`https://<ACCOUNT_ID>.r2.cloudflarestorage.com`). See
 `.env.production.example`.
@@ -738,18 +738,18 @@ Confirmed: no expiration rule on empty/whole-bucket prefix; no rule targets
 
 ## R2 API token rotation — `kastree-exports-backend` (expires September 2027)
 
-The Cloudflare R2 Account API token **`kastree-exports-backend`** (mapped to
-`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` on Railway) expires **one year
+The Cloudflare R2 Account API token **`kastree-exports-backend`** (the object-storage
+access key and secret) expires **one year
 from creation — September 2027**. Set a **calendar reminder to rotate it before
 then** (e.g. August 2027).
 
 **Rotation (simple):**
 
-1. In Cloudflare → R2 → Manage R2 API Tokens, create a new Account API Token
+1. Create a new Account API Token
    with the **same permissions** as `kastree-exports-backend`.
-2. Update `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` on Railway with the
+2. Update the object-storage access key and secret with the
    new token values.
-3. Redeploy (or let Railway pick up the env change).
+3. Redeploy so the new credentials are picked up.
 
 **If the token lapses:** exports fail with the clear *"Object storage credentials
 are not configured…"* error surfaced to the UI (not a silent failure). Fix by
@@ -801,14 +801,14 @@ data** were exposed via this endpoint.
 created during this build session — all controlled by the founder, not external
 customers:
 
-| Account | Email | Organisation |
-|---------|-------|--------------|
-| Mark | `markdooling25@gmail.com` | Mark's Organization |
-| Jie | `hanjie987@gmail.com` | Jie's Organization |
-| kastree | `infokastree@gmail.com` | kastree's Organization |
+| Account | Organisation |
+|---------|--------------|
+| Mark | Mark's Organization |
+| Jie | Jie's Organization |
+| the practice owner | kastree's Organization |
 
 **Waitlist rows during window (4 total):** all founder/test entries — Mark's own
-email, `prod-waitlist-*@example.com`, and `markdooling25+*@gmail.com` test aliases.
+address, `prod-waitlist-*@example.com`, and plus-address test aliases.
 No third-party customer waitlist signups existed.
 
 **Timeline (all UTC, 2026-09-02):**
@@ -819,7 +819,7 @@ No third-party customer waitlist signups existed.
 | 22:37:34 | Railway deployment `fe32cb0f` goes live with ungated admin. **Exposure starts.** |
 | 23:33:53 | Fix committed (`f6cb675` — `require_platform_admin()` + `PLATFORM_ADMIN_EMAILS`). |
 | 23:33:54 | Railway redeploy `ce142529` triggered by setting `PLATFORM_ADMIN_EMAILS` env var — **still running `74fdcfc` code** because fix was pushed only to Cursor `origin`, not GitHub. Env var alone had no effect. |
-| ~23:44 | **Discovered** — `infokastree@gmail.com` (kastree org owner) saw full platform admin data; should have received 403. |
+| ~23:44 | **Discovered** — the practice owner (kastree org owner) saw full platform admin data; should have received 403. |
 | 23:44:24 | Fix pushed to `github/main`; Railway deployment `458660e0` goes live with `require_platform_admin()`. **Exposure ends.** |
 
 **Exposure window:** ~**67 minutes** (22:37:34 → 23:44:24 UTC).
@@ -828,8 +828,8 @@ No third-party customer waitlist signups existed.
 allowlist. (2) Fix was committed and pushed to Cursor `origin` but **not** to
 `github` (Railway's deploy source); setting Railway env vars redeployed stale code.
 
-**Verification after fix:** Live production HTTP tests confirmed `infokastree@gmail.com`
-and `hanjie987@gmail.com` → **403**, `markdooling25@gmail.com` → **200**.
+**Verification after fix:** Live production HTTP tests confirmed the practice owner
+and Jie → **403**, Mark → **200**.
 
 **Structural safeguard added:** `scripts/verify_remotes_in_sync.sh`,
 `scripts/verify_railway_deploy_marker.sh`, and `scripts/verify_security_deploy.sh`
@@ -840,7 +840,7 @@ and `hanjie987@gmail.com` → **403**, `markdooling25@gmail.com` → **200**.
 
 **Not a security gap.** The backend fix is live: `GET /admin/overview` requires
 `require_platform_admin()` and returns **403** for non-founder org owners
-(`infokastree@gmail.com`, `hanjie987@gmail.com`). Verified in production.
+(the practice owner, Jie). Verified in production.
 
 **Cosmetic frontend gap:** the **Admin** nav link can still appear for non-founder
 org owners because production Vercel CDN is serving a **stale frontend bundle**
@@ -884,8 +884,8 @@ browser).
 3. **CI on every GitHub `main` push:**
    `.github/workflows/verify-production-frontend.yml` polls
    `www.kastree.ie` for `<meta name="kastree-git-sha">` matching `github.sha`
-   and **fails the workflow** if production stays stale (~15 min). Optional
-   secret `VERCEL_DEPLOY_HOOK_URL` can force a Production redeploy first.
+   and **fails the workflow** if production stays stale (~15 min). The deploy hook secret
+   can force a Production redeploy first.
 
 That CI check never fired during the lag because GitHub never received the
 commits — pushing to `github` is the missing link, not a new Vercel product
@@ -895,12 +895,12 @@ bug.
 origin-only push will recreate this exact “Vercel silently behind” symptom.
 
 **Deploy hook — resolved (2026-09-07):** both paths that need
-`VERCEL_DEPLOY_HOOK_URL` are covered:
+the deploy hook secret are covered:
 
 | Path | Status |
 |------|--------|
-| GitHub Actions `secrets.VERCEL_DEPLOY_HOOK_URL` | Working — `verify-production-frontend.yml` POSTs the Production hook on `main` pushes (proven live). |
-| Cloud Agent / local `scripts/trigger_vercel_deploy.sh` | Working — same Production/`main` hook URL saved as a Cursor **My Secrets** entry (`VERCEL_DEPLOY_HOOK_URL`, applies to all repositories). Available to **new** Cloud Agent sessions going forward. |
+| The production frontend check | Working — `verify-production-frontend.yml` POSTs the deploy hook secret on `main` pushes (proven live). |
+| Cloud Agent / local `scripts/trigger_vercel_deploy.sh` | Working — the trigger script uses the deploy hook secret. Available to **new** Cloud Agent sessions going forward. |
 
 Prefer dual-remote push + SHA guard as the default path; the hook remains the
 kick when Git is connected but a build still needs a nudge.
@@ -919,7 +919,7 @@ but **do not rely on the admin user list for outreach** until placeholders are
 backfilled. Run `backend/scripts/backfill_user_emails_from_clerk.py` against
 production, or wait for `user.updated` webhooks after enabling them in Clerk.
 **2026-09-02:** all three production users were backfilled from Clerk
-(`hanjie987@gmail.com`, `markdooling25@gmail.com`, `infokastree@gmail.com`).
+(Jie, Mark, and the practice owner).
 
 **Not Google OAuth-specific** — affects all sign-up paths when email is missing
 from the org webhook payload.
@@ -1000,16 +1000,16 @@ general “everything is still on personal email” fog.
 - **Clerk** — production instance live (`clerk.kastree.ie`); business email has
   Owner access (original owner cannot be removed yet — see section below; safe).
 - **Railway (live stack)** — NEW project **overflowing-creation** under
-  `infokastree@gmail.com` serves production behind www.kastree.ie; DB migrated;
+  the practice owner serves production behind www.kastree.ie; DB migrated;
   RLS re-proven; OLD delightful-purpose left as fallback only.
 - **R2 lifecycle** — `exports/` 30-day expiry applied via Admin token (see
   resolved R2 lifecycle section above).
 - **Security / cutover** — live API URL, health, soft-delete cleanup, privacy
   policy, Vercel Web Analytics wired and receiving data.
 - **Railway billing (RESOLVED 2026-09-04)** — Subscribed to Railway Hobby plan
-  ($5/month, includes $5 usage credit) on `infokastree@gmail.com` /
+  ($5/month, includes $5 usage credit) on the practice owner /
   **overflowing-creation**. Confirmed via live API: `isTrialing=false`,
-  `state=ACTIVE`, subscription `sub_1UBkkRCJoPsRzQsdpzT2fyU7` active. Confirmed
+  `state=ACTIVE`, a live subscription. Confirmed
   zero service disruption — no restart/redeploy around the billing transition,
   `GET /health` continuously 200 throughout. No more trial-credit exhaustion risk.
 
@@ -1030,10 +1030,10 @@ general “everything is still on personal email” fog.
    `markdooling25-commits/kastree`**. Live testing found a genuine
    **“fix deployed to backend, frontend stuck on stale build”** gap: Railway
    was on `f38f1b1` while www.kastree.ie served a **2h-old** frontend
-   (`frontend-rdb82gdcv`, 2026-09-03 23:27) that still rendered object-shaped
+   (an earlier production deployment, 2026-09-03 23:27) that still rendered object-shaped
    FastAPI `detail` as bare `API 409`. Confirmed reconnected to
-   **`infokastree-beep/kastree`** and redeployed (Production deploy hook →
-   `frontend-rjwgr0exq` / `ac3bed1` on that org; live Playwright then showed
+   **`infokastree-beep/kastree`** and redeployed (the deploy hook secret →
+   a later production deployment on that org; live Playwright then showed
    the real 409 message + “Open the existing trial balance” link).
 
    **This is the second distinct time tonight Vercel’s deploy source needed
@@ -1044,8 +1044,8 @@ general “everything is still on personal email” fog.
    the Production deploy hook) once the source is confirmed.
 
    **Automated safeguard (2026-09-04):** every push to `main` runs
-   `.github/workflows/verify-production-frontend.yml`, which optionally POSTs
-   `VERCEL_DEPLOY_HOOK_URL` and then polls
+   `.github/workflows/verify-production-frontend.yml`, which optionally sends
+   the deploy hook secret and then polls
    `https://www.kastree.ie` for `<meta name="kastree-git-sha">` baked from
    `VERCEL_GIT_COMMIT_SHA` / `GITHUB_SHA`. If the live marker does not match
    the pushed SHA within ~15 minutes, the workflow **fails loudly** (no more
@@ -1061,8 +1061,8 @@ general “everything is still on personal email” fog.
 4. **Google Workspace for `@kastree.ie` (not urgent — professionalism, not
    security)** — Consider setting up Google Workspace on `kastree.ie` so a real
    business mailbox (e.g. `admin@kastree.ie`) can eventually replace
-   `infokastree@gmail.com` as the business identity for **GitHub**, **Clerk**,
-   and **`PLATFORM_ADMIN_EMAILS`**. `infokastree@gmail.com` is already a
+   the practice owner as the business identity for **GitHub**, **Clerk**,
+   and **`PLATFORM_ADMIN_EMAILS`**. The practice owner is already a
    genuine, dedicated business account (correctly separate from personal email)
    and is **fine to keep using** in the meantime — this is a cosmetic /
    professionalism upgrade, **not** a security fix, and **not urgent**.
@@ -1088,11 +1088,11 @@ business entity. That is separate from the items above.
 
 ## Clerk workspace — cannot remove original owner after adding business email
 
-Attempted to remove `markdooling25@gmail.com`'s access from the Clerk workspace
-after adding `infokastree@gmail.com` as Owner. Clerk blocked this ("won't allow
+Attempted to remove Mark's access from the Clerk workspace
+after adding the practice owner as Owner. Clerk blocked this ("won't allow
 leaving workspace").
 
-**Likely causes:** `infokastree@gmail.com` may need to fully complete account
+**Likely causes:** the practice owner may need to fully complete account
 setup/verification first, or Clerk may simply require more than one confirmed
 owner as a safety measure before allowing the original account to leave.
 
@@ -1112,8 +1112,7 @@ webhook tier updates are live and proven with a real Stripe test-mode payment.
 - Backend gating: `POST /clients` → 403 `CLIENT_LIMIT_REACHED` when over tier cap.
 - `POST /billing/checkout` creates Stripe subscription Checkout; webhook remains
   the sole writer of `subscription_tier` / `subscription_status`.
-- Railway configured: `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID_STARTER|PRO|SCALE`,
-  `STRIPE_WEBHOOK_SECRET`, `FRONTEND_BASE_URL`.
+- Checkout and the webhook are configured for a live subscription.
 - End-to-end proof (2026-09-07): Upgrade to Starter → Checkout €69 → test card
   `4242…` → `checkout.session.completed` webhook → org `free` → `starter`.
 
