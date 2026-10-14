@@ -722,6 +722,27 @@ class DraftStatusResponse(BaseModel):
     row_version: int
 
 
+class DraftListItem(BaseModel):
+    """One version row. No snapshot and no amounts."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    draft_id: uuid.UUID
+    version_number: int
+    status: str
+    locked: bool
+    frozen: bool
+
+
+class DraftListResponse(BaseModel):
+    """Every draft version for one year end, oldest first."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    year_end_id: uuid.UUID
+    drafts: list[DraftListItem]
+
+
 class WorkingDraftResponse(BaseModel):
     """Latest draft version for a year end. The workspace page reloads this."""
 
