@@ -102,6 +102,36 @@ def test_catalogue_disambiguates_policy_blocks_from_notes() -> None:
         assert "N0_" not in row.title
 
 
+def test_taxation_note_is_optional_and_defaults_off() -> None:
+    from app.services.note_library import (
+        LibraryRejected,
+        NoteLibrary,
+        _catalogue,
+        _reason,
+        _sentence,
+        apply_library_action,
+    )
+
+    spec = next(row for row in _catalogue() if row.block_id == "taxation_note")
+    assert spec.title == "Taxation"
+    assert spec.controllable is True
+    empty = NoteLibrary((), ())
+    reason = _reason(spec, {}, empty, parent_pending=False)
+    assert reason == "disclosure_no"
+    sentence = _sentence(spec, reason, {})
+    assert "optional for a small entity" in sentence
+    assert "taxation_note" not in sentence
+    added = apply_library_action(
+        empty, block_id="taxation_note", action="add", ctx=_ANSWERED_NO
+    )
+    assert added.added == ("taxation_note",)
+    assert _reason(spec, _ANSWERED_NO, added, parent_pending=False) == "added"
+    with pytest.raises(LibraryRejected, match="this block is not included"):
+        apply_library_action(
+            empty, block_id="taxation_note", action="omit", ctx=_ANSWERED_NO
+        )
+
+
 def test_null_library_keeps_the_golden_notes_and_figures() -> None:
     document = _golden()
     assert document.net_assets == Decimal("455812.00")

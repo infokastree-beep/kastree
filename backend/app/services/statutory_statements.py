@@ -1425,6 +1425,76 @@ def _with_dividend_note(
     )
 
 
+def _with_taxation_note(
+    notes: tuple[StatementNote, ...],
+    note_numbers: dict[str, int],
+    *,
+    library: NoteLibrary,
+    income: tuple[StatementRow, ...],
+    aggregated: dict[str, Decimal],
+    prior_canonical: dict[str, Decimal],
+) -> tuple[tuple[StatementNote, ...], dict[str, int]]:
+    """Optional taxation note. It stays off until the practice adds it.
+
+    The two amounts are the income-statement tax line and the corporation-tax
+    line already printed. They are not recalculated. There is no tax
+    reconciliation. The wording is researched (public source). It is not a
+    reviewer sign-off.
+    """
+    if "taxation_note" not in library.added:
+        return notes, note_numbers
+    tax = _face_amount_row(income, "Tax on profit")
+    if tax is None:
+        return notes, note_numbers
+    corp = _corporation_tax_line(notes, aggregated, prior_canonical)
+    number = len(notes) + 1
+    code = "N11_TAXATION"
+    numbered = dict(note_numbers)
+    numbered[code] = number
+    return (
+        notes
+        + (
+            StatementNote(
+                code=code,
+                title=f"{number}. Taxation",
+                body=_taxation_note_body(tax, corp),
+                lines=(),
+                fa_rows=(),
+            ),
+        ),
+        numbered,
+    )
+
+
+def _corporation_tax_line(
+    notes: tuple[StatementNote, ...],
+    aggregated: dict[str, Decimal],
+    prior_canonical: dict[str, Decimal],
+) -> NoteLine:
+    for note in notes:
+        for line in note.lines:
+            if line.line == "CORP_TAX":
+                return line
+    return _note_lines(["CORP_TAX"], aggregated, prior_canonical)[0]
+
+
+def _taxation_note_body(tax: StatementRow, corp: NoteLine) -> str:
+    """Repeat the face cells. A missing tax comparative stays off the sentence."""
+    parts = [f"Tax on profit for the financial year is {format_whole(tax.current)}."]
+    if tax.prior is not None:
+        parts.append(
+            f"Tax on profit for the prior period is {format_whole(tax.prior)}."
+        )
+    parts.append(
+        "Corporation tax at the balance sheet date is " f"{format_whole(corp.current)}."
+    )
+    parts.append(
+        "Corporation tax at the prior balance sheet date is "
+        f"{format_whole(corp.prior)}."
+    )
+    return "\n\n".join(parts)
+
+
 def _note_view(note: StatementNote, *, comparative: bool) -> dict[str, object]:
     """Heading, intro, and a short table are marked so the PDF keeps them together."""
     lines = [
@@ -1807,6 +1877,14 @@ def _render_draft(
         interim=interim_dividend,
         recommended=recommended_dividend,
         currency=entity.currency,
+    )
+    notes, note_numbers = _with_taxation_note(
+        notes,
+        note_numbers,
+        library=library,
+        income=income_rows,
+        aggregated=aggregated,
+        prior_canonical=prior_canonical,
     )
     omitted_blocks, added_blocks = effective_ids(ctx, library)
     checks = tuple(report.checks) + library_notices(ctx, library)

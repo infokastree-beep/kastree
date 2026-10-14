@@ -908,3 +908,33 @@ def test_dividend_note_uses_recorded_amounts_not_the_trial_balance_line() -> Non
     assert WORDING_BANNER == (
         "Statutory wording not yet reviewed by a qualified reviewer"
     )
+
+
+def test_taxation_note_defaults_off_and_ties_to_the_face() -> None:
+    """Optional for a small entity. The two figures are copied from the face."""
+    from app.services.statutory_display import format_whole
+
+    off = _golden()
+    assert "N11_TAXATION" not in {note.code for note in off.notes}
+    assert off.net_assets == Decimal("455812.00")
+    assert off.profit == Decimal("157650.00")
+
+    document = _golden(note_library={"omitted": [], "added": ["taxation_note"]})
+    assert document.net_assets == Decimal("455812.00")
+    assert document.profit == Decimal("157650.00")
+    note = next(item for item in document.notes if item.code == "N11_TAXATION")
+    assert note.title == f"{len(document.notes)}. Taxation"
+    tax = next(row for row in document.income if row.label == "Tax on profit")
+    creditors = next(item for item in document.notes if item.code == "N4_CREDITORS")
+    corp = next(line for line in creditors.lines if line.line == "CORP_TAX")
+    assert tax.prior is not None
+    assert format_whole(tax.current) in note.body
+    assert format_whole(tax.prior) in note.body
+    assert format_whole(corp.current) in note.body
+    assert format_whole(corp.prior) in note.body
+    assert "reconcil" not in note.body.casefold()
+    assert "1AD" not in note.body
+    assert "optional for a small entity" not in note.body
+    assert document.html is not None
+    assert note.body.split("\n\n")[0] in document.html
+    assert document.added_blocks == ("taxation_note",)
