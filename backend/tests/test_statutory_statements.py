@@ -133,10 +133,7 @@ def test_note_sign_convention_matches_the_face_in_absolute_value() -> None:
         note_total = sum((line.current for line in note.lines), Decimal("0"))
         assert note_total == abs(face_total)
         prior_face = sum(
-            (
-                _row(document.sofp, label).prior or Decimal("0")
-                for label in labels
-            ),
+            (_row(document.sofp, label).prior or Decimal("0") for label in labels),
             Decimal("0"),
         )
         prior_note = sum((line.prior for line in note.lines), Decimal("0"))
@@ -761,3 +758,72 @@ async def test_warning_api_still_renders(
     )
     assert pdf.status_code == 200, pdf.text
     assert pdf.content.startswith(b"%PDF")
+
+
+def test_retained_earnings_statement_when_share_capital_is_unchanged() -> None:
+    """Opening, profit, dividends, and closing. The golden totals stay put."""
+    from datetime import date
+
+    from app.services.statutory_compose import compose_pdf_html
+
+    document = build_statutory_statements(
+        prior_year_validated=True,
+        tb_lines=_lines(_TB),
+        mappings=_MAPPINGS,
+        prior_retained_earnings=Decimal("-322062.00"),
+        prior_canonical={
+            "FA_PLANT_COST": Decimal("111400.00"),
+            "RETAINED_EARNINGS": Decimal("-322062.00"),
+            "SHARE_CAPITAL": Decimal("-100.00"),
+        },
+        fa_register=_FA_REGISTER,
+        entity=_entity(),
+        period_start="2025-01-01",
+        period_end="2025-12-31",
+    )
+    assert document.net_assets == Decimal("455812.00")
+    assert document.profit == Decimal("157650.00")
+    assert [row.label for row in document.retained_earnings] == [
+        "Retained earnings at the beginning of the period",
+        "Profit for the financial year",
+        "Dividends",
+        "Retained earnings at the end of the period",
+    ]
+    assert [row.current for row in document.retained_earnings] == [
+        Decimal("322062.00"),
+        Decimal("157650.00"),
+        Decimal("-24000.00"),
+        Decimal("455712.00"),
+    ]
+    opening, profit_row, dividends, closing = document.retained_earnings
+    assert opening.current + profit_row.current + dividends.current == closing.current
+    assert document.html is not None
+    block = document.html.split("Statement of income and retained earnings", 1)[1]
+    assert block.index(
+        "Retained earnings at the beginning of the period"
+    ) < block.index("Dividends")
+    assert "(24,000)" in block
+    assert "455,712" in block
+    composed = compose_pdf_html(
+        document,
+        report_setup=None,
+        period_start=date(2025, 1, 1),
+        period_end=date(2025, 12, 31),
+        first_financial_period=False,
+    )
+    assert ">Statement of income and retained earnings</h2>" in composed
+    contents = composed.split('data-section="contents"', 1)[1].split(
+        'data-section="', 1
+    )[0]
+    assert "Statement of income and retained earnings" in contents
+    assert document.net_assets == Decimal("455812.00")
+    assert document.profit == Decimal("157650.00")
+
+
+def test_golden_omits_retained_earnings_when_share_capital_changed() -> None:
+    document = _golden()
+    assert document.retained_earnings == ()
+    assert document.html is not None
+    assert "Statement of income and retained earnings" not in document.html
+    assert document.net_assets == Decimal("455812.00")
+    assert document.profit == Decimal("157650.00")

@@ -40,7 +40,14 @@ _ROUNDING_LABELS = {
 }
 _NEUTRAL_CURRENCY = "the company's functional currency"
 _KEEP_ON_THE_FACE = frozenset(
-    {"Net assets", "Total equity", "Profit for the financial year"}
+    {
+        "Net assets",
+        "Total equity",
+        "Profit for the financial year",
+        "Retained earnings at the beginning of the period",
+        "Dividends",
+        "Retained earnings at the end of the period",
+    }
 )
 
 # Child labels that must foot to the engine subtotal once they are rounded
@@ -108,7 +115,20 @@ _INCOME_GROUPS: tuple[tuple[tuple[str, ...], str], ...] = (
     ),
     (("Profit before tax", "Tax on profit"), "Profit for the financial year"),
 )
-_GROUPS = {total: children for children, total in (*_SOFP_GROUPS, *_INCOME_GROUPS)}
+_RETAINED_GROUPS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (
+        (
+            "Retained earnings at the beginning of the period",
+            "Profit for the financial year",
+            "Dividends",
+        ),
+        "Retained earnings at the end of the period",
+    ),
+)
+_GROUPS = {
+    total: children
+    for children, total in (*_SOFP_GROUPS, *_INCOME_GROUPS, *_RETAINED_GROUPS)
+}
 
 
 class FaceRow(Protocol):
@@ -255,7 +275,9 @@ def _keep(row: FaceRow, *, comparative: bool) -> bool:
     return not (_nil(row.current) and _nil(row.prior))
 
 
-def _amounts(current: Decimal, prior: Decimal | None, *, comparative: bool) -> list[str]:
+def _amounts(
+    current: Decimal, prior: Decimal | None, *, comparative: bool
+) -> list[str]:
     shown = [format_whole(current)]
     if comparative:
         shown.append("" if prior is None else format_whole(prior))
@@ -267,7 +289,9 @@ def _difference(
 ) -> Decimal | None:
     if total is None or any(item is None for item in children):
         return None
-    gap = rounding_gap([item for item in children if item is not None], total, WHOLE_UNIT)
+    gap = rounding_gap(
+        [item for item in children if item is not None], total, WHOLE_UNIT
+    )
     if gap == 0:
         return None
     return -gap
@@ -293,9 +317,7 @@ def face_display_rows(
                     [by_label[name].current for name in children], row.current
                 )
                 prior_gap = (
-                    _difference(
-                        [by_label[name].prior for name in children], row.prior
-                    )
+                    _difference([by_label[name].prior for name in children], row.prior)
                     if comparative
                     else None
                 )
@@ -314,7 +336,9 @@ def face_display_rows(
             printed.append(
                 {
                     "label": row.label,
-                    "amounts": _amounts(row.current, row.prior, comparative=comparative),
+                    "amounts": _amounts(
+                        row.current, row.prior, comparative=comparative
+                    ),
                 }
             )
     return printed

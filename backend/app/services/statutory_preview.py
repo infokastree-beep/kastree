@@ -36,6 +36,22 @@ from findraft.models.year_end import YearEnd
 
 NOT_RENDERABLE = "Statutory statements are not renderable"
 SECTION_ABSENT = "Section is not in this draft"
+RETAINED_ABSENT = (
+    "This statement is not presented. Share capital or share premium changed, "
+    "or retained earnings do not roll forward."
+)
+
+
+def absent_retained_section() -> str:
+    """Workspace preview only. The PDF omits the statement instead."""
+    return (
+        '<section data-section="income-retained">'
+        "<h2>Statement of income and retained earnings</h2>"
+        f"<p>{RETAINED_ABSENT}</p>"
+        "</section>"
+    )
+
+
 OUTLINE_PARENTS = ("notes", "directors-report", "compilation")
 
 
@@ -230,7 +246,9 @@ async def build_section_preview(
         )
         watermark = document.watermark
     section_html = extract_section_html(full_html, section_id)
-    if section_html is None:
+    if section_html is None and section_id == "income-retained":
+        section_html = absent_retained_section()
+    elif section_html is None:
         raise PreviewRejected(SECTION_ABSENT, 404)
     row_version = payload["row_version"]
     assert isinstance(row_version, int)

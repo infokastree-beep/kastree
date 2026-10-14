@@ -189,11 +189,12 @@
     {"id": "directors-responsibilities", "order": 5, "label": "Directors' responsibilities statement", "group": "usually-required", "default": "on", "lock": "user", "source_status": "pending-reviewer-signoff", "new_page": "no"},
     {"id": "compilation", "order": 6, "label": "Compilation report", "group": "usually-required", "default": "on", "lock": "user", "source_status": "pending-reviewer-signoff", "new_page": "yes"},
     {"id": "income", "order": 7, "label": "Income statement", "group": "frs-locked", "default": "on", "lock": "locked", "source_status": "frs-102-1a", "new_page": "yes"},
-    {"id": "oci", "order": 8, "label": "Statement of comprehensive income", "group": "engine-conditional", "default": "engine", "lock": "user", "source_status": "pending-reviewer-signoff", "built": false, "new_page": "no"},
-    {"id": "sofp", "order": 9, "label": "Statement of financial position", "group": "frs-locked", "default": "on", "lock": "locked", "source_status": "frs-102-1a", "new_page": "yes"},
-    {"id": "socie", "order": 10, "label": "Statement of changes in equity", "group": "engine-conditional", "default": "engine", "lock": "user", "source_status": "pending-reviewer-signoff", "built": false, "new_page": "no"},
-    {"id": "cash-flow", "order": 11, "label": "Cash flow statement", "group": "off", "default": "off", "lock": "user", "source_status": "pending-reviewer-signoff", "built": false, "new_page": "no"},
-    {"id": "notes", "order": 12, "label": "Notes", "group": "frs-locked", "default": "on", "lock": "locked", "source_status": "frs-102-1a", "children": "printed-notes", "new_page": "yes"},
-    {"id": "trading", "order": 13, "label": "Supplementary trading statement", "group": "off", "default": "off", "lock": "user", "source_status": "pending-reviewer-signoff", "built": false, "new_page": "no"}
+    {"id": "income-retained", "order": 8, "label": "Statement of income and retained earnings", "group": "frs-locked", "default": "on", "lock": "locked", "source_status": "pending-reviewer-signoff", "new_page": "no"},
+    {"id": "oci", "order": 9, "label": "Statement of comprehensive income", "group": "engine-conditional", "default": "engine", "lock": "user", "source_status": "pending-reviewer-signoff", "built": false, "new_page": "no"},
+    {"id": "sofp", "order": 10, "label": "Statement of financial position", "group": "frs-locked", "default": "on", "lock": "locked", "source_status": "frs-102-1a", "new_page": "yes"},
+    {"id": "socie", "order": 11, "label": "Statement of changes in equity", "group": "engine-conditional", "default": "engine", "lock": "user", "source_status": "pending-reviewer-signoff", "built": false, "new_page": "no"},
+    {"id": "cash-flow", "order": 12, "label": "Cash flow statement", "group": "off", "default": "off", "lock": "user", "source_status": "pending-reviewer-signoff", "built": false, "new_page": "no"},
+    {"id": "notes", "order": 13, "label": "Notes", "group": "frs-locked", "default": "on", "lock": "locked", "source_status": "frs-102-1a", "children": "printed-notes", "new_page": "yes"},
+    {"id": "trading", "order": 14, "label": "Supplementary trading statement", "group": "off", "default": "off", "lock": "user", "source_status": "pending-reviewer-signoff", "built": false, "new_page": "no"}
   ]
 }
