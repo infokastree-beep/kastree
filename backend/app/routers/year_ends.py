@@ -899,7 +899,7 @@ async def get_trial_balance_page(
         uploaded_at=facts.uploaded_at,
         account_count=facts.account_count,
         currency=facts.currency,
-        file_name=None,
+        file_name=facts.file_name,
     )
 
 
@@ -927,6 +927,7 @@ async def get_adoptable_trial_balances(
                 period_end=row.period_end,
                 currency=row.currency,
                 account_count=row.account_count,
+                file_name=row.file_name,
             )
             for row in rows
         ]

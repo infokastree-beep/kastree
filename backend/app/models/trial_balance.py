@@ -62,6 +62,7 @@ class TrialBalance(Base):
     file_type: Mapped[str] = mapped_column(String, nullable=False)
     file_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     file_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     raw_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     parsed_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(

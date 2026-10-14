@@ -64,6 +64,7 @@ from app.schemas.pdf_extract import ExtractedTbRowOut, PdfTbExtractResponse
 from app.schemas.gl_convert import GlConvertResponse
 from app.services.materiality import suggest_materiality
 from app.services.ownership import get_owned_company
+from app.services.upload_security import safe_filename
 from app.services.pdf_tb_extract import PdfTbExtractError, extract_trial_balance_from_pdf
 from app.services.gl_to_tb import (
     GlImbalanceError,
@@ -655,6 +656,7 @@ async def upload_trial_balance(
     company = await get_owned_company(session, company_id=company_id, org_id=auth.org_id)
 
     filename = file.filename or "upload.xlsx"
+    recorded_name = safe_filename(file.filename)
     file_type = _file_extension(filename)
     content = await file.read()
     if len(content) > 50 * 1024 * 1024:
@@ -719,6 +721,7 @@ async def upload_trial_balance(
         tb.status = "pending"
         tb.currency = currency_code
         tb.period_start = period_start
+        tb.original_filename = recorded_name
     else:
         tb = TrialBalance(
             company_id=company.id,
@@ -727,6 +730,7 @@ async def upload_trial_balance(
             file_url=file_url,
             file_type=file_type,
             file_size_bytes=len(content),
+            original_filename=recorded_name,
             status="pending",
             # Company.functional_currency is authoritative — ignore mismatched form values.
             currency=currency_code,

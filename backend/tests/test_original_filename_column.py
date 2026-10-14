@@ -1,4 +1,4 @@
-"""Revision n0o1p2q3r4 adds trial_balances.original_filename. The model does not map it."""
+"""Revision n0o1p2q3r4 adds trial_balances.original_filename. The model maps it."""
 
 from __future__ import annotations
 
@@ -32,8 +32,12 @@ def test_migration_adds_the_column_without_a_read_or_grant_all() -> None:
     assert "SET DEFAULT" not in source
     assert "SELECT" not in executable
     model = _MODEL.read_text()
-    assert "original_filename" not in model
-    assert "original_filename" not in TrialBalance.__table__.columns
+    column = model.split("original_filename:", 1)[1].split("raw_data:", 1)[0]
+    assert "original_filename" in TrialBalance.__table__.columns
+    assert "Mapped[str | None]" in column
+    assert "String(255)" in column
+    assert "nullable=True" in column
+    assert "server_default" not in column
 
 
 def test_code_head_is_the_original_filename_revision() -> None:
