@@ -27,6 +27,7 @@ import {
   ParticularsForm,
   type ParticularsWrite,
 } from "@/components/statutory/ParticularsForm";
+import { DraftList } from "@/components/statutory/DraftList";
 import { PriorYearComparatives } from "@/components/statutory/PriorYearComparatives";
 import {
   ReportSetupForm,
@@ -1508,6 +1509,8 @@ export function StatutoryDraftWorkspace({ yearEndId }: { yearEndId: string }) {
       {sectionId === "trial-balance" && trialBalanceQuery.data ? (
         <TrialBalancePanel page={trialBalanceQuery.data} />
       ) : null}
+
+      {sectionId === "drafts" ? <DraftList yearEndId={yearEndId} /> : null}
 
       {sectionId === "prior-year" ? (
         <PriorYearComparatives

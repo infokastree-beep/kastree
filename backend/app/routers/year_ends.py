@@ -117,6 +117,8 @@ from app.schemas.year_end import (
     NoteLibraryResponse,
     NoteLibraryMutationResponse,
     FinaliseRequest,
+    DraftListItem,
+    DraftListResponse,
     DraftStatusResponse,
     WorkingDraftResponse,
     FinaliseResponse,
@@ -755,6 +757,42 @@ async def get_year_end(
         return YearEndResponse.model_validate(payload)
     return YearEndResponse.model_validate(
         overlay_year_end(payload, display_workspace(snapshot))
+    )
+
+
+@router.get("/{year_end_id}/drafts", response_model=DraftListResponse)
+async def list_draft_versions(
+    year_end_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DraftListResponse:
+    """Version number, status, and locked or frozen. The latest draft GET stays separate."""
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    rows = (
+        await session.scalars(
+            select(DraftVersion)
+            .where(
+                DraftVersion.org_id == auth.org_id,
+                DraftVersion.year_end_id == year_end.id,
+            )
+            .order_by(DraftVersion.version_number.asc())
+        )
+    ).all()
+    return DraftListResponse(
+        year_end_id=year_end.id,
+        drafts=[
+            DraftListItem(
+                draft_id=row.id,
+                version_number=row.version_number,
+                status=row.status,
+                locked=row.status == "locked",
+                frozen=row.is_frozen,
+            )
+            for row in rows
+        ],
     )
 
 

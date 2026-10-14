@@ -57,7 +57,8 @@ def test_sidebar_sections_follow_the_reporting_framework() -> None:
         "Supplementary trading statement",
     ]
 
-    assert labels[:9] == [
+    assert labels[:10] == [
+        "Draft list",
         "Review dashboard",
         "Report setup",
         "Sections setup",
@@ -68,10 +69,11 @@ def test_sidebar_sections_follow_the_reporting_framework() -> None:
         "Disclosures",
         "Company details",
     ]
-    assert labels[9:-2] == pack_labels
+    assert labels[10:-2] == pack_labels
     assert labels[-2:] == ["PDF", "Word"]
     assert "History" not in labels
     assert [section.group for section in frs] == [
+        "home",
         "overview",
         "report-options",
         "report-options",
@@ -89,7 +91,7 @@ def test_sidebar_sections_follow_the_reporting_framework() -> None:
     assert setup.group == "report-options"
     assert setup.lock is None
     assert setup.built is None
-    assert setup.order == 3
+    assert setup.order == 4
     from pydantic import ValidationError
 
     from app.schemas.report_setup import ReportSetupWrite

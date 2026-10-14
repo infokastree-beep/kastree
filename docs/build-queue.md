@@ -14,10 +14,10 @@ Status of the current build queue. Wording that is drawn from a public source st
 | 8. Particulars slots | done. The four columns and share capital by class are typed inputs on Notes. A Yes with an empty slot blocks FINAL |
 | 9. Period message | done |
 | 10. Dashboard work queue | done. Shared formatter and the key figures card |
-| 11. Prior-year comparatives | readers map y1z2a3b4c5. An open draft may replace the column and undo the first period after z2a3b4c5d6 |
+| 11. Prior-year comparatives | done. Readers merged in #153. An open draft may replace the column and undo the first period after z2a3b4c5d6 |
 | 12. Trial balance re-adopt | design merged in #111. Build after item 11, migration first |
-| 13. Roll forward | waiting |
-| 14. Drafts list | waiting |
+| 13. Roll forward | done. The previous FINAL snapshot copy is the roll-forward. It is not a button |
+| 14. Drafts list | done. Version number, status, locked or frozen. Open stays on ?section= |
 | 15. Statement of income and retained earnings | waiting |
 | Notes, after item 15, in this order: dividends; taxation; stocks; defined-contribution pension; controlling party; government grants; provisions other than tax; deferred tax; fair-value designation; more than one statement line; combined format lines; set-off. Blocks that are not required for a small entity are labelled "optional for a small entity" and default off. Required rows keep today's behaviour. Deferred tax and provisions are ranked above the rare rows | approved, not started |
 | Optional cash flow statement, after those notes | approved, build after item 15 |

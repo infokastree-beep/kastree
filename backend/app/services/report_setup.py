@@ -53,21 +53,20 @@ class ReportingFramework:
 
 
 _WORKSPACE_BEFORE: tuple[WorkspaceSection, ...] = (
-    WorkspaceSection("review", "Review dashboard", "overview", "Overview", 1),
+    WorkspaceSection("drafts", "Draft list", "home", "Home", 1),
+    WorkspaceSection("review", "Review dashboard", "overview", "Overview", 2),
     WorkspaceSection(
-        "report-setup", "Report setup", "report-options", "Report options", 2
+        "report-setup", "Report setup", "report-options", "Report options", 3
     ),
     WorkspaceSection(
-        "sections-setup", "Sections setup", "report-options", "Report options", 3
+        "sections-setup", "Sections setup", "report-options", "Report options", 4
     ),
-    WorkspaceSection("trial-balance", "Trial balance", "inputs", "Inputs", 4),
-    WorkspaceSection("sub-lines", "Mapping", "inputs", "Inputs", 5),
-    WorkspaceSection("adjustments", "Adjustments", "inputs", "Inputs", 6),
-    WorkspaceSection(
-        "prior-year", "Prior-year comparatives", "inputs", "Inputs", 7
-    ),
-    WorkspaceSection("disclosures", "Disclosures", "inputs", "Inputs", 8),
-    WorkspaceSection("company-details", "Company details", "inputs", "Inputs", 9),
+    WorkspaceSection("trial-balance", "Trial balance", "inputs", "Inputs", 5),
+    WorkspaceSection("sub-lines", "Mapping", "inputs", "Inputs", 6),
+    WorkspaceSection("adjustments", "Adjustments", "inputs", "Inputs", 7),
+    WorkspaceSection("prior-year", "Prior-year comparatives", "inputs", "Inputs", 8),
+    WorkspaceSection("disclosures", "Disclosures", "inputs", "Inputs", 9),
+    WorkspaceSection("company-details", "Company details", "inputs", "Inputs", 10),
 )
 
 
