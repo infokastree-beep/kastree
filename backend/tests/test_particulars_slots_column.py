@@ -49,7 +49,7 @@ def test_migration_adds_the_slots_without_a_read_or_grant_all() -> None:
 
 
 def test_code_head_is_the_particulars_slots_revision() -> None:
-    assert code_heads() == ("n0o1p2q3r4",)
+    assert code_heads() == ("o1p2q3r4s5",)
 
 
 def test_columns_are_nullable_text_with_no_server_default() -> None:
