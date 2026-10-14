@@ -984,6 +984,7 @@ def _policy_blocks(
     policies: list[dict[str, object]],
     ctx: dict[str, object],
     library: NoteLibrary,
+    stocks: StatementRow | None = None,
 ) -> str:
     blocks: list[str] = []
     for policy in policies:
@@ -1005,10 +1006,26 @@ def _policy_blocks(
         if not isinstance(body, str):
             raise ValueError(f"policy {policy_id} has no body")
         rendered = _POLICY_TEXT.from_string(body).render()
+        if policy_id == "STOCKS" and "stocks_carrying_amount" in library.added:
+            rendered = f"{rendered}\n{_stocks_carrying_sentence(stocks)}"
         title = policy.get("title")
         heading = title.strip() if isinstance(title, str) else ""
         blocks.append(f"{heading}\n{rendered}" if heading else rendered)
     return "\n\n".join(blocks)
+
+
+def _stocks_carrying_sentence(stocks: StatementRow | None) -> str:
+    """The face stocks amount, under the existing policy.
+
+    A missing face line stays missing. The wording is researched (public
+    source). It is not a reviewer sign-off.
+    """
+    if stocks is None:
+        return "The carrying amount of stocks has not been recorded."
+    text = f"The carrying amount of stocks is {format_whole(stocks.current)}."
+    if stocks.prior is not None:
+        text += f" The prior-period carrying amount is {format_whole(stocks.prior)}."
+    return text
 
 
 def _note_context(entity: StatementEntity, policy_blocks: str) -> dict[str, str]:
@@ -1853,9 +1870,14 @@ def _render_draft(
         library = parse_note_library(note_library)
     except LibraryRejected as exc:
         raise ValueError(exc.detail) from exc
-    policies = _policy_blocks(_load_policies(directory), ctx, library)
     sofp_rows = _statement_rows(sofp)
     income_rows = _statement_rows(income)
+    policies = _policy_blocks(
+        _load_policies(directory),
+        ctx,
+        library,
+        _face_amount_row(sofp_rows, "Stocks"),
+    )
     composed_notes, flags, note_numbers = _compose_notes(
         templates=templates,
         selected=selected,

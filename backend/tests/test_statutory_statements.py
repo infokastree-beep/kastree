@@ -938,3 +938,66 @@ def test_taxation_note_defaults_off_and_ties_to_the_face() -> None:
     assert document.html is not None
     assert note.body.split("\n\n")[0] in document.html
     assert document.added_blocks == ("taxation_note",)
+
+
+def test_stocks_carrying_amount_stays_off_and_ties_to_the_face() -> None:
+    """Optional line under the stocks policy. The amount is the face amount."""
+    from app.services.statutory_display import format_whole
+
+    quiet = _golden(note_library={"omitted": [], "added": ["stocks_carrying_amount"]})
+    policies = next(note for note in quiet.notes if note.code == "N1_POLICIES")
+    assert "carrying amount" not in policies.body
+    assert quiet.net_assets == Decimal("455812.00")
+    assert quiet.profit == Decimal("157650.00")
+
+    shifted = []
+    for code, name, debit, credit in _TB:
+        if code == "2130":
+            debit -= 1000
+        shifted.append((code, name, debit, credit))
+    shifted.append(("1000", "Stocks", 1000, 0))
+    mappings = dict(_MAPPINGS)
+    mappings["1000"] = "STOCKS"
+
+    def _render(added: bool) -> StatutoryStatements:
+        library = (
+            {"omitted": [], "added": ["stocks_carrying_amount"]} if added else None
+        )
+        return build_statutory_statements(
+            prior_year_validated=True,
+            tb_lines=_lines(tuple(shifted)),
+            mappings=mappings,
+            prior_retained_earnings=Decimal("-322062.00"),
+            prior_canonical={
+                "FA_PLANT_COST": Decimal("111400.00"),
+                "RETAINED_EARNINGS": Decimal("-322062.00"),
+            },
+            fa_register=_FA_REGISTER,
+            entity=_entity(),
+            period_start="2025-01-01",
+            period_end="2025-12-31",
+            note_library=library,
+        )
+
+    plain = _render(False)
+    stocks = next(row for row in plain.sofp if row.label == "Stocks")
+    assert stocks.current == Decimal("1000.00")
+    plain_policies = next(note for note in plain.notes if note.code == "N1_POLICIES")
+    assert "Stocks are stated at the lower of cost" in plain_policies.body
+    assert "carrying amount" not in plain_policies.body
+    assert plain.net_assets == Decimal("455812.00")
+    assert plain.profit == Decimal("157650.00")
+
+    shown = _render(True)
+    shown_policies = next(note for note in shown.notes if note.code == "N1_POLICIES")
+    shown_stocks = next(row for row in shown.sofp if row.label == "Stocks")
+    assert (
+        f"The carrying amount of stocks is {format_whole(shown_stocks.current)}."
+        in shown_policies.body
+    )
+    assert shown_stocks.prior is not None
+    assert format_whole(shown_stocks.prior) in shown_policies.body
+    assert "1AD" not in shown_policies.body
+    assert "optional for a small entity" not in shown_policies.body
+    assert shown.net_assets == Decimal("455812.00")
+    assert shown.profit == Decimal("157650.00")
