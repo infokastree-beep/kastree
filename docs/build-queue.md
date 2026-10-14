@@ -11,7 +11,7 @@ Status of the current build queue. Wording that is drawn from a public source st
 | 5. Directors' report required items | done |
 | 6. Remuneration citation | done |
 | 7. Compilation report letterhead | done. The compilation date and signatory block FINAL until both are recorded |
-| 8. Particulars slots | next after this card, migration first |
+| 8. Particulars slots | migration `x0y1z2a3b4` only. Nothing reads the columns until that revision is applied |
 | 9. Period message | done |
 | 10. Dashboard work queue | done. Shared formatter and the key figures card |
 | 11. Prior-year comparatives | design merged in #113. Build after items 10 and 8, migration first |
