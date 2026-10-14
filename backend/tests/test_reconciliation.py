@@ -460,10 +460,11 @@ async def test_golden_upload_confirms_and_reconciles(
         f"/year-ends/{year_end_id}/prior-year",
         headers=headers,
         json={
+            "matches_filed_accounts": True,
             "lines": [
-                {"canonical_line": "FA_PLANT_COST", "amount": "111400.00"},
+                {"canonical_line": "CASH", "amount": "322062.00"},
                 {"canonical_line": "RETAINED_EARNINGS", "amount": "-322062.00"},
-            ]
+            ],
         },
     )
     assert prior.status_code == 200, prior.text
@@ -511,14 +512,13 @@ async def test_golden_upload_confirms_and_reconciles(
     assert body["net_assets"] == "455812.00"
     assert body["profit"] == "157650.00"
     assert all(not code.startswith("R-") for code, _ok in _passed(body))
-    tangible = next(
+    cash = next(
         item
         for item in body["checks"]
-        if item["code"] == "V-CMP-001"
-        and "Comparative TANGIBLE_ASSETS:" in item["message"]
+        if item["code"] == "V-CMP-001" and "Comparative CASH:" in item["message"]
     )
-    assert tangible["passed"] is True
-    assert "111400" in tangible["message"].replace(",", "")
+    assert cash["passed"] is True
+    assert "322062" in cash["message"].replace(",", "")
 
 
 @pytest.mark.asyncio

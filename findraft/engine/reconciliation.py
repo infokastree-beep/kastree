@@ -17,8 +17,14 @@ def check_prior_year_gate(prior_year_validated: bool) -> CheckResult | None:
     prior year is confirmed & locked. Callers must stop on a non-None result."""
     if prior_year_validated is True:
         return None
-    return CheckResult("V-GATE-001", "BLOCKED", False,
-                       "Prior-year data not validated — reconciliation blocked")
+    return CheckResult(
+        "V-GATE-001",
+        "BLOCKED",
+        False,
+        "This draft needs comparative figures. Choose a source on the "
+        "Prior-year comparatives page, or mark this as the company's "
+        "first financial period.",
+    )
 
 def check_tb_integrity(tb_lines) -> CheckResult:
     dr = sum((l.debit for l in tb_lines), Dec("0.00"))

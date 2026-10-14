@@ -65,7 +65,7 @@ export function pdfBlockReason(input: {
     return `Confirm the sub-line for ${account} first`;
   }
   if (input.checks.some((check) => check.code === "V-GATE-001" && !check.passed)) {
-    return "Mark the first financial period first";
+    return "Choose comparative figures or mark the first financial period";
   }
   if (input.statementsError) {
     return input.statementsError;

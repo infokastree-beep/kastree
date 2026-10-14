@@ -69,6 +69,10 @@ describe("review groups", () => {
       "/year-ends/year-1/draft?section=notes&note=N2_FA",
     );
     assert.equal(fixHref(yearEndId, { section: "sub-lines" }).includes("sub-lines"), true);
+    assert.equal(
+      fixHref(yearEndId, presentCheck(failed("V-GATE-001", "BLOCKED")).fix),
+      "/year-ends/year-1/draft?section=prior-year",
+    );
     assert.equal(byCode.has("V-DISC-001"), true);
     assert.equal(
       checkLine(failed("V-DISC-001", "CRITICAL", "Unanswered disclosure questions: ['PENSION_COMMITMENT']"), 40),

@@ -191,6 +191,7 @@ class PriorYearConfirmRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     lines: list[PriorYearLineIn]
+    matches_filed_accounts: bool | None = None
 
 
 class PriorYearLineOut(BaseModel):
@@ -206,7 +207,69 @@ class PriorYearResponse(BaseModel):
     year_end_id: uuid.UUID
     prior_year_validated: bool
     first_financial_period: bool
+    comparative_source: str | None = None
     lines: list[PriorYearLineOut]
+
+
+class MappingDifferenceOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    account_code: str
+    account_name: str
+    previous_line: str
+    current_line: str
+
+
+class PriorYearCheckOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    passed: bool | None
+    message: str
+
+
+class PriorYearSourceOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str
+    preferred: bool
+    available: bool
+    refusal: str | None
+    guidance: str | None
+    trial_balance_id: uuid.UUID | None
+    year_end_id: uuid.UUID | None
+    draft_id: uuid.UUID | None
+    period_start: date | None
+    period_end: date | None
+    lines: list[PriorYearLineOut]
+    mapping_differences: list[MappingDifferenceOut]
+    checks: list[PriorYearCheckOut]
+
+
+class PriorYearPageResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    year_end_id: uuid.UUID
+    prior_year_validated: bool
+    first_financial_period: bool
+    comparative_source: str | None
+    stored_lines: list[PriorYearLineOut]
+    stale_notice: str | None
+    face_date_notice: str | None
+    sources: list[PriorYearSourceOut]
+
+
+class PriorYearTrialBalanceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirm: bool
+    mapping_differences_confirmed: bool = False
+
+
+class PriorYearFinalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirm: bool
 
 
 class ReconciliationGateResponse(BaseModel):

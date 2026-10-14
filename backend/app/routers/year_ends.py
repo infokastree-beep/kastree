@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 from decimal import Decimal, InvalidOperation
-from typing import Annotated
+from typing import Annotated, NoReturn
 
 import structlog
 from fastapi import (
@@ -67,9 +67,15 @@ from app.schemas.year_end import (
     MappingConfirmRequest,
     MappingConfirmResponse,
     MappingLineOut,
+    MappingDifferenceOut,
+    PriorYearCheckOut,
     PriorYearConfirmRequest,
+    PriorYearFinalRequest,
     PriorYearLineOut,
+    PriorYearPageResponse,
     PriorYearResponse,
+    PriorYearSourceOut,
+    PriorYearTrialBalanceRequest,
     EvidenceResponse,
     ReconciliationCheckOut,
     ReconciliationGateResponse,
@@ -127,9 +133,14 @@ from app.services.size_eligibility import (
 )
 from app.services.prior_year import (
     PriorYearRejected,
+    PriorYearView,
+    confirm_from_final,
+    confirm_from_trial_balance,
     confirm_prior_year,
     mark_first_financial_period,
+    read_prior_year,
     reconciliation_gate,
+    undo_first_financial_period,
 )
 from app.services.adopted_trial_balance import (
     SublineChoice,
@@ -1394,6 +1405,76 @@ async def list_trial_balance_lines(
     )
 
 
+def _prior_year_page(view: PriorYearView) -> PriorYearPageResponse:
+    def _lines(
+        rows: tuple[tuple[str, Decimal], ...],
+    ) -> list[PriorYearLineOut]:
+        return [
+            PriorYearLineOut(canonical_line=name, amount=amount_text(amount))
+            for name, amount in rows
+        ]
+
+    return PriorYearPageResponse(
+        year_end_id=view.year_end_id,
+        prior_year_validated=view.prior_year_validated,
+        first_financial_period=view.first_financial_period,
+        comparative_source=view.comparative_source,
+        stored_lines=_lines(view.stored_lines),
+        stale_notice=view.stale_notice,
+        face_date_notice=view.face_date_notice,
+        sources=[
+            PriorYearSourceOut(
+                kind=source.kind,
+                preferred=source.preferred,
+                available=source.available,
+                refusal=source.refusal,
+                guidance=source.guidance,
+                trial_balance_id=source.trial_balance_id,
+                year_end_id=source.year_end_id,
+                draft_id=source.draft_id,
+                period_start=source.period_start,
+                period_end=source.period_end,
+                lines=_lines(source.lines),
+                mapping_differences=[
+                    MappingDifferenceOut(
+                        account_code=row.account_code,
+                        account_name=row.account_name,
+                        previous_line=row.previous_line,
+                        current_line=row.current_line,
+                    )
+                    for row in source.mapping_differences
+                ],
+                checks=[
+                    PriorYearCheckOut(code=code, passed=passed, message=message)
+                    for code, passed, message in source.checks
+                ],
+            )
+            for source in view.sources
+        ],
+    )
+
+
+def _raise_prior_year(exc: PriorYearRejected) -> NoReturn:
+    raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+
+@router.get(
+    "/{year_end_id}/prior-year",
+    response_model=PriorYearPageResponse,
+)
+async def get_prior_year(
+    year_end_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_reader)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> PriorYearPageResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    view = await read_prior_year(session, org_id=auth.org_id, year_end=year_end)
+    return _prior_year_page(view)
+
+
 @router.post(
     "/{year_end_id}/prior-year",
     response_model=PriorYearResponse,
@@ -1413,16 +1494,18 @@ async def confirm_prior_year_route(
         stored = await confirm_prior_year(
             session,
             org_id=auth.org_id,
+            user_id=auth.user_id,
             year_end=year_end,
             lines=[(line.canonical_line, line.amount) for line in body.lines],
+            matches_filed_accounts=body.matches_filed_accounts,
         )
     except PriorYearRejected as exc:
-        code = status.HTTP_409_CONFLICT if "already validated" in exc.detail else 400
-        raise HTTPException(status_code=code, detail=exc.detail) from exc
+        _raise_prior_year(exc)
     return PriorYearResponse(
         year_end_id=year_end.id,
         prior_year_validated=year_end.prior_year_validated,
         first_financial_period=year_end.first_financial_period,
+        comparative_source=year_end.comparative_source,
         lines=[
             PriorYearLineOut(
                 canonical_line=line.canonical_line,
@@ -1431,6 +1514,63 @@ async def confirm_prior_year_route(
             for line in stored
         ],
     )
+
+
+@router.post(
+    "/{year_end_id}/prior-year/from-trial-balance",
+    response_model=PriorYearPageResponse,
+)
+async def confirm_prior_year_from_trial_balance(
+    year_end_id: uuid.UUID,
+    body: PriorYearTrialBalanceRequest,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> PriorYearPageResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    await _refuse_closed_year_end(session, org_id=auth.org_id, year_end=year_end)
+    try:
+        view = await confirm_from_trial_balance(
+            session,
+            org_id=auth.org_id,
+            user_id=auth.user_id,
+            year_end=year_end,
+            confirm=body.confirm,
+            mapping_differences_confirmed=body.mapping_differences_confirmed,
+        )
+    except PriorYearRejected as exc:
+        _raise_prior_year(exc)
+    return _prior_year_page(view)
+
+
+@router.post(
+    "/{year_end_id}/prior-year/from-final",
+    response_model=PriorYearPageResponse,
+)
+async def confirm_prior_year_from_final(
+    year_end_id: uuid.UUID,
+    body: PriorYearFinalRequest,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> PriorYearPageResponse:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    await _refuse_closed_year_end(session, org_id=auth.org_id, year_end=year_end)
+    try:
+        view = await confirm_from_final(
+            session,
+            org_id=auth.org_id,
+            user_id=auth.user_id,
+            year_end=year_end,
+            confirm=body.confirm,
+        )
+    except PriorYearRejected as exc:
+        _raise_prior_year(exc)
+    return _prior_year_page(view)
 
 
 @router.post(
@@ -1449,11 +1589,37 @@ async def first_financial_period(
     await _refuse_closed_year_end(session, org_id=auth.org_id, year_end=year_end)
     try:
         return await mark_first_financial_period(
-            session, org_id=auth.org_id, year_end=year_end
+            session,
+            org_id=auth.org_id,
+            user_id=auth.user_id,
+            year_end=year_end,
         )
     except PriorYearRejected as exc:
-        code = status.HTTP_409_CONFLICT if "already validated" in exc.detail else 400
-        raise HTTPException(status_code=code, detail=exc.detail) from exc
+        _raise_prior_year(exc)
+
+
+@router.post(
+    "/{year_end_id}/first-financial-period/undo",
+    response_model=YearEndResponse,
+)
+async def undo_first_financial_period_route(
+    year_end_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_member_work)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> YearEnd:
+    await aset_rls_org_id(session, auth.org_id)
+    year_end = await _owned_year_end(
+        session, year_end_id=year_end_id, org_id=auth.org_id
+    )
+    try:
+        return await undo_first_financial_period(
+            session,
+            org_id=auth.org_id,
+            user_id=auth.user_id,
+            year_end=year_end,
+        )
+    except PriorYearRejected as exc:
+        _raise_prior_year(exc)
 
 
 @router.get(

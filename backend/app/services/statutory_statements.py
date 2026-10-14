@@ -311,6 +311,7 @@ _DOCUMENT = """<!DOCTYPE html>
 {% endif %}
 {% elif section.kind == "notes" %}
 <h2{% if composed %} id="{{ section.anchor }}"{% endif %}>{{ section.heading }}</h2>
+{% if section.period_note %}<p>{{ section.period_note }}</p>{% endif %}
 {% for note in section.notes %}
 <section class="note-block{% if note.short %} short-note{% endif %}">
 <a id="note-{{ note.code }}"></a>
@@ -1443,6 +1444,12 @@ def _render_html(
     start = parse_iso_date(period_start)
     end = parse_iso_date(period_end)
     comparative = not first_financial_period
+    period_note = (
+        "This is the company's first financial period. "
+        "Comparative amounts are not presented."
+        if first_financial_period
+        else ""
+    )
     columns = column_headings(
         period_end=end,
         currency_code=entity.currency,
@@ -1473,6 +1480,7 @@ def _render_html(
             "anchor": "sofp",
             "heading": "Statement of financial position",
             "period_phrase": as_at_phrase(end),
+            "period_note": period_note,
             "compliance": compliance,
             "columns": columns,
             "rows": sofp_rows,
@@ -1484,6 +1492,7 @@ def _render_html(
             "anchor": "income",
             "heading": "Income statement",
             "period_phrase": period_phrase,
+            "period_note": period_note,
             "compliance": "",
             "columns": columns,
             "rows": income_rows,
@@ -1494,6 +1503,7 @@ def _render_html(
             "anchor": "notes",
             "heading": "Notes",
             "period_phrase": "",
+            "period_note": period_note,
             "columns": columns,
             "notes": [_note_view(note, comparative=comparative) for note in notes],
         },

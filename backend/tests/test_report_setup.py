@@ -57,23 +57,25 @@ def test_sidebar_sections_follow_the_reporting_framework() -> None:
         "Supplementary trading statement",
     ]
 
-    assert labels[:8] == [
+    assert labels[:9] == [
         "Review dashboard",
         "Report setup",
         "Sections setup",
         "Trial balance",
         "Mapping",
         "Adjustments",
+        "Prior-year comparatives",
         "Disclosures",
         "Company details",
     ]
-    assert labels[8:-2] == pack_labels
+    assert labels[9:-2] == pack_labels
     assert labels[-2:] == ["PDF", "Word"]
     assert "History" not in labels
     assert [section.group for section in frs] == [
         "overview",
         "report-options",
         "report-options",
+        "inputs",
         "inputs",
         "inputs",
         "inputs",
