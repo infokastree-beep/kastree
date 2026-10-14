@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiFetch } from "@/lib/api";
 import { downloadDraftPdf, pdfBlockReason } from "@/lib/draft-pdf";
-import { formatCurrency } from "@/lib/currency";
+import { formatStoredAmount } from "@/lib/currency";
 import {
   statutoryGateDiagnosis,
   statutoryWorkspaceOpen,
@@ -75,10 +75,7 @@ function messageFrom(error: unknown): string {
 }
 
 function money(amount: string | null, currency: string): string {
-  if (amount === null || amount === "") {
-    return "—";
-  }
-  return formatCurrency(amount, currency);
+  return formatStoredAmount(amount, currency);
 }
 
 function frameworkKey(packId: string, packVersion: string): string {
