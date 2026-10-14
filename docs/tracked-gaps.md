@@ -8,6 +8,12 @@ see [`product-roadmap.md`](product-roadmap.md).
 
 The GitHub repository was made private on 8 October 2026 and made public again the same day. See [Pre-launch checklist](#pre-launch-checklist).
 
+## Statutory period longer than 18 months — accountant to confirm the limit
+
+A trial-balance upload whose start-to-end span is longer than 18 months is refused. The message is: "This period is longer than 18 months. Statutory accounts will use these dates." This is a block. The file is not stored.
+
+The 18-month number is the limit in that block until an accountant confirms it. Do not change the number, and do not turn the block back into a warning, without that confirmation.
+
 ## QA review findings
 
 External review of a draft statutory PDF and Word file for one fictional first-period Irish company. The regression fixture is: name "charlie mungar buffett", company number 1111, registered office "New York, Ireland", incorporated 7 May 2025, secretary "Warren Buffet", director "warren buffett" appointed 3 July 2025, average employees 677, period 1 January 2026 to 31 December 2026 marked first financial period, no audit exemption recorded, practice name "kastree's Organization", turnover 100,000, cost of sales 40,250, administrative expenses 34,750, no tax.
